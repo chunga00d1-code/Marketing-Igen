@@ -1,0 +1,10 @@
+export const BRAND_NAME = "iGen ERP";
+export const BRAND_TAGLINE = "Enterprise Hub";
+export const SERVICE_WEBSITE_URL = "https://erp.igentechsolutions.com";
+export const SUPPORT_EMAIL = "igen.work99@gmail.com";
+export const SUPPORT_URL = `${SERVICE_WEBSITE_URL}/#phap-ly`;
+export const PRIVACY_POLICY_URL = `${SERVICE_WEBSITE_URL}/privacy-policy`;
+export const TERMS_OF_SERVICE_URL = `${SERVICE_WEBSITE_URL}/terms-of-service`;
+export const USER_DATA_DELETION_URL = `${SERVICE_WEBSITE_URL}/user-data-deletion`;
+export const BRAND_LOGO_PATH = "/brand-icon.png";
+export const BRAND_LOGO_URL = `${SERVICE_WEBSITE_URL}${BRAND_LOGO_PATH}`;

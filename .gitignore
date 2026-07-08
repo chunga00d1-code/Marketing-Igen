@@ -1,0 +1,14 @@
+node_modules/
+node_modules.locked_cleanup/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+firebase-applet-config
+.agent
+temp_key
+package-lock.json
+claude-render.hyperframe-tmp

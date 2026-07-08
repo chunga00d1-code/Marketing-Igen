@@ -1,0 +1,141 @@
+name: CD (Continuous Deployment)
+
+on:
+  push:
+    branches: [ develop, production ]
+
+jobs:
+
+  deploy-docker-vps:
+    name: Build Docker & Deploy VPS
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha
+          
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Copy docker-compose.yml to Staging VPS
+        if: github.ref_name == 'develop'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          source: "docker-compose.yml"
+          target: "/opt/igen-erp/staging"
+
+      - name: Deploy via SSH to Staging VPS
+        if: github.ref_name == 'develop'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || '22' }}
+          envs: ENV_FILE_CONTENT
+          script: |
+            TARGET_DIR="/opt/igen-erp/staging"
+            IMAGE_TAG="develop"
+            CONTAINER_NAME="igen-erp-staging"
+
+            # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
+            mkdir -p "$TARGET_DIR"
+            cd "$TARGET_DIR"
+
+            # Tạo/ghi nội dung cấu hình từ GitHub Secrets vào file .env cục bộ
+            echo "$ENV_FILE_CONTENT" > .env
+
+            # Đăng nhập vào GHCR trên VPS
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Giải phóng container cũ có cùng tên (tránh xung đột khi chuyển project name)
+            docker rm -f "$CONTAINER_NAME" || true
+
+            # Kéo (pull) image mới và khởi động lại container tương ứng với env variables
+            export COMPOSE_PROJECT_NAME="$CONTAINER_NAME"
+            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose pull
+            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose up -d --remove-orphans
+
+            # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ
+            docker image prune -f
+
+      - name: Copy docker-compose.yml to Production VPS
+        if: github.ref_name == 'production'
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST_PROD }}
+          username: ${{ secrets.SSH_USER_PROD }}
+          key: ${{ secrets.SSH_KEY_PROD }}
+          port: ${{ secrets.SSH_PORT_PROD || '22' }}
+          source: "docker-compose.yml"
+          target: "/opt/igen-erp/production"
+
+      - name: Deploy via SSH to Production VPS
+        if: github.ref_name == 'production'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE_PROD }}
+        with:
+          host: ${{ secrets.SSH_HOST_PROD }}
+          username: ${{ secrets.SSH_USER_PROD }}
+          key: ${{ secrets.SSH_KEY_PROD }}
+          port: ${{ secrets.SSH_PORT_PROD || '22' }}
+          envs: ENV_FILE_CONTENT
+          script: |
+            TARGET_DIR="/opt/igen-erp/production"
+            IMAGE_TAG="production"
+            CONTAINER_NAME="igen-erp-production"
+
+            # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
+            mkdir -p "$TARGET_DIR"
+            cd "$TARGET_DIR"
+
+            # Tạo/ghi nội dung cấu hình từ GitHub Secrets vào file .env cục bộ
+            echo "$ENV_FILE_CONTENT" > .env
+
+            # Đăng nhập vào GHCR trên VPS
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Giải phóng container cũ có cùng tên (tránh xung đột khi chuyển project name)
+            docker rm -f "$CONTAINER_NAME" || true
+
+            # Kéo (pull) image mới và khởi động lại container tương ứng với env variables
+            export COMPOSE_PROJECT_NAME="$CONTAINER_NAME"
+            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose pull
+            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose up -d --remove-orphans
+
+            # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ
+            docker image prune -f

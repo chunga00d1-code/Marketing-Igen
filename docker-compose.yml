@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  igen-erp:
+    image: ghcr.io/chung2310/igen-erp:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-igen-erp}
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - .env:/app/.env
+    networks:
+      - default_network
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  default_network:
+    external: true

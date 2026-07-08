@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">iGen ERP brand icon</title>
+  <desc id="desc">Rounded square gradient icon with stylized iGen ERP initials.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#0ea5a8" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#22c55e" />
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="108" fill="url(#bg)" />
+  <rect x="92" y="112" width="44" height="288" rx="22" fill="#e2e8f0" />
+  <circle cx="114" cy="82" r="26" fill="#38bdf8" />
+  <path
+    d="M206 160h128c48.6 0 88 39.4 88 88s-39.4 88-88 88h-78v64h-50V160Zm50 50v76h78c21 0 38-17 38-38s-17-38-38-38h-78Z"
+    fill="#f8fafc"
+  />
+  <path
+    d="M200 432c26-34 64-52 114-52 40 0 72 10 98 30"
+    fill="none"
+    stroke="url(#accent)"
+    stroke-width="24"
+    stroke-linecap="round"
+  />
+</svg>
