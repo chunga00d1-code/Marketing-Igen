@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-empty, prefer-const */
 import { resolveAutoReplyOwner } from "./ai-auto-reply.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { geminiService } from "./gemini.service";

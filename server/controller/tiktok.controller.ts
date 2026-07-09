@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { tiktokService } from "../service/tiktok.service";

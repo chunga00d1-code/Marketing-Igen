@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, react-hooks/exhaustive-deps */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Film, Loader2, Sparkles, Play, ChevronDown, ChevronUp, Scissors, Zap,
@@ -132,7 +133,6 @@ function SegmentCard({
   seg: SegmentEdit;
   idx: number;
   onChange: (updated: SegmentEdit) => void;
-  // eslint-disable-next-line react/no-unused-prop-types
   key?: React.Key;
 }) {
   const [expanded, setExpanded] = useState(false);

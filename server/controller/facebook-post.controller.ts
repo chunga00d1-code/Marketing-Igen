@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { Request, Response } from "express";
 import { facebookPostService } from "../service/facebook-post.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";

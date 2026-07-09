@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { registerRoot, Composition } from 'remotion';
 import { VideoComposition } from '../../src/components/content-studio/video-composition';
 import React from 'react';

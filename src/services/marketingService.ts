@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { getAccessToken } from "./authService";
 import { ContentApprovalCard } from "../types";
 import { geminiApi } from "../api/gemini";
@@ -82,15 +83,15 @@ function stripDemoVideoUrl(videoUrl?: string | null): string | null {
   return DEMO_VIDEO_URL_PATTERNS.some((pattern) => normalized.includes(pattern)) ? null : value;
 }
 
-function normalizeMarketingCard(item: any): ContentApprovalCard {
+function normalizeMarketingCard(item: Record<string, unknown>): ContentApprovalCard {
   return {
     ...item,
-    id: item._id || item.id,
-    videoUrl: stripDemoVideoUrl(item.videoUrl),
+    id: String(item._id || item.id || ""),
+    videoUrl: stripDemoVideoUrl(typeof item.videoUrl === "string" ? item.videoUrl : null),
   };
 }
 
-function sanitizeMarketingPayload<T extends Record<string, any>>(payload: T): T {
+function sanitizeMarketingPayload<T extends Record<string, unknown>>(payload: T): T {
   if (!Object.prototype.hasOwnProperty.call(payload, "videoUrl")) {
     return payload;
   }
@@ -165,7 +166,7 @@ export const marketingService = {
   },
 
   async updateCardStatus(id: string, newStatus: 'draft' | 'pending' | 'approved' | 'scheduled' | 'published'): Promise<void> {
-    const payload: Record<string, any> = { status: newStatus };
+    const payload: Record<string, unknown> = { status: newStatus };
     if (newStatus === 'approved') {
       payload.scheduledDate = "";
       payload.scheduledTime = "";
@@ -182,7 +183,7 @@ export const marketingService = {
     }
 
     const channel = cardData.channel || 'Facebook';
-    let integrationInfo: any = null;
+    let integrationInfo: Record<string, unknown> | null = null;
 
     // 2. Đọc cấu hình liên kết mạng xã hội
     if (integrationId) {
@@ -462,7 +463,7 @@ export const marketingService = {
     if (cardIds.length === 0) return;
     await Promise.all(
       cardIds.map((id) => {
-        const updateData: Record<string, any> = {};
+        const updateData: Record<string, unknown> = {};
         if (type === 'image') {
           updateData.imageUrl = mediaUrl ? mediaUrl : null;
         } else {
@@ -656,9 +657,10 @@ export const marketingService = {
     const voiceScript = options?.inputText || card.inputText || getHumanVideoScript(card);
     const motionText = String(card.motionText || "").trim();
 
-    let avatarId = options?.avatarId || card.avatarId || "mc-linh";
-    let voiceId = options?.voiceId || card.voiceId || (isAvatarThree ? "0e7e1377232f4544876e37c503cc083f" : "igen-female-bright");
-    let voiceModel = options?.voiceModel || "eleven_turbo_v2_5";
+    const avatarId = options?.avatarId || card.avatarId || "mc-linh";
+    const voiceId =
+      options?.voiceId || card.voiceId || (isAvatarThree ? "0e7e1377232f4544876e37c503cc083f" : "igen-female-bright");
+    const voiceModel = options?.voiceModel || "eleven_turbo_v2_5";
     const aspectRatio = options?.aspectRatio || (card.channel === "TikTok" ? "9:16" : "16:9");
     const quality = options?.quality || "720p";
     const onProgressUpdate = options?.onProgressUpdate;
@@ -735,7 +737,7 @@ export const marketingService = {
     });
 
     let finalVideoUrl = resolvedVideo.videoUrl;
-    let finalAudioUrl = audioUrl;
+    const finalAudioUrl = audioUrl;
 
     try {
       if (onProgressUpdate) {

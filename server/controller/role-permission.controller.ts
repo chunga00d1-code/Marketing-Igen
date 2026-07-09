@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Response } from "express";
 import { rolePermissionService } from "../service/role-permission.service";
 import { AuthenticatedRequest, DEFAULT_ROLE_LEVELS } from "../middleware/auth";

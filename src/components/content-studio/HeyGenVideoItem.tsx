@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Download, LoaderCircle, Pencil, Play, Trash2 } from "lucide-react";
 import { heygenApi } from "../../api/heygen";
@@ -63,7 +64,7 @@ export function HeyGenVideoItem({
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDelete = () => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa video này khỏi lịch sử không?")) {
+    if (!window.confirm("Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a video nÃ y khá»i lá»‹ch sá»­ khÃ´ng?")) {
       return;
     }
     void onDelete(item.videoId || item.id || item._id);
@@ -72,7 +73,7 @@ export function HeyGenVideoItem({
   const handleDownload = async () => {
     if (!downloadUrl) return;
     setIsDownloading(true);
-    toast.info("Đang tải xuống video...");
+    toast.info("Äang táº£i xuá»‘ng video...");
     try {
       const response = await fetch(downloadUrl);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -85,11 +86,11 @@ export function HeyGenVideoItem({
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(blobUrl);
-      toast.success("Tải xuống video thành công!");
+      toast.success("Táº£i xuá»‘ng video thÃ nh cÃ´ng!");
     } catch (error) {
       console.error("Direct download failed, opening in new tab:", error);
       window.open(downloadUrl, "_blank");
-      toast.warning("Mở video trong tab mới để tải về.");
+      toast.warning("Má»Ÿ video trong tab má»›i Ä‘á»ƒ táº£i vá».");
     } finally {
       setIsDownloading(false);
     }
@@ -140,15 +141,15 @@ export function HeyGenVideoItem({
 
   let badgeLabel = status;
   if (status === "waiting" || status === "pending") {
-    badgeLabel = "Đang chờ hàng đợi";
+    badgeLabel = "Äang chá» hÃ ng Ä‘á»£i";
   } else if (status === "processing" || status === "running") {
-    badgeLabel = "Đang xử lý";
+    badgeLabel = "Äang xá»­ lÃ½";
   } else if (status === "completed") {
-    badgeLabel = "Hoàn thành";
+    badgeLabel = "HoÃ n thÃ nh";
   } else if (status === "failed" || status === "error") {
-    badgeLabel = "Thất bại";
+    badgeLabel = "Tháº¥t báº¡i";
   } else if (status === "canceled") {
-    badgeLabel = "Đã hủy";
+    badgeLabel = "ÄÃ£ há»§y";
   }
 
   return (
@@ -177,11 +178,11 @@ export function HeyGenVideoItem({
           ) : (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100 p-4 text-center text-cyan-700">
               {isFailed ? (
-                <div className="text-xs font-semibold text-rose-600">Thất bại</div>
+                <div className="text-xs font-semibold text-rose-600">Tháº¥t báº¡i</div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <LoaderCircle className="h-6 w-6 animate-spin text-cyan-600" />
-                  <span className="text-[11px] font-bold uppercase tracking-widest">Đang xử lý</span>
+                  <span className="text-[11px] font-bold uppercase tracking-widest">Äang xá»­ lÃ½</span>
                   <span className="text-xs font-mono text-cyan-700/80">{pseudoProgress}%</span>
                   <div className="h-1 w-24 overflow-hidden rounded-full bg-slate-200">
                     <div className="h-full bg-cyan-500 transition-all duration-1000" style={{ width: `${pseudoProgress}%` }} />
@@ -206,7 +207,7 @@ export function HeyGenVideoItem({
           {isProcessing && !item.thumbnailUrl ? (
             <div className="absolute inset-x-0 bottom-3 z-20 flex justify-center">
               <span className="rounded-full bg-slate-950/70 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-300">
-                Đang render ({pseudoProgress}%)
+                Äang render ({pseudoProgress}%)
               </span>
             </div>
           ) : null}
@@ -232,9 +233,9 @@ export function HeyGenVideoItem({
 
           <div className="grid gap-3 text-sm text-slate-500 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
             <div className={`rounded-2xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surfaceMuted} px-4 py-3`}>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Thời gian tạo</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Thá»i gian táº¡o</p>
               <p className="mt-1 break-words text-base font-semibold leading-snug text-slate-700">
-                {item.createdAt ? new Date(item.createdAt).toLocaleString("vi-VN") : "Chưa có video"}
+                {item.createdAt ? new Date(item.createdAt).toLocaleString("vi-VN") : "ChÆ°a cÃ³ video"}
               </p>
             </div>
       
@@ -262,7 +263,7 @@ export function HeyGenVideoItem({
                 type="button"
                 disabled
                 className="flex h-10 w-10 cursor-not-allowed items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-slate-300"
-                title="Video chưa sẵn sàng để tải"
+                title="Video chÆ°a sáºµn sÃ ng Ä‘á»ƒ táº£i"
               >
                 <Download className="h-4 w-4" />
               </button>

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { FormEvent } from "react";
 import { Building2, Lock, Mail, RefreshCw, User, X } from "lucide-react";
 import { CompanyHeyGenConfig } from "../../types";

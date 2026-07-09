@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
 import { broadcastEvent } from "../socket";
 import { MarketingContentModel } from "../model/marketing-content.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";

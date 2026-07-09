@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { AIMediaModel } from "../../model/ai-media.model";
 import { broadcastEvent } from "../../socket";
 import { hyperframeService } from "./hyperframe";

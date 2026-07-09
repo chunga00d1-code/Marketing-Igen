@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://erp.igentechsolutions.com/sitemap.xml
+Sitemap: https://marketing.igentechsolutions.com/sitemap.xml

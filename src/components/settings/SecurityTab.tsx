@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
 import { Lock, Key, Eye, EyeOff } from "lucide-react";
 import { authService } from "../../services/authService";

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { TransactionModel } from "../model/transaction.model";
 import { UserModel } from "../model/user.model";
 import { WalletModel } from "../model/wallet.model";
@@ -52,7 +53,7 @@ export const walletService = {
 
     if (wallet.balance < amount) {
       const error: any = new Error(
-        "Số dư ví không đủ. Vui lòng nạp thêm tiền vào ví để tiếp tục sử dụng dịch vụ."
+        "S� dư ví không �ủ. Vui lòng nạp thêm tiền vào ví �Ồ tiếp tục sử dụng d�9ch vụ."
       );
       error.statusCode = 402;
       throw error;
@@ -140,14 +141,14 @@ export const walletService = {
     const { targetUserId, balance, actorUserId, actorEmail, note } = input;
 
     if (!Number.isFinite(balance) || balance < 0) {
-      const error: any = new Error("Số dư mới không hợp lệ.");
+      const error: any = new Error("S� dư m�:i không hợp l�!.");
       error.statusCode = 400;
       throw error;
     }
 
     const targetUser = await UserModel.findById(targetUserId).select("displayName email");
     if (!targetUser) {
-      const error: any = new Error("Không tìm thấy người dùng cần cập nhật số dư.");
+      const error: any = new Error("Không tìm thấy người dùng cần cập nhật s� dư.");
       error.statusCode = 404;
       throw error;
     }
@@ -171,7 +172,7 @@ export const walletService = {
 
       const actorLabel = actorEmail || actorUserId;
       const descriptionParts = [
-        `Superadmin ${actorLabel} đã chỉnh sửa số dư ví`,
+        `Superadmin ${actorLabel} �ã ch�0nh sửa s� dư ví`,
         `từ ${previousBalance.toFixed(2)} Credit thành ${normalizedBalance.toFixed(2)} Credit`,
       ];
       if (note?.trim()) {

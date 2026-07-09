@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import { ProductModel } from "../model/product.model";
 import { CategoryModel } from "../model/category.model";
 import { CRMTicketModel } from "../model/crm-ticket.model";
@@ -93,7 +94,7 @@ function sanitizeCatalogResult(modelName: string, item: any) {
       code: typeof plainItem.code === "string" ? plainItem.code.trim().toUpperCase() : plainItem.code,
       description: typeof plainItem.description === "string" ? plainItem.description.trim() : "",
       colorClass: typeof plainItem.colorClass === "string" ? plainItem.colorClass.trim() : "bg-blue-50 text-blue-700 border-blue-100",
-      status: typeof plainItem.status === "string" ? plainItem.status.trim() : "Đang dùng",
+      status: typeof plainItem.status === "string" ? plainItem.status.trim() : "Äang dÃ¹ng",
     };
   }
 
@@ -132,7 +133,7 @@ async function handlePendingVideoUrl(item: any, modelName: string) {
             progress: 10,
             provider: "piapi",
             title: `Video Auto-pilot: ${item.title}`,
-            description: `Đang kết xuất video tự động bằng PiAPI.`,
+            description: `Äang káº¿t xuáº¥t video tá»± Ä‘á»™ng báº±ng PiAPI.`,
             aspectRatio: "16:9",
             activeCardId: item._id.toString(),
           },

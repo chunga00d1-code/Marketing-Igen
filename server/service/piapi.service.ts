@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, prefer-const */
 import dotenv from "dotenv";
 import { cloudinaryService } from "./cloudinary.service";
 
@@ -21,7 +22,7 @@ function createPiApiError(context: string, statusCode: number, rawText: string):
     upper.includes("BALANCE") ||
     upper.includes("PAYMENT REQUIRED")
   ) {
-    message = `PiAPI hết credit hoặc số dư không đủ để thực hiện tác vụ. Chi tiết: ${normalized || `HTTP ${statusCode}`}`;
+    message = `PiAPI hết credit hoặc s� dư không �ủ �Ồ thực hi�!n tác vụ. Chi tiết: ${normalized || `HTTP ${statusCode}`}`;
   } else if (
     statusCode === 429 ||
     upper.includes("RESOURCE_EXHAUSTED") ||
@@ -29,7 +30,7 @@ function createPiApiError(context: string, statusCode: number, rawText: string):
     upper.includes("TOO MANY REQUESTS") ||
     upper.includes("QUOTA")
   ) {
-    message = `PiAPI đã vượt quota hoặc rate limit. Chi tiết: ${normalized || `HTTP ${statusCode}`}`;
+    message = `PiAPI �ã vượt quota hoặc rate limit. Chi tiết: ${normalized || `HTTP ${statusCode}`}`;
   } else if (
     statusCode === 401 ||
     statusCode === 403 ||
@@ -38,7 +39,7 @@ function createPiApiError(context: string, statusCode: number, rawText: string):
     upper.includes("INVALID API KEY") ||
     upper.includes("API KEY")
   ) {
-    message = `PiAPI từ chối truy cập hoặc API key không hợp lệ. Chi tiết: ${normalized || `HTTP ${statusCode}`}`;
+    message = `PiAPI từ ch�i truy cập hoặc API key không hợp l�!. Chi tiết: ${normalized || `HTTP ${statusCode}`}`;
   } else if (normalized) {
     message = `${context}: ${statusCode} - ${normalized}`;
   }
@@ -60,7 +61,7 @@ export const piapiService = {
     options?: { aspectRatio?: string; existingImageUris?: string[] }
   ): Promise<{ url: string; isMock: boolean }> {
     if (!PIAPI_API_KEY) {
-      throw new Error("Chưa cấu hình PIAPI_API_KEY. Không thể sinh ảnh.");
+      throw new Error("Chưa cấu hình PIAPI_API_KEY. Không thỒ sinh ảnh.");
     }
 
     const aspect = options?.aspectRatio || "1:1";
@@ -142,7 +143,7 @@ export const piapiService = {
       console.log(`[PiAPI Image Generation] Task creation response:`, JSON.stringify(json, null, 2));
       const taskId = json.data?.task_id;
       if (!taskId) {
-        throw new Error("Không nhận được task_id từ PiAPI");
+        throw new Error("Không nhận �ược task_id từ PiAPI");
       }
 
       console.log(`[PiAPI Image Generation] Task created: ${taskId}. Polling for completion...`);
@@ -163,11 +164,11 @@ export const piapiService = {
           if (task?.status === "completed") {
             const url = (task.output?.image_urls && task.output.image_urls[0]) || task.output?.image_url || task.output?.url;
             if (!url) {
-              throw new Error("Tác vụ hoàn thành nhưng không nhận được URL hình ảnh.");
+              throw new Error("Tác vụ hoàn thành nhưng không nhận �ược URL hình ảnh.");
             }
             return { url, isMock: false };
           } else if (task?.status === "failed") {
-            throw createPiApiError("PiAPI task failed", 400, task.error || "Lỗi không xác định");
+            throw createPiApiError("PiAPI task failed", 400, task.error || "L�i không xác ��9nh");
           }
         }
         attempts++;
@@ -289,7 +290,7 @@ export const piapiService = {
       console.log(`[PiAPI Video Generation] Task creation response:`, JSON.stringify(json, null, 2));
       const taskId = json.data?.task_id;
       if (!taskId) {
-        throw new Error("Không nhận được task_id từ PiAPI");
+        throw new Error("Không nhận �ược task_id từ PiAPI");
       }
 
       return { taskId };
@@ -336,7 +337,7 @@ export const piapiService = {
     options?: { aspectRatio?: string; referenceImageUris?: string[] }
   ): Promise<{ url: string; isMock: boolean }> {
     if (!PIAPI_API_KEY) {
-      throw new Error("Chưa cấu hình PIAPI_API_KEY. Không thể sinh video.");
+      throw new Error("Chưa cấu hình PIAPI_API_KEY. Không thỒ sinh video.");
     }
 
     try {
@@ -352,11 +353,11 @@ export const piapiService = {
 
         if (result.status === "completed") {
           if (!result.url) {
-            throw new Error("Tác vụ hoàn thành nhưng không nhận được URL video.");
+            throw new Error("Tác vụ hoàn thành nhưng không nhận �ược URL video.");
           }
           return { url: result.url, isMock: false };
         } else if (result.status === "failed") {
-          throw createPiApiError("PiAPI task failed", 400, result.error || "Lỗi không xác định");
+          throw createPiApiError("PiAPI task failed", 400, result.error || "L�i không xác ��9nh");
         }
         attempts++;
       }

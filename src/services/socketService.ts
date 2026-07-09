@@ -1,11 +1,17 @@
 import { io, Socket } from "socket.io-client";
 
+type SocketConversation = Record<string, unknown>;
+type SocketMessage = Record<string, unknown>;
+type SocketVideoUpdate = Record<string, unknown>;
+type NewMessagePayload = { message: SocketMessage; conversation: SocketConversation };
+type VideoStatusPayload = { videoId: string; status: string; updates: SocketVideoUpdate[] };
+
 class SocketService {
   private socket: Socket | null = null;
-  private messageCallbacks: Array<(data: { message: any; conversation: any }) => void> = [];
-  private conversationCallbacks: Array<(conversation: any) => void> = [];
+  private messageCallbacks: Array<(data: NewMessagePayload) => void> = [];
+  private conversationCallbacks: Array<(conversation: SocketConversation) => void> = [];
   private statusCallbacks: Array<(connected: boolean) => void> = [];
-  private videoCallbacks: Array<(data: { videoId: string; status: string; updates: any[] }) => void> = [];
+  private videoCallbacks: Array<(data: VideoStatusPayload) => void> = [];
 
   connect(token: string) {
     if (this.socket) {
@@ -43,19 +49,19 @@ class SocketService {
     });
 
     // Listen to incoming messages
-    this.socket.on("new_message", (data: { message: any; conversation: any }) => {
+    this.socket.on("new_message", (data: NewMessagePayload) => {
       console.log("[SocketService] Received 'new_message' event:", data);
       this.messageCallbacks.forEach((cb) => cb(data));
     });
 
     // Listen to conversation updates
-    this.socket.on("conversation_updated", (conversation: any) => {
+    this.socket.on("conversation_updated", (conversation: SocketConversation) => {
       console.log("[SocketService] Received 'conversation_updated' event:", conversation);
       this.conversationCallbacks.forEach((cb) => cb(conversation));
     });
 
     // Listen to video status updates
-    this.socket.on("video_status_updated", (data: { videoId: string; status: string; updates: any[] }) => {
+    this.socket.on("video_status_updated", (data: VideoStatusPayload) => {
       console.log("[SocketService] Received 'video_status_updated' event:", data);
       this.videoCallbacks.forEach((cb) => cb(data));
     });
@@ -75,21 +81,21 @@ class SocketService {
     return !!this.socket?.connected;
   }
 
-  onNewMessage(callback: (data: { message: any; conversation: any }) => void) {
+  onNewMessage(callback: (data: NewMessagePayload) => void) {
     this.messageCallbacks.push(callback);
     return () => {
       this.messageCallbacks = this.messageCallbacks.filter((cb) => cb !== callback);
     };
   }
 
-  onConversationUpdated(callback: (conversation: any) => void) {
+  onConversationUpdated(callback: (conversation: SocketConversation) => void) {
     this.conversationCallbacks.push(callback);
     return () => {
       this.conversationCallbacks = this.conversationCallbacks.filter((cb) => cb !== callback);
     };
   }
 
-  onVideoStatusUpdated(callback: (data: { videoId: string; status: string; updates: any[] }) => void) {
+  onVideoStatusUpdated(callback: (data: VideoStatusPayload) => void) {
     this.videoCallbacks.push(callback);
     return () => {
       this.videoCallbacks = this.videoCallbacks.filter((cb) => cb !== callback);
@@ -104,7 +110,7 @@ class SocketService {
     };
   }
 
-  on(event: string, callback: (data: any) => void) {
+  on(event: string, callback: (data: unknown) => void) {
     const checkAndListen = () => {
       if (this.socket) {
         this.socket.on(event, callback);

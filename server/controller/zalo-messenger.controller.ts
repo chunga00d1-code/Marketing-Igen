@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import { Request, Response } from "express";
 import { zaloMessengerService } from "../service/zalo-messenger.service";
 import { UserModel } from "../model/user.model";

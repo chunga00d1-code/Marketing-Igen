@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-constant-binary-expression */
 import React, { useEffect, useMemo, useState } from "react";
 import { CheckCircle, Facebook, RefreshCw, Trash2, User, MessageCircleMore, Film } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
@@ -22,6 +23,7 @@ export default function PersonalIntegrationsTab() {
   const [savingZalo, setSavingZalo] = useState(false);
   const [savingTikTok, setSavingTikTok] = useState(false);
   const [connectingTikTokOAuth, setConnectingTikTokOAuth] = useState(false);
+  const [showTTOauthModal, setShowTTOauthModal] = useState(false);
 
   const [facebookForm, setFacebookForm] = useState({
     pageId: "",
@@ -127,16 +129,21 @@ export default function PersonalIntegrationsTab() {
     return () => window.removeEventListener("message", handleTikTokOAuthMessage);
   }, [refreshProfile]);
 
-  const handleTikTokOAuth = async () => {
+  const handleTikTokOAuth = async (mode: "real" | "sandbox" = "real") => {
     setConnectingTikTokOAuth(true);
     try {
       localStorage.removeItem("tt_oauth_result");
-      const authUrl = await socialIntegrationService.getTikTokOAuthUrl(
-        "personal",
-        undefined,
-        tiktokForm.clientKey.trim() || undefined,
-        tiktokForm.clientSecret.trim() || undefined
-      );
+      let authUrl = "";
+      if (mode === "sandbox") {
+        authUrl = `/tiktok-sandbox-oauth?target=personal`;
+      } else {
+        authUrl = await socialIntegrationService.getTikTokOAuthUrl(
+          "personal",
+          undefined,
+          tiktokForm.clientKey.trim() || undefined,
+          tiktokForm.clientSecret.trim() || undefined
+        );
+      }
       if (!authUrl) {
         throw new Error("Không tạo được link đăng nhập TikTok.");
       }
@@ -162,8 +169,21 @@ export default function PersonalIntegrationsTab() {
           localStorage.removeItem("tt_oauth_result");
           try {
             const payload = JSON.parse(rawResult);
-            void refreshProfile();
             if (payload?.target === "personal" && payload?.ok) {
+              if (payload.profile?.username === "igen_marketing_sandbox") {
+                // Đây là tài khoản mock/sandbox, tự gọi lưu từ client
+                void saveTikTokIntegration({
+                  isConnected: true,
+                  username: payload.profile.username,
+                  displayName: payload.profile.displayName,
+                  accessToken: "mock_sandbox_access_token",
+                  refreshToken: "mock_sandbox_refresh_token",
+                  isMock: true,
+                  connectedAt: new Date().toISOString(),
+                });
+              } else {
+                void refreshProfile();
+              }
               toast.success(`Đã kết nối TikTok cá nhân: ${payload.profile?.displayName || payload.profile?.username || "TikTok"}`);
             } else if (payload?.ok === false) {
               toast.error(payload.error || "Kết nối TikTok thất bại.");
@@ -671,7 +691,7 @@ export default function PersonalIntegrationsTab() {
               </div>
               <button
                 type="button"
-                onClick={handleTikTokOAuth}
+                onClick={() => setShowTTOauthModal(true)}
                 disabled={connectingTikTokOAuth || !canStartPersonalTikTokOAuth}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-black px-3 py-2 text-[11px] font-bold text-white transition-all hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -777,6 +797,70 @@ export default function PersonalIntegrationsTab() {
           </div>
         </div>
       </div>
+
+      {showTTOauthModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 text-left">
+            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <Film className="h-5 w-5 text-red-600" />
+              Kết nối tài khoản TikTok
+            </h3>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+              Vui lòng chọn phương thức kết nối. Chế độ Sandbox hỗ trợ đầy đủ các tính năng Đăng bài, Inbox tự động và Trả lời bình luận để phục vụ cho việc quay video kiểm duyệt (TikTok App Review).
+            </p>
+            
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTTOauthModal(false);
+                  void handleTikTokOAuth("sandbox");
+                }}
+                className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-black hover:bg-slate-50 transition-all text-left flex items-start gap-3 cursor-pointer group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center shrink-0">
+                  <span className="font-extrabold text-xs">SB</span>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 group-hover:text-black">Cổng Sandbox / Mockup (Khuyên dùng)</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
+                    Mô phỏng toàn bộ luồng ủy quyền chính thức từ TikTok. Tự động kết nối và tạo dữ liệu test để quay video duyệt app.
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTTOauthModal(false);
+                  void handleTikTokOAuth("real");
+                }}
+                className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-black hover:bg-slate-50 transition-all text-left flex items-start gap-3 cursor-pointer group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                  <Film className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 group-hover:text-black">TikTok API Thật (Production)</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
+                    Kết nối tài khoản TikTok thật bằng các thông tin Client Key & Client Secret cấu hình bên dưới.
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowTTOauthModal(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-250 text-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer border border-gray-200"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

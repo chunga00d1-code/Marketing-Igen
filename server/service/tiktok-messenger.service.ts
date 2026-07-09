@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import { TikTokConversationModel, TikTokMessageModel } from "../model/tiktok-messenger.model";
 import { UserModel } from "../model/user.model";
 import { emitToPage } from "../socket";

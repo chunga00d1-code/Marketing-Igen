@@ -13,7 +13,7 @@ export type SeoMeta = {
   changeFrequency?: "daily" | "weekly" | "monthly";
 };
 
-export const SEO_BASE_URL = "https://erp.igentechsolutions.com";
+export const SEO_BASE_URL = "https://marketing.igentechsolutions.com";
 export const SEO_DEFAULT_IMAGE = BRAND_LOGO_URL;
 export const SEO_DEFAULT_LOCALE = "vi_VN";
 
@@ -127,7 +127,7 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     title: "Cai dat he thong - Ho so, tich hop va cau hinh nen tang",
     description:
       "Thiet lap thong tin ho so doanh nghiep, cau hinh tuy chinh hien thi, ket noi mang xa hoi va tich hop phuc vu Marketing, Sales.",
-    keywords: "cai dat ERP, cau hinh he thong, tich hop AI, settings workspace",
+    keywords: "cai dat marketing, cau hinh he thong, tich hop AI, settings workspace",
     path: "/cai-dat",
     robots: "noindex, nofollow",
     priority: "0.2",

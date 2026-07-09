@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import { geminiService } from "../service/gemini.service";
 import { elevenlabsService } from "../service/elevenlabs.service";

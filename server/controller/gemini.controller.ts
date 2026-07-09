@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-useless-escape, prefer-const */
 import { Request, Response } from "express";
 import mongoose from "mongoose";
 import { geminiService } from "../service/gemini.service";

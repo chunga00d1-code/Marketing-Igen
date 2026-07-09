@@ -13,7 +13,7 @@ function onRefreshed(token: string) {
 
 window.fetch = async function (input, init) {
   // 1. Perform the original request
-  let response = await originalFetch(input, init);
+  const response = await originalFetch(input, init);
 
   // 2. Check if the response indicates unauthorized/token expired (401)
   if (response.status === 401) {

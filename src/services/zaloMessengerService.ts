@@ -1,10 +1,13 @@
 import { getAccessToken } from "./authService";
 
+type ZaloMessengerRecord = Record<string, unknown>;
+type ZaloMessengerPagination = { limit: number; hasMore: boolean; nextBefore: string | null };
+
 export const zaloMessengerService = {
   /**
    * Lay danh sach cuoc hoi thoai cua Zalo OA da lien ket
    */
-  async getConversations(options?: { limit?: number; skip?: number }): Promise<any[]> {
+  async getConversations(options?: { limit?: number; skip?: number }): Promise<ZaloMessengerRecord[]> {
     console.log("[FE Zalo Service] Bat dau goi API getConversations...");
     const params = new URLSearchParams();
     if (options?.limit !== undefined) {
@@ -34,7 +37,7 @@ export const zaloMessengerService = {
   /**
    * Lay lich su tin nhan cua mot cuoc hoi thoai cu the
    */
-  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean }): Promise<{ data: any[]; pagination: { limit: number; hasMore: boolean; nextBefore: string | null } }> {
+  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean }): Promise<{ data: ZaloMessengerRecord[]; pagination: ZaloMessengerPagination }> {
     const params = new URLSearchParams();
     params.set("limit", String(options?.limit || 20));
     if (options?.before) {
@@ -67,7 +70,7 @@ export const zaloMessengerService = {
   /**
    * Danh dau da doc cuoc hoi thoai qua Zalo OA
    */
-  async markRead(conversationId: string): Promise<any> {
+  async markRead(conversationId: string): Promise<ZaloMessengerRecord | null> {
     console.log(`[FE Zalo Service] Bat dau goi API markRead cho conversation ${conversationId}...`);
     const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/mark-read`, {
       method: "POST",
@@ -86,7 +89,7 @@ export const zaloMessengerService = {
     return result.data;
   },
 
-  async resumeAI(conversationId: string): Promise<any> {
+  async resumeAI(conversationId: string): Promise<ZaloMessengerRecord | null> {
     console.log(`[FE Zalo Service] Bat dau goi API resumeAI cho conversation ${conversationId}...`);
     const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/resume-ai`, {
       method: "POST",
@@ -105,7 +108,7 @@ export const zaloMessengerService = {
     return result.data;
   },
 
-  async sendReply(conversationId: string, text: string): Promise<any> {
+  async sendReply(conversationId: string, text: string): Promise<ZaloMessengerRecord | null> {
     console.log(`[FE Zalo Service] Bat dau goi API sendReply toi conversation ${conversationId}. Noi dung: "${text}"`);
     const res = await fetch("/api/v1/zalo/reply", {
       method: "POST",
@@ -138,7 +141,7 @@ export const zaloMessengerService = {
   /**
    * Luu thong tin cau hinh Zalo OA (thu cong hoac Demo)
    */
-  async saveIntegration(integrationData: { oaId: string; oaName: string; accessToken: string; refreshToken?: string; isMock?: boolean }): Promise<any> {
+  async saveIntegration(integrationData: { oaId: string; oaName: string; accessToken: string; refreshToken?: string; isMock?: boolean }): Promise<ZaloMessengerRecord | null> {
     console.log("[FE Zalo Service] Goi API luu cau hinh Zalo...");
     const res = await fetch("/api/v1/zalo/save-integration", {
       method: "POST",

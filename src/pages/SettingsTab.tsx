@@ -1,11 +1,9 @@
 import React, { useState, lazy, Suspense } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
-  User,
   Calendar,
   Image as ImageIcon,
   Sliders,
-  Building2
 } from "lucide-react";
 import { toast } from "./Toast";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
@@ -33,7 +31,7 @@ export default function SettingsTab() {
     { slug: "mxh-ca-nhan", value: "personal-integrations" as const },
     { slug: "dong-bo", value: "company-integrations" as const },
   ] as const;
-  const [activeSubTab, setActiveSubTab] = useSubTabRouter<"profile" | "security" | "erp" | "personal-integrations" | "company-integrations">(SETTINGS_SUB_TAB_ROUTES as any, "profile");
+  const [activeSubTab, setActiveSubTab] = useSubTabRouter<"profile" | "security" | "erp" | "personal-integrations" | "company-integrations">(SETTINGS_SUB_TAB_ROUTES as unknown as readonly { readonly slug: string; readonly value: "profile" | "security" | "erp" | "personal-integrations" | "company-integrations" }[], "profile");
 
   // Synchronize display name and photo url from context if it updates
   React.useEffect(() => {
@@ -109,7 +107,7 @@ export default function SettingsTab() {
             <Sliders className="h-5 w-5 text-indigo-650" />
             Cài đặt Hệ thống & Cá nhân
           </h1>
-          <p className="text-xs text-gray-500 mt-1">Cấu hình thông tin hồ sơ của bạn và tùy chỉnh tham số vận hành của iGen ERP.</p>
+          <p className="text-xs text-gray-500 mt-1">Cấu hình thông tin hồ sơ của bạn và tùy chỉnh tham số vận hành của iGen Marketing.</p>
         </div>
         <div className="flex gap-2 bg-gray-150/70 p-1 rounded-xl border border-gray-200 max-w-fit">
           <button
@@ -137,7 +135,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            Cấu hình ERP
+            Cấu hình hệ thống
           </button>
           <button
             onClick={() => setActiveSubTab("personal-integrations")}

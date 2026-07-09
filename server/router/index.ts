@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import mongoose from "mongoose";
 import { geminiRouter } from "./gemini.router";
@@ -22,7 +23,7 @@ import { opusclipRouter } from "./opusclip.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
- * Health Check API để giám sát trạng thái của hệ thống
+ * Health Check API Ä‘á»ƒ giÃ¡m sÃ¡t tráº¡ng thÃ¡i cá»§a há»‡ thá»‘ng
  */
 apiRouter.get("/health", (req, res) => {
   const isDbConnected = mongoose.connection.readyState === 1;
@@ -36,21 +37,21 @@ apiRouter.get("/health", (req, res) => {
   });
 });
 
-// Gắn kết router phụ của Gemini
+// Gáº¯n káº¿t router phá»¥ cá»§a Gemini
 apiRouter.use("/gemini", geminiRouter);
 
-// Gắn kết router phụ của ElevenLabs
+// Gáº¯n káº¿t router phá»¥ cá»§a ElevenLabs
 apiRouter.use("/elevenlabs", elevenlabsRouter);
 apiRouter.use("/heygen", heygenRouter);
 
-// Gắn kết router phụ của Facebook Post qua n8n & Facebook Messenger
+// Gáº¯n káº¿t router phá»¥ cá»§a Facebook Post qua n8n & Facebook Messenger
 apiRouter.use("/facebook", facebookPostRouter);
 apiRouter.use("/facebook", fbMessengerRouter);
 apiRouter.use("/zalo", zaloMessengerRouter);
 apiRouter.use("/tiktok/messenger", tiktokMessengerRouter);
 
 
-// Gắn kết router phụ của TikTok
+// Gáº¯n káº¿t router phá»¥ cá»§a TikTok
 apiRouter.get("/webhooks/tiktok", (req, res) => {
   return res.status(200).json({
     status: "ok",
@@ -63,32 +64,32 @@ apiRouter.post("/webhooks/tiktok", tiktokController.receiveWebhook as any);
 apiRouter.use("/tiktok", tiktokRouter);
 apiRouter.use("/tiktok-business", tiktokRouter);
 
-// Gắn kết router phụ của Scheduler
+// Gáº¯n káº¿t router phá»¥ cá»§a Scheduler
 apiRouter.use("/scheduler", schedulerRouter);
 
-// Gắn kết router phụ của Media Cloudinary Relay
+// Gáº¯n káº¿t router phá»¥ cá»§a Media Cloudinary Relay
 apiRouter.use("/media", mediaRouter);
 
-// Gắn kết router phụ của Xác thực JWT
+// Gáº¯n káº¿t router phá»¥ cá»§a XÃ¡c thá»±c JWT
 apiRouter.use("/auth", authRouter);
 
-// Gắn kết router phụ của Quản lý mã quyền hệ thống
+// Gáº¯n káº¿t router phá»¥ cá»§a Quáº£n lÃ½ mÃ£ quyá»n há»‡ thá»‘ng
 apiRouter.use("/permissions", permissionRouter);
 
-// Gắn kết router phụ của Cấu hình gán quyền cho Role theo doanh nghiệp
+// Gáº¯n káº¿t router phá»¥ cá»§a Cáº¥u hÃ¬nh gÃ¡n quyá»n cho Role theo doanh nghiá»‡p
 apiRouter.use("/role-permissions", rolePermissionRouter);
 
-// Gắn kết router ví của người dùng & nạp tiền PayOS
+// Gáº¯n káº¿t router vÃ­ cá»§a ngÆ°á»i dÃ¹ng & náº¡p tiá»n PayOS
 apiRouter.use("/wallet", walletRouter);
 
-// Gắn kết router CRUD đa năng (MongoDB)
+// Gáº¯n káº¿t router CRUD Ä‘a nÄƒng (MongoDB)
 apiRouter.use("/crud", crudRouter);
 
-// Public Professional Video Render API (auth bằng X-API-Key header)
+// Public Professional Video Render API (auth báº±ng X-API-Key header)
 apiRouter.use("/professional", professionalRouter);
 
-// Kling AI — Motion Control video generation
+// Kling AI â€” Motion Control video generation
 apiRouter.use("/kling", klingRouter);
 
-// OpusClip AI — Long-to-Short video clipping
+// OpusClip AI â€” Long-to-Short video clipping
 apiRouter.use("/opusclip", opusclipRouter);

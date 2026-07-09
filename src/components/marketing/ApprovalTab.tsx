@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import React, { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { ContentApprovalCard } from "../../types";

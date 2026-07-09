@@ -1,7 +1,7 @@
 {
-  "name": "iGen ERP",
-  "short_name": "iGen ERP",
-  "description": "Nền tảng quản trị doanh nghiệp tích hợp AI cho vận hành, nhân sự, kho, marketing và CRM.",
+  "name": "iGen Marketing",
+  "short_name": "iGen Marketing",
+  "description": "Workspace Marketing & Sales tích hợp AI giúp tối ưu hóa chiến dịch marketing, sản xuất video AI và chăm sóc khách hàng đa kênh.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f6f8fd",

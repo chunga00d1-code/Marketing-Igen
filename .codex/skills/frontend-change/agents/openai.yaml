@@ -1,0 +1,3 @@
+display_name: Frontend Change
+short_description: Safe workflow for React, UI, hooks, routing, and client service edits.
+default_prompt: Use the frontend-change skill when editing frontend code in this repository.

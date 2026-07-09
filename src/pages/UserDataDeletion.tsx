@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -35,22 +35,13 @@ export default function UserDataDeletion() {
   const [statusResult, setStatusResult] = useState<DeletionStatus | null>(null);
 
   const meta = {
-    title: `User Data Deletion | ${BRAND_NAME}`,
+    title: `${BRAND_NAME} User Data Deletion`,
     description: `Instructions for disconnecting integrations and requesting user data deletion from ${BRAND_NAME}.`,
-    keywords: "user data deletion, TikTok Shop data deletion, Facebook data deletion, iGen ERP",
+    keywords: "user data deletion, TikTok Shop data deletion, Facebook data deletion, iGen Marketing",
     path: "/user-data-deletion",
   };
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const codeParam = params.get("code") || params.get("id");
-    if (codeParam) {
-      setCode(codeParam);
-      void handleCheckStatus(codeParam);
-    }
-  }, []);
-
-  const handleCheckStatus = async (checkCode: string) => {
+  const handleCheckStatus = useCallback(async (checkCode: string) => {
     const activeCode = checkCode || code;
     if (!activeCode.trim()) {
       setError("Please enter a deletion request code.");
@@ -70,12 +61,22 @@ export default function UserDataDeletion() {
       }
 
       setStatusResult(result.data);
-    } catch (err: any) {
-      setError(err.message || "Unable to check deletion request status.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unable to check deletion request status.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [code]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get("code") || params.get("id");
+    if (codeParam) {
+      setCode(codeParam);
+      void handleCheckStatus(codeParam);
+    }
+  }, [handleCheckStatus]);
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6">
@@ -89,7 +90,7 @@ export default function UserDataDeletion() {
               <span>Privacy Control</span>
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-              User Data Deletion
+              {BRAND_NAME} User Data Deletion
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
               This page explains how users can disconnect third-party integrations, revoke

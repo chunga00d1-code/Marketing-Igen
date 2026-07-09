@@ -15,17 +15,19 @@ const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const UserDataDeletion = lazy(() => import("./pages/UserDataDeletion"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
+const TikTokSandboxOAuth = lazy(() => import("./pages/TikTokSandboxOAuth"));
 
 function AppContent() {
   const { user, userProfile, loading } = useAuth();
   const currentPath = normalizePublicPath(window.location.pathname);
   const isLandingPage = currentPath === "/" || currentPath === "/landing" || currentPath === "/landing.html";
-  const isLandingGuestPage = isLandingPage && !Boolean(user && userProfile);
+  const isLandingGuestPage = isLandingPage && !(user && userProfile);
   const isPrivacyPage = currentPath === "/privacy-policy" || currentPath === "/privacy-policy.html";
   const isTermsPage = currentPath === "/terms-of-service" || currentPath === "/terms-of-service.html";
   const isDeletionPage = currentPath === "/user-data-deletion" || currentPath === "/user-data-deletion.html";
+  const isTiktokSandboxOauth = currentPath === "/tiktok-sandbox-oauth" || currentPath === "/tiktok-sandbox-oauth.html";
   const isLegalPublicPage = isPrivacyPage || isTermsPage || isDeletionPage;
-  const isPublicPage = isLandingGuestPage || isLegalPublicPage;
+  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isTiktokSandboxOauth;
 
   const { activeTab, setActiveTab } = useTabRouter({
     enabled: !isPublicPage && !loading && Boolean(user && userProfile),
@@ -41,6 +43,14 @@ function AppContent() {
       socketService.disconnect();
     }
   }, [user]);
+
+  if (isTiktokSandboxOauth) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center text-slate-500">Đang tải...</div>}>
+        <TikTokSandboxOAuth />
+      </Suspense>
+    );
+  }
 
   if (isLandingGuestPage) {
     return (
@@ -76,7 +86,7 @@ function AppContent() {
   if (loading) {
     return (
       <>
-        <SEOHead meta={{ ...AUTH_SEO, title: "Đang tải hệ thống iGen ERP", path: "/khoi-tao-he-thong" }} />
+        <SEOHead meta={{ ...AUTH_SEO, title: "Đang tải hệ thống iGen Marketing", path: "/khoi-tao-he-thong" }} />
         <div className="relative flex h-screen w-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-br from-[#f6f8fd] via-[#eef2f7] to-[#e3ecf5] text-center font-sans">
           <div className="pointer-events-none absolute left-[-10%] top-[-10%] h-[600px] w-[600px] rounded-full bg-blue-400/5 blur-[120px]" />
           <div className="pointer-events-none absolute bottom-[-10%] right-[-10%] h-[600px] w-[600px] rounded-full bg-indigo-400/5 blur-[120px]" />
@@ -84,7 +94,7 @@ function AppContent() {
           <div className="z-10 flex flex-col items-center">
             <RefreshCw className="mb-4 h-10 w-10 animate-spin text-blue-600" />
             <span className="animate-pulse text-xs font-bold uppercase tracking-widest text-slate-500">
-              Đang khởi tạo hệ thống ERP...
+              Đang khởi tạo hệ thống Marketing...
             </span>
           </div>
         </div>

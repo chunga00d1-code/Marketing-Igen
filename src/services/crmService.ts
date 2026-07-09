@@ -10,10 +10,12 @@ export interface LeadProductSelection {
 
 export interface ExtendedLeadCard extends LeadCard {
   lastInteractionTime?: string;
-  createdAt?: any;
-  updatedAt?: any;
+  createdAt?: string | number | Date;
+  updatedAt?: string | number | Date;
   selectedProducts?: LeadProductSelection[];
 }
+
+type CrmLeadRecord = ExtendedLeadCard & { _id?: string };
 
 function logCrmTiming(
   operation: "subscribe" | "create" | "update" | "delete" | "bulkUpdate",
@@ -92,7 +94,7 @@ export const crmService = {
           throw new Error("Không thể tải danh sách cơ hội bán hàng.");
         }
         const json = await res.json();
-        return (json.data || []).map((item: any) => ({
+        return ((json.data as CrmLeadRecord[] | undefined) || []).map((item) => ({
           ...item,
           id: item._id, // Bản đồ MongoDB _id sang id
         }));

@@ -83,9 +83,9 @@ const sections = [
 
 export default function TermsOfService() {
   const meta = {
-    title: `Terms of Service | ${BRAND_NAME}`,
+    title: `${BRAND_NAME} Terms of Service`,
     description: `Terms of Service for ${BRAND_NAME}, including connected platform use, AI-assisted features and customer responsibilities.`,
-    keywords: "terms of service, TikTok Shop, platform integrations, iGen ERP",
+    keywords: "terms of service, TikTok Shop, platform integrations, iGen Marketing",
     path: "/terms-of-service",
   };
 
@@ -101,7 +101,7 @@ export default function TermsOfService() {
               <span>Legal</span>
             </div>
             <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-              Terms of Service
+              {BRAND_NAME} Terms of Service
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-slate-600">
               These terms explain the rules for using {BRAND_NAME}, including social

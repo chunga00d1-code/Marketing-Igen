@@ -53,9 +53,9 @@ async function parseApiResponse<T>(res: Response, fallbackMessage: string): Prom
     );
   }
 
-  let data: any;
+  let data: { message?: string } | undefined;
   try {
-    data = JSON.parse(rawBody);
+    data = JSON.parse(rawBody) as { message?: string };
   } catch {
     throw new Error(`${fallbackMessage}. Không parse được JSON từ server.`);
   }

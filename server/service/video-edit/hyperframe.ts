@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-empty */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -17,7 +18,7 @@ export function resolveLocalPathForRender(src: string): string {
 
 export const hyperframeService = {
   /**
-   * Biên dịch JSON Blueprint sang HTML tương thích với Hyperframe CLI.
+   * Biên d�9ch JSON Blueprint sang HTML tương thích v�:i Hyperframe CLI.
    */
   compileBlueprintToHtml(blueprint: any): string {
     const rawTimeline = blueprint?.timeline || [];
@@ -33,7 +34,7 @@ export const hyperframeService = {
     if (aspect === "9:16") { width = 720; height = 1280; }
     else if (aspect === "1:1") { width = 720; height = 720; }
 
-    // Nâng lên 1080p nếu được yêu cầu
+    // Nâng lên 1080p nếu �ược yêu cầu
     if (is1080p) {
       if (aspect === "16:9") { width = 1920; height = 1080; }
       else if (aspect === "9:16") { width = 1080; height = 1920; }
@@ -232,7 +233,7 @@ export const hyperframeService = {
         if (style.position === "center") positionStyles = "top: 0; bottom: 0; left: 0; right: 0; align-items: center; justify-content: center;";
       }
 
-      // CSS keyframes — hỗ trợ thêm: slide-up, slide-down, scale-in, typewriter
+      // CSS keyframes � h� trợ thêm: slide-up, slide-down, scale-in, typewriter
       let animCss = "";
       let animStyle = "";
       const fadeDur = Math.min(0.5, duration / 3);
@@ -377,7 +378,7 @@ export const hyperframeService = {
       }
     });
 
-    // 7. Caption Elements — auto-styled subtitles (z-index: 11, just above regular text)
+    // 7. Caption Elements � auto-styled subtitles (z-index: 11, just above regular text)
     captionElements.forEach((captionItem: any) => {
       const duration = (captionItem.end ?? 3) - (captionItem.start ?? 0);
       const captionColor = captionItem.style?.color || "#FFFFFF";
@@ -393,7 +394,7 @@ export const hyperframeService = {
     </div>`;
     });
 
-    // 8. Animated Scene Elements — full-screen overlays that replace video (z-index: 50)
+    // 8. Animated Scene Elements � full-screen overlays that replace video (z-index: 50)
     animatedSceneElements.forEach((scene: any, sIdx: number) => {
       const duration = (scene.end ?? 5) - (scene.start ?? 0);
       const template = scene.template || "chapter_title";
@@ -480,7 +481,7 @@ export const hyperframeService = {
       style="position:absolute; inset:0; background:${bgGradient}; z-index:50; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; padding:60px;">
       <div class="${p}_qm" style="font-size:140px; color:${accentColor}; line-height:0.6; margin-bottom:24px; font-family:Georgia,serif;">"</div>
       <div class="${p}_qt" style="font-size:26px; color:#fff; text-align:center; line-height:1.65; max-width:78%; font-style:italic;">${quote}</div>
-      ${author ? `<div class="${p}_auth" style="margin-top:28px; font-size:13px; color:${accentColor}; letter-spacing:3px; text-transform:uppercase;">— ${author}</div>` : ""}
+      ${author ? `<div class="${p}_auth" style="margin-top:28px; font-size:13px; color:${accentColor}; letter-spacing:3px; text-transform:uppercase;">� ${author}</div>` : ""}
     </div>`;
       }
     });
@@ -522,7 +523,7 @@ export const hyperframeService = {
     const resolution = options?.resolution || "720p";
 
     console.log(`\n${"=".repeat(60)}`);
-    console.log(`[Hyperframe] ▶ BẤT ĐẦU RENDER | Job: ${renderJobId}`);
+    console.log(`[Hyperframe] �� BẤT ĐẦU RENDER | Job: ${renderJobId}`);
     console.log(`[Hyperframe] OutputPath: ${outputPath} | Resolution: ${resolution}`);
 
     // Preflight / pre-warm CDN cache
@@ -547,21 +548,21 @@ export const hyperframeService = {
         const startPrewarm = Date.now();
         const res = await fetch(mediaUrl, { method: "GET", signal: AbortSignal.timeout(90000) });
         if (!res.ok) {
-          console.error(`  [❌ HTTP ${res.status}] ${mediaUrl}`);
+          console.error(`  [�R HTTP ${res.status}] ${mediaUrl}`);
         } else {
           const buffer = await res.arrayBuffer();
-          console.log(`  [✅ READY] ${mediaUrl} | ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB | ${Date.now() - startPrewarm}ms`);
+          console.log(`  [�S& READY] ${mediaUrl} | ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB | ${Date.now() - startPrewarm}ms`);
         }
       } catch (fetchErr: any) {
-        console.error(`  [❌ FETCH_ERROR] ${mediaUrl} → ${fetchErr.message}`);
+        console.error(`  [�R FETCH_ERROR] ${mediaUrl} �  ${fetchErr.message}`);
       }
     }
 
-    if (onProgress) onProgress(45, "[Hyperframe Engine] Đang biên dịch Blueprint sang HTML...");
+    if (onProgress) onProgress(45, "[Hyperframe Engine] Đang biên d�9ch Blueprint sang HTML...");
     const htmlContent = this.compileBlueprintToHtml(normalizedBlueprint);
     fs.writeFileSync(tempHtmlPath, htmlContent);
 
-    if (onProgress) onProgress(55, "[Hyperframe Engine] Khởi chạy Hyperframe CLI...");
+    if (onProgress) onProgress(55, "[Hyperframe Engine] Kh�xi chạy Hyperframe CLI...");
 
     const aspect = options?.aspectRatio || "16:9";
     let resolutionPreset = "landscape";
