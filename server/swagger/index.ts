@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import swaggerUi from "swagger-ui-express";
 import { geminiSwagger } from "./gemini.swagger";
@@ -15,14 +15,14 @@ import { opusclipSwagger } from "./opusclip.swagger";
 const swaggerDocument = {
   openapi: "3.0.0",
   info: {
-    title: "iGen ERP Smart AI API Docs",
+    title: "iGen Marketing Smart AI API Docs",
     version: "1.0.0",
-    description: "Tài liệu API Swagger cho các tính năng AI Marketing và Chatbot CRM của iGen ERP.",
+    description: "TÃ i liá»‡u API Swagger cho cÃ¡c tÃ­nh nÄƒng AI Marketing vÃ  Chatbot CRM cá»§a iGen Marketing.",
   },
   servers: [
     {
       url: "http://localhost:3005",
-      description: "Cơ sở phục vụ cục bộ",
+      description: "CÆ¡ sá»Ÿ phá»¥c vá»¥ cá»¥c bá»™",
     },
   ],
   paths: {
@@ -43,7 +43,7 @@ const swaggerDocument = {
         type: "http",
         scheme: "bearer",
         bearerFormat: "JWT",
-        description: "Điền JWT Access Token vào ô dưới đây dạng: eyJhbG...",
+        description: "Äiá»n JWT Access Token vÃ o Ã´ dÆ°á»›i Ä‘Ã¢y dáº¡ng: eyJhbG...",
       },
     },
   },
@@ -51,5 +51,7 @@ const swaggerDocument = {
 
 export const swaggerRouter = Router();
 
-// Phục vụ tài liệu Swagger UI tại đường dẫn /api-docs
+// Phá»¥c vá»¥ tÃ i liá»‡u Swagger UI táº¡i Ä‘Æ°á»ng dáº«n /api-docs
 swaggerRouter.use("/", swaggerUi.serve as any, swaggerUi.setup(swaggerDocument) as any);
+
+

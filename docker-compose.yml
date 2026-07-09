@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   igen-marketing:
-    image: ghcr.io/chung2310/marketing-igen:${IMAGE_TAG:-latest}
+    image: ghcr.io/chunga00d1-code/marketing-igen:${IMAGE_TAG:-latest}
     container_name: ${CONTAINER_NAME:-igen-marketing}
     restart: always
     ports:

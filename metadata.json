@@ -1,6 +1,6 @@
 {
-  "name": "iGen ERP",
-  "description": "Hệ thống Quản lý Doanh nghiệp Thông minh tích hợp Trợ lý AI (Sales CRM, AI Marketing Hub, Quản lý Kho, Quản lý Nhân sự).",
+  "name": "iGen Marketing",
+  "description": "iGen Marketing is an AI-assisted marketing workspace for content creation, video workflows, campaign planning, CRM support, and approved TikTok video publishing.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

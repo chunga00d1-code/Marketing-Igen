@@ -726,7 +726,7 @@ export const tiktokService = {
     const query = new URLSearchParams({
       client_key: clientKey,
       response_type: "code",
-      scope: "user.info.basic,video.publish,business.message",
+      scope: "user.info.basic,video.publish",
       redirect_uri: redirectUri,
       state,
     });

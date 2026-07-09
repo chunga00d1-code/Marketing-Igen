@@ -28,7 +28,7 @@ const sections = [
   {
     title: "3. Connected Platform Integrations",
     body: [
-      "The service may integrate with TikTok Shop, Facebook and other approved third-party platforms through their official authorization mechanisms.",
+      "The service may integrate with TikTok, Facebook and other approved third-party platforms through their official authorization mechanisms.",
       "Your use of any connected platform through the service must also comply with that platform's own developer terms, content policies, commerce policies and community rules.",
       "If you revoke access, remove permissions or disconnect an integration, the related synchronization features may stop immediately.",
     ],
@@ -85,7 +85,7 @@ export default function TermsOfService() {
   const meta = {
     title: `${BRAND_NAME} Terms of Service`,
     description: `Terms of Service for ${BRAND_NAME}, including connected platform use, AI-assisted features and customer responsibilities.`,
-    keywords: "terms of service, TikTok Shop, platform integrations, iGen Marketing",
+    keywords: "terms of service, TikTok, video publishing, platform integrations, iGen Marketing",
     path: "/terms-of-service",
   };
 
@@ -128,7 +128,7 @@ export default function TermsOfService() {
 
       <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm space-y-8">
         <div className="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm leading-6 text-slate-700">
-          Use of any TikTok Shop or other connected-platform feature through {BRAND_NAME}
+          Use of any TikTok or other connected-platform feature through {BRAND_NAME}
           remains subject to the policies and technical limitations of that platform.
         </div>
 
