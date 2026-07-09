@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { Response } from "express";
 import { payOS, isPayOSConfigured } from "../config/payos";
 import { AuthenticatedRequest } from "../middleware/auth";

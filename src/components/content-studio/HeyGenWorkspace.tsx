@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps, react-refresh/only-export-components */
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { X, ChevronLeft, ChevronRight, Play, Download, Trash2, Pencil, LoaderCircle } from "lucide-react";

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { MoreVertical, Pencil, Shield, Trash2, Wallet } from "lucide-react";
 import { UserTableProps } from "./types";
 

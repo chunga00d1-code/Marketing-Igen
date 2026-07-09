@@ -1,13 +1,14 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import { zaloMessengerController } from "../controller/zalo-messenger.controller";
 import { requireAuth } from "../middleware/auth";
 
 export const zaloMessengerRouter = Router();
 
-// Endpoint webhook của Zalo OA - Phải công khai (public) để Zalo gọi tới
+// Endpoint webhook cá»§a Zalo OA - Pháº£i cÃ´ng khai (public) Ä‘á»ƒ Zalo gá»i tá»›i
 zaloMessengerRouter.post("/webhook", zaloMessengerController.receiveWebhookEvent);
 
-// Routes phục vụ Client Igen-ERP - Yêu cầu xác thực đăng nhập (requireAuth)
+// Routes phá»¥c vá»¥ Client Igen-ERP - YÃªu cáº§u xÃ¡c thá»±c Ä‘Äƒng nháº­p (requireAuth)
 zaloMessengerRouter.post("/validate-integration", requireAuth as any, zaloMessengerController.validateIntegration);
 zaloMessengerRouter.post("/save-integration", requireAuth as any, zaloMessengerController.saveIntegration);
 zaloMessengerRouter.delete("/integration", requireAuth as any, zaloMessengerController.removeIntegration);

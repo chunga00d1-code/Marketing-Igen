@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export interface MarketingDevelopPost {
   channel: string;
   contentType: string;
@@ -65,7 +66,7 @@ async function fetchWithTimeout(
 
 export const geminiApi = {
   /**
-   * Lấy 3 gợi ý chủ đề marketing ban đầu từ server.
+   * Lấy 3 gợi ý chủ �ề marketing ban �ầu từ server.
    */
   async fetchMarketingSuggestions(): Promise<string[]> {
     const headers = await getHeaders(false);
@@ -73,14 +74,14 @@ export const geminiApi = {
       headers
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Không thể tải gợi ý chiến dịch marketing');
+      await handleErrorResponse(response, 'Không thỒ tải gợi ý chiến d�9ch marketing');
     }
     const data = await response.json();
     return data.suggestions || [];
   },
 
   /**
-   * Phân tích mục tiêu chiến dịch để lấy các content pillars đề xuất.
+   * Phân tích mục tiêu chiến d�9ch �Ồ lấy các content pillars �ề xuất.
    */
   async analyzeMarketingPillars(campaignTopic: string, images?: string[]): Promise<{ pillars: any[] }> {
     const headers = await getHeaders(true);
@@ -95,13 +96,13 @@ export const geminiApi = {
       'Hết thời gian phân tích Content Pillars. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi phân tích Content Pillars');
+      await handleErrorResponse(response, 'L�i phân tích Content Pillars');
     }
     return response.json();
   },
 
   /**
-   * Thay thế 1 Content Pillar bằng 1 Trụ cột khác mới hoàn toàn.
+   * Thay thế 1 Content Pillar bằng 1 Trụ c�"t khác m�:i hoàn toàn.
    */
   async swapMarketingPillar(
     campaignTopic: string,
@@ -118,16 +119,16 @@ export const geminiApi = {
         body: JSON.stringify({ campaignTopic, currentPillars, pillarIdToReplace, images }),
       },
       90000,
-      'Hết thời gian thay đổi Content Pillar. Vui lòng thử lại.'
+      'Hết thời gian thay ��"i Content Pillar. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi thay đổi Content Pillar');
+      await handleErrorResponse(response, 'L�i thay ��"i Content Pillar');
     }
     return response.json();
   },
 
   /**
-   * Phát sinh các bản nháp ý tưởng chiến dịch marketing từ các pillars được chọn.
+   * Phát sinh các bản nháp ý tư�xng chiến d�9ch marketing từ các pillars �ược chọn.
    */
   async generateMarketingIdeas(
     campaignTopic: string,
@@ -146,17 +147,17 @@ export const geminiApi = {
       },
       mediaType === "human-video" ? 300000 : 180000,
       mediaType === "human-video"
-        ? 'Tạo ý tưởng cho video người thật mất quá lâu. Vui lòng thử lại sau ít phút.'
-        : 'Tạo ý tưởng marketing bị quá thời gian chờ. Vui lòng thử lại.'
+        ? 'Tạo ý tư�xng cho video người thật mất quá lâu. Vui lòng thử lại sau ít phút.'
+        : 'Tạo ý tư�xng marketing b�9 quá thời gian chờ. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi phát sinh ý tưởng marketing');
+      await handleErrorResponse(response, 'L�i phát sinh ý tư�xng marketing');
     }
     return response.json();
   },
 
   /**
-   * Lập dàn ý và viết bài đăng chi tiết cho từng kênh truyền thông từ một ý tưởng cụ thể.
+   * Lập dàn ý và viết bài �Ēng chi tiết cho từng kênh truyền thông từ m�"t ý tư�xng cụ thỒ.
    */
   async developMarketingIdea(concept: {
     title: string;
@@ -186,17 +187,17 @@ export const geminiApi = {
       },
       concept.mediaType === "human-video" ? 360000 : 240000,
       concept.mediaType === "human-video"
-        ? 'Phát triển nội dung cho video người thật mất quá lâu. Vui lòng thử lại sau.'
-        : 'Phát triển nội dung AI bị quá thời gian chờ. Vui lòng thử lại.'
+        ? 'Phát triỒn n�"i dung cho video người thật mất quá lâu. Vui lòng thử lại sau.'
+        : 'Phát triỒn n�"i dung AI b�9 quá thời gian chờ. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi lập dàn ý và viết bài chi tiết');
+      await handleErrorResponse(response, 'L�i lập dàn ý và viết bài chi tiết');
     }
     return response.json();
   },
 
   /**
-   * Gửi tin nhắn chat đến AI Assistant trong CRM Omni-Inbox.
+   * Gửi tin nhắn chat �ến AI Assistant trong CRM Omni-Inbox.
    */
   async sendChatMessage(
     message: string,
@@ -210,7 +211,7 @@ export const geminiApi = {
       body: JSON.stringify({ message, history, aiConfig }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi kết nối Trợ lý AI');
+      await handleErrorResponse(response, 'L�i kết n�i Trợ lý AI');
     }
     return response.json();
   },
@@ -220,7 +221,7 @@ export const geminiApi = {
       headers: getJwtHeaders(false),
     });
     if (!response.ok) {
-      throw new Error("Không thể kiểm tra trạng thái AI knowledge");
+      throw new Error("Không thỒ kiỒm tra trạng thái AI knowledge");
     }
     return response.json();
   },
@@ -243,7 +244,7 @@ export const geminiApi = {
       body: JSON.stringify({ message, aiConfig }),
     });
     if (!response.ok) {
-      throw new Error("Không thể tạo câu trả lời thử");
+      throw new Error("Không thỒ tạo câu trả lời thử");
     }
     return response.json();
   },
@@ -253,7 +254,7 @@ export const geminiApi = {
       headers: getJwtHeaders(false),
     });
     if (!response.ok) {
-      throw new Error("Không thể tải log phản hồi AI");
+      throw new Error("Không thỒ tải log phản h�i AI");
     }
     const data = await response.json();
     return data.logs || [];
@@ -266,7 +267,7 @@ export const geminiApi = {
       body: JSON.stringify({ feedback, note }),
     });
     if (!response.ok) {
-      throw new Error("Không thể lưu feedback AI");
+      throw new Error("Không thỒ lưu feedback AI");
     }
   },
 
@@ -284,7 +285,7 @@ export const geminiApi = {
       body: JSON.stringify({ prompt, ...options }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi sinh ảnh minh họa AI');
+      await handleErrorResponse(response, 'L�i khi sinh ảnh minh họa AI');
     }
     return response.json();
   },
@@ -301,7 +302,7 @@ export const geminiApi = {
       body: JSON.stringify({ prompt, durationSeconds, ...options }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi sinh video AI');
+      await handleErrorResponse(response, 'L�i khi sinh video AI');
     }
     return response.json();
   },
@@ -340,7 +341,7 @@ export const geminiApi = {
       body: JSON.stringify({ videoUrl, prompt, ...options }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi biên tập video bằng AI');
+      await handleErrorResponse(response, 'L�i khi biên tập video bằng AI');
     }
     return response.json();
   },
@@ -368,7 +369,7 @@ export const geminiApi = {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi sinh giọng nói AI');
+      await handleErrorResponse(response, 'L�i khi sinh giọng nói AI');
     }
     return response.json();
   },
@@ -381,7 +382,7 @@ export const geminiApi = {
       body: JSON.stringify({ text, readingStyle, model }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi tối ưu kịch bản');
+      await handleErrorResponse(response, 'L�i khi t�i ưu k�9ch bản');
     }
     return response.json();
   },
@@ -394,7 +395,7 @@ export const geminiApi = {
       body: JSON.stringify({ description, imageUris, modelName }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi tối ưu prompt ảnh');
+      await handleErrorResponse(response, 'L�i khi t�i ưu prompt ảnh');
     }
     return response.json();
   },
@@ -407,7 +408,7 @@ export const geminiApi = {
       body: JSON.stringify({ description }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi tối ưu prompt chỉnh sửa video');
+      await handleErrorResponse(response, 'L�i khi t�i ưu prompt ch�0nh sửa video');
     }
     return response.json();
   },
@@ -420,7 +421,7 @@ export const geminiApi = {
       body: JSON.stringify({ description, imageUris }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi tối ưu prompt video');
+      await handleErrorResponse(response, 'L�i khi t�i ưu prompt video');
     }
     return response.json();
   },
@@ -439,7 +440,7 @@ export const geminiApi = {
       body: JSON.stringify({ videoUrl, duration, targetVideoUrl, targetDuration, prompt }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi khi phân tích phong cách video mẫu');
+      await handleErrorResponse(response, 'L�i khi phân tích phong cách video mẫu');
     }
     return response.json();
   },
@@ -454,10 +455,10 @@ export const geminiApi = {
       '/api/v1/gemini/generate-edit-script',
       { method: 'POST', headers, body: JSON.stringify({ videoUrl, duration, prompt }) },
       300000,
-      'Tạo kịch bản biên tập mất quá lâu. Vui lòng thử lại.'
+      'Tạo k�9ch bản biên tập mất quá lâu. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi tạo kịch bản biên tập video');
+      await handleErrorResponse(response, 'L�i tạo k�9ch bản biên tập video');
     }
     return response.json();
   },
@@ -475,7 +476,7 @@ export const geminiApi = {
       'Xếp hàng kết xuất video mất quá lâu. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi kết xuất video từ kịch bản');
+      await handleErrorResponse(response, 'L�i kết xuất video từ k�9ch bản');
     }
     return response.json();
   },
@@ -486,7 +487,7 @@ export const geminiApi = {
       headers,
     });
     if (!response.ok) {
-      throw new Error('Lỗi lấy lịch sử sinh đa phương tiện');
+      throw new Error('L�i lấy l�9ch sử sinh �a phương ti�!n');
     }
     return response.json();
   },
@@ -498,7 +499,7 @@ export const geminiApi = {
       headers,
     });
     if (!response.ok) {
-      throw new Error('Lỗi khi xóa bản ghi lịch sử');
+      throw new Error('L�i khi xóa bản ghi l�9ch sử');
     }
     return response.json();
   },
@@ -509,7 +510,7 @@ export const geminiApi = {
       headers,
     });
     if (!response.ok) {
-      throw new Error('Lỗi lấy danh sách giọng nói ElevenLabs');
+      throw new Error('L�i lấy danh sách giọng nói ElevenLabs');
     }
     return response.json();
   },
@@ -528,7 +529,7 @@ export const geminiApi = {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      throw new Error('Lỗi thiết kế giọng nói thử nghiệm');
+      throw new Error('L�i thiết kế giọng nói thử nghi�!m');
     }
     return response.json();
   },
@@ -545,7 +546,7 @@ export const geminiApi = {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      throw new Error('Lỗi lưu giọng nói cá nhân');
+      throw new Error('L�i lưu giọng nói cá nhân');
     }
     return response.json();
   },
@@ -563,7 +564,7 @@ export const geminiApi = {
       body: JSON.stringify(input),
     });
     if (!response.ok) {
-      throw new Error('Lỗi khi nhân bản giọng nói ElevenLabs');
+      throw new Error('L�i khi nhân bản giọng nói ElevenLabs');
     }
     return response.json();
   },
@@ -575,22 +576,22 @@ export const geminiApi = {
       headers,
     });
     if (!response.ok) {
-      throw new Error('Lỗi khi xóa giọng nói ElevenLabs');
+      throw new Error('L�i khi xóa giọng nói ElevenLabs');
     }
     return response.json();
   },
 
-  // ─── FreeLLM API — LLM miễn phí ────────────────────────────────────────────
+  // ������ FreeLLM API � LLM mi�&n phí ����������������������������������������������������������������������������������������
 
-  /** Kiểm tra trạng thái cấu hình FreeLLM API */
+  /** KiỒm tra trạng thái cấu hình FreeLLM API */
   async freeLLMStatus(): Promise<{ configured: boolean; model: string; url: string | null; message: string }> {
     const headers = await getHeaders(false);
     const response = await fetch('/api/v1/gemini/freellm-status', { headers });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi kiểm tra FreeLLM API');
+    if (!response.ok) await handleErrorResponse(response, 'L�i kiỒm tra FreeLLM API');
     return response.json().then((r: any) => r);
   },
 
-  /** Chat multi-turn hoặc single prompt với FreeLLM */
+  /** Chat multi-turn hoặc single prompt v�:i FreeLLM */
   async freeLLMChat(input: {
     messages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
     prompt?: string;
@@ -605,11 +606,11 @@ export const geminiApi = {
       headers,
       body: JSON.stringify({ action: 'chat', ...input }),
     });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi khi gọi FreeLLM API');
+    if (!response.ok) await handleErrorResponse(response, 'L�i khi gọi FreeLLM API');
     return response.json().then((r: any) => ({ content: r.content, model: r.model, usage: r.usage }));
   },
 
-  /** Tối ưu prompt tiếng Việt → tiếng Anh chuyên nghiệp */
+  /** T�i ưu prompt tiếng Vi�!t �  tiếng Anh chuyên nghi�!p */
   async freeLLMOptimizePrompt(prompt: string): Promise<string> {
     const headers = await getHeaders(true);
     const response = await fetch('/api/v1/gemini/freellm-chat', {
@@ -617,12 +618,12 @@ export const geminiApi = {
       headers,
       body: JSON.stringify({ action: 'optimize-prompt', prompt }),
     });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi tối ưu prompt FreeLLM');
+    if (!response.ok) await handleErrorResponse(response, 'L�i t�i ưu prompt FreeLLM');
     const data = await response.json();
     return data.result || '';
   },
 
-  /** Tóm tắt văn bản bằng FreeLLM */
+  /** Tóm tắt vĒn bản bằng FreeLLM */
   async freeLLMSummarize(text: string, maxWords?: number): Promise<string> {
     const headers = await getHeaders(true);
     const response = await fetch('/api/v1/gemini/freellm-chat', {
@@ -630,12 +631,12 @@ export const geminiApi = {
       headers,
       body: JSON.stringify({ action: 'summarize', prompt: text, maxTokens: maxWords }),
     });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi tóm tắt FreeLLM');
+    if (!response.ok) await handleErrorResponse(response, 'L�i tóm tắt FreeLLM');
     const data = await response.json();
     return data.result || '';
   },
 
-  /** Sinh nội dung marketing với FreeLLM */
+  /** Sinh n�"i dung marketing v�:i FreeLLM */
   async freeLLMMarketing(params: {
     topic: string;
     platform?: 'facebook' | 'instagram' | 'tiktok' | 'zalo' | 'general';
@@ -648,7 +649,7 @@ export const geminiApi = {
       headers,
       body: JSON.stringify({ action: 'marketing', prompt: params.topic, ...params }),
     });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi sinh marketing content FreeLLM');
+    if (!response.ok) await handleErrorResponse(response, 'L�i sinh marketing content FreeLLM');
     const data = await response.json();
     return data.result || { title: '', content: '', hashtags: [] };
   },
@@ -661,7 +662,7 @@ export const geminiApi = {
       body: JSON.stringify({ fileName, fileBase64, mimeType }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, "Lỗi tải lên tài liệu huấn luyện AI");
+      await handleErrorResponse(response, "L�i tải lên tài li�!u huấn luy�!n AI");
     }
     return response.json();
   },

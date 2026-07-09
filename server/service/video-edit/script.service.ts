@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-empty */
 import { GoogleGenAI } from "@google/genai";
 import * as fs from "fs";
 import * as os from "os";

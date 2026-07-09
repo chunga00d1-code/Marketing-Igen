@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-empty */
 import React, { useEffect, useRef, useState } from 'react';
 
 import { geminiApi } from '../../api/gemini';
@@ -25,28 +26,28 @@ const ENGINE_OPTIONS: Array<{
     {
       value: 'remotion',
       label: 'Remotion',
-      description: 'Frame-accurate. Dùng Chromium để render từng khung hình chính xác nhất.',
+      description: 'Frame-accurate. Dùng Chromium �Ồ render từng khung hình chính xác nhất.',
       badge: 'Chính xác',
       badgeColor: 'bg-cyan-100 text-cyan-700',
     },
     {
       value: 'hyperframe',
       label: 'Hyperframe',
-      description: 'Nhanh hơn. Dùng CSS animation + HTML5 để render. Phù hợp hiệu ứng cơ bản.',
+      description: 'Nhanh hơn. Dùng CSS animation + HTML5 �Ồ render. Phù hợp hi�!u ứng cơ bản.',
       badge: 'Nhanh',
       badgeColor: 'bg-emerald-100 text-emerald-700',
     },
     {
       value: 'hermes',
       label: 'Hermes Cloud',
-      description: 'Đám mây. Worker farm xử lý nền. Dùng khi máy cục bộ yếu hoặc cần scale.',
+      description: 'Đám mây. Worker farm xử lý nền. Dùng khi máy cục b�" yếu hoặc cần scale.',
       badge: 'Cloud',
       badgeColor: 'bg-violet-100 text-violet-700',
     },
     {
       value: 'professional',
       label: 'Professional (Claude)',
-      description: 'Chuyên nghiệp. Claude viết code HTML+GSAP và kết xuất video chuyển cảnh mượt mà độc lập trên VPS.',
+      description: 'Chuyên nghi�!p. Claude viết code HTML+GSAP và kết xuất video chuyỒn cảnh mượt mà ��"c lập trên VPS.',
       badge: 'Pro & Claude',
       badgeColor: 'bg-amber-100 text-amber-700',
     },
@@ -71,43 +72,43 @@ const QUALITY_OPTIONS = [
 ];
 
 const STYLE_PRESETS = [
-  // 🎬 Video ngắn / Mạng xã hội
-  { label: 'Trending Reels', prompt: 'Chỉnh video thành clip TikTok 15s, cut nhanh theo nhạc, text pop-up, tone sáng.' },
-  { label: 'Viral TikTok', prompt: 'Biến video này thành clip viral TikTok: tua nhanh đoạn đầu, zoom theo nhịp, thêm text highlight, chèn nhạc EDM sôi động từ đầu đến cuối.' },
-  { label: 'YouTube Shorts', prompt: 'Cắt video thành Shorts 60s, giữ lại những khoảnh khắc hấp dẫn nhất, thêm phụ đề tiếng Việt bắt mắt, hiệu ứng zoom lúc cao trào.' },
+  // �x}� Video ngắn / Mạng xã h�"i
+  { label: 'Trending Reels', prompt: 'Ch�0nh video thành clip TikTok 15s, cut nhanh theo nhạc, text pop-up, tone sáng.' },
+  { label: 'Viral TikTok', prompt: 'Biến video này thành clip viral TikTok: tua nhanh �oạn �ầu, zoom theo nh�9p, thêm text highlight, chèn nhạc EDM sôi ��"ng từ �ầu �ến cu�i.' },
+  { label: 'YouTube Shorts', prompt: 'Cắt video thành Shorts 60s, giữ lại những khoảnh khắc hấp dẫn nhất, thêm phụ �ề tiếng Vi�!t bắt mắt, hi�!u ứng zoom lúc cao trào.' },
 
-  // 🛍️ Sản phẩm / Kinh doanh
-  { label: 'Product Demo', prompt: 'Làm video review sản phẩm chuyên nghiệp, highlight tính năng, chuyển cảnh mượt.' },
-  { label: 'Unboxing', prompt: 'Chỉnh sửa video unboxing: tua nhanh đoạn mở hộp, zoom cận cảnh sản phẩm, thêm text mô tả tính năng, chèn nhạc nền nhẹ nhàng xuyên suốt.' },
-  { label: 'Before / After', prompt: 'So sánh trước sau, giữ rõ nội dung chính và nhấn mạnh diệu màu, hiệu ứng zoom.' },
+  // �x:�️ Sản phẩm / Kinh doanh
+  { label: 'Product Demo', prompt: 'Làm video review sản phẩm chuyên nghi�!p, highlight tính nĒng, chuyỒn cảnh mượt.' },
+  { label: 'Unboxing', prompt: 'Ch�0nh sửa video unboxing: tua nhanh �oạn m�x h�"p, zoom cận cảnh sản phẩm, thêm text mô tả tính nĒng, chèn nhạc nền nhẹ nhàng xuyên su�t.' },
+  { label: 'Before / After', prompt: 'So sánh trư�:c sau, giữ rõ n�"i dung chính và nhấn mạnh di�!u màu, hi�!u ứng zoom.' },
 
-  // ✈️ Du lịch / Đời sống
-  { label: 'Travel Vlog', prompt: 'Biên tập clip travel cinematic, màu ấm, chuyển cảnh mềm, nhạc nhẹ.' },
-  { label: 'Cinematic Film', prompt: 'Biên tập theo phong cách điện ảnh: filter cinematic, chuyển cảnh fade mượt, slow-motion đoạn đẹp, thêm nhạc piano nhẹ nhàng.' },
+  // �S�️ Du l�9ch / Đời s�ng
+  { label: 'Travel Vlog', prompt: 'Biên tập clip travel cinematic, màu ấm, chuyỒn cảnh mềm, nhạc nhẹ.' },
+  { label: 'Cinematic Film', prompt: 'Biên tập theo phong cách �i�!n ảnh: filter cinematic, chuyỒn cảnh fade mượt, slow-motion �oạn �ẹp, thêm nhạc piano nhẹ nhàng.' },
 
-  // ⚡ Tốc độ & Nhịp điệu
-  { label: 'Slow Motion', prompt: 'Tua chậm toàn bộ video 2 lần, thêm nhạc lofi thư giãn chạy suốt video, tone màu ấm áp.' },
-  { label: 'Fast Cut', prompt: 'Cắt video thành các đoạn ngắn 2-3 giây, tua nhanh gấp rưỡi, chèn nhạc sôi động, zoom in/out liên tục.' },
-  { label: 'Beat Sync', prompt: 'Cắt video theo từng đoạn 2 giây xen kẽ zoom in và zoom out, tua nhanh gấp 1.5 lần, thêm nhạc EDM chạy xuyên suốt, hiệu ứng text bắt mắt.' },
+  // �a� T�c ��" & Nh�9p �i�!u
+  { label: 'Slow Motion', prompt: 'Tua chậm toàn b�" video 2 lần, thêm nhạc lofi thư giãn chạy su�t video, tone màu ấm áp.' },
+  { label: 'Fast Cut', prompt: 'Cắt video thành các �oạn ngắn 2-3 giây, tua nhanh gấp rưỡi, chèn nhạc sôi ��"ng, zoom in/out liên tục.' },
+  { label: 'Beat Sync', prompt: 'Cắt video theo từng �oạn 2 giây xen kẽ zoom in và zoom out, tua nhanh gấp 1.5 lần, thêm nhạc EDM chạy xuyên su�t, hi�!u ứng text bắt mắt.' },
 
-  // 🎨 Màu sắc & Filter
-  { label: 'Black & White', prompt: 'Chuyển toàn bộ video sang đen trắng, thêm text mở đầu 3 giây "Ký ức", chèn nhạc piano, chuyển cảnh fade giữa các đoạn.' },
+  // �x}� Màu sắc & Filter
+  { label: 'Black & White', prompt: 'ChuyỒn toàn b�" video sang �en trắng, thêm text m�x �ầu 3 giây "Ký ức", chèn nhạc piano, chuyỒn cảnh fade giữa các �oạn.' },
   { label: 'Vintage Film', prompt: 'Làm video tone vintage: giảm sáng nhẹ, filter sepia 0.3, thêm hạt film (grain), tua chậm 1.2x, nhạc acoustic nhẹ nhàng.' },
-  { label: 'Vivid Colors', prompt: 'Tăng sáng 1.35, tăng độ tương phản 1.25, tăng độ bão hòa 1.3, tạo hiệu ứng màu sắc rực rỡ, thêm nhạc upbeat.' },
+  { label: 'Vivid Colors', prompt: 'TĒng sáng 1.35, tĒng ��" tương phản 1.25, tĒng ��" bão hòa 1.3, tạo hi�!u ứng màu sắc rực rỡ, thêm nhạc upbeat.' },
 
-  // 📝 Text & Phụ đề
-  { label: 'Subtitled', prompt: 'Thêm phụ đề tiếng Việt bắt mắt cho toàn bộ video, text màu vàng viền đen ở giữa dưới, fontSize 28px.' },
-  { label: 'Intro + Outro', prompt: 'Thêm text intro "Chào mừng" trong 3 giây đầu và text outro "Cảm ơn đã xem" trong 3 giây cuối, tone chuyên nghiệp với nhạc nền corporate.' },
+  // �x� Text & Phụ �ề
+  { label: 'Subtitled', prompt: 'Thêm phụ �ề tiếng Vi�!t bắt mắt cho toàn b�" video, text màu vàng viền �en �x giữa dư�:i, fontSize 28px.' },
+  { label: 'Intro + Outro', prompt: 'Thêm text intro "Chào mừng" trong 3 giây �ầu và text outro "Cảm ơn �ã xem" trong 3 giây cu�i, tone chuyên nghi�!p v�:i nhạc nền corporate.' },
 
-  // 🔀 Ghép & Tổng hợp
-  { label: 'Ghép video', prompt: 'Ghép nối các video này lại với nhau theo thứ tự, giữ nguyên độ dài ban đầu của từng video.' },
-  { label: 'Ghép & Nhạc nền', prompt: 'Ghép các video này lại với nhau theo thứ tự và chèn thêm nhạc lofi thư giãn chạy suốt cả video.' },
-  { label: 'Ghép & Zoom FX', prompt: 'Ghép các video lại với nhau theo thứ tự, xen kẽ zoom in và zoom out mỗi 3 giây, chèn nhạc EDM xuyên suốt.' },
-  { label: 'Ghép + Chữ + Nhạc', prompt: 'Ghép các video theo thứ tự, thêm text tiêu đề 3 giây đầu, thêm text kết thúc 3 giây cuối, chèn nhạc nền nhẹ nhàng toàn bộ video.' },
+  // �x� Ghép & T�"ng hợp
+  { label: 'Ghép video', prompt: 'Ghép n�i các video này lại v�:i nhau theo thứ tự, giữ nguyên ��" dài ban �ầu của từng video.' },
+  { label: 'Ghép & Nhạc nền', prompt: 'Ghép các video này lại v�:i nhau theo thứ tự và chèn thêm nhạc lofi thư giãn chạy su�t cả video.' },
+  { label: 'Ghép & Zoom FX', prompt: 'Ghép các video lại v�:i nhau theo thứ tự, xen kẽ zoom in và zoom out m�i 3 giây, chèn nhạc EDM xuyên su�t.' },
+  { label: 'Ghép + Chữ + Nhạc', prompt: 'Ghép các video theo thứ tự, thêm text tiêu �ề 3 giây �ầu, thêm text kết thúc 3 giây cu�i, chèn nhạc nền nhẹ nhàng toàn b�" video.' },
 
-  // 🎵 Âm thanh
-  { label: 'SFX Transitions', prompt: 'Thêm hiệu ứng âm thanh whoosh vào mỗi lần chuyển cảnh, thêm tiếng ting lúc text xuất hiện, giữ video gốc không đổi.' },
-  { label: 'Mute + Music', prompt: 'Giảm âm lượng video gốc xuống 0.1, chèn nhạc nền acoustic chạy xuyên suốt toàn bộ video.' },
+  // �x}� �m thanh
+  { label: 'SFX Transitions', prompt: 'Thêm hi�!u ứng âm thanh whoosh vào m�i lần chuyỒn cảnh, thêm tiếng ting lúc text xuất hi�!n, giữ video g�c không ��"i.' },
+  { label: 'Mute + Music', prompt: 'Giảm âm lượng video g�c xu�ng 0.1, chèn nhạc nền acoustic chạy xuyên su�t toàn b�" video.' },
 ];
 
 function isPlayableVideoUrl(url?: string | null) {
@@ -190,12 +191,12 @@ export function EditVideoWorkspace({
   };
   const SCENE_DEFAULTS: Record<ProSceneType, Partial<ProSceneSpec>> = {
     hook:        { title: 'AI THAY THẾ BẠN', subtitle: 'hay là không cần timeline', titleColor: 'gold', duration: 10 },
-    story:       { title: 'VẤN ĐỀ', subtitle: 'Edit video mất quá nhiều thời gian', titleColor: 'red', duration: 12, items: [{ icon: '⏰', title: 'Mất 2-3 giờ mỗi video', description: 'Timeline phức tạp, cắt ghép thủ công', variant: 'danger' }] },
-    insight:     { title: 'GIẢI PHÁP', subtitle: 'AI xử lý toàn bộ', titleColor: 'green', duration: 12, items: [{ icon: '✅', title: 'Prompt → Video trong 25 phút', description: 'Claude viết HTML+GSAP tự động', variant: 'success' }] },
-    pipeline:    { title: 'PIPELINE', subtitle: 'Cách hoạt động', titleColor: 'cyan', duration: 14, steps: [{ step: 'BƯỚC 1', icon: '💡', title: 'PROMPT', description: 'Mô tả ý tưởng', tag: 'INPUT' }, { step: 'BƯỚC 2', icon: '🤖', title: 'CLAUDE AI', description: 'Sinh HTML+GSAP', tag: 'AI ENGINE' }] },
-    ui_mockup:   { title: 'CLAUDE UI', subtitle: 'Gõ lệnh, AI làm việc', titleColor: 'gold', duration: 12, code: 'Edit video claude va hyperframe\ntheo style viral reels\nClaude UI mockup chinh xac' },
-    before_after:{ title: 'TRƯỚC & SAU', subtitle: 'Kết quả thực tế', titleColor: 'gold', duration: 12, before: { label: 'VIDEO GỐC', duration: '1:09' }, after: { label: 'VIDEO CHUYÊN NGHIỆP', badge: 'CHUYÊN NGHIỆP' }, metric: { from: '2.5h', to: '25 phút', label: 'thời gian edit' } },
-    cta:         { title: 'BẮT ĐẦU NGAY', subtitle: 'Dùng thử miễn phí', titleColor: 'gold', duration: 8, ctaButton: 'Thử ngay miễn phí', ctaPrompt: 'Link trong bio' },
+    story:       { title: 'VẤN ĐỬ', subtitle: 'Edit video mất quá nhiều thời gian', titleColor: 'red', duration: 12, items: [{ icon: '⏰', title: 'Mất 2-3 giờ m�i video', description: 'Timeline phức tạp, cắt ghép thủ công', variant: 'danger' }] },
+    insight:     { title: 'GIẢI PHÁP', subtitle: 'AI xử lý toàn b�"', titleColor: 'green', duration: 12, items: [{ icon: '�S&', title: 'Prompt �  Video trong 25 phút', description: 'Claude viết HTML+GSAP tự ��"ng', variant: 'success' }] },
+    pipeline:    { title: 'PIPELINE', subtitle: 'Cách hoạt ��"ng', titleColor: 'cyan', duration: 14, steps: [{ step: 'BƯ�aC 1', icon: '�x�', title: 'PROMPT', description: 'Mô tả ý tư�xng', tag: 'INPUT' }, { step: 'BƯ�aC 2', icon: '�x�', title: 'CLAUDE AI', description: 'Sinh HTML+GSAP', tag: 'AI ENGINE' }] },
+    ui_mockup:   { title: 'CLAUDE UI', subtitle: 'Gõ l�!nh, AI làm vi�!c', titleColor: 'gold', duration: 12, code: 'Edit video claude va hyperframe\ntheo style viral reels\nClaude UI mockup chinh xac' },
+    before_after:{ title: 'TRƯ�aC & SAU', subtitle: 'Kết quả thực tế', titleColor: 'gold', duration: 12, before: { label: 'VIDEO GỐC', duration: '1:09' }, after: { label: 'VIDEO CHUY�`N NGHI� P', badge: 'CHUY�`N NGHI� P' }, metric: { from: '2.5h', to: '25 phút', label: 'thời gian edit' } },
+    cta:         { title: 'BẮT ĐẦU NGAY', subtitle: 'Dùng thử mi�&n phí', titleColor: 'gold', duration: 8, ctaButton: 'Thử ngay mi�&n phí', ctaPrompt: 'Link trong bio' },
   };
   const [proOutline, setProOutline] = useState('');
   const [proBrandName, setProBrandName] = useState('iGen Tech');
@@ -240,7 +241,7 @@ export function EditVideoWorkspace({
 
   const handleDownloadVideo = async () => {
     if (!outputUrl) return;
-    toast.info("Đang chuẩn bị tải video...");
+    toast.info("Đang chuẩn b�9 tải video...");
     try {
       const token = localStorage.getItem("accessToken");
       const headers: Record<string, string> = {};
@@ -266,7 +267,7 @@ export function EditVideoWorkspace({
       toast.success("Tải video thành công!");
     } catch (err: any) {
       console.error(err);
-      toast.error(`Lỗi khi tải video: ${err.message || String(err)}`);
+      toast.error(`L�i khi tải video: ${err.message || String(err)}`);
     }
   };
 
@@ -276,7 +277,7 @@ export function EditVideoWorkspace({
       const timeline = [...prev.timeline];
       timeline.push({
         type: 'text',
-        content: 'Chữ mới thêm',
+        content: 'Chữ m�:i thêm',
         start: 0,
         end: 5,
         style: {
@@ -324,7 +325,7 @@ export function EditVideoWorkspace({
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.size > maxSize) {
-        toast.warning(`Video "${file.name}" vượt quá giới hạn 200MB và bị bỏ qua.`);
+        toast.warning(`Video "${file.name}" vượt quá gi�:i hạn 200MB và b�9 bỏ qua.`);
         continue;
       }
 
@@ -419,10 +420,10 @@ export function EditVideoWorkspace({
             setOutputUrl(completedUrl);
             console.log('[EditVideoWorkspace] Socket: outputUrl updated to', completedUrl);
           }
-          toast.success('🎉 Video đã được biên tập và xuất bản thành công!');
+          toast.success('�x}0 Video �ã �ược biên tập và xuất bản thành công!');
         } else if (status === 'failed') {
-          const errorMsg = matchedUpdate?.metadata?.error || 'Lỗi không xác định';
-          toast.error(`❌ Biên tập video thất bại: ${errorMsg}`);
+          const errorMsg = matchedUpdate?.metadata?.error || 'L�i không xác ��9nh';
+          toast.error(`�R Biên tập video thất bại: ${errorMsg}`);
         }
       }
     });
@@ -524,7 +525,7 @@ export function EditVideoWorkspace({
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.size > maxSize) {
-        toast.warning(`Video "${file.name}" vượt quá giới hạn 200MB và bị bỏ qua.`);
+        toast.warning(`Video "${file.name}" vượt quá gi�:i hạn 200MB và b�9 bỏ qua.`);
         continue;
       }
 
@@ -562,7 +563,7 @@ export function EditVideoWorkspace({
     const file = files[0];
     const maxSize = 200 * 1024 * 1024; // 200MB
     if (file.size > maxSize) {
-      toast.warning(`Video mẫu "${file.name}" vượt quá giới hạn 200MB.`);
+      toast.warning(`Video mẫu "${file.name}" vượt quá gi�:i hạn 200MB.`);
       return;
     }
 
@@ -619,7 +620,7 @@ export function EditVideoWorkspace({
 
     const description = prompt.trim();
     if (!description) {
-      toast.warning('Vui lòng nhập nội dung prompt trước khi tối ưu hóa.');
+      toast.warning('Vui lòng nhập n�"i dung prompt trư�:c khi t�i ưu hóa.');
       return;
     }
     setOptimizedData(null);
@@ -629,22 +630,22 @@ export function EditVideoWorkspace({
       const result = await geminiApi.optimizeEditPrompt(description);
       console.log("[EditVideoWorkspace] Optimization result received:", result);
       setOptimizedData({ optimized_english_prompt: result.optimized_prompt });
-      toast.success('Đã tối ưu prompt chỉnh sửa video.');
+      toast.success('Đã t�i ưu prompt ch�0nh sửa video.');
     } catch (error: any) {
       console.error("[EditVideoWorkspace] Optimization failed:", error);
-      toast.error(`Lỗi khi tối ưu prompt: ${error?.message || 'Không xác định'}`);
+      toast.error(`L�i khi t�i ưu prompt: ${error?.message || 'Không xác ��9nh'}`);
     } finally {
       setIsOptimizing(false);
     }
   };
 
   const handleExtractVideoStyle = async () => {
-    // Luồng mới: Cần có cả video đầu vào và video mẫu để so sánh & phân tích phong cách dựng
+    // Lu�ng m�:i: Cần có cả video �ầu vào và video mẫu �Ồ so sánh & phân tích phong cách dựng
     const hasInputVideo = videoInputs.length > 0;
     const hasRefVideo = referenceVideo !== null;
 
     if (!hasInputVideo && !hasRefVideo) {
-      toast.warning('Vui lòng chọn hoặc tải lên ít nhất một video mẫu.');
+      toast.warning('Vui lòng chọn hoặc tải lên ít nhất m�"t video mẫu.');
       return;
     }
 
@@ -655,7 +656,7 @@ export function EditVideoWorkspace({
       let inputUrl = "";
       let inputDuration = 0;
 
-      // 1. Xử lý video mẫu (Reference Video). Nếu không có, fallback về video đầu tiên trong videoInputs
+      // 1. Xử lý video mẫu (Reference Video). Nếu không có, fallback về video �ầu tiên trong videoInputs
       if (hasRefVideo && referenceVideo) {
         let url = referenceVideo.url;
         if (referenceVideo.file) {
@@ -682,26 +683,26 @@ export function EditVideoWorkspace({
         sampleDuration = videoInputs[0].duration || 0;
       }
 
-      // 2. Xử lý video đầu vào (Target Video) nếu có đồng thời cả video mẫu riêng
+      // 2. Xử lý video �ầu vào (Target Video) nếu có ��ng thời cả video mẫu riêng
       if (hasRefVideo && hasInputVideo) {
         let url = videoInputs[0].url;
         if (videoInputs[0].file) {
-          toast.info('Đang tải video đầu vào lên Cloudinary...');
+          toast.info('Đang tải video �ầu vào lên Cloudinary...');
           url = await uploadVideoFile(videoInputs[0].file);
           setVideoInputs(prev => {
             const updated = [...prev];
             updated[0] = { ...updated[0], url, file: undefined };
             return updated;
           });
-          toast.success('Tải video đầu vào lên thành công.');
+          toast.success('Tải video �ầu vào lên thành công.');
         }
         inputUrl = url;
         inputDuration = videoInputs[0].duration || 0;
       }
 
-      toast.info('Đang phân tích kịch bản và phong cách dựng của video...');
+      toast.info('Đang phân tích k�9ch bản và phong cách dựng của video...');
 
-      // Gọi API phân tích phong cách dựng kèm theo thông tin video đầu vào để scale thời gian và kết hợp ý tưởng
+      // Gọi API phân tích phong cách dựng kèm theo thông tin video �ầu vào �Ồ scale thời gian và kết hợp ý tư�xng
       const response = await geminiApi.analyzeVideoStyle(
         sampleUrl,
         sampleDuration,
@@ -715,15 +716,15 @@ export function EditVideoWorkspace({
         setOptimizedData(null);
         toast.success(
           inputUrl
-            ? '🎉 Đã trích xuất phong cách dựng video mẫu và tự động scale theo thời lượng video đầu vào!'
-            : '🎉 Đã trích xuất phong cách dựng video mẫu vào ô ý tưởng!'
+            ? '�x}0 Đã trích xuất phong cách dựng video mẫu và tự ��"ng scale theo thời lượng video �ầu vào!'
+            : '�x}0 Đã trích xuất phong cách dựng video mẫu vào ô ý tư�xng!'
         );
       } else {
-        toast.error('Không nhận diện được phong cách dựng của video.');
+        toast.error('Không nhận di�!n �ược phong cách dựng của video.');
       }
     } catch (error: any) {
       console.error("[EditVideoWorkspace] Style extraction failed:", error);
-      toast.error(`Lỗi phân tích phong cách video: ${error?.message || 'Không xác định'}`);
+      toast.error(`L�i phân tích phong cách video: ${error?.message || 'Không xác ��9nh'}`);
     } finally {
       setIsExtractingStyle(false);
     }
@@ -731,7 +732,7 @@ export function EditVideoWorkspace({
 
   const handleGenerateVideo = async () => {
     if (videoInputs.length === 0) {
-      toast.warning('Vui lòng chọn hoặc tải lên ít nhất một video nguồn để chỉnh sửa.');
+      toast.warning('Vui lòng chọn hoặc tải lên ít nhất m�"t video ngu�n �Ồ ch�0nh sửa.');
       return;
     }
 
@@ -756,7 +757,7 @@ export function EditVideoWorkspace({
 
       if (hasUploads) {
         setIsUploadingVideo(true);
-        toast.info('Đang tải các video nguồn lên Cloudinary...');
+        toast.info('Đang tải các video ngu�n lên Cloudinary...');
       }
 
       for (let i = 0; i < videoInputs.length; i++) {
@@ -769,7 +770,7 @@ export function EditVideoWorkspace({
             updatedInputs[i] = { ...input, url, file: undefined };
           } catch (uploadErr: any) {
             console.error('[Upload source video error]', uploadErr);
-            toast.error(`Không thể tải video nguồn ${i + 1} lên Cloudinary: ${uploadErr.message}`);
+            toast.error(`Không thỒ tải video ngu�n ${i + 1} lên Cloudinary: ${uploadErr.message}`);
             setIsGenerating(false);
             setIsUploadingVideo(false);
             return;
@@ -782,10 +783,10 @@ export function EditVideoWorkspace({
       if (hasUploads) {
         setVideoInputs(updatedInputs);
         setIsUploadingVideo(false);
-        toast.success('Tải các video gốc thành công.');
+        toast.success('Tải các video g�c thành công.');
       }
 
-      // Tải video mẫu lên Cloudinary nếu có file cục bộ chưa upload
+      // Tải video mẫu lên Cloudinary nếu có file cục b�" chưa upload
       let uploadedRefUrl = referenceVideo?.url || '';
       if (referenceVideo && referenceVideo.file) {
         try {
@@ -795,7 +796,7 @@ export function EditVideoWorkspace({
           toast.success('Tải video mẫu lên thành công.');
         } catch (uploadErr: any) {
           console.error('[Upload reference video error]', uploadErr);
-          toast.error(`Không thể tải video mẫu lên Cloudinary: ${uploadErr.message}`);
+          toast.error(`Không thỒ tải video mẫu lên Cloudinary: ${uploadErr.message}`);
           setIsGenerating(false);
           return;
         }
@@ -804,7 +805,7 @@ export function EditVideoWorkspace({
       const jointVideoUrl = uploadedUrls.join(',');
       const totalDuration = videoInputs.reduce((sum, v) => sum + (v.duration || 0), 0);
 
-      toast.info('Đang gửi yêu cầu biên tập video đến AI...');
+      toast.info('Đang gửi yêu cầu biên tập video �ến AI...');
       const trimmedPrompt = prompt.trim();
       if (trimmedPrompt) {
         savePromptToHistory(trimmedPrompt);
@@ -838,18 +839,18 @@ export function EditVideoWorkspace({
         setBlueprint(response.blueprint);
         setCurrentRecordId(response.record._id || response.record.id);
         setOutputUrl(response.record.url);
-        toast.success('Đã tạo kịch bản biên tập AI. Bắt đầu kết xuất video...');
+        toast.success('Đã tạo k�9ch bản biên tập AI. Bắt �ầu kết xuất video...');
         await loadVideoHistory();
       }
     } catch (error: any) {
       console.error(error);
-      toast.error(`Lỗi khi biên tập video: ${error?.message || 'Không xác định'}`);
+      toast.error(`L�i khi biên tập video: ${error?.message || 'Không xác ��9nh'}`);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // ─── Tính tổng thời lượng timeline để dùng cho Remotion Player + Timeline Bar ───
+  // ������ Tính t�"ng thời lượng timeline �Ồ dùng cho Remotion Player + Timeline Bar ������
   const computeTimelineInfo = () => {
     if (!blueprint?.timeline) return { totalDuration: 0, fps: 30, width: 1280, height: 720 };
     const videoClips = blueprint.timeline.filter((t: any) => t.type === 'video');
@@ -873,7 +874,7 @@ export function EditVideoWorkspace({
   };
 
   const renderInteractivePlayer = () => {
-    // Ưu tiên outputUrl (kết quả từ Hermes), fallback về video gốc
+    // Ưu tiên outputUrl (kết quả từ Hermes), fallback về video g�c
     const resolvedOutputUrl = outputUrl && !outputUrl.startsWith('pending://') ? outputUrl : null;
     const videoUrl = resolvedOutputUrl || videoInputs[0]?.url;
     if (!videoUrl) return null;
@@ -887,19 +888,19 @@ export function EditVideoWorkspace({
     const audioTracks = timeline.filter((t: any) => t.type === 'audio');
     const textTracks = timeline.filter((t: any) => t.type === 'text');
 
-    // Tính tổng thời gian cho timeline bar (dùng end time thực tế)
+    // Tính t�"ng thời gian cho timeline bar (dùng end time thực tế)
     const rawTotalDuration = timeline.reduce((max: number, t: any) => Math.max(max, t.end ?? 0), 0) || totalDuration || 10;
 
     const activeAudio = timeline.find((t: any) => t.type === 'audio');
 
-    // Hàm tính vị trí % trên timeline bar
+    // Hàm tính v�9 trí % trên timeline bar
     const getBarLeft = (start: number) => `${((start / rawTotalDuration) * 100).toFixed(2)}%`;
     const getBarWidth = (start: number, end: number) => `${(((end - start) / rawTotalDuration) * 100).toFixed(2)}%`;
 
     return (
       <div className="w-full flex flex-col gap-4">
 
-        {/* ── Preview Panel ── */}
+        {/* ���� Preview Panel ���� */}
         <div className="flex items-center justify-between px-1">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Preview</span>
         </div>
@@ -918,7 +919,7 @@ export function EditVideoWorkspace({
           />
         </div>
 
-        {/* ── Timeline Bar ── */}
+        {/* ���� Timeline Bar ���� */}
         {timeline.length > 0 && (
           <div className="rounded-2xl border border-slate-200 bg-slate-900 p-3 overflow-hidden">
             <div className="flex items-center justify-between mb-2 px-1">
@@ -952,7 +953,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Clip ${i + 1}: ${t.start}s → ${t.end}s | rate=${t.playbackRate || 1}x`}
+                        title={`Clip ${i + 1}: ${t.start}s �  ${t.end}s | rate=${t.playbackRate || 1}x`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -981,7 +982,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Audio ${i + 1}: ${t.start}s → ${t.end}s | vol=${t.volume}`}
+                        title={`Audio ${i + 1}: ${t.start}s �  ${t.end}s | vol=${t.volume}`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -1010,7 +1011,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Text: "${t.content}" | ${t.start}s → ${t.end}s`}
+                        title={`Text: "${t.content}" | ${t.start}s �  ${t.end}s`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -1084,9 +1085,9 @@ export function EditVideoWorkspace({
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
 
-            <h1 className="mt-3 text-3xl font-bold text-slate-900">Chỉnh sửa Video </h1>
+            <h1 className="mt-3 text-3xl font-bold text-slate-900">Ch�0nh sửa Video </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Chỉnh sửa video gốc bằng prompt AI, thêm style, tự động cắt ghép, và xem preview nhanh.
+              Ch�0nh sửa video g�c bằng prompt AI, thêm style, tự ��"ng cắt ghép, và xem preview nhanh.
             </p>
           </div>
 
@@ -1104,12 +1105,12 @@ export function EditVideoWorkspace({
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${workspaceMode === 'script' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               <Clapperboard size={15} />
-              Kịch bản
+              K�9ch bản
             </button>
           </div>
         </div>
 
-        {/* ── Kịch bản mode ─────────────────────────────── */}
+        {/* ���� K�9ch bản mode �������������������������������������������������������������� */}
         {workspaceMode === 'script' && (
           <div className="rounded-[28px] border border-slate-200 bg-white" style={{ height: 700 }}>
             <VideoEditScriptPanel
@@ -1117,19 +1118,19 @@ export function EditVideoWorkspace({
               initialDuration={videoInputs[0]?.duration || undefined}
               onRenderStarted={(record) => {
                 if (record?._id) setCurrentRecordId(record._id);
-                toast.success('Video đang được kết xuất từ kịch bản...');
+                toast.success('Video �ang �ược kết xuất từ k�9ch bản...');
               }}
             />
           </div>
         )}
 
-        {/* ── Prompt mode (existing UI) ──────────────────── */}
+        {/* ���� Prompt mode (existing UI) ���������������������������������������� */}
         {workspaceMode !== 'script' && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm min-w-0 overflow-hidden">
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video đầu vào</label>
+                <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video �ầu vào</label>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1140,7 +1141,7 @@ export function EditVideoWorkspace({
                     className="text-[11px] font-semibold text-cyan-600 hover:text-cyan-700 flex items-center gap-1 bg-cyan-50 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                   >
                     <Video className="h-3.5 w-3.5" />
-                    Thư viện video
+                    Thư vi�!n video
                   </button>
                 </div>
               </div>
@@ -1205,8 +1206,8 @@ export function EditVideoWorkspace({
                     <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
                       <Video className="h-5 w-5 text-slate-500" />
                     </div>
-                    <span className="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp để tải video lên</span>
-                    <span className="text-[10px] text-slate-400 mt-1 font-medium">MP4, MOV, WEBM. Tối đa 200MB. Hỗ trợ chọn nhiều video.</span>
+                    <span className="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp �Ồ tải video lên</span>
+                    <span className="text-[10px] text-slate-400 mt-1 font-medium">MP4, MOV, WEBM. T�i �a 200MB. H� trợ chọn nhiều video.</span>
                     <input
                       type="file"
                       accept="video/*"
@@ -1219,7 +1220,7 @@ export function EditVideoWorkspace({
               </div>
             </div>
 
-            {/* Ô TẢI LÊN VIDEO MẪU (STYLE REFERENCE) */}
+            {/* � TẢI L�`N VIDEO MẪU (STYLE REFERENCE) */}
             <div className="space-y-3 pt-2">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video mẫu (Phong cách / Style)</label>
@@ -1242,7 +1243,7 @@ export function EditVideoWorkspace({
                     className="text-[11px] font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-1 bg-purple-50 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                   >
                     <Video className="h-3.5 w-3.5" />
-                    Thư viện video
+                    Thư vi�!n video
                   </button>
                 </div>
               </div>
@@ -1273,8 +1274,8 @@ export function EditVideoWorkspace({
                       </span>
                     </div>
                     <div className="flex-1 text-slate-600 text-xs">
-                      <p className="font-semibold text-slate-700">Video mẫu đã chọn</p>
-                      <p className="mt-1 text-slate-450">Tải lên video mẫu giúp AI phân tích chính xác phong cách, nhịp độ và scale các hiệu ứng khớp với thời lượng của video đầu vào.</p>
+                      <p className="font-semibold text-slate-700">Video mẫu �ã chọn</p>
+                      <p className="mt-1 text-slate-450">Tải lên video mẫu giúp AI phân tích chính xác phong cách, nh�9p ��" và scale các hi�!u ứng kh�:p v�:i thời lượng của video �ầu vào.</p>
                     </div>
                   </div>
                 ) : (
@@ -1283,7 +1284,7 @@ export function EditVideoWorkspace({
                       <Sparkles className="h-4 w-4 text-purple-500" />
                     </div>
                     <span className="text-xs font-semibold text-slate-700">Chọn tải lên Video mẫu (Reference Style)</span>
-                    <span className="text-[10px] text-slate-400 mt-0.5">Để AI học phong cách dựng, bộ lọc và hiệu ứng</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">ĐỒ AI học phong cách dựng, b�" lọc và hi�!u ứng</span>
                     <input
                       ref={refVideoInputRef}
                       type="file"
@@ -1304,7 +1305,7 @@ export function EditVideoWorkspace({
 
               <div className="grid gap-3 grid-cols-2 pt-1">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tỉ lệ khung hình</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">T�0 l�! khung hình</label>
                   <select
                     value={aspectRatio}
                     onChange={(e) => setAspectRatio(e.target.value)}
@@ -1319,7 +1320,7 @@ export function EditVideoWorkspace({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Độ phân giải</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đ�" phân giải</label>
                   <select
                     value={resolution}
                     onChange={(e) => setResolution(e.target.value)}
@@ -1335,7 +1336,7 @@ export function EditVideoWorkspace({
               </div>
 
               <div className="flex flex-col gap-1.5 pt-2">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Động cơ kết xuất (Render Engine)</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đ�"ng cơ kết xuất (Render Engine)</label>
                 <select
                   value={renderEngine}
                   onChange={(e) => setRenderEngine(e.target.value as RenderEngine)}
@@ -1358,7 +1359,7 @@ export function EditVideoWorkspace({
               <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm font-bold text-amber-700">Professional Scene Builder</span>
-                  <span className="text-[10px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-mono">Claude → HTML+GSAP</span>
+                  <span className="text-[10px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-mono">Claude �  HTML+GSAP</span>
                 </div>
 
                 {/* Outline + Brand */}
@@ -1380,7 +1381,7 @@ export function EditVideoWorkspace({
                       onChange={e => setProColorScheme(e.target.value as 'dark-gold' | 'dark-cyan' | 'dark-red')}
                       className="mt-1 w-full text-xs p-2 border border-slate-200 rounded-lg outline-none focus:border-amber-400 bg-white"
                     >
-                      <option value="dark-gold">Dark Gold (mặc định)</option>
+                      <option value="dark-gold">Dark Gold (mặc ��9nh)</option>
                       <option value="dark-cyan">Dark Cyan</option>
                       <option value="dark-red">Dark Red</option>
                     </select>
@@ -1388,12 +1389,12 @@ export function EditVideoWorkspace({
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Video Outline / Nội dung chủ đề</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Video Outline / N�"i dung chủ �ề</label>
                   <textarea
                     value={proOutline}
                     onChange={e => setProOutline(e.target.value)}
                     rows={2}
-                    placeholder="Vd: Video về cách dùng AI để edit video chuyên nghiệp với Claude + HyperFrames..."
+                    placeholder="Vd: Video về cách dùng AI �Ồ edit video chuyên nghi�!p v�:i Claude + HyperFrames..."
                     className="mt-1 w-full text-xs p-2 border border-slate-200 rounded-lg outline-none focus:border-amber-400 resize-none"
                   />
                 </div>
@@ -1422,7 +1423,7 @@ export function EditVideoWorkspace({
                         }}
                         className="text-[10px] font-semibold text-amber-600 hover:text-amber-700 border border-amber-300 px-2 py-1 rounded-lg"
                       >
-                        + Thêm template đầy đủ (7 scenes)
+                        + Thêm template �ầy �ủ (7 scenes)
                       </button>
                     )}
                   </div>
@@ -1467,7 +1468,7 @@ export function EditVideoWorkspace({
                             className="text-red-400 hover:text-red-600 text-lg font-bold leading-none px-1"
                             title="Xóa scene"
                           >
-                            ×
+                            �
                           </button>
                         </div>
                         {scene.subtitle !== undefined && (
@@ -1510,24 +1511,24 @@ export function EditVideoWorkspace({
             )}
 
             <div className="space-y-4">
-              {/* Badge chế độ video mẫu */}
+              {/* Badge chế ��" video mẫu */}
               {referenceVideo && (
                 <div className="flex items-center gap-2 rounded-2xl bg-purple-50 border border-purple-200 px-3 py-2">
                   <span className="inline-flex h-2 w-2 rounded-full bg-purple-500 shrink-0" />
-                  <p className="text-xs font-semibold text-purple-700">Chế độ: Áp dụng phong cách từ video mẫu</p>
-                  <span className="ml-auto text-[10px] text-purple-500">Prompt bên dưới là tùy chọn</span>
+                  <p className="text-xs font-semibold text-purple-700">Chế ��": Áp dụng phong cách từ video mẫu</p>
+                  <span className="ml-auto text-[10px] text-purple-500">Prompt bên dư�:i là tùy chọn</span>
                 </div>
               )}
 
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">
-                    {referenceVideo ? 'Ghi chú bổ sung (tùy chọn)' : 'Ý tưởng của bạn'}
+                    {referenceVideo ? 'Ghi chú b�" sung (tùy chọn)' : 'Ý tư�xng của bạn'}
                   </p>
                   <p className="mt-1 text-sm text-slate-500">
                     {referenceVideo
-                      ? 'AI sẽ học phong cách từ video mẫu. Nhập thêm yêu cầu tinh chỉnh nếu cần.'
-                      : 'Mô tả đoạn video bạn muốn AI chỉnh sửa.'}
+                      ? 'AI sẽ học phong cách từ video mẫu. Nhập thêm yêu cầu tinh ch�0nh nếu cần.'
+                      : 'Mô tả �oạn video bạn mu�n AI ch�0nh sửa.'}
                   </p>
                 </div>
                 <button
@@ -1569,8 +1570,8 @@ export function EditVideoWorkspace({
                 }}
                 rows={referenceVideo ? 3 : 6}
                 placeholder={referenceVideo
-                  ? 'Tùy chọn: "Thêm tiêu đề màu đỏ ở đầu", "Dùng nhạc upbeat", "Zoom cận cảnh đoạn giữa"...'
-                  : "Nhập ý tưởng chỉnh sửa: ví dụ 'Làm video này thành clip viral TikTok', 'Thêm phụ đề và nhạc nền', 'Cắt bỏ 5 giây đầu, zoom cận cảnh đoạn giữa', 'Chuyển sang đen trắng, thêm nhạc piano', 'Ghép 2 video + text intro + nhạc EDM'"}
+                  ? 'Tùy chọn: "Thêm tiêu �ề màu �ỏ �x �ầu", "Dùng nhạc upbeat", "Zoom cận cảnh �oạn giữa"...'
+                  : "Nhập ý tư�xng ch�0nh sửa: ví dụ 'Làm video này thành clip viral TikTok', 'Thêm phụ �ề và nhạc nền', 'Cắt bỏ 5 giây �ầu, zoom cận cảnh �oạn giữa', 'ChuyỒn sang �en trắng, thêm nhạc piano', 'Ghép 2 video + text intro + nhạc EDM'"}
                 className="min-h-[80px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100"
               />
             </div>
@@ -1584,7 +1585,7 @@ export function EditVideoWorkspace({
                   className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 transition"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  Gần đây ({promptHistory.length})
+                  Gần �ây ({promptHistory.length})
                   <svg className={`w-3 h-3 transition ${showHistory ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </button>
                 {showHistory && (
@@ -1639,7 +1640,7 @@ export function EditVideoWorkspace({
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Cấu hình Biên tập Thủ công</h3>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Tinh chỉnh các lớp chữ, nhạc và hiệu ứng video.</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">Tinh ch�0nh các l�:p chữ, nhạc và hi�!u ứng video.</p>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -1670,18 +1671,18 @@ export function EditVideoWorkspace({
                             className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-cyan-400 ring-1 ring-cyan-300/50 bg-cyan-50/30' : 'border-slate-200 hover:border-slate-300'}`}
                           >
                             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                              <span className="text-[10px] font-bold text-cyan-600 tracking-wider">LỚP CHỮ #{idx + 1}</span>
+                              <span className="text-[10px] font-bold text-cyan-600 tracking-wider">L�aP CHỮ #{idx + 1}</span>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTimelineItem(idx)}
                                 className="text-[10px] text-rose-500 hover:text-rose-700 font-bold cursor-pointer transition-colors"
                               >
-                                XÓA
+                                X�A
                               </button>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Nội dung chữ</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">N�"i dung chữ</label>
                                 <input
                                   type="text"
                                   value={item.content}
@@ -1691,7 +1692,7 @@ export function EditVideoWorkspace({
                               </div>
                               <div className="flex gap-2">
                                 <div className="flex flex-col gap-1 flex-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Bắt đầu (s)</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Bắt �ầu (s)</label>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1716,19 +1717,19 @@ export function EditVideoWorkspace({
                             </div>
                             <div className="grid gap-3 sm:grid-cols-3">
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Vị trí</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">V�9 trí</label>
                                 <select
                                   value={item.style?.position || 'bottom-center'}
                                   onChange={(e) => handleUpdateTimelineItem(idx, 'style', { ...item.style, position: e.target.value })}
                                   className="w-full text-xs p-2 border border-slate-200 rounded-lg outline-none focus:border-cyan-400 bg-white"
                                 >
-                                  <option value="bottom-center">Dưới - Giữa</option>
+                                  <option value="bottom-center">Dư�:i - Giữa</option>
                                   <option value="center">Chính giữa</option>
                                   <option value="top-center">Trên - Giữa</option>
                                   <option value="top-left">Trên - Trái</option>
                                   <option value="top-right">Trên - Phải</option>
-                                  <option value="bottom-left">Dưới - Trái</option>
-                                  <option value="bottom-right">Dưới - Phải</option>
+                                  <option value="bottom-left">Dư�:i - Trái</option>
+                                  <option value="bottom-right">Dư�:i - Phải</option>
                                 </select>
                               </div>
                               <div className="flex flex-col gap-1">
@@ -1769,13 +1770,13 @@ export function EditVideoWorkspace({
                             className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-purple-400 ring-1 ring-purple-300/50 bg-purple-50/20' : 'border-slate-200 hover:border-slate-300'}`}
                           >
                             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                              <span className="text-[10px] font-bold text-purple-600 tracking-wider">NHẠC NỀN #{idx + 1}</span>
+                              <span className="text-[10px] font-bold text-purple-600 tracking-wider">NHẠC NỬN #{idx + 1}</span>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTimelineItem(idx)}
                                 className="text-[10px] text-rose-500 hover:text-rose-700 font-bold cursor-pointer transition-colors"
                               >
-                                XÓA
+                                X�A
                               </button>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
@@ -1790,7 +1791,7 @@ export function EditVideoWorkspace({
                               </div>
                               <div className="flex gap-2">
                                 <div className="flex flex-col gap-1 flex-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Bắt đầu (s)</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Bắt �ầu (s)</label>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1815,7 +1816,7 @@ export function EditVideoWorkspace({
                             </div>
                             <div className="flex flex-col gap-1">
                               <div className="flex justify-between items-center">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Âm lượng</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">�m lượng</label>
                                 <span className="text-xs font-semibold text-slate-700">{Math.round((item.volume || 0.5) * 100)}%</span>
                               </div>
                               <input
@@ -1839,7 +1840,7 @@ export function EditVideoWorkspace({
                             className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-slate-500 ring-1 ring-slate-300/80 bg-slate-50/50' : 'border-slate-200 hover:border-slate-300'}`}
                           >
                             <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                              <span className="text-[10px] font-bold text-slate-600 tracking-wider">VIDEO CLIPS NGUỒN #{idx + 1}</span>
+                              <span className="text-[10px] font-bold text-slate-600 tracking-wider">VIDEO CLIPS NGU�N #{idx + 1}</span>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="flex gap-2">
@@ -1855,7 +1856,7 @@ export function EditVideoWorkspace({
                                   />
                                 </div>
                                 <div className="flex flex-col gap-1 flex-1">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Cắt đến (s)</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Cắt �ến (s)</label>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1867,7 +1868,7 @@ export function EditVideoWorkspace({
                                 </div>
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Tốc độ phát</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">T�c ��" phát</label>
                                 <select
                                   value={item.playbackRate || 1.0}
                                   onChange={(e) => handleUpdateTimelineItem(idx, 'playbackRate', parseFloat(e.target.value) || 1.0)}
@@ -1882,7 +1883,7 @@ export function EditVideoWorkspace({
                             </div>
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Hiệu ứng Zoom</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Hi�!u ứng Zoom</label>
                                 <select
                                   value={item.effects?.zoom || 'none'}
                                   onChange={(e) => handleUpdateTimelineItem(idx, 'effects', { ...item.effects, zoom: e.target.value })}
@@ -1894,13 +1895,13 @@ export function EditVideoWorkspace({
                                 </select>
                               </div>
                               <div className="flex flex-col gap-1">
-                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Chuyển cảnh</label>
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">ChuyỒn cảnh</label>
                                 <select
                                   value={item.effects?.transition || 'none'}
                                   onChange={(e) => handleUpdateTimelineItem(idx, 'effects', { ...item.effects, transition: e.target.value })}
                                   className="w-full text-xs p-2 border border-slate-200 rounded-lg outline-none focus:border-cyan-400 bg-white"
                                 >
-                                  <option value="none">Không hiệu ứng</option>
+                                  <option value="none">Không hi�!u ứng</option>
                                   <option value="fade">Mờ dần (Fade out)</option>
                                 </select>
                               </div>
@@ -1908,7 +1909,7 @@ export function EditVideoWorkspace({
                             <div className="grid gap-3 sm:grid-cols-2 border-t border-slate-100 pt-2.5">
                               <div className="flex flex-col gap-1">
                                 <div className="flex justify-between items-center">
-                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Độ sáng</label>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Đ�" sáng</label>
                                   <span className="text-[10px] font-semibold text-slate-700">{Math.round((item.filters?.brightness || 1.0) * 100)}%</span>
                                 </div>
                                 <input
@@ -1929,7 +1930,7 @@ export function EditVideoWorkspace({
                                   onChange={(e) => handleUpdateTimelineItem(idx, 'filters', { ...item.filters, grayscale: e.target.checked ? 1.0 : 0 })}
                                   className="w-4 h-4 rounded border-slate-350 text-cyan-600 focus:ring-cyan-500 accent-cyan-600 cursor-pointer"
                                 />
-                                <label htmlFor={`gray-comp-${idx}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wide cursor-pointer select-none">Màu đen trắng</label>
+                                <label htmlFor={`gray-comp-${idx}`} className="text-[10px] font-bold text-slate-500 uppercase tracking-wide cursor-pointer select-none">Màu �en trắng</label>
                               </div>
                             </div>
                           </div>
@@ -1948,7 +1949,7 @@ export function EditVideoWorkspace({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Sẵn sàng sáng tạo</p>
-                  <p className="mt-1 text-sm text-slate-500">Tải video gốc và nhập ý tưởng để bắt đầu.</p>
+                  <p className="mt-1 text-sm text-slate-500">Tải video g�c và nhập ý tư�xng �Ồ bắt �ầu.</p>
                 </div>
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">Preview</div>
               </div>
@@ -2005,7 +2006,7 @@ export function EditVideoWorkspace({
                               setBlueprint(null);
                               setOutputUrl(null);
                               setDisplayProgress(0);
-                              toast.success('Đã đặt video kết quả thành video đầu vào. Hãy nhập ý tưởng mới để tiếp tục chỉnh sửa!');
+                              toast.success('Đã �ặt video kết quả thành video �ầu vào. Hãy nhập ý tư�xng m�:i �Ồ tiếp tục ch�0nh sửa!');
                             }}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700 cursor-pointer shadow-sm shadow-cyan-155 mt-2"
                           >
@@ -2058,21 +2059,21 @@ export function EditVideoWorkspace({
                         <div className="max-w-md space-y-2">
                           <p className={`text-sm font-bold uppercase tracking-wider ${statusVal === 'failed' ? 'text-rose-600' : 'text-slate-900'}`}>
                             {statusVal === 'failed'
-                              ? 'TIẾN TRÌNH DỰNG VIDEO THẤT BẠI'
+                              ? 'TIẾN TR�RNH DỰNG VIDEO THẤT BẠI'
                               : statusVal === 'queued'
-                                ? 'ĐANG CHỜ TRONG HÀNG ĐỢI...'
+                                ? 'ĐANG CH�S TRONG HìNG ĐỢI...'
                                 : isLocalRender
-                                  ? 'ĐANG TIẾN HÀNH DỰNG VIDEO...'
-                                  : 'ĐANG TẠO VIDEO TRÊN CLOUD...'}
+                                  ? 'ĐANG TIẾN HìNH DỰNG VIDEO...'
+                                  : 'ĐANG TẠO VIDEO TR�`N CLOUD...'}
                           </p>
                           <p className="text-xs text-slate-500 leading-relaxed">
                             {statusVal === 'failed'
-                              ? 'Đã xảy ra lỗi trong quá trình xử lý hoặc kết xuất video. Vui lòng kiểm tra chi tiết lỗi bên dưới.'
+                              ? 'Đã xảy ra l�i trong quá trình xử lý hoặc kết xuất video. Vui lòng kiỒm tra chi tiết l�i bên dư�:i.'
                               : statusVal === 'queued'
-                                ? 'Yêu cầu của bạn đã được đưa vào hàng đợi. Hệ thống sẽ tiến hành xử lý ngay khi có tài nguyên trống.'
+                                ? 'Yêu cầu của bạn �ã �ược �ưa vào hàng �ợi. H�! th�ng sẽ tiến hành xử lý ngay khi có tài nguyên tr�ng.'
                                 : isLocalRender
-                                  ? 'Hệ thống đang thực hiện xử lý hình ảnh, âm thanh và kết xuất tệp MP4 chất lượng cao tại local. Vui lòng đợi trong giây lát.'
-                                  : 'Video đang được tạo bằng dịch vụ đám mây (Cloud). Quá trình này có thể mất vài phút.'}
+                                  ? 'H�! th�ng �ang thực hi�!n xử lý hình ảnh, âm thanh và kết xuất t�!p MP4 chất lượng cao tại local. Vui lòng �ợi trong giây lát.'
+                                  : 'Video �ang �ược tạo bằng d�9ch vụ �ám mây (Cloud). Quá trình này có thỒ mất vài phút.'}
                           </p>
                         </div>
 
@@ -2088,7 +2089,7 @@ export function EditVideoWorkspace({
 
                         {errorVal && (
                           <p className="text-xs text-rose-500 font-semibold bg-rose-50 border border-rose-100 px-4 py-2 rounded-2xl max-w-sm">
-                            Lỗi render: {errorVal}
+                            L�i render: {errorVal}
                           </p>
                         )}
                       </div>
@@ -2117,14 +2118,14 @@ export function EditVideoWorkspace({
                         <button
                           type="button"
                           onClick={() => {
-                            // Quay lại sửa kịch bản hiện tại (bằng cách xóa outputUrl)
+                            // Quay lại sửa k�9ch bản hi�!n tại (bằng cách xóa outputUrl)
                             setOutputUrl(null);
-                            toast.success('Đã quay lại trình chỉnh sửa. Bạn có thể sửa trực tiếp kịch bản trên timeline và bấm kết xuất lại!');
+                            toast.success('Đã quay lại trình ch�0nh sửa. Bạn có thỒ sửa trực tiếp k�9ch bản trên timeline và bấm kết xuất lại!');
                           }}
                           className="flex-1 inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-700 cursor-pointer shadow-sm shadow-cyan-155"
                         >
                           <Wand2 className="h-4 w-4" />
-                          Sửa tiếp kịch bản
+                          Sửa tiếp k�9ch bản
                         </button>
                       </div>
 
@@ -2144,11 +2145,11 @@ export function EditVideoWorkspace({
                           setBlueprint(null);
                           setOutputUrl(null);
                           setDisplayProgress(0);
-                          toast.success('Đã thêm video kết quả vào danh sách video đầu vào. Hãy nhập ý tưởng mới để tiếp tục chỉnh sửa!');
+                          toast.success('Đã thêm video kết quả vào danh sách video �ầu vào. Hãy nhập ý tư�xng m�:i �Ồ tiếp tục ch�0nh sửa!');
                         }}
                         className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
                       >
-                        Dựng dự án mới từ video này
+                        Dựng dự án m�:i từ video này
                       </button>
                     </div>
                   ) : (blueprint && !isHermes) ? (
@@ -2156,15 +2157,15 @@ export function EditVideoWorkspace({
                   ) : (
                     <div className="flex max-w-[320px] flex-col items-center gap-4">
                       <Film className="h-12 w-12" />
-                      <p className="text-lg font-semibold text-slate-900">Sẵn sàng chỉnh sửa</p>
-                      <p className="text-sm leading-6 text-slate-500">Video preview sẽ hiện sau khi hoàn thành render.</p>
+                      <p className="text-lg font-semibold text-slate-900">Sẵn sàng ch�0nh sửa</p>
+                      <p className="text-sm leading-6 text-slate-500">Video preview sẽ hi�!n sau khi hoàn thành render.</p>
                     </div>
                   )
                 ) : (
                   <div className="flex max-w-[320px] flex-col items-center gap-4">
                     <Film className="h-12 w-12" />
-                    <p className="text-lg font-semibold text-slate-900">Sẵn sàng chỉnh sửa</p>
-                    <p className="text-sm leading-6 text-slate-500">Video preview sẽ hiện sau khi hoàn thành render.</p>
+                    <p className="text-lg font-semibold text-slate-900">Sẵn sàng ch�0nh sửa</p>
+                    <p className="text-sm leading-6 text-slate-500">Video preview sẽ hi�!n sau khi hoàn thành render.</p>
                   </div>
                 )}
               </div>
@@ -2173,8 +2174,8 @@ export function EditVideoWorkspace({
             <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Lịch sử tạo video</p>
-                  <p className="mt-1 text-sm text-slate-500">Hiển thị tối đa 20 kết quả gần nhất, từ mới đến cũ.</p>
+                  <p className="text-sm font-semibold text-slate-900">L�9ch sử tạo video</p>
+                  <p className="mt-1 text-sm text-slate-500">HiỒn th�9 t�i �a 20 kết quả gần nhất, từ m�:i �ến cũ.</p>
                 </div>
                 <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700">{history.slice(0, 20).length}/20</span>
               </div>
@@ -2182,7 +2183,7 @@ export function EditVideoWorkspace({
               <div className="space-y-4">
                 {history.length === 0 ? (
                   <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6 text-center text-slate-500">
-                    Chưa có lịch sử tạo video.
+                    Chưa có l�9ch sử tạo video.
                   </div>
                 ) : (
                   <div className="max-h-[600px] overflow-y-auto pr-1 space-y-3">
@@ -2210,7 +2211,7 @@ export function EditVideoWorkspace({
                                 : item.metadata.blueprint;
                               setBlueprint(parsed);
                             } catch (e) {
-                              console.error('Lỗi parse blueprint lịch sử:', e);
+                              console.error('L�i parse blueprint l�9ch sử:', e);
                               setBlueprint(null);
                             }
                           } else {
@@ -2235,7 +2236,7 @@ export function EditVideoWorkspace({
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-slate-900 line-clamp-2 leading-relaxed">{item.prompt || 'Video AI đã tạo'}</p>
+                          <p className="font-semibold text-slate-900 line-clamp-2 leading-relaxed">{item.prompt || 'Video AI �ã tạo'}</p>
                           <p className="mt-1 text-sm text-slate-500">{new Date(item.createdAt).toLocaleString()}</p>
                           <div className="mt-3 flex flex-wrap gap-2 text-xs">
                             <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{item.aspectRatio || '16:9'}</span>
@@ -2260,8 +2261,8 @@ export function EditVideoWorkspace({
             <div className="w-full max-w-3xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                 <div>
-                  <p className="text-lg font-semibold text-slate-900">Thư viện video</p>
-                  <p className="mt-1 text-sm text-slate-500">Chọn video đã tải lên để dùng làm nguồn đầu vào.</p>
+                  <p className="text-lg font-semibold text-slate-900">Thư vi�!n video</p>
+                  <p className="mt-1 text-sm text-slate-500">Chọn video �ã tải lên �Ồ dùng làm ngu�n �ầu vào.</p>
                 </div>
                 <button
                   type="button"
@@ -2274,7 +2275,7 @@ export function EditVideoWorkspace({
               <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-6">
                 {history.length === 0 ? (
                   <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
-                    Chưa có video trong thư viện. Vui lòng tạo hoặc tải video lên trước.
+                    Chưa có video trong thư vi�!n. Vui lòng tạo hoặc tải video lên trư�:c.
                   </div>
                 ) : (
                   <div className="grid gap-4 sm:grid-cols-2">
@@ -2307,7 +2308,7 @@ export function EditVideoWorkspace({
                           )}
                         </div>
                         <div className="mt-3">
-                          <p className="font-semibold text-slate-900 line-clamp-2 leading-relaxed">{item.prompt || 'Video đã tải lên'}</p>
+                          <p className="font-semibold text-slate-900 line-clamp-2 leading-relaxed">{item.prompt || 'Video �ã tải lên'}</p>
                           <p className="mt-2 text-xs text-slate-500">{new Date(item.createdAt).toLocaleString()}</p>
                         </div>
                       </button>
@@ -2329,8 +2330,8 @@ export function EditVideoWorkspace({
             >
               <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
                 <div>
-                  <p className="text-lg font-semibold text-white">Video đầu vào</p>
-                  <p className="mt-1 text-xs text-slate-400">Xem trước video gốc của bạn.</p>
+                  <p className="text-lg font-semibold text-white">Video �ầu vào</p>
+                  <p className="mt-1 text-xs text-slate-400">Xem trư�:c video g�c của bạn.</p>
                 </div>
                 <button
                   type="button"

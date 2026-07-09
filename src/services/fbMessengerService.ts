@@ -1,10 +1,13 @@
 import { getAccessToken } from "./authService";
 
+type MessengerRecord = Record<string, unknown>;
+type MessengerPagination = { limit: number; hasMore: boolean; nextBefore: string | null };
+
 export const fbMessengerService = {
   /**
    * Lay danh sach cuoc hoi thoai cua Page Facebook da lien ket
    */
-  async getConversations(options?: { sync?: boolean; pageId?: string; limit?: number; skip?: number }): Promise<any[]> {
+  async getConversations(options?: { sync?: boolean; pageId?: string; limit?: number; skip?: number }): Promise<MessengerRecord[]> {
     console.log("[FE FB Service] Bat dau goi API getConversations...");
     const params = new URLSearchParams();
     if (options?.sync) {
@@ -40,7 +43,7 @@ export const fbMessengerService = {
   /**
    * Lay lich su tin nhan cua mot cuoc hoi thoai cu the
    */
-  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean; pageId?: string }): Promise<{ data: any[]; pagination: { limit: number; hasMore: boolean; nextBefore: string | null } }> {
+  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean; pageId?: string }): Promise<{ data: MessengerRecord[]; pagination: MessengerPagination }> {
     const params = new URLSearchParams();
     params.set("limit", String(options?.limit || 20));
     if (options?.before) {
@@ -76,7 +79,7 @@ export const fbMessengerService = {
   /**
    * Danh dau da doc cuoc hoi thoai qua Facebook
    */
-  async markRead(conversationId: string, pageId?: string): Promise<any> {
+  async markRead(conversationId: string, pageId?: string): Promise<MessengerRecord | null> {
     console.log(`[FE FB Service] Bat dau goi API markRead cho conversation: ${conversationId}...`);
     const query = pageId ? `?pageId=${encodeURIComponent(pageId)}` : "";
     const res = await fetch(`/api/v1/facebook/messenger/conversations/${conversationId}/mark-read${query}`, {
@@ -96,7 +99,7 @@ export const fbMessengerService = {
     return result.data;
   },
 
-  async resumeAI(conversationId: string, pageId?: string): Promise<any> {
+  async resumeAI(conversationId: string, pageId?: string): Promise<MessengerRecord | null> {
     console.log(`[FE FB Service] Bat dau goi API resumeAI cho conversation: ${conversationId}...`);
     const query = pageId ? `?pageId=${encodeURIComponent(pageId)}` : "";
     const res = await fetch(`/api/v1/facebook/messenger/conversations/${conversationId}/resume-ai${query}`, {
@@ -116,7 +119,7 @@ export const fbMessengerService = {
     return result.data;
   },
 
-  async sendReply(conversationId: string, text: string, pageId?: string): Promise<any> {
+  async sendReply(conversationId: string, text: string, pageId?: string): Promise<MessengerRecord | null> {
     console.log(`[FE FB Service] Bat dau goi API sendReply toi conversation ${conversationId}. Noi dung: "${text}"`);
     const res = await fetch("/api/v1/facebook/messenger/reply", {
       method: "POST",

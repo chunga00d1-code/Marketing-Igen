@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { AIMediaModel } from "../model/ai-media.model";
 import { cloudinaryService } from "./cloudinary.service";
 import { UserModel } from "../model/user.model";
@@ -52,7 +53,7 @@ async function getElevenLabsApiKey(userId?: string): Promise<string> {
       }
     }
   } catch (err) {
-    console.error("[getElevenLabsApiKey] Lỗi phân giải API key ElevenLabs:", err);
+    console.error("[getElevenLabsApiKey] Lá»—i phÃ¢n giáº£i API key ElevenLabs:", err);
   }
   return process.env.ELEVENLABS_API_KEY?.trim() || "";
 }
@@ -83,7 +84,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -147,7 +148,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -171,7 +172,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -198,7 +199,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -228,7 +229,7 @@ export const elevenlabsService = {
   ) {
     const apiKey = await getElevenLabsApiKey(userId);
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     const resolvedVoiceId = resolveElevenLabsVoiceId(voiceId);
@@ -253,7 +254,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -281,7 +282,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -324,7 +325,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -358,7 +359,7 @@ export const elevenlabsService = {
     const apiKey = await getElevenLabsApiKey(userId);
 
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {
@@ -403,7 +404,7 @@ export const elevenlabsService = {
   async deleteVoice(userId: string, voiceId: string) {
     const apiKey = await getElevenLabsApiKey(userId);
     if (!apiKey || apiKey.trim() === "") {
-      throw new Error("API Key ElevenLabs chưa được cấu hình cho tài khoản hoặc doanh nghiệp.");
+      throw new Error("API Key ElevenLabs chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh cho tÃ i khoáº£n hoáº·c doanh nghiá»‡p.");
     }
 
     try {

@@ -139,7 +139,7 @@ export function formatAiModelName(name: string): string {
   return name.replace(/-preview/g, '').toUpperCase();
 }
 
-export function estimateCost(model: string, amount: number, options?: { resolution?: string; inputAmount?: number }) {
+export function estimateCost(model: string, amount: number, _options?: { resolution?: string; inputAmount?: number }) {
   const pricing = PRICING_TABLE[model];
   if (!pricing) {
     return {
@@ -153,7 +153,7 @@ export function estimateCost(model: string, amount: number, options?: { resoluti
 
   const multiplier = pricing.unit === '1k tokens' ? 1000 : 1;
   const scaledAmount = amount / multiplier;
-  let costCredit = pricing.costPerUnitCredit * scaledAmount;
+  const costCredit = pricing.costPerUnitCredit * scaledAmount;
   const costVND = Math.round(costCredit * USD_TO_VND);
 
   return {
@@ -173,7 +173,7 @@ export function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3);
 }
 
-export async function recordUsage(params: any): Promise<void> {
+export async function recordUsage(params: unknown): Promise<void> {
   // Stubbed out - no database write on ERP frontend
   console.log(`[UsageTracker Stub] recordUsage stub:`, params);
   return Promise.resolve();

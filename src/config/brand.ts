@@ -1,6 +1,6 @@
-export const BRAND_NAME = "iGen ERP";
-export const BRAND_TAGLINE = "Enterprise Hub";
-export const SERVICE_WEBSITE_URL = "https://erp.igentechsolutions.com";
+export const BRAND_NAME = "iGen Marketing";
+export const BRAND_TAGLINE = "Marketing & Sales Workspace";
+export const SERVICE_WEBSITE_URL = "https://marketing.igentechsolutions.com";
 export const SUPPORT_EMAIL = "igen.work99@gmail.com";
 export const SUPPORT_URL = `${SERVICE_WEBSITE_URL}/#phap-ly`;
 export const PRIVACY_POLICY_URL = `${SERVICE_WEBSITE_URL}/privacy-policy`;

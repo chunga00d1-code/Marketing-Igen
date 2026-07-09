@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * OpenRouter Service
- * ──────────────────
- * OpenAI-compatible client trỏ tới https://openrouter.ai/api/v1.
- * Hỗ trợ: chat completions (text + vision), image generation.
+ * ������������������������������������
+ * OpenAI-compatible client trỏ t�:i https://openrouter.ai/api/v1.
+ * H� trợ: chat completions (text + vision), image generation.
  */
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -13,8 +14,8 @@ function getApiKey(): string {
 
 /**
  * Thêm provider prefix nếu chưa có.
- * "gemini-2.5-flash" → "google/gemini-2.5-flash"
- * "claude-opus-4-5"  → "anthropic/claude-opus-4-5"
+ * "gemini-2.5-flash" �  "google/gemini-2.5-flash"
+ * "claude-opus-4-5"  �  "anthropic/claude-opus-4-5"
  */
 export function mapModelName(modelName: string): string {
   if (!modelName) return "google/gemini-2.5-flash";
@@ -41,20 +42,20 @@ export interface OpenRouterChatParams {
   temperature?: number;
   /** Return JSON object (response_format: json_object) */
   jsonMode?: boolean;
-  /** Optional JSON schema — injected into system prompt as instruction */
+  /** Optional JSON schema � injected into system prompt as instruction */
   responseSchema?: object;
   maxRetries?: number;
 }
 
 /**
- * Chat completions — text và/hoặc vision (base64 images).
+ * Chat completions � text và/hoặc vision (base64 images).
  */
 export async function openrouterChat(params: OpenRouterChatParams): Promise<{ text: string }> {
   const { model, temperature = 0.7, jsonMode, responseSchema, maxRetries = 4 } = params;
   const apiKey = getApiKey();
 
   if (!apiKey) {
-    throw new Error("[OpenRouter] OPENROUTER_API_KEY chưa được cấu hình trong .env");
+    throw new Error("[OpenRouter] OPENROUTER_API_KEY chưa �ược cấu hình trong .env");
   }
 
   const mappedModel = mapModelName(model);
@@ -105,7 +106,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
 
       if (!response.ok) {
         const errText = await response.text();
-        const err = new Error(`OpenRouter API lỗi ${response.status}: ${errText}`) as any;
+        const err = new Error(`OpenRouter API l�i ${response.status}: ${errText}`) as any;
         err.status = response.status;
         throw err;
       }
@@ -147,12 +148,12 @@ export interface OpenRouterImageParams {
 }
 
 /**
- * Image generation qua OpenRouter /chat/completions với modalities: ["image", "text"]
- * Đây là cách chính thức theo OpenRouter SDK — /images endpoint bị geo-block Vietnam
+ * Image generation qua OpenRouter /chat/completions v�:i modalities: ["image", "text"]
+ * Đây là cách chính thức theo OpenRouter SDK � /images endpoint b�9 geo-block Vietnam
  */
 export async function openrouterGenerateImage(params: OpenRouterImageParams): Promise<{ url: string }> {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error("[OpenRouter] OPENROUTER_API_KEY chưa được cấu hình trong .env");
+  if (!apiKey) throw new Error("[OpenRouter] OPENROUTER_API_KEY chưa �ược cấu hình trong .env");
 
   const model = params.model
     ? mapModelName(params.model)
@@ -167,7 +168,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
 
   console.log(`[OpenRouter Image] chat+modalities | model=${model} | promptLen=${params.prompt.length}`);
 
-  // Build message content — text prompt + optional reference images
+  // Build message content � text prompt + optional reference images
   const content: any[] = [{ type: "text", text: params.prompt }];
   for (const img of params.referenceImages || []) {
     content.push({ type: "image_url", image_url: { url: img } });
@@ -193,7 +194,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
 
       if (!response.ok) {
         const errText = await response.text();
-        const err = new Error(`[OpenRouter] Image generation lỗi ${response.status}: ${errText}`) as any;
+        const err = new Error(`[OpenRouter] Image generation l�i ${response.status}: ${errText}`) as any;
         err.status = response.status;
         throw err;
       }

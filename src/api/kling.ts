@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 async function getHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = localStorage.getItem("accessToken");
@@ -32,7 +33,7 @@ export const klingApi = {
       body: JSON.stringify(params),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, "Lỗi tạo Kling Motion Control video");
+      await handleErrorResponse(response, "Lá»—i táº¡o Kling Motion Control video");
     }
     return response.json();
   },

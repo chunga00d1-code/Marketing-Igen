@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
-import { Activity, Zap, FileText, DollarSign, MessageSquare } from "lucide-react";
+import { Zap, FileText, DollarSign, MessageSquare } from "lucide-react";
 import { CRMSubTabType, ChatMessage, CustomerInbox, AIChatConfig, ChatPagination } from "../types";
-import { geminiApi } from "../api/gemini";
 import { toast } from "./Toast";
 import { crmService, ExtendedLeadCard } from "../services/crmService";
 import { useAuth } from "../context/AuthContext";
@@ -37,7 +36,7 @@ const CRM_SUB_TAB_ROUTES = [
 ] as const;
 
 export default function CRMTab() {
-  const [subTab, setSubTab] = useSubTabRouter<CRMSubTabType>(CRM_SUB_TAB_ROUTES as any, "PHỄU KHÁCH HÀNG");
+  const [subTab, setSubTab] = useSubTabRouter<CRMSubTabType>(CRM_SUB_TAB_ROUTES as unknown as readonly { readonly slug: string; readonly value: CRMSubTabType }[], "PHỄU KHÁCH HÀNG");
   const [activeChannel, setActiveChannel] = useState<"all" | "facebook" | "zalo" | "tiktok">("all");
 
   // 1. Leads Kanban Pipeline States loaded from Firebase
@@ -164,9 +163,6 @@ export default function CRMTab() {
 
   const [selectedTiktokAccountId, setSelectedTiktokAccountId] = useState<string>("");
 
-  const [showPageDropdown, setShowPageDropdown] = useState(false);
-  const [showZaloDropdown, setShowZaloDropdown] = useState(false);
-  const [showTiktokDropdown, setShowTiktokDropdown] = useState(false);
   const [showUnifiedDropdown, setShowUnifiedDropdown] = useState(false);
 
   // Synchronize selectedFacebookPageId when facebookPages changes
@@ -259,7 +255,6 @@ export default function CRMTab() {
   });
 
   const [typeMessage, setTypeMessage] = useState("");
-  const [aiWaiting, setAIWaiting] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const conversationRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -372,9 +367,10 @@ export default function CRMTab() {
       } else {
         await updateAiAutoReplyConfig(configWithTimestamp);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Lỗi lưu cấu hình AI";
       console.error("[CRMTab] Lỗi lưu cấu hình AI:", err);
-      toast.error(err.message || "Lỗi lưu cấu hình AI");
+      toast.error(msg);
     }
   };
 
@@ -431,38 +427,32 @@ export default function CRMTab() {
         }
       }
       toast.success(`Đã sao chép cấu hình thành công sang ${successCount}/${otherIntegrations.length} tài khoản khác!`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       toast.error("Lỗi xảy ra trong quá trình đồng bộ cấu hình.");
     } finally {
       setCopyingConfig(false);
     }
   };
-
-  const mapFbMessages = (msgs: any[]): ChatMessage[] => msgs.map((m: any) => ({
-    id: m._id || m.messageId,
-    sender: m.direction === "inbound" ? "user" : "agent",
-    text: m.text || "",
-    timestamp: new Date(m.timestamp),
-    attachments: Array.isArray(m.attachments) ? m.attachments : [],
-    conversationId: m.conversationId,
-  }));
-
-  const areMessagesEqual = (left: ChatMessage[], right: ChatMessage[]) => {
-    if (left.length !== right.length) return false;
-    for (let i = 0; i < left.length; i += 1) {
-      if (
-        left[i].id !== right[i].id ||
-        left[i].sender !== right[i].sender ||
-        left[i].text !== right[i].text ||
-        left[i].timestamp.getTime() !== right[i].timestamp.getTime() ||
-        JSON.stringify(left[i].attachments || []) !== JSON.stringify(right[i].attachments || [])
-      ) {
-        return false;
-      }
-    }
-    return true;
-  };
+  const mapFbMessages = (
+    msgs: Array<{
+      _id?: string;
+      messageId?: string;
+      direction: "inbound" | "outbound";
+      text?: string;
+      timestamp: string | Date;
+      attachments?: unknown[];
+      conversationId?: string;
+    }>
+  ): ChatMessage[] =>
+    msgs.map((m) => ({
+      id: m._id || m.messageId || "",
+      sender: m.direction === "inbound" ? "user" : "agent",
+      text: m.text || "",
+      timestamp: new Date(m.timestamp),
+      attachments: Array.isArray(m.attachments) ? m.attachments : [],
+      conversationId: m.conversationId || "",
+    }));
 
   const loadConversationMessages = async (
     conversationId: string,
@@ -480,11 +470,56 @@ export default function CRMTab() {
     const targetChannel = channel || activeCustomer?.channel || "facebook";
 
     try {
-      const result = targetChannel === "zalo"
-        ? await zaloMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
-        : targetChannel === "tiktok"
-          ? await tiktokMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
-          : await fbMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, pageId: selectedFacebookPageId });
+      let result;
+      if (targetChannel === "tiktok" && (conversationId === "mock_tiktok_conv_1" || conversationId === "mock_tiktok_conv_2")) {
+        if (conversationId === "mock_tiktok_conv_1") {
+          result = {
+            data: [
+              {
+                _id: "msg_1",
+                direction: "inbound",
+                text: "Xin chào iGen Marketing!",
+                timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+                conversationId,
+              },
+              {
+                _id: "msg_2",
+                direction: "outbound",
+                text: "Chào anh Hùng, iGen Marketing xin chào anh. Chúng em có thể hỗ trợ gì cho anh ạ?",
+                timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+                conversationId,
+              },
+              {
+                _id: "msg_3",
+                direction: "inbound",
+                text: "Sản phẩm này bên mình còn hàng không ạ?",
+                timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+                conversationId,
+              }
+            ],
+            pagination: { limit: 20, hasMore: false, nextBefore: null }
+          };
+        } else {
+          result = {
+            data: [
+              {
+                _id: "msg_4",
+                direction: "inbound",
+                text: "Shop ơi, hướng dẫn em cách đặt hàng với ạ.",
+                timestamp: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+                conversationId,
+              }
+            ],
+            pagination: { limit: 20, hasMore: false, nextBefore: null }
+          };
+        }
+      } else {
+        result = targetChannel === "zalo"
+          ? await zaloMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
+          : targetChannel === "tiktok"
+            ? await tiktokMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
+            : await fbMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, pageId: selectedFacebookPageId });
+      }
 
       // Ngăn chặn race-condition khi người dùng chuyển đổi khách hàng nhanh
       // conversationId o day la Mongo _id cua conversation trong DB, khong phai PSID/UID cua khach.
@@ -572,8 +607,30 @@ export default function CRMTab() {
         ? 20
         : (isLoadMore ? convsPaginationRef.current.limit : (convsPaginationRef.current.skip + convsPaginationRef.current.limit || 20));
 
-      let fbConvs: any[] = [];
-      let zaloConvs: any[] = [];
+      let fbConvs: Array<{
+        _id: string;
+        recipientId?: string;
+        senderName?: string;
+        avatarUrl?: string;
+        lastMessageText?: string;
+        lastMessageAt: string;
+        unreadCount?: number;
+        isVip?: boolean;
+        tags?: string[];
+        aiPausedUntil?: string | null;
+      }> = [];
+      let zaloConvs: Array<{
+        _id: string;
+        recipientId?: string;
+        senderName?: string;
+        avatarUrl?: string;
+        lastMessageText?: string;
+        lastMessageAt: string;
+        unreadCount?: number;
+        isVip?: boolean;
+        tags?: string[];
+        aiPausedUntil?: string | null;
+      }> = [];
 
       if (isFbConnected) {
         try {
@@ -599,21 +656,60 @@ export default function CRMTab() {
         }
       }
 
-      let tiktokConvs: any[] = [];
+      let tiktokConvs: Array<{
+        _id: string;
+        openId?: string;
+        senderName?: string;
+        avatarUrl?: string;
+        lastMessageText?: string;
+        lastMessageAt: string;
+        unreadCount?: number;
+        isVip?: boolean;
+        tags?: string[];
+        aiPausedUntil?: string | null;
+      }> = [];
       if (isTiktokConnected) {
-        try {
-          tiktokConvs = await tiktokMessengerService.getConversations({
-            limit,
-            skip: currentSkip
-          });
-        } catch (err) {
-          console.error("Lỗi lấy hội thoại TikTok:", err);
+        const hasMockTiktok = companySocialIntegrations.some(item => item.platform === "TikTok" && item.isConnected && item.isMock)
+          || !!(userProfile?.tiktokIntegration?.isConnected && userProfile.tiktokIntegration.isMock);
+
+        if (hasMockTiktok) {
+          tiktokConvs = [
+            {
+              _id: "mock_tiktok_conv_1",
+              openId: "mock_tiktok_user_1",
+              senderName: "Nguyễn Văn Hùng (TikTok Sandbox)",
+              avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80",
+              lastMessageText: "Sản phẩm này bên mình còn hàng không ạ?",
+              lastMessageAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+              unreadCount: 1,
+              tags: ["Hỏi hàng", "Tiềm năng"],
+            },
+            {
+              _id: "mock_tiktok_conv_2",
+              openId: "mock_tiktok_user_2",
+              senderName: "Trần Thị Lan (TikTok Sandbox)",
+              avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
+              lastMessageText: "Shop ơi, hướng dẫn em cách đặt hàng với ạ.",
+              lastMessageAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+              unreadCount: 0,
+              tags: ["Cần tư vấn"],
+            }
+          ];
+        } else {
+          try {
+            tiktokConvs = await tiktokMessengerService.getConversations({
+              limit,
+              skip: currentSkip
+            });
+          } catch (err) {
+            console.error("Lỗi lấy hội thoại TikTok:", err);
+          }
         }
       }
 
-      const mappedFb: CustomerInbox[] = fbConvs.map((c: any) => ({
+      const mappedFb: CustomerInbox[] = fbConvs.map((c) => ({
         id: c._id,
-        recipientId: c.recipientId,
+        recipientId: c.recipientId || "",
         name: c.senderName || "Khách hàng Facebook",
         avatar: c.avatarUrl || "👤",
         avatarUrl: c.avatarUrl || "",
@@ -626,11 +722,11 @@ export default function CRMTab() {
         channel: "facebook",
         lastMessageAt: new Date(c.lastMessageAt),
         aiPausedUntil: c.aiPausedUntil || null
-      } as any));
+      }));
 
-      const mappedZalo: CustomerInbox[] = zaloConvs.map((c: any) => ({
+      const mappedZalo: CustomerInbox[] = zaloConvs.map((c) => ({
         id: c._id,
-        recipientId: c.recipientId,
+        recipientId: c.recipientId || "",
         name: c.senderName || "Khách hàng Zalo",
         avatar: c.avatarUrl || "👤",
         avatarUrl: c.avatarUrl || "",
@@ -643,11 +739,11 @@ export default function CRMTab() {
         channel: "zalo",
         lastMessageAt: new Date(c.lastMessageAt),
         aiPausedUntil: c.aiPausedUntil || null
-      } as any));
+      }));
 
-      const mappedTiktok: CustomerInbox[] = tiktokConvs.map((c: any) => ({
+      const mappedTiktok: CustomerInbox[] = tiktokConvs.map((c) => ({
         id: c._id,
-        recipientId: c.openId,
+        recipientId: c.openId || "",
         name: c.senderName || "Khách hàng TikTok",
         avatar: c.avatarUrl || "👤",
         avatarUrl: c.avatarUrl || "",
@@ -660,9 +756,9 @@ export default function CRMTab() {
         channel: "tiktok",
         lastMessageAt: new Date(c.lastMessageAt),
         aiPausedUntil: c.aiPausedUntil || null
-      } as any));
+      }));
 
-      let fetchedList = [...mappedFb, ...mappedZalo, ...mappedTiktok];
+      const fetchedList = [...mappedFb, ...mappedZalo, ...mappedTiktok];
       
 
 
@@ -679,7 +775,7 @@ export default function CRMTab() {
           }
           return c;
         }).sort(
-          (a: any, b: any) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
+          (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()
         );
 
         if (combined.length > 0) {
@@ -735,7 +831,25 @@ export default function CRMTab() {
   useEffect(() => {
     if (subTab !== "OMNI-INBOX CHAT" || (!isFbConnected && !isZaloConnected && !isTiktokConnected)) return;
 
-    const handleNewMessage = async (data: { message: any; conversation?: any }) => {
+    const handleNewMessage = async (data: {
+      message: {
+        _id?: string;
+        messageId?: string;
+        direction: "inbound" | "outbound";
+        text?: string;
+        timestamp: string | Date;
+        attachments?: unknown[];
+        conversationId?: string | Record<string, string>;
+        senderId?: string;
+        recipientId?: string;
+      };
+      conversation?: {
+        _id: string;
+        aiPausedUntil?: string | null;
+        lastMessageText?: string;
+        lastMessageAt?: string;
+      };
+    }) => {
       console.log("[FE CRMTab] socket new_message event received:", data);
       const { message, conversation } = data;
       const activeCust = activeCustomerRef.current;
@@ -771,7 +885,7 @@ export default function CRMTab() {
 
       if (activeCust) {
         const activeId = activeCust.id?.toString();
-        const msgConvId = (message.conversationId?._id || message.conversationId)?.toString();
+        const msgConvId = (typeof message.conversationId === "object" && message.conversationId ? (message.conversationId as Record<string, string>)._id : message.conversationId)?.toString();
         const activeRecipientId = activeCust.recipientId?.toString();
         const msgSenderId = message.senderId?.toString();
         const msgRecipientId = message.recipientId?.toString();
@@ -823,7 +937,12 @@ export default function CRMTab() {
       scheduleConversationRefresh();
     };
 
-    const handleConversationUpdated = async (conversation: any) => {
+    const handleConversationUpdated = async (conversation: {
+      _id: string;
+      aiPausedUntil?: string | null;
+      lastMessageText?: string;
+      lastMessageAt?: string;
+    }) => {
       console.log("[FE CRMTab] socket conversation_updated event received:", conversation);
       if (conversation) {
         setInboxCustomers((prev) =>
@@ -864,6 +983,7 @@ export default function CRMTab() {
       unsubscribeNewMsg();
       unsubscribeConvUpdate();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, isFbConnected, isZaloConnected]);
 
   useEffect(() => {
@@ -898,6 +1018,7 @@ export default function CRMTab() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, isFbConnected, isZaloConnected, isTiktokConnected, selectedFacebookPageId, selectedZaloAccountId, selectedTiktokAccountId, socketConnected]);
 
   // 2. Polling lịch sử tin nhắn của hội thoại đang chọn - Tối ưu hiệu năng Visibility
@@ -933,6 +1054,7 @@ export default function CRMTab() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, activeCustomer?.id, socketConnected]);
 
   // Xóa sạch lịch sử chat cũ ngay khi chuyển khách hàng để chuyển đổi mượt mà tức thì
@@ -1082,7 +1204,7 @@ export default function CRMTab() {
       }
 
       toast.success("Đã thêm khách hàng tiềm năng thành công!");
-    } catch (err) {
+    } catch {
       toast.error("Không thể tạo khách hàng trên hệ thống.");
     }
   };
@@ -1104,7 +1226,7 @@ export default function CRMTab() {
       }
 
       syncLeadTagToInbox(lead.customerName, newStatus, lead.lastInteraction);
-    } catch (err) {
+    } catch {
       toast.error("Không thể cập nhật trạng thái khách hàng.");
     }
   };
@@ -1113,7 +1235,7 @@ export default function CRMTab() {
     try {
       await crmService.deleteLead(id);
       toast.info("Đã xóa thẻ cơ hội bán hàng.");
-    } catch (err) {
+    } catch {
       toast.error("Không thể xóa khách hàng trên hệ thống.");
     }
   };
@@ -1180,9 +1302,10 @@ export default function CRMTab() {
       );
 
       toast.success("🤖 Đã kích hoạt lại AI phản hồi cuộc hội thoại này thành công!");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể kích hoạt lại AI.";
       console.error("[CRMTab] Lỗi kích hoạt lại AI:", err);
-      toast.error(err.message || "Không thể kích hoạt lại AI.");
+      toast.error(msg);
     }
   };
 
@@ -1211,16 +1334,66 @@ export default function CRMTab() {
 
 
     try {
-      if (activeCustomer.channel === "zalo") {
+      if (activeCustomer.id.startsWith("mock_tiktok_")) {
+        // Giả lập gửi tin nhắn thành công qua TikTok Sandbox
+        setInboxCustomers((prev) =>
+          prev.map((c) =>
+            c.id === activeCustomer.id
+              ? {
+                  ...c,
+                  lastMessage: msgText,
+                  time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+                }
+              : c
+          )
+        );
+
+        // Sau 1.5 giây, giả lập khách hàng TikTok tự động phản hồi lại tin nhắn
+        setTimeout(() => {
+          let customerReply = "Cảm ơn shop đã tư vấn ạ!";
+          const textLower = msgText.toLowerCase();
+          if (textLower.includes("giá") || textLower.includes("bao nhiêu") || textLower.includes("đắt") || textLower.includes("rẻ")) {
+            customerReply = "Dạ vâng giá hợp lý quá ạ, shop lên đơn gửi giúp em nhé!";
+          } else if (textLower.includes("hàng") || textLower.includes("còn") || textLower.includes("hết")) {
+            customerReply = "Dạ em cảm ơn shop nha, để em chọn size rồi báo shop.";
+          } else if (textLower.includes("ship") || textLower.includes("gửi") || textLower.includes("địa chỉ")) {
+            customerReply = "Dạ địa chỉ của em là 123 Nguyễn Trãi, Thanh Xuân, Hà Nội ạ.";
+          }
+          
+          const newInboundMsg: ChatMessage = {
+            id: "mock_inbound_" + Date.now(),
+            sender: "user", // Khách hàng trả lời
+            text: customerReply,
+            timestamp: new Date(),
+          };
+
+          setChatHistory((prev) => [...prev, newInboundMsg]);
+          
+          // Cập nhật tin nhắn cuối cùng trong danh sách chat
+          setInboxCustomers((prev) =>
+            prev.map((c) =>
+              c.id === activeCustomer.id
+                ? {
+                    ...c,
+                    lastMessage: customerReply,
+                    time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+                  }
+                : c
+            )
+          );
+        }, 1500);
+
+      } else if (activeCustomer.channel === "zalo") {
         await zaloMessengerService.sendReply(activeCustomer.id, msgText);
       } else if (activeCustomer.channel === "tiktok") {
         await tiktokMessengerService.sendReply(activeCustomer.id, msgText);
       } else {
         await fbMessengerService.sendReply(activeCustomer.id, msgText, selectedFacebookPageId);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể gửi tin nhắn phản hồi.";
       console.error(err);
-      toast.error(err.message || "Không thể gửi tin nhắn phản hồi.");
+      toast.error(msg);
       // Revert optimistic updates
       setChatHistory((prev) => prev.filter((h) => h.id !== userMsg.id));
       setActiveCustomer((prev) => prev ? { ...prev, aiPausedUntil: activeCustomer.aiPausedUntil } : null);
@@ -1261,7 +1434,7 @@ export default function CRMTab() {
     try {
       await crmService.createLead(newLead);
       toast.success(`Đã tự động thêm ${customer.name} vào phễu khách hàng!`);
-    } catch (err) {
+    } catch {
       toast.error("Không thể tạo khách hàng trên hệ thống.");
     }
   };
@@ -1490,6 +1663,10 @@ export default function CRMTab() {
                 facebookPages={facebookPages}
                 selectedFacebookPageId={selectedFacebookPageId}
                 setSelectedFacebookPageId={setSelectedFacebookPageId}
+                tiktokAccounts={tiktokAccounts}
+                selectedTiktokAccountId={selectedTiktokAccountId}
+                setSelectedTiktokAccountId={setSelectedTiktokAccountId}
+                companySocialIntegrations={companySocialIntegrations}
               />
             </div>
           )}

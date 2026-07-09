@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-empty-object-type */
 import { getAccessToken } from "./authService";
 
 export interface TransactionInfo {
@@ -47,9 +48,9 @@ async function parseApiResponse<T>(res: Response, fallbackMessage: string): Prom
     );
   }
 
-  let data: any;
+  let data: { message?: string } | undefined;
   try {
-    data = JSON.parse(rawBody);
+    data = JSON.parse(rawBody) as { message?: string };
   } catch {
     throw new Error(`${fallbackMessage}. Không parse được JSON từ server.`);
   }
@@ -159,7 +160,9 @@ export const walletService = {
     return result.data;
   },
 
-  async confirmMockPayment(orderCode: number): Promise<any> {
+  async confirmMockPayment(
+    orderCode: number
+  ): Promise<{ message?: string; status?: string; data?: unknown }> {
     const res = await fetch("/api/v1/wallet/webhook-mock", {
       method: "POST",
       headers: {
@@ -169,7 +172,10 @@ export const walletService = {
       body: JSON.stringify({ orderCode }),
     });
 
-    return await parseApiResponse<any>(res, "Lỗi khi xác nhận thanh toán giả lập");
+    return await parseApiResponse<{ message?: string; status?: string; data?: unknown }>(
+      res,
+      "Lỗi khi xác nhận thanh toán giả lập"
+    );
   },
 
   async checkTransactionStatus(orderCode: number): Promise<{

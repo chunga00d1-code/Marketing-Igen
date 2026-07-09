@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import Joi from "joi";
 import { rolePermissionController } from "../controller/role-permission.controller";

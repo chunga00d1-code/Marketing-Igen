@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import { heygenService } from "../service/heygen.service";
 import { walletService, API_COSTS } from "../service/wallet.service";

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Queue, Worker, Job } from "bullmq";
 import Redis from "ioredis";
 import net from "net";

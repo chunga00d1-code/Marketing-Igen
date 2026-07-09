@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { facebookPostService } from "./facebook-post.service";
 import { MarketingContentModel } from "../model/marketing-content.model";
 import { UserModel } from "../model/user.model";
@@ -5,12 +6,12 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 
 export const schedulerService = {
   /**
-   * Re-check các bài Facebook đang ở trạng thái "processing" (video chưa encode xong sau khi n8n callback).
-   * n8n workflow mới đã tự đăng bài và check status ngay sau 20s.
-   * Hàm này chỉ cần xử lý trường hợp video vẫn chưa ready sau lần check đó.
+   * Re-check các bài Facebook �ang �x trạng thái "processing" (video chưa encode xong sau khi n8n callback).
+   * n8n workflow m�:i �ã tự �Ēng bài và check status ngay sau 20s.
+   * Hàm này ch�0 cần xử lý trường hợp video vẫn chưa ready sau lần check �ó.
    */
   async checkAndPublishPosts() {
-    console.log("[Scheduler Service] Bắt đầu quét bài Facebook đang processing...");
+    console.log("[Scheduler Service] Bắt �ầu quét bài Facebook �ang processing...");
 
     try {
       const processingCards = await MarketingContentModel.find({
@@ -20,7 +21,7 @@ export const schedulerService = {
       });
 
       if (!processingCards || processingCards.length === 0) {
-        console.log("[Scheduler Service] Không có bài Facebook nào đang processing.");
+        console.log("[Scheduler Service] Không có bài Facebook nào �ang processing.");
         return { processedCount: 0, successCount: 0, failedCount: 0, details: [] };
       }
 
@@ -44,7 +45,7 @@ export const schedulerService = {
               isConnected: true,
             }).lean();
             if (!fbIntegration) {
-              throw new Error("Liên kết Facebook không còn tồn tại hoặc đã bị ngắt.");
+              throw new Error("Liên kết Facebook không còn t�n tại hoặc �ã b�9 ngắt.");
             }
             accessToken = fbIntegration.accessToken;
             isMock = !!fbIntegration.isMock;
@@ -58,7 +59,7 @@ export const schedulerService = {
             isMock = !!fbInt.isMock;
           }
 
-          if (!accessToken) throw new Error("Không lấy được access token.");
+          if (!accessToken) throw new Error("Không lấy �ược access token.");
 
           if (isMock || accessToken.includes("mock")) {
             await MarketingContentModel.findByIdAndUpdate(cardId, {
@@ -90,13 +91,13 @@ export const schedulerService = {
           } else if (checkResult.status === "failed") {
             throw new Error(checkResult.error || "Facebook video processing failed.");
           } else {
-            // Vẫn processing — bỏ qua, lần sau quét tiếp
+            // Vẫn processing � bỏ qua, lần sau quét tiếp
             details.push({ cardId, title: card.title, status: "pending" });
             processedCount--;
           }
         } catch (err: any) {
           const errMsg = err.message || String(err);
-          console.error(`[Scheduler Service] Lỗi re-check bài ${cardId}:`, errMsg);
+          console.error(`[Scheduler Service] L�i re-check bài ${cardId}:`, errMsg);
           await MarketingContentModel.findByIdAndUpdate(cardId, {
             status: "failed",
             publishError: errMsg,
@@ -106,22 +107,22 @@ export const schedulerService = {
         }
       }
 
-      console.log(`[Scheduler Service] Xong. Tổng: ${processedCount}, Thành công: ${successCount}, Thất bại: ${failedCount}`);
+      console.log(`[Scheduler Service] Xong. T�"ng: ${processedCount}, Thành công: ${successCount}, Thất bại: ${failedCount}`);
       return { processedCount, successCount, failedCount, details };
     } catch (dbError: any) {
-      console.error("[Scheduler Service] Lỗi DB:", dbError.message);
+      console.error("[Scheduler Service] L�i DB:", dbError.message);
       throw dbError;
     }
   },
 
   /**
-   * Gửi thông tin bài đăng + lịch hẹn sang n8n Webhook để n8n tự động quản lý độ trễ và tự động đăng bài
+   * Gửi thông tin bài �Ēng + l�9ch hẹn sang n8n Webhook �Ồ n8n tự ��"ng quản lý ��" tr�& và tự ��"ng �Ēng bài
    */
   async sendScheduleToN8n(payload: any) {
     const webhookUrl = process.env.N8N_FB_WEBHOOK_URL;
     if (!webhookUrl) {
       throw new Error(
-        "Cấu hình N8N_FB_WEBHOOK_URL chưa được thiết lập trong biến môi trường."
+        "Cấu hình N8N_FB_WEBHOOK_URL chưa �ược thiết lập trong biến môi trường."
       );
     }
 
@@ -180,7 +181,7 @@ export const schedulerService = {
       if (!response.ok) {
         const text = await response.text();
         throw new Error(
-          `n8n Webhook phản hồi lỗi: ${response.status} - ${text}`
+          `n8n Webhook phản h�i l�i: ${response.status} - ${text}`
         );
       }
 
@@ -201,12 +202,12 @@ export const schedulerService = {
 
       return {
         status: "success",
-        message: "Gửi yêu cầu lên lịch bài đăng sang n8n thành công",
+        message: "Gửi yêu cầu lên l�9ch bài �Ēng sang n8n thành công",
         data: responseData,
       };
     } catch (error: any) {
       console.error("[schedulerService.sendScheduleToN8n] Error:", error);
-      throw new Error(`Gửi yêu cầu lên lịch sang n8n thất bại: ${error.message}`);
+      throw new Error(`Gửi yêu cầu lên l�9ch sang n8n thất bại: ${error.message}`);
     }
   },
 };

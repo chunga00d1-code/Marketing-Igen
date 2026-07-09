@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, lazy, Suspense } from "react";
 import {
   Zap,

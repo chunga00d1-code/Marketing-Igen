@@ -1,13 +1,49 @@
 import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig } from "../types";
 
-// Helper để lấy token từ localStorage
 export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
 }
 
+type ApiErrorResponse = {
+  message?: string;
+  details?: string;
+};
+
+type UserRecord = UserProfile & { _id?: string; id?: string };
+type CompanyRecord = CompanyProfile & { _id?: string };
+type AuthResult = {
+  accessToken?: string;
+  user: UserRecord;
+};
+
+function normalizeUserProfile(user: UserRecord): UserProfile {
+  return {
+    ...user,
+    uid: String(user._id || user.id || user.uid),
+  };
+}
+
+function normalizeCompanyProfile(company: CompanyRecord): CompanyProfile {
+  return {
+    ...company,
+    id: String(company._id || company.id),
+  };
+}
+
+async function parseErrorResponse(res: Response, fallbackMessage: string): Promise<never> {
+  const data = (await res.json().catch(() => ({}))) as ApiErrorResponse;
+  throw new Error(data.message || data.details || fallbackMessage);
+}
+
+async function parseJson<T>(res: Response, fallbackMessage: string): Promise<T> {
+  if (!res.ok) {
+    return parseErrorResponse(res, fallbackMessage);
+  }
+  return (await res.json()) as T;
+}
+
 export const authService = {
-  // Đăng ký bằng Email & Mật khẩu
-  async registerWithEmail(email: string, password: string, displayName: string): Promise<any> {
+  async registerWithEmail(email: string, password: string, displayName: string): Promise<UserProfile> {
     const res = await fetch("/api/v1/auth/register", {
       method: "POST",
       headers: {
@@ -16,17 +52,11 @@ export const authService = {
       body: JSON.stringify({ email, password, displayName }),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Đăng ký thất bại");
-    }
-
-    const result = await res.json();
-    return result.data;
+    const result = await parseJson<{ data: UserRecord }>(res, "Dang ky that bai");
+    return normalizeUserProfile(result.data);
   },
 
-  // Đăng nhập bằng Email & Mật khẩu
-  async loginWithEmail(email: string, password: string): Promise<any> {
+  async loginWithEmail(email: string, password: string): Promise<{ accessToken?: string; user: UserProfile }> {
     const res = await fetch("/api/v1/auth/login", {
       method: "POST",
       headers: {
@@ -35,61 +65,51 @@ export const authService = {
       body: JSON.stringify({ email, password }),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Đăng nhập thất bại");
-    }
-
-    const result = await res.json();
-    // Lưu token truy cập vào localStorage
+    const result = await parseJson<AuthResult>(res, "Dang nhap that bai");
     if (result.accessToken) {
       localStorage.setItem("accessToken", result.accessToken);
     }
-    return result;
+    return {
+      accessToken: result.accessToken,
+      user: normalizeUserProfile(result.user),
+    };
   },
 
-  // Đăng nhập bằng Google (Chuyển sang JWT nên tạm thời báo không hỗ trợ)
-  async loginWithGoogle(): Promise<any> {
-    throw new Error("Đăng nhập bằng Google hiện không khả dụng. Vui lòng sử dụng tài khoản Email.");
+  async loginWithGoogle(): Promise<never> {
+    throw new Error("Dang nhap bang Google hien khong kha dung. Vui long su dung tai khoan Email.");
   },
 
-  // Đăng xuất
   async logout(): Promise<void> {
     localStorage.removeItem("accessToken");
     try {
       await fetch("/api/v1/auth/logout", {
         method: "POST",
       });
-    } catch (err) {
-      console.error("Lỗi khi gọi API đăng xuất phía server:", err);
+    } catch (error) {
+      console.error("Loi khi goi API dang xuat phia server:", error);
     }
   },
 
-  // Lấy chi tiết hồ sơ người dùng từ backend
   async getUserProfile(uid: string): Promise<UserProfile | null> {
     try {
       const res = await fetch("/api/v1/auth/me", {
         headers: {
-          "Authorization": `Bearer ${getAccessToken()}`,
+          Authorization: `Bearer ${getAccessToken()}`,
         },
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user && (data.user._id === uid || data.user.uid === uid)) {
-          return {
-            ...data.user,
-            uid: data.user._id,
-          };
-        }
-      }
-      return null;
+      if (!res.ok) return null;
+
+      const data = (await res.json()) as { user?: UserRecord };
+      if (!data.user) return null;
+
+      const profile = normalizeUserProfile(data.user);
+      return profile.uid === uid ? profile : null;
     } catch (error) {
-      console.error("Lỗi khi lấy thông tin người dùng từ Backend:", error);
+      console.error("Loi khi lay thong tin nguoi dung tu backend:", error);
       return null;
     }
   },
 
-  // Lấy thông tin người dùng hiện tại thông qua JWT Token
   async getMe(): Promise<UserProfile | null> {
     try {
       const token = getAccessToken();
@@ -97,125 +117,85 @@ export const authService = {
 
       const res = await fetch("/api/v1/auth/me", {
         headers: {
-          "Authorization": `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (!res.ok) {
-        // Nếu token hết hạn, thử làm mới bằng refresh-token (cookie)
         const refreshRes = await fetch("/api/v1/auth/refresh-token", {
           method: "POST",
         });
+        if (!refreshRes.ok) return null;
 
-        if (refreshRes.ok) {
-          const refreshData = await refreshRes.json();
-          if (refreshData.accessToken) {
-            localStorage.setItem("accessToken", refreshData.accessToken);
-            
-            // Gọi lại API me với access token mới
-            const retryRes = await fetch("/api/v1/auth/me", {
-              headers: {
-                "Authorization": `Bearer ${refreshData.accessToken}`,
-              },
-            });
-            if (retryRes.ok) {
-              const retryData = await retryRes.json();
-              return {
-                ...retryData.user,
-                uid: retryData.user._id,
-              };
-            }
-          }
-        }
-        return null;
+        const refreshData = (await refreshRes.json()) as { accessToken?: string };
+        if (!refreshData.accessToken) return null;
+
+        localStorage.setItem("accessToken", refreshData.accessToken);
+        const retryRes = await fetch("/api/v1/auth/me", {
+          headers: {
+            Authorization: `Bearer ${refreshData.accessToken}`,
+          },
+        });
+        if (!retryRes.ok) return null;
+
+        const retryData = (await retryRes.json()) as { user: UserRecord };
+        return normalizeUserProfile(retryData.user);
       }
 
-      const data = await res.json();
-      return {
-        ...data.user,
-        uid: data.user._id,
-      };
+      const data = (await res.json()) as { user: UserRecord };
+      return normalizeUserProfile(data.user);
     } catch (error) {
-      console.error("Lỗi khi tự động lấy thông tin phiên làm việc getMe:", error);
+      console.error("Loi khi tu dong lay thong tin phien lam viec getMe:", error);
       return null;
     }
   },
 
-  // Lấy danh sách toàn bộ người dùng
   async getAllUsers(): Promise<UserProfile[]> {
     const res = await fetch("/api/v1/auth/users", {
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể lấy danh sách người dùng");
-    }
-
-    const result = await res.json();
-    return (result.data || []).map((u: any) => ({
-      ...u,
-      uid: u._id,
-    }));
+    const result = await parseJson<{ data?: UserRecord[] }>(res, "Khong the lay danh sach nguoi dung");
+    return (result.data || []).map(normalizeUserProfile);
   },
 
-  // Lấy danh sách người dùng theo Doanh nghiệp
   async getUsersByCompany(companyCode: string): Promise<UserProfile[]> {
     const res = await fetch(`/api/v1/auth/users?companyCode=${encodeURIComponent(companyCode)}`, {
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể lấy danh sách người dùng doanh nghiệp");
-    }
-
-    const result = await res.json();
-    return (result.data || []).map((u: any) => ({
-      ...u,
-      uid: u._id,
-    }));
+    const result = await parseJson<{ data?: UserRecord[] }>(res, "Khong the lay danh sach nguoi dung doanh nghiep");
+    return (result.data || []).map(normalizeUserProfile);
   },
 
-  // Cập nhật vai trò người dùng
-  async updateUserRole(uid: string, newRole: "user" | "manager" | "admin" | "superadmin"): Promise<void> {
+  async updateUserRole(uid: string, newRole: UserProfile["role"]): Promise<void> {
     const res = await fetch(`/api/v1/auth/users/${uid}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify({ role: newRole }),
     });
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Cập nhật vai trò thất bại");
+      await parseErrorResponse(res, "Cap nhat vai tro that bai");
     }
   },
 
-  // Lấy danh sách tất cả doanh nghiệp
   async getAllCompanies(): Promise<CompanyProfile[]> {
     const res = await fetch("/api/v1/auth/companies", {
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể lấy danh sách doanh nghiệp");
-    }
-
-    const result = await res.json();
-    return (result.data || []).map((item: any) => ({
-      ...item,
-      id: item._id || item.id,
-    }));
+    const result = await parseJson<{ data?: CompanyRecord[] }>(res, "Khong the lay danh sach doanh nghiep");
+    return (result.data || []).map(normalizeCompanyProfile);
   },
 
   async updateCompany(companyId: string, updateData: { name?: string; code?: string; ownerEmail?: string }): Promise<CompanyProfile> {
@@ -223,73 +203,58 @@ export const authService = {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify(updateData),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể cập nhật doanh nghiệp");
-    }
-
-    const result = await res.json();
-    return {
-      ...result.data,
-      id: result.data._id || result.data.id,
-    };
+    const result = await parseJson<{ data: CompanyRecord }>(res, "Khong the cap nhat doanh nghiep");
+    return normalizeCompanyProfile(result.data);
   },
 
-  // Cập nhật chi tiết thông tin một nhân sự
-  async updateUser(uid: string, updateData: any): Promise<void> {
+  async updateUser(uid: string, updateData: Partial<UserProfile>): Promise<void> {
     const res = await fetch(`/api/v1/auth/users/${uid}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify(updateData),
     });
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Cập nhật thông tin nhân sự thất bại");
+      await parseErrorResponse(res, "Cap nhat thong tin nhan su that bai");
     }
   },
 
-  // Cập nhật hàng loạt thông tin cấu trúc sơ đồ tổ chức
-  async bulkUpdateUsers(updates: any[]): Promise<void> {
+  async bulkUpdateUsers(updates: Array<{ uid: string; updateData: Partial<UserProfile> }>): Promise<void> {
     const res = await fetch("/api/v1/auth/users/bulk", {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify({ updates }),
     });
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Cập nhật cấu trúc sơ đồ tổ chức thất bại");
+      await parseErrorResponse(res, "Cap nhat cau truc so do to chuc that bai");
     }
   },
 
-  // Xóa nhân sự
   async deleteUser(uid: string): Promise<void> {
     const res = await fetch(`/api/v1/auth/users/${uid}`, {
       method: "DELETE",
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Xóa nhân sự thất bại");
+      await parseErrorResponse(res, "Xoa nhan su that bai");
     }
   },
 
-  // Đăng ký doanh nghiệp mới và tạo tài khoản Admin tương ứng qua REST API
   async registerCompanyAndAdmin(
     companyName: string,
     companyCode: string,
@@ -301,7 +266,7 @@ export const authService = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify({
         companyName,
@@ -313,12 +278,10 @@ export const authService = {
     });
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Đăng ký doanh nghiệp thất bại");
+      await parseErrorResponse(res, "Dang ky doanh nghiep that bai");
     }
   },
 
-  // Đăng ký người dùng mới cho doanh nghiệp qua REST API
   async registerUserForCompany(
     displayName: string,
     email: string,
@@ -342,7 +305,7 @@ export const authService = {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify({
         displayName,
@@ -360,41 +323,26 @@ export const authService = {
       }),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Đăng ký thành viên thất bại");
-    }
-
-    const result = await res.json();
-    return result.data._id; // Trả về ID của user vừa tạo
+    const result = await parseJson<{ data: UserRecord }>(res, "Dang ky thanh vien that bai");
+    return String(result.data._id || result.data.uid || result.data.id);
   },
 
-  // Cập nhật thông tin hồ sơ cá nhân
-  async updateProfileInfo(uid: string, displayName: string, photoURL: string): Promise<void> {
+  async updateProfileInfo(_uid: string, displayName: string, photoURL: string): Promise<void> {
     await this.updateProfile({ displayName, photoURL });
   },
 
-  // Cập nhật một hoặc nhiều trường trong hồ sơ qua REST API
-  async updateProfile(updateData: any): Promise<UserProfile> {
+  async updateProfile(updateData: Partial<UserProfile>): Promise<UserProfile> {
     const res = await fetch("/api/v1/auth/profile", {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify(updateData),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Cập nhật hồ sơ thất bại");
-    }
-
-    const result = await res.json();
-    return {
-      ...result.user,
-      uid: result.user._id,
-    };
+    const result = await parseJson<{ user: UserRecord }>(res, "Cap nhat ho so that bai");
+    return normalizeUserProfile(result.user);
   },
 
   async getCompanyHeyGenConfig(companyCode: string): Promise<{
@@ -404,16 +352,14 @@ export const authService = {
   }> {
     const res = await fetch(`/api/v1/auth/companies/${encodeURIComponent(companyCode)}/heygen`, {
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể lấy cấu hình HeyGen doanh nghiệp");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: { companyCode: string; companyName: string; heygenConfig: CompanyHeyGenConfig } }>(
+      res,
+      "Khong the lay cau hinh HeyGen doanh nghiep"
+    );
     return result.data;
   },
 
@@ -426,69 +372,52 @@ export const authService = {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify(updateData),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể cập nhật cấu hình HeyGen doanh nghiệp");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: { companyCode: string; companyName: string; heygenConfig: CompanyHeyGenConfig } }>(
+      res,
+      "Khong the cap nhat cau hinh HeyGen doanh nghiep"
+    );
     return result.data;
   },
 
-  async testCompanyHeyGenConfig(companyCode: string, apiKey?: string): Promise<any> {
+  async testCompanyHeyGenConfig(companyCode: string, apiKey?: string): Promise<Record<string, unknown>> {
     const res = await fetch(`/api/v1/auth/companies/${encodeURIComponent(companyCode)}/heygen/test`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify({ apiKey }),
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể kiểm tra kết nối HeyGen");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: Record<string, unknown> }>(res, "Khong the kiem tra ket noi HeyGen");
     return result.data;
   },
 
-  async syncCompanyHeyGenLibrary(companyCode: string): Promise<any> {
+  async syncCompanyHeyGenLibrary(companyCode: string): Promise<Record<string, unknown>> {
     const res = await fetch(`/api/v1/auth/companies/${encodeURIComponent(companyCode)}/heygen/sync`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể đồng bộ thư viện HeyGen");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: Record<string, unknown> }>(res, "Khong the dong bo thu vien HeyGen");
     return result.data;
   },
 
   async getTelegramLinkStatus(): Promise<TelegramLinkStatus> {
     const res = await fetch("/api/v1/auth/telegram-link", {
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể lấy trạng thái liên kết Telegram");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: TelegramLinkStatus }>(res, "Khong the lay trang thai lien ket Telegram");
     return result.data;
   },
 
@@ -496,16 +425,11 @@ export const authService = {
     const res = await fetch("/api/v1/auth/telegram-link", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể tạo mã liên kết Telegram");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: TelegramLinkStatus }>(res, "Khong the tao ma lien ket Telegram");
     return result.data;
   },
 
@@ -513,38 +437,30 @@ export const authService = {
     const res = await fetch("/api/v1/auth/telegram-link", {
       method: "DELETE",
       headers: {
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
     });
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Không thể gỡ liên kết Telegram");
-    }
-
-    const result = await res.json();
+    const result = await parseJson<{ data: TelegramLinkStatus }>(res, "Khong the go lien ket Telegram");
     return result.data;
   },
 
-  // Thay đổi mật khẩu người dùng qua REST API
   async changePassword(password: string): Promise<void> {
     const res = await fetch("/api/v1/auth/change-password", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getAccessToken()}`,
+        Authorization: `Bearer ${getAccessToken()}`,
       },
       body: JSON.stringify({ password }),
     });
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || "Thay đổi mật khẩu thất bại");
+      await parseErrorResponse(res, "Thay doi mat khau that bai");
     }
   },
 
-  // Tải ảnh đại diện lên Cloudinary thông qua Relay API trên server
-  async uploadAvatar(uid: string, file: File): Promise<string> {
+  async uploadAvatar(_uid: string, file: File): Promise<string> {
     try {
       const base64Data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -553,28 +469,23 @@ export const authService = {
         reader.onerror = (error) => reject(error);
       });
 
-      const response = await fetch('/api/v1/media/upload', {
-        method: 'POST',
+      const response = await fetch("/api/v1/media/upload", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAccessToken()}`
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${getAccessToken()}`,
         },
         body: JSON.stringify({
           file: base64Data,
-          folder: `igen_erp/avatars`,
+          folder: "igen_erp/avatars",
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Lỗi tải lên Cloudinary: ${response.statusText}`);
-      }
-
-      const data = await response.json();
+      const data = await parseJson<{ url: string }>(response, `Loi tai len Cloudinary: ${response.statusText}`);
       return data.url;
-    } catch (e) {
-      console.error("[authService.uploadAvatar] Error:", e);
-      throw e;
+    } catch (error) {
+      console.error("[authService.uploadAvatar] Error:", error);
+      throw error;
     }
-  }
+  },
 };

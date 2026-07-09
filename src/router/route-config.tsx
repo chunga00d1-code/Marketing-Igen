@@ -2,7 +2,7 @@ import { lazy } from "react";
 import type { ComponentType, LazyExoticComponent } from "react";
 import type { TabType, UserProfile } from "../types";
 
-export type LazyPageComponent = LazyExoticComponent<ComponentType<any>>;
+export type LazyPageComponent = LazyExoticComponent<ComponentType<object>>;
 
 export type AppRoute = {
   tab: TabType;

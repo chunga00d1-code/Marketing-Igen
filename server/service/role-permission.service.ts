@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { RolePermissionModel } from "../model/role-permission.model";
 import { IRolePermission } from "../interface/role-permission.interface";
 
 export const rolePermissionService = {
   /**
-   * Tạo mới hoặc cập nhật phân quyền của một vai trò tại doanh nghiệp
+   * Tạo m�:i hoặc cập nhật phân quyền của m�"t vai trò tại doanh nghi�!p
    */
   async saveRolePermission(data: any): Promise<IRolePermission> {
     const { companyCode, role, permissions, level, displayName } = data;
@@ -35,7 +36,7 @@ export const rolePermissionService = {
   },
 
   /**
-   * Lấy danh sách cấu hình phân quyền vai trò (phân trang và bộ lọc)
+   * Lấy danh sách cấu hình phân quyền vai trò (phân trang và b�" lọc)
    */
   async getRolePermissions(
     filter: any = {},
@@ -55,7 +56,7 @@ export const rolePermissionService = {
   },
 
   /**
-   * Lấy cấu hình chi tiết của vai trò tại một công ty
+   * Lấy cấu hình chi tiết của vai trò tại m�"t công ty
    */
   async getRolePermission(companyCode: string, role: string): Promise<IRolePermission | null> {
     return await RolePermissionModel.findOne({
@@ -74,7 +75,7 @@ export const rolePermissionService = {
     });
 
     if (result.deletedCount === 0) {
-      throw new Error("Không tìm thấy cấu hình phân quyền vai trò để xóa.");
+      throw new Error("Không tìm thấy cấu hình phân quyền vai trò �Ồ xóa.");
     }
   }
 };

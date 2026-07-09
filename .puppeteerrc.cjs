@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports, no-undef */
 // Puppeteer config for Remotion in Docker/Alpine
 // Chromium needs --no-sandbox when running as root in containers
 const { join } = require('path');

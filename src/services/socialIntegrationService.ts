@@ -17,8 +17,16 @@ export interface SocialIntegration {
   verifyToken?: string;
   isMock?: boolean;
   blotatoAccountId?: string;
-  aiAutoReplyConfig?: any;
+  aiAutoReplyConfig?: Record<string, unknown>;
 }
+
+type ValidationResult = {
+  message?: string;
+  details?: string;
+  data?: {
+    authUrl?: string;
+  };
+};
 
 export const socialIntegrationService = {
   /**
@@ -103,7 +111,7 @@ export const socialIntegrationService = {
   }
   ,
 
-  async validateFacebookIntegration(data: { pageId: string; accessToken: string }): Promise<any> {
+  async validateFacebookIntegration(data: { pageId: string; accessToken: string }): Promise<ValidationResult> {
     const res = await fetch("/api/v1/facebook/validate-token", {
       method: "POST",
       headers: {
@@ -113,14 +121,14 @@ export const socialIntegrationService = {
       body: JSON.stringify(data),
     });
 
-    const result = await res.json().catch(() => ({}));
+    const result = await res.json().catch(() => ({} as ValidationResult));
     if (!res.ok) {
       throw new Error(result.message || result.details || "Khong the xac thuc Facebook Page.");
     }
     return result;
   },
 
-  async validateZaloIntegration(data: { oaId: string; oaName?: string; accessToken: string }): Promise<any> {
+  async validateZaloIntegration(data: { oaId: string; oaName?: string; accessToken: string }): Promise<ValidationResult> {
     const res = await fetch("/api/v1/zalo/validate-integration", {
       method: "POST",
       headers: {
@@ -130,14 +138,14 @@ export const socialIntegrationService = {
       body: JSON.stringify(data),
     });
 
-    const result = await res.json().catch(() => ({}));
+    const result = await res.json().catch(() => ({} as ValidationResult));
     if (!res.ok) {
       throw new Error(result.message || "Khong the xac thuc Zalo OA.");
     }
     return result;
   },
 
-  async validateTikTokIntegration(data: { username?: string; accessToken: string }): Promise<any> {
+  async validateTikTokIntegration(data: { username?: string; accessToken: string }): Promise<ValidationResult> {
     const res = await fetch("/api/v1/tiktok/validate-token", {
       method: "POST",
       headers: {
@@ -147,7 +155,7 @@ export const socialIntegrationService = {
       body: JSON.stringify(data),
     });
 
-    const result = await res.json().catch(() => ({}));
+    const result = await res.json().catch(() => ({} as ValidationResult));
     if (!res.ok) {
       throw new Error(result.message || result.details || "Khong the xac thuc TikTok.");
     }
@@ -177,7 +185,7 @@ export const socialIntegrationService = {
       },
     });
 
-    const result = await res.json().catch(() => ({}));
+    const result = await res.json().catch(() => ({} as ValidationResult));
     if (!res.ok) {
       throw new Error(result.message || "Khong the khoi tao ket noi TikTok OAuth.");
     }
