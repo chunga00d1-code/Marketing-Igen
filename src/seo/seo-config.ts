@@ -86,6 +86,15 @@ export const DELETION_SEO: SeoMeta = {
 };
 
 export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
+  "TONG QUAN": {
+    title: "Dashboard Sales & Marketing",
+    description:
+      "Tong quan van hanh cho sales va marketing: theo doi content, publishing, lead CRM va trang thai kenh ban hang tren mot man hinh.",
+    keywords: "dashboard sales marketing, tong quan crm, tong quan content, dashboard omni inbox, igen workspace",
+    path: "/tong-quan",
+    priority: "0.9",
+    changeFrequency: "daily",
+  },
   MARKETING: {
     title: "Marketing AI - Sang tao noi dung, san xuat video AI",
     description:
@@ -104,7 +113,7 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
-  "QUẢN TRỊ USER": {
+  "QUAN TRI USER": {
     title: "Quan tri user - Tai khoan, vai tro va phan quyen",
     description:
       "Quan ly tai khoan nguoi dung, doanh nghiep, so du vi va cau hinh phan quyen cho workspace Marketing va Sales CRM.",
@@ -114,7 +123,7 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.3",
     changeFrequency: "monthly",
   },
-  "CÀI ĐẶT": {
+  "CAI DAT": {
     title: "Cai dat he thong - Ho so, tich hop va cau hinh nen tang",
     description:
       "Thiet lap thong tin ho so doanh nghiep, cau hinh tuy chinh hien thi, ket noi mang xa hoi va tich hop phuc vu Marketing, Sales.",
@@ -124,7 +133,7 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.2",
     changeFrequency: "monthly",
   },
-  "VÍ & NẠP TIỀN": {
+  "VI & NAP TIEN": {
     title: "Vi & Nap tien - Nap tien tai khoan qua PayOS",
     description:
       "Quan ly vi tai khoan ca nhan, xem so du va nap tien nhanh chong bang QR Code qua cong thanh toan PayOS.",
@@ -138,6 +147,7 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
 
 export const PUBLIC_SEO_PAGES: SeoMeta[] = [
   DEFAULT_SEO,
+  TAB_SEO_MAP["TONG QUAN"],
   TAB_SEO_MAP.MARKETING,
   TAB_SEO_MAP["SALES CRM"],
 ].filter(Boolean) as SeoMeta[];

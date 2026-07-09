@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LogOut, Search, Settings, Shield, Wallet } from "lucide-react";
+import { Home, LogOut, Search, Settings, Shield, Wallet } from "lucide-react";
 import type { TabType } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { walletService } from "../services/walletService";
@@ -10,14 +10,15 @@ interface HeaderProps {
 }
 
 const searchIndex = [
+  { label: "Dashboard tong quan", tab: "TONG QUAN" as TabType, keywords: "dashboard tong quan sale marketing crm publishing kenh chat" },
   { label: "Len y tuong AI Marketing", tab: "MARKETING" as TabType, subTab: "LÊN Ý TƯỞNG AI", keywords: "viet content y tuong campaign facebook tiktok copywriter" },
   { label: "Duyet noi dung Marketing", tab: "MARKETING" as TabType, subTab: "DUYỆT NỘI DUNG", keywords: "duyet content post facebook linkedin tiktok" },
   { label: "Lich dang Content", tab: "MARKETING" as TabType, subTab: "LỊCH ĐĂNG CONTENT", keywords: "lich dang content calendar publish" },
-  { label: "Pheu Khach hang", tab: "SALES CRM" as TabType, subTab: "PHỄU KHÁCH HÀNG", keywords: "crm phieu khach hang lead cold warm hot" },
+  { label: "Pheu khach hang", tab: "SALES CRM" as TabType, subTab: "PHỄU KHÁCH HÀNG", keywords: "crm phieu khach hang lead cold warm hot" },
   { label: "Omni-Inbox Chat", tab: "SALES CRM" as TabType, subTab: "OMNI-INBOX CHAT", keywords: "chat vip mailbox tro ly ai" },
-  { label: "Quan tri user", tab: "QUẢN TRỊ USER" as TabType, keywords: "user admin role permission cong ty wallet balance" },
-  { label: "Vi & Nap tien", tab: "VÍ & NẠP TIỀN" as TabType, keywords: "vi nap tien so du payos vietqr nap bank" },
-  { label: "Cai dat", tab: "CÀI ĐẶT" as TabType, keywords: "cai dat profile integration cong ty" },
+  { label: "Quan tri user", tab: "QUAN TRI USER" as TabType, keywords: "user admin role permission cong ty wallet balance" },
+  { label: "Vi & Nap tien", tab: "VI & NAP TIEN" as TabType, keywords: "vi nap tien so du payos vietqr nap bank" },
+  { label: "Cai dat", tab: "CAI DAT" as TabType, keywords: "cai dat profile integration cong ty" },
 ];
 
 export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
@@ -104,9 +105,17 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
       </div>
 
       <div className="ml-6 flex items-center gap-3" id="header_controls">
+        <button
+          onClick={() => onSearchSelect("TONG QUAN" as TabType)}
+          className="rounded-xl p-2.5 text-gray-600 transition-all hover:bg-gray-50"
+          title="Tong quan"
+        >
+          <Home className="h-5 w-5" />
+        </button>
+
         {userProfile && (
           <button
-            onClick={() => onSearchSelect("VÍ & NẠP TIỀN" as TabType)}
+            onClick={() => onSearchSelect("VI & NAP TIEN" as TabType)}
             className="flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 transition-all hover:bg-blue-100/50"
             id="header_wallet_pill"
           >
@@ -119,7 +128,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
 
         {(userProfile?.role === "superadmin" || userProfile?.role === "admin") && (
           <button
-            onClick={() => onSearchSelect("QUẢN TRỊ USER" as TabType)}
+            onClick={() => onSearchSelect("QUAN TRI USER" as TabType)}
             className="rounded-xl p-2.5 text-gray-600 transition-all hover:bg-gray-50"
             title="Quan tri user"
           >
@@ -128,7 +137,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
         )}
 
         <button
-          onClick={() => onSearchSelect("CÀI ĐẶT" as TabType)}
+          onClick={() => onSearchSelect("CAI DAT" as TabType)}
           className="rounded-xl p-2.5 text-gray-600 transition-all hover:bg-gray-50"
           title="Cai dat"
         >

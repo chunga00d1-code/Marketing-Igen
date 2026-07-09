@@ -12,6 +12,10 @@ export type AppRoute = {
 
 export const APP_ROUTES: AppRoute[] = [
   {
+    tab: "TONG QUAN",
+    component: lazy(() => import("../pages/DashboardTab")),
+  },
+  {
     tab: "MARKETING",
     component: lazy(() => import("../pages/MarketingTab")),
   },
@@ -20,21 +24,21 @@ export const APP_ROUTES: AppRoute[] = [
     component: lazy(() => import("../pages/CRMTab")),
   },
   {
-    tab: "QUẢN TRỊ USER",
+    tab: "QUAN TRI USER",
     component: lazy(() => import("../pages/UserAdminTab")),
     canAccess: (userProfile) => userProfile.role === "superadmin" || userProfile.role === "admin",
   },
   {
-    tab: "CÀI ĐẶT",
+    tab: "CAI DAT",
     component: lazy(() => import("../pages/SettingsTab")),
   },
   {
-    tab: "VÍ & NẠP TIỀN",
+    tab: "VI & NAP TIEN",
     component: lazy(() => import("../pages/WalletTab")),
   },
 ];
 
-export const DEFAULT_APP_TAB: TabType = "MARKETING";
+export const DEFAULT_APP_TAB: TabType = "TONG QUAN";
 
 export function getRouteByTab(tab: TabType) {
   return APP_ROUTES.find((route) => route.tab === tab) || APP_ROUTES[0];

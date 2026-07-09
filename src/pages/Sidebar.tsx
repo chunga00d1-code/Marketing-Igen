@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   ChevronRight,
+  LayoutDashboard,
   Megaphone,
   MessageSquareShare,
   PanelLeftClose,
@@ -25,7 +26,7 @@ interface SidebarProps {
   setActiveTab: (tab: TabType) => void;
 }
 
-type MenuTone = "purple" | "rose" | "blue" | "indigo" | "slate";
+type MenuTone = "slate" | "purple" | "rose" | "blue" | "indigo";
 
 interface MenuItem {
   label: TabType;
@@ -36,6 +37,11 @@ interface MenuItem {
 }
 
 const toneClasses: Record<MenuTone, { active: string; icon: string; hoverIcon: string }> = {
+  slate: {
+    active: "bg-slate-100 text-slate-900 border-slate-200",
+    icon: "bg-slate-900 text-white",
+    hoverIcon: "group-hover:bg-slate-100 group-hover:text-slate-700",
+  },
   purple: {
     active: "bg-purple-50 text-purple-800 border-purple-100",
     icon: "bg-purple-50 text-purple-600",
@@ -56,14 +62,16 @@ const toneClasses: Record<MenuTone, { active: string; icon: string; hoverIcon: s
     icon: "bg-indigo-50 text-indigo-600",
     hoverIcon: "group-hover:bg-indigo-50 group-hover:text-indigo-600",
   },
-  slate: {
-    active: "bg-gray-50 text-gray-900 border-gray-100",
-    icon: "bg-gray-50 text-gray-600",
-    hoverIcon: "group-hover:bg-gray-50 group-hover:text-gray-700",
-  },
 };
 
 const baseMenuItems: MenuItem[] = [
+  {
+    label: "TONG QUAN",
+    title: "Dashboard dieu hanh",
+    desc: "Tong quan sales va marketing",
+    icon: LayoutDashboard,
+    tone: "slate",
+  },
   {
     label: "MARKETING",
     title: "AI Marketing Hub",
@@ -87,7 +95,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
 
   if (userProfile?.role === "superadmin" || userProfile?.role === "admin") {
     menuItems.push({
-      label: "QUẢN TRỊ USER",
+      label: "QUAN TRI USER",
       title: "Quan tri user",
       desc: "Cap quyen va phan vai tro",
       icon: Shield,
@@ -97,7 +105,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
 
   if (userProfile) {
     menuItems.push({
-      label: "VÍ & NẠP TIỀN",
+      label: "VI & NAP TIEN",
       title: "Vi & Nap tien",
       desc: "So du vi va cong PayOS",
       icon: Wallet,
@@ -106,7 +114,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   }
 
   menuItems.push({
-    label: "CÀI ĐẶT",
+    label: "CAI DAT",
     title: "Cai dat he thong",
     desc: "Thong tin ca nhan va cau hinh",
     icon: Settings,
@@ -125,8 +133,8 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
           <img
             src={BRAND_LOGO_PATH}
             alt={BRAND_NAME}
-            onClick={() => setActiveTab("MARKETING")}
-            title="Ve trang Marketing"
+            onClick={() => setActiveTab("TONG QUAN")}
+            title="Ve dashboard"
             className="h-11 w-11 shrink-0 rounded-2xl border border-blue-100 object-cover shadow-lg shadow-blue-500/15 cursor-pointer transition-transform hover:scale-110 active:scale-95"
           />
           {!isCollapsed ? (

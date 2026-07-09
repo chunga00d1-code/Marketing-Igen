@@ -2,11 +2,12 @@ import { FacebookIntegration, TikTokIntegration, ZaloIntegration } from "./integ
 import { AIChatConfig } from "./crm";
 
 export type TabType =
+  | "TONG QUAN"
   | "MARKETING"
   | "SALES CRM"
-  | "QUẢN TRỊ USER"
-  | "VÍ & NẠP TIỀN"
-  | "CÀI ĐẶT";
+  | "QUAN TRI USER"
+  | "VI & NAP TIEN"
+  | "CAI DAT";
 
 export interface UserProfile {
   uid: string;
