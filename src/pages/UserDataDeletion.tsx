@@ -37,7 +37,7 @@ export default function UserDataDeletion() {
   const meta = {
     title: `${BRAND_NAME} User Data Deletion`,
     description: `Instructions for disconnecting integrations and requesting user data deletion from ${BRAND_NAME}.`,
-    keywords: "user data deletion, TikTok Shop data deletion, Facebook data deletion, iGen Marketing",
+    keywords: "user data deletion, TikTok data deletion, Facebook data deletion, iGen Marketing",
     path: "/user-data-deletion",
   };
 
@@ -217,7 +217,7 @@ export default function UserDataDeletion() {
               1. Disconnect Inside The Application
             </h2>
             <p className="text-sm leading-6 text-slate-600">
-              If you connected TikTok Shop, Facebook or another supported channel to{" "}
+              If you connected TikTok, Facebook or another supported channel to{" "}
               {BRAND_NAME}, you can remove that connection from the integration settings in
               your account. Once disconnected, the system will stop using the related access
               token for future synchronization.
@@ -236,11 +236,10 @@ export default function UserDataDeletion() {
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                <p className="font-semibold text-slate-800">TikTok Shop or TikTok Account</p>
+                <p className="font-semibold text-slate-800">TikTok Account</p>
                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                  Revoke the application's authorization from your TikTok or TikTok Shop
-                  account settings if you no longer want the service to access approved shop
-                  or account data.
+                  Revoke the application's authorization from your TikTok account settings if
+                  you no longer want the service to access approved account or publishing data.
                 </p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">

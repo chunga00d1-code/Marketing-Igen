@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -36,9 +36,9 @@ export default function LandingPage() {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
   const meta = {
-    title: `${BRAND_NAME} - Workspace Marketing & Sales tích hợp AI`,
-    description: "Giải pháp Marketing & Sales thế hệ mới tích hợp AI giúp tối ưu hóa chiến dịch marketing, sản xuất video AI, CRM đa kênh Facebook, Zalo, TikTok Shop.",
-    keywords: "igen marketing, marketing tich hop ai, sales crm, omni channel crm, facebook inbox, tiktok shop sync",
+    title: BRAND_NAME,
+    description: "Giải pháp Marketing & Sales thế hệ mới tích hợp AI giúp tối ưu hóa chiến dịch marketing, sản xuất video AI, CRM đa kênh Facebook, Zalo, TikTok.",
+    keywords: "igen marketing, marketing tich hop ai, sales crm, omni channel crm, facebook inbox, tiktok video publish",
     path: "/",
   };
 
@@ -46,7 +46,7 @@ export default function LandingPage() {
     {
       icon: <MessageSquare className="h-6 w-6 text-blue-600" />,
       title: "Omni-Channel CRM",
-      desc: "Quản lý hội thoại tập trung từ Facebook, Zalo và TikTok Shop. Tự động phân chia khách hàng cho nhân viên sale."
+      desc: "Quản lý hội thoại tập trung từ Facebook, Zalo và TikTok. Tự động phân chia khách hàng cho nhân viên sale."
     },
     {
       icon: <ShoppingBag className="h-6 w-6 text-emerald-600" />,
@@ -127,8 +127,8 @@ export default function LandingPage() {
               {integrationsOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 top-full w-56 bg-white border border-slate-100 rounded-2xl p-4 shadow-xl animate-scale-in text-left space-y-3 z-50">
                   <a href="#tich-hop-tiktok" className="block hover:bg-slate-50 p-1.5 rounded-lg transition-colors">
-                    <span className="font-bold text-slate-800 text-xs block">TikTok Shop API</span>
-                    <span className="text-[9px] text-slate-400">Đồng bộ đơn hàng, kho, chat</span>
+                    <span className="font-bold text-slate-800 text-xs block">TikTok API</span>
+                    <span className="text-[9px] text-slate-400">OAuth và đăng video có kiểm soát</span>
                   </a>
                   <div className="p-1.5">
                     <span className="font-bold text-slate-500 text-xs block">Facebook Messenger</span>
@@ -176,7 +176,7 @@ export default function LandingPage() {
             <div className="space-y-2">
               <a href="#tong-quan" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Tổng quan</a>
               <a href="#tinh-nang" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Tính năng</a>
-              <a href="#tich-hop-tiktok" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Tích hợp TikTok Shop</a>
+              <a href="#tich-hop-tiktok" onClick={() => setMobileMenuOpen(false)} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Tích hợp TikTok</a>
               <a href={PRIVACY_POLICY_URL} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Privacy Policy</a>
               <a href={TERMS_OF_SERVICE_URL} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Terms of Service</a>
               <a href={USER_DATA_DELETION_URL} className="block py-2 text-xs font-bold text-slate-700 hover:text-blue-600">Data Deletion Instructions</a>
@@ -215,7 +215,7 @@ export default function LandingPage() {
               </h1>
               
               <p className="text-sm sm:text-base text-slate-500 leading-relaxed">
-                {BRAND_NAME} mang đến giải pháp Marketing và Sales CRM toàn diện. Tự động hóa chiến dịch marketing, sản xuất video AI, và đồng bộ inbox đa kênh Facebook, Zalo, TikTok Shop trên một nền tảng trực quan, hiện đại.
+                {BRAND_NAME} mang đến giải pháp Marketing và Sales CRM toàn diện. Tự động hóa chiến dịch marketing, sản xuất video AI, quản lý nội dung và đăng video TikTok có kiểm soát trên một nền tảng trực quan, hiện đại.
               </p>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
@@ -287,7 +287,7 @@ export default function LandingPage() {
 
                 <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/30 text-left space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700">OmniChat Inbox & Khách hàng TikTok Shop</span>
+                    <span className="text-xs font-bold text-slate-700">OmniChat Inbox & Khách hàng TikTok</span>
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md uppercase">Đang chạy</span>
                   </div>
                   <div className="space-y-2">
@@ -295,7 +295,7 @@ export default function LandingPage() {
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">T</div>
                         <div>
-                          <span className="font-semibold text-slate-700 block">Nguyễn Văn A (TikTok Shop)</span>
+                          <span className="font-semibold text-slate-700 block">Nguyễn Văn A (TikTok)</span>
                           <span className="text-[9px] text-slate-400">"Sản phẩm này còn size M màu xanh không shop?"</span>
                         </div>
                       </div>
@@ -376,7 +376,7 @@ export default function LandingPage() {
                 {/* Sidebar */}
                 <div className="w-1/3 border-r border-slate-100 bg-slate-50 p-2 space-y-2 flex flex-col justify-start">
                   <div className="p-1.5 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-blue-700">TikTok Shop</span>
+                    <span className="text-[10px] font-bold text-blue-700">TikTok</span>
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
                   </div>
                   <div className="p-1.5 bg-white border border-slate-100 rounded-lg flex items-center justify-between text-slate-500">
@@ -395,7 +395,7 @@ export default function LandingPage() {
                     <div className="flex items-start gap-2 max-w-[85%]">
                       <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-purple-700">KH</div>
                       <div className="bg-slate-100 p-2.5 rounded-2xl rounded-tl-none text-slate-750">
-                        Sản phẩm này bên mình còn size L màu đen ở kho Hà Nội không shop để em đặt mua qua TikTok Shop?
+                        Sản phẩm này bên mình còn size L màu đen ở kho Hà Nội không shop để em đặt mua qua TikTok?
                       </div>
                     </div>
                     {/* AI auto reply */}
@@ -447,7 +447,7 @@ export default function LandingPage() {
                       <tr className="text-slate-705">
                         <td className="py-2.5 font-bold">#TT-8941</td>
                         <td className="py-2.5">Trần Khánh Ly</td>
-                        <td className="py-2.5"><span className="px-1.5 py-0.5 bg-black text-white text-[8px] font-bold rounded">TikTok Shop</span></td>
+                        <td className="py-2.5"><span className="px-1.5 py-0.5 bg-black text-white text-[8px] font-bold rounded">TikTok</span></td>
                         <td className="py-2.5 font-semibold">280,000 đ</td>
                         <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded">Đã đồng bộ</span></td>
                       </tr>
@@ -520,15 +520,11 @@ export default function LandingPage() {
                   <ul className="space-y-2 text-[11px] text-slate-500">
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                      <span><strong>user.info.basic</strong>: Dùng để xác thực và kết nối tài khoản kênh sáng tạo/kênh bán hàng TikTok.</span>
+                      <span><strong>user.info.basic</strong>: Dùng để xác thực và hiển thị tài khoản TikTok đã kết nối.</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                      <span><strong>seller.order</strong> (TikTok Shop): Đồng bộ đơn hàng phát sinh trên TikTok Shop về hệ thống iGen Marketing để lên đơn vận chuyển.</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                      <span><strong>seller.product</strong> (TikTok Shop): Đồng bộ danh mục sản phẩm, tồn kho tự động để tránh lệch kho bán hàng.</span>
+                      <span><strong>video.publish</strong>: Đăng video TikTok sau khi người dùng tạo, kiểm duyệt và bấm xuất bản trong iGen Marketing.</span>
                     </li>
                   </ul>
                 </div>
@@ -541,46 +537,46 @@ export default function LandingPage() {
                 <Globe className="h-3.5 w-3.5" />
                 <span>Liên kết mạng xã hội chính thức</span>
               </div>
-              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Tích hợp và Đồng bộ TikTok thông minh</h2>
+              <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Tích hợp đăng video TikTok thông minh</h2>
               <p className="text-sm text-slate-500 leading-relaxed">
-                Hệ thống iGen Marketing kết nối chính thức với API của TikTok thông qua luồng xác thực bảo mật OAuth 2.0. Việc tích hợp này giúp các nhà bán hàng và doanh nghiệp tối ưu hóa hoạt động vận hành mà không cần chuyển đổi nhiều tab.
+                Hệ thống iGen Marketing kết nối với TikTok thông qua luồng xác thực bảo mật OAuth 2.0, giúp người dùng xác thực tài khoản và đăng video đã chuẩn bị lên TikTok từ một workspace thống nhất.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                    Đăng nhập và Liên kết nhanh
+                    Đăng nhập và liên kết nhanh
                   </h4>
                   <p className="text-xs text-slate-400 pl-3.5 leading-relaxed">
-                    Sử dụng luồng Đăng nhập với TikTok để kết nối tài khoản cá nhân hoặc tài khoản TikTok Shop vào hệ thống chỉ trong vài giây.
+                    Sử dụng luồng Đăng nhập với TikTok để kết nối tài khoản sandbox hoặc tài khoản TikTok được người dùng cấp quyền.
                   </p>
                 </div>
                 <div className="space-y-1">
                   <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                    Đồng bộ Tin nhắn & Chat
+                    Chuẩn bị nội dung video
                   </h4>
                   <p className="text-xs text-slate-400 pl-3.5 leading-relaxed">
-                    Quản lý toàn bộ tin nhắn từ khách hàng TikTok Shop ngay trên phần CRM OmniChat của Workspace, tăng tốc thời gian phản hồi.
+                    Tạo nội dung, caption và video trong workspace trước khi gửi lệnh xuất bản lên TikTok.
                   </p>
                 </div>
                 <div className="space-y-1">
                   <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                    Quản lý Đơn hàng tập trung
+                    Xuất bản có kiểm soát
                   </h4>
                   <p className="text-xs text-slate-400 pl-3.5 leading-relaxed">
-                    Đơn hàng từ TikTok Shop được tự động đẩy về hệ thống của iGen Marketing phục vụ cho kiểm đếm kho và thống kê doanh thu.
+                    Người dùng kiểm tra lại caption, video và quyền riêng tư trước khi bấm đăng video lên TikTok.
                   </p>
                 </div>
                 <div className="space-y-1">
                   <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                    Đồng bộ Tồn kho tự động
+                    Theo dõi trạng thái đăng
                   </h4>
                   <p className="text-xs text-slate-400 pl-3.5 leading-relaxed">
-                    Đảm bảo số lượng sản phẩm thực tế và số lượng sản phẩm đăng trên TikTok Shop luôn đồng nhất, giảm tỷ lệ hủy đơn do hết hàng.
+                    Hệ thống lưu trạng thái xử lý, mã bài đăng và đường dẫn chia sẻ khi thao tác đăng video hoàn tất.
                   </p>
                 </div>
               </div>
@@ -599,7 +595,7 @@ export default function LandingPage() {
             </div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Quy trình cấp quyền & kết nối 3 bước</h2>
             <p className="text-sm text-slate-500 leading-relaxed">
-              Dễ dàng thiết lập liên kết tài khoản TikTok Shop của bạn qua cổng xác thực chính thức OAuth 2.0 an toàn và bảo mật.
+              Dễ dàng thiết lập liên kết tài khoản TikTok qua cổng xác thực OAuth 2.0 an toàn và bảo mật.
             </p>
           </div>
 
@@ -611,7 +607,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Yêu cầu kết nối</h4>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                Tại trang Quản trị iGen Marketing, bạn truy cập mục "Cấu hình tích hợp", sau đó chọn "Kết nối TikTok Shop" để kích hoạt luồng kết nối chính thức.
+                Tại trang Quản trị iGen Marketing, bạn truy cập mục "Cấu hình tích hợp", sau đó chọn "Kết nối TikTok Sandbox" để kích hoạt luồng kết nối.
               </p>
             </div>
 
@@ -622,7 +618,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Xác thực OAuth 2.0</h4>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                Hệ thống sẽ chuyển hướng bạn sang cổng xác thực an toàn của TikTok Shop. Bạn tiến hành đăng nhập tài khoản Shop và xác nhận đồng ý cung cấp quyền.
+                Hệ thống mở màn hình xác thực TikTok Sandbox. Bạn xác nhận cấp quyền user.info.basic và video.publish cho ứng dụng.
               </p>
             </div>
 
@@ -633,7 +629,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Hoàn tất & Đồng bộ</h4>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                TikTok chuyển hướng trở lại iGen Marketing. Token kết nối bảo mật được thiết lập, hệ thống bắt đầu đồng bộ đơn hàng, tin nhắn và sản phẩm tự động.
+                TikTok chuyển hướng trở lại iGen Marketing. Token kết nối được thiết lập, hệ thống sẵn sàng cho luồng đăng video demo.
               </p>
             </div>
 
@@ -701,19 +697,19 @@ export default function LandingPage() {
             {[
               {
                 q: "iGen Marketing kết nối với TikTok bằng cách nào và có an toàn không?",
-                a: "iGen Marketing kết nối trực tiếp với TikTok Shop thông qua giao thức API chính thức (TikTok Shop Open Platform) sử dụng chuẩn xác thực bảo mật OAuth 2.0. Hệ thống không yêu cầu người dùng cung cấp mật khẩu tài khoản TikTok, đảm bảo an toàn tuyệt đối."
+                a: "iGen Marketing kết nối trực tiếp với TikTok thông qua giao thức API chính thức (TikTok Open Platform) sử dụng chuẩn xác thực bảo mật OAuth 2.0. Hệ thống không yêu cầu người dùng cung cấp mật khẩu tài khoản TikTok, đảm bảo an toàn tuyệt đối."
               },
               {
-                q: "Quyền 'seller.order' và 'seller.product' được sử dụng cụ thể vào mục đích gì?",
-                a: "Quyền 'seller.order' giúp hệ thống tự động tải đơn hàng mới phát sinh trên TikTok Shop về Workspace để đóng gói, in vận đơn. Quyền 'seller.product' được dùng để đồng bộ danh mục sản phẩm, giúp cập nhật tồn kho tức thời (khi có đơn ở kho vật lý hoặc các kênh khác, số lượng trên TikTok Shop sẽ tự động trừ đi để tránh tình trạng lệch kho)."
+                q: "Quyền 'user.info.basic' và 'video.publish' được sử dụng vào mục đích gì?",
+                a: "Quyền 'user.info.basic' dùng để hiển thị tài khoản TikTok đã kết nối. Quyền 'video.publish' dùng để đăng video sau khi người dùng tạo nội dung, kiểm duyệt và chủ động bấm xuất bản trong iGen Marketing."
               },
               {
-                q: "Tôi có thể hủy liên kết tài khoản TikTok Shop bất cứ lúc nào không?",
-                a: "Hoàn toàn được. Bạn có thể ngắt kết nối tài khoản TikTok Shop của mình ngay lập tức chỉ với một nút bấm trong mục 'Cài đặt kết nối' của Workspace. Sau khi ngắt kết nối, iGen Marketing sẽ ngưng mọi hoạt động truy xuất dữ liệu từ API TikTok."
+                q: "Tôi có thể hủy liên kết tài khoản TikTok bất cứ lúc nào không?",
+                a: "Hoàn toàn được. Bạn có thể ngắt kết nối tài khoản TikTok của mình ngay lập tức chỉ với một nút bấm trong mục 'Cài đặt kết nối' của Workspace. Sau khi ngắt kết nối, iGen Marketing sẽ ngưng mọi hoạt động truy xuất dữ liệu từ API TikTok."
               },
               {
                 q: "Làm cách nào để yêu cầu xóa toàn bộ dữ liệu đã đồng bộ khỏi hệ thống?",
-                a: "Chúng tôi tuân thủ nghiêm ngặt chính sách bảo vệ dữ liệu người dùng. Bạn có thể truy cập trang 'Data Deletion Instructions' tại chân trang hoặc gửi yêu cầu xóa dữ liệu tự động. Hệ thống sẽ tiến hành xóa vĩnh viễn toàn bộ dữ liệu đơn hàng và chat đã đồng bộ trong vòng 72 giờ làm việc."
+                a: "Chúng tôi tuân thủ nghiêm ngặt chính sách bảo vệ dữ liệu người dùng. Bạn có thể truy cập trang 'Data Deletion Instructions' tại chân trang hoặc gửi yêu cầu xóa dữ liệu tự động. Hệ thống sẽ xử lý xóa dữ liệu tài khoản kết nối, nội dung và lịch sử tác vụ liên quan trong vòng 72 giờ làm việc."
               }
             ].map((faq, index) => {
               const isOpen = activeFaq === index;
@@ -744,7 +740,7 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-8 relative z-10">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Sẵn sàng nâng tầm chuyển đổi số doanh nghiệp?</h2>
           <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
-            Đăng ký trải nghiệm iGen Marketing tích hợp AI ngay hôm nay để nhận 14 ngày dùng thử miễn phí và kết nối không giới hạn Facebook, Zalo, TikTok Shop.
+            Đăng ký trải nghiệm iGen Marketing tích hợp AI ngay hôm nay để nhận 14 ngày dùng thử miễn phí và kết nối không giới hạn Facebook, Zalo, TikTok.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
@@ -816,7 +812,7 @@ export default function LandingPage() {
             <div className="lg:col-span-2 text-left space-y-4">
               <h4 className="font-bold text-white uppercase tracking-wider text-[10px] border-b border-slate-900 pb-2">Kết nối & Tích hợp</h4>
               <ul className="space-y-2.5">
-                <li><a href="#tich-hop-tiktok" className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> TikTok Shop API (Official)</a></li>
+                <li><a href="#tich-hop-tiktok" className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> TikTok API (Official)</a></li>
                 <li><span className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Facebook Graph API</span></li>
                 <li><span className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Zalo Business API</span></li>
                 <li><a href="#tich-hop-tiktok" className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Quy trình cấp quyền OAuth</a></li>
@@ -870,3 +866,5 @@ export default function LandingPage() {
     </div>
   );
 }
+
+

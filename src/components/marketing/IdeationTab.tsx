@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, prefer-const, react-hooks/exhaustive-deps */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, prefer-const, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
@@ -48,7 +48,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
     if (uploadedDocText) {
       parts.push(
-        `TÀI LIỆU ĐÍNH KÈM:\nTên tài liệu: ${uploadedDocName || "Tài liệu tải lên"}\nNội dung tài liệu:\n${uploadedDocText}`
+        `TÃ€I LIá»†U ÄÃNH KÃˆM:\nTÃªn tÃ i liá»‡u: ${uploadedDocName || "TÃ i liá»‡u táº£i lÃªn"}\nNá»™i dung tÃ i liá»‡u:\n${uploadedDocText}`
       );
     }
 
@@ -78,7 +78,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
   const processFile = async (file: File) => {
     if (file.size > 10 * 1024 * 1024) {
-      toast.warning("Dung lượng tệp tin không được vượt quá 10MB!");
+      toast.warning("Dung lÆ°á»£ng tá»‡p tin khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 10MB!");
       return;
     }
 
@@ -96,11 +96,11 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const base64Data = evt.target?.result as string;
         setUploadedImageBase64(base64Data);
         setLoadingDoc(false);
-        toast.success("Đã tải hình ảnh lên thành công!");
+        toast.success("ÄÃ£ táº£i hÃ¬nh áº£nh lÃªn thÃ nh cÃ´ng!");
       };
       reader.onerror = () => {
         setLoadingDoc(false);
-        toast.error("Lỗi khi đọc tệp tin hình ảnh.");
+        toast.error("Lá»—i khi Ä‘á»c tá»‡p tin hÃ¬nh áº£nh.");
       };
       reader.readAsDataURL(file);
     } else if (fileExt === "txt" || fileExt === "md") {
@@ -109,11 +109,11 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const text = evt.target?.result as string;
         setUploadedDocText(text);
         setLoadingDoc(false);
-        toast.success("Đã trích xuất nội dung văn bản thành công!");
+        toast.success("ÄÃ£ trÃ­ch xuáº¥t ná»™i dung vÄƒn báº£n thÃ nh cÃ´ng!");
       };
       reader.onerror = () => {
         setLoadingDoc(false);
-        toast.error("Lỗi khi đọc file văn bản.");
+        toast.error("Lá»—i khi Ä‘á»c file vÄƒn báº£n.");
       };
       reader.readAsText(file);
     } else if (fileExt === "pdf") {
@@ -131,15 +131,15 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           extractedText += pageText + "\n";
         }
         if (!extractedText.trim()) {
-          throw new Error("Không thể trích xuất văn bản từ PDF (tài liệu rỗng hoặc dạng scan ảnh).");
+          throw new Error("KhÃ´ng thá»ƒ trÃ­ch xuáº¥t vÄƒn báº£n tá»« PDF (tÃ i liá»‡u rá»—ng hoáº·c dáº¡ng scan áº£nh).");
         }
         setUploadedDocText(extractedText);
         setLoadingDoc(false);
-        toast.success(`Đã trích xuất tài liệu PDF (${pdf.numPages} trang) thành công!`);
+        toast.success(`ÄÃ£ trÃ­ch xuáº¥t tÃ i liá»‡u PDF (${pdf.numPages} trang) thÃ nh cÃ´ng!`);
       } catch (err: any) {
         setLoadingDoc(false);
         console.error(err);
-        toast.error(err.message || "Lỗi xử lý file PDF.");
+        toast.error(err.message || "Lá»—i xá»­ lÃ½ file PDF.");
       }
     } else if (fileExt === "docx") {
       try {
@@ -148,19 +148,19 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const result = await mammoth.extractRawText({ arrayBuffer });
         const extractedText = result.value;
         if (!extractedText.trim()) {
-          throw new Error("Tài liệu Word trống hoặc không có văn bản.");
+          throw new Error("TÃ i liá»‡u Word trá»‘ng hoáº·c khÃ´ng cÃ³ vÄƒn báº£n.");
         }
         setUploadedDocText(extractedText);
         setLoadingDoc(false);
-        toast.success("Đã trích xuất tài liệu Word thành công!");
+        toast.success("ÄÃ£ trÃ­ch xuáº¥t tÃ i liá»‡u Word thÃ nh cÃ´ng!");
       } catch (err: any) {
         setLoadingDoc(false);
         console.error(err);
-        toast.error(err.message || "Lỗi xử lý file Word.");
+        toast.error(err.message || "Lá»—i xá»­ lÃ½ file Word.");
       }
     } else {
       setLoadingDoc(false);
-      toast.error("Định dạng file không được hỗ trợ. Vui lòng tải hình ảnh, .txt, .md, .pdf hoặc .docx");
+      toast.error("Äá»‹nh dáº¡ng file khÃ´ng Ä‘Æ°á»£c há»— trá»£. Vui lÃ²ng táº£i hÃ¬nh áº£nh, .txt, .md, .pdf hoáº·c .docx");
     }
   };
 
@@ -193,15 +193,15 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     setUploadedDocName("");
     setUploadedDocText("");
     setUploadedImageBase64("");
-    toast.success("Đã gỡ tệp tin đính kèm.");
+    toast.success("ÄÃ£ gá»¡ tá»‡p tin Ä‘Ã­nh kÃ¨m.");
   };
 
   const [analyzedTopic, setAnalyzedTopic] = useState("");
   const [loadingAI, setLoadingAI] = useState(false);
   const [quickSuggestions, setQuickSuggestions] = useState<string[]>([
-    "Chiến dịch khuyến mãi theo mùa để tăng doanh số và thu hút khách hàng mới.",
-    "Chương trình tri ân khách hàng thân thiết nhằm củng cố lòng trung thành và khuyến khích mua sắm lặp lại.",
-    "Chiến dịch giới thiệu bạn bè để mở rộng tệp khách hàng tiềm năng thông qua mạng lưới hiện có."
+    "Chiáº¿n dá»‹ch khuyáº¿n mÃ£i theo mÃ¹a Ä‘á»ƒ tÄƒng doanh sá»‘ vÃ  thu hÃºt khÃ¡ch hÃ ng má»›i.",
+    "ChÆ°Æ¡ng trÃ¬nh tri Ã¢n khÃ¡ch hÃ ng thÃ¢n thiáº¿t nháº±m cá»§ng cá»‘ lÃ²ng trung thÃ nh vÃ  khuyáº¿n khÃ­ch mua sáº¯m láº·p láº¡i.",
+    "Chiáº¿n dá»‹ch giá»›i thiá»‡u báº¡n bÃ¨ Ä‘á»ƒ má»Ÿ rá»™ng tá»‡p khÃ¡ch hÃ ng tiá»m nÄƒng thÃ´ng qua máº¡ng lÆ°á»›i hiá»‡n cÃ³."
   ]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [developingIdx, setDevelopingIdx] = useState<number | null>(null);
@@ -275,7 +275,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
   const mediaTypeMeta: Record<string, { label: string; tone: string }> = {
     image: {
-      label: "Ảnh AI",
+      label: "áº¢nh AI",
       tone: "bg-sky-50 text-sky-700 border-sky-100"
     },
     video: {
@@ -283,7 +283,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
       tone: "bg-amber-50 text-amber-700 border-amber-100"
     },
     "human-video": {
-      label: "Video người thật",
+      label: "Video ngÆ°á»i tháº­t",
       tone: "bg-emerald-50 text-emerald-700 border-emerald-100"
     }
   };
@@ -302,8 +302,8 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     {
       id: "Pillar A: Educate & Guides",
       title: "Pillar A: Educate & Guides",
-      ratio: "35% tỉ trọng",
-      description: "Chia sẻ kiến thức bổ ích liên quan đến tư thế ngồi gõ bàn phím, hoặc cách tối ưu hóa vận hành hệ thống.",
+      ratio: "35% tá»‰ trá»ng",
+      description: "Chia sáº» kiáº¿n thá»©c bá»• Ã­ch liÃªn quan Ä‘áº¿n tÆ° tháº¿ ngá»“i gÃµ bÃ n phÃ­m, hoáº·c cÃ¡ch tá»‘i Æ°u hÃ³a váº­n hÃ nh há»‡ thá»‘ng.",
       colorClass: "border-red-200 bg-red-50/50 text-red-700",
       selectedColorClass: "border-red-500 bg-red-50 text-red-850 ring-2 ring-red-500/20 shadow-xs",
       bulletColor: "bg-red-500",
@@ -311,8 +311,8 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     {
       id: "Pillar B: Storytelling & Social Proof",
       title: "Pillar B: Storytelling & Social Proof",
-      ratio: "40% tỉ trọng",
-      description: "Phỏng vấn thực tế khách hàng cũ trung thành đang nâng hiệu suất cùng iGen ERP.",
+      ratio: "40% tá»‰ trá»ng",
+      description: "Phá»ng váº¥n thá»±c táº¿ khÃ¡ch hÃ ng cÅ© trung thÃ nh Ä‘ang nÃ¢ng hiá»‡u suáº¥t cÃ¹ng iGen Marketing.",
       colorClass: "border-blue-200 bg-blue-50/50 text-blue-700",
       selectedColorClass: "border-blue-500 bg-blue-50 text-blue-800 ring-2 ring-blue-500/20 shadow-xs",
       bulletColor: "bg-blue-500",
@@ -320,8 +320,8 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     {
       id: "Pillar C: Offers & Promotions",
       title: "Pillar C: Offers & Promotions",
-      ratio: "25% tỉ trọng",
-      description: "Tạo sự thúc giục bằng cách công bố giờ vàng flash sale khẩn cấp.",
+      ratio: "25% tá»‰ trá»ng",
+      description: "Táº¡o sá»± thÃºc giá»¥c báº±ng cÃ¡ch cÃ´ng bá»‘ giá» vÃ ng flash sale kháº©n cáº¥p.",
       colorClass: "border-indigo-200 bg-indigo-50/50 text-indigo-700",
       selectedColorClass: "border-indigo-500 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20 shadow-xs",
       bulletColor: "bg-indigo-500",
@@ -494,16 +494,16 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         : "iGen Audio Turbo v2.5";
 
     return [
-      "YÊU CẦU RIÊNG CHO VIDEO NGƯỜI THẬT:",
-      `- Hãy phân tích mô tả chiến dịch và viết thành một đoạn lời thoại hoàn chỉnh, tự nhiên, có thể đem đọc trực tiếp.`,
-      `- Giọng đọc được chọn: ${voiceLabel}.`,
-      `- Model voice được chọn: ${voiceModelLabel}.`,
-      `- Thời lượng đọc mục tiêu: khoảng ${normalizedDuration} giây.`,
-      `- Độ dài script voice cần được tối ưu để đọc hết trong khoảng ${normalizedDuration} giây, tương đương xấp xỉ ${targetWordCount} từ với tốc độ đọc tự nhiên.`,
-      `- Đầu ra ưu tiên là một đoạn voice script hoàn chỉnh để đưa thẳng vào công cụ tạo voice; không viết dạng dàn ý, không chèn bullet, không thêm nhãn MC/Voiceover.`,
-      `- Ưu tiên câu ngắn, nhịp đọc rõ, mở đầu cuốn hút, thông điệp chính rõ ràng và kết bằng CTA ngắn gọn.`,
-      `- Đầu ra cần ưu tiên dạng script voice hoàn chỉnh trước, sau đó mới đến gợi ý bối cảnh quay nếu cần.`,
-      `- BẮT BUỘC viết bằng tiếng Việt có dấu, không được bỏ dấu tiếng Việt.`
+      "YÃŠU Cáº¦U RIÃŠNG CHO VIDEO NGÆ¯á»œI THáº¬T:",
+      `- HÃ£y phÃ¢n tÃ­ch mÃ´ táº£ chiáº¿n dá»‹ch vÃ  viáº¿t thÃ nh má»™t Ä‘oáº¡n lá»i thoáº¡i hoÃ n chá»‰nh, tá»± nhiÃªn, cÃ³ thá»ƒ Ä‘em Ä‘á»c trá»±c tiáº¿p.`,
+      `- Giá»ng Ä‘á»c Ä‘Æ°á»£c chá»n: ${voiceLabel}.`,
+      `- Model voice Ä‘Æ°á»£c chá»n: ${voiceModelLabel}.`,
+      `- Thá»i lÆ°á»£ng Ä‘á»c má»¥c tiÃªu: khoáº£ng ${normalizedDuration} giÃ¢y.`,
+      `- Äá»™ dÃ i script voice cáº§n Ä‘Æ°á»£c tá»‘i Æ°u Ä‘á»ƒ Ä‘á»c háº¿t trong khoáº£ng ${normalizedDuration} giÃ¢y, tÆ°Æ¡ng Ä‘Æ°Æ¡ng xáº¥p xá»‰ ${targetWordCount} tá»« vá»›i tá»‘c Ä‘á»™ Ä‘á»c tá»± nhiÃªn.`,
+      `- Äáº§u ra Æ°u tiÃªn lÃ  má»™t Ä‘oáº¡n voice script hoÃ n chá»‰nh Ä‘á»ƒ Ä‘Æ°a tháº³ng vÃ o cÃ´ng cá»¥ táº¡o voice; khÃ´ng viáº¿t dáº¡ng dÃ n Ã½, khÃ´ng chÃ¨n bullet, khÃ´ng thÃªm nhÃ£n MC/Voiceover.`,
+      `- Æ¯u tiÃªn cÃ¢u ngáº¯n, nhá»‹p Ä‘á»c rÃµ, má»Ÿ Ä‘áº§u cuá»‘n hÃºt, thÃ´ng Ä‘iá»‡p chÃ­nh rÃµ rÃ ng vÃ  káº¿t báº±ng CTA ngáº¯n gá»n.`,
+      `- Äáº§u ra cáº§n Æ°u tiÃªn dáº¡ng script voice hoÃ n chá»‰nh trÆ°á»›c, sau Ä‘Ã³ má»›i Ä‘áº¿n gá»£i Ã½ bá»‘i cáº£nh quay náº¿u cáº§n.`,
+      `- Báº®T BUá»˜C viáº¿t báº±ng tiáº¿ng Viá»‡t cÃ³ dáº¥u, khÃ´ng Ä‘Æ°á»£c bá» dáº¥u tiáº¿ng Viá»‡t.`
     ].join("\n");
   };
 
@@ -514,10 +514,10 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     const outlineText = String(post?.outline || "").trim();
     const bodyText = String(post?.bodyText || "").trim();
     const fallbackParts = [
-      `Xin chào, đây là video giới thiệu cho chiến dịch ${fallbackTitle}.`,
+      `Xin chÃ o, Ä‘Ã¢y lÃ  video giá»›i thiá»‡u cho chiáº¿n dá»‹ch ${fallbackTitle}.`,
       fallbackSummary,
       bodyText,
-      "Liên hệ ngay để nhận tư vấn và nhận ưu đãi phù hợp."
+      "LiÃªn há»‡ ngay Ä‘á»ƒ nháº­n tÆ° váº¥n vÃ  nháº­n Æ°u Ä‘Ã£i phÃ¹ há»£p."
     ]
       .filter(Boolean)
       .join(" ")
@@ -545,11 +545,11 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     const normalizedDuration = Math.max(1, durationSeconds || DEFAULT_HUMAN_VOICE_DURATION_SECONDS);
 
     return [
-      `Đọc bằng tiếng Việt có dấu cho nội dung chiến dịch "${cleanTitle}" trên kênh ${cleanChannel}.`,
-      cleanSummary ? `Tóm tắt chiến dịch: ${cleanSummary}.` : "",
-      `Mục tiêu đọc tự nhiên, liền mạch, âm rõ từng dấu và đúng nhịp khoảng ${normalizedDuration} giây.`,
-      "Ưu tiên cách đọc mềm, có ngữ điệu, tránh tách từng cụm từ như robot.",
-      "Cần đọc chuẩn dấu tiếng Việt, xử lý đúng tên riêng, địa danh và thông điệp quảng cáo."
+      `Äá»c báº±ng tiáº¿ng Viá»‡t cÃ³ dáº¥u cho ná»™i dung chiáº¿n dá»‹ch "${cleanTitle}" trÃªn kÃªnh ${cleanChannel}.`,
+      cleanSummary ? `TÃ³m táº¯t chiáº¿n dá»‹ch: ${cleanSummary}.` : "",
+      `Má»¥c tiÃªu Ä‘á»c tá»± nhiÃªn, liá»n máº¡ch, Ã¢m rÃµ tá»«ng dáº¥u vÃ  Ä‘Ãºng nhá»‹p khoáº£ng ${normalizedDuration} giÃ¢y.`,
+      "Æ¯u tiÃªn cÃ¡ch Ä‘á»c má»m, cÃ³ ngá»¯ Ä‘iá»‡u, trÃ¡nh tÃ¡ch tá»«ng cá»¥m tá»« nhÆ° robot.",
+      "Cáº§n Ä‘á»c chuáº©n dáº¥u tiáº¿ng Viá»‡t, xá»­ lÃ½ Ä‘Ãºng tÃªn riÃªng, Ä‘á»‹a danh vÃ  thÃ´ng Ä‘iá»‡p quáº£ng cÃ¡o."
     ]
       .filter(Boolean)
       .join(" ")
@@ -591,7 +591,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     }
 
     const fallback = String(title || "")
-      .split(/[^A-Za-z0-9À-ỹ]+/)
+      .split(/[^\p{L}\p{N}]+/u)
       .map((part) => part.trim())
       .filter((part) => part.length >= 3)
       .slice(0, 3)
@@ -635,7 +635,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     }
 
     if (currentCard.videoUrl && currentCard.videoUrl.startsWith("pending://piapi/")) {
-      throw new Error("Hết thời gian chờ kết xuất video AI.");
+      throw new Error("Háº¿t thá»i gian chá» káº¿t xuáº¥t video AI.");
     }
     return currentCard;
   };
@@ -681,7 +681,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
             const pageToken = integration?.accessToken;
             const pageId = integration?.username;
             if (!pageToken || !pageId) {
-              throw new Error("Không lấy được Page Token hoặc Page ID cho tài khoản được chọn.");
+              throw new Error("KhÃ´ng láº¥y Ä‘Æ°á»£c Page Token hoáº·c Page ID cho tÃ i khoáº£n Ä‘Æ°á»£c chá»n.");
             }
             await marketingService.publishToFacebook(
               updatedCard.id,
@@ -694,7 +694,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
             );
           } else if (platform === "TikTok") {
             if (!updatedCard.videoUrl) {
-              throw new Error("Bài đăng TikTok cần có video. Hãy tạo video AI trước.");
+              throw new Error("BÃ i Ä‘Äƒng TikTok cáº§n cÃ³ video. HÃ£y táº¡o video AI trÆ°á»›c.");
             }
             const caption = extractDraftContent(updatedCard.bodyText).slice(0, 2200);
             await marketingService.publishToTikTok(
@@ -725,7 +725,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           };
 
           setApprovalCards(prev => prev.map(c => c.id === card.id ? publishedCard : c));
-          toast.success(`Đã tự động tạo và đăng bài "${card.title}" lên ${card.channel}!`);
+          toast.success(`ÄÃ£ tá»± Ä‘á»™ng táº¡o vÃ  Ä‘Äƒng bÃ i "${card.title}" lÃªn ${card.channel}!`);
 
         } else {
           const scheduledDate = autoScheduleDate;
@@ -736,7 +736,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
             const hour = (startHour + idx) % 24;
             scheduledTime = `${hour.toString().padStart(2, '0')}:${mStr}`;
           } catch (e) {
-            console.warn("Lỗi tính toán giờ đăng tự động:", e);
+            console.warn("Lá»—i tÃ­nh toÃ¡n giá» Ä‘Äƒng tá»± Ä‘á»™ng:", e);
           }
 
           if (platform === "Facebook" || platform === "TikTok") {
@@ -759,14 +759,14 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           };
 
           setApprovalCards(prev => prev.map(c => c.id === card.id ? scheduledCard : c));
-          toast.success(`Đã tự động tạo và lên lịch bài đăng "${card.title}" trên ${card.channel}!`);
+          toast.success(`ÄÃ£ tá»± Ä‘á»™ng táº¡o vÃ  lÃªn lá»‹ch bÃ i Ä‘Äƒng "${card.title}" trÃªn ${card.channel}!`);
         }
 
       } catch (err: any) {
         console.error(`[Background Autopilot Error] for card ${card.id}:`, err);
         await marketingService.updateCard(card.id, { status: "failed" });
         setApprovalCards(prev => prev.map(c => c.id === card.id ? { ...c, status: "failed" as const } : c));
-        toast.error(`Không thể tạo phương tiện tự động cho bài "${card.title}": ${err.message || err}`);
+        toast.error(`KhÃ´ng thá»ƒ táº¡o phÆ°Æ¡ng tiá»‡n tá»± Ä‘á»™ng cho bÃ i "${card.title}": ${err.message || err}`);
       }
     });
 
@@ -783,7 +783,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const list = await socialIntegrationService.getIntegrations();
         setIntegrationsList(list.filter(item => item.isConnected));
       } catch (err) {
-        console.error("Lỗi khi tải liên kết mạng xã hội:", err);
+        console.error("Lá»—i khi táº£i liÃªn káº¿t máº¡ng xÃ£ há»™i:", err);
       } finally {
         setLoadingIntegrations(false);
       }
@@ -808,7 +808,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     const topic = (typeof rawTopic === "string" ? rawTopic : campaignInput).trim();
     if (!topic) {
       if (!rawTopic) {
-        toast.warning("Vui lòng nhập hoặc chọn một chủ đề/mục tiêu chiến dịch trước!");
+        toast.warning("Vui lÃ²ng nháº­p hoáº·c chá»n má»™t chá»§ Ä‘á»/má»¥c tiÃªu chiáº¿n dá»‹ch trÆ°á»›c!");
       }
       return;
     }
@@ -817,7 +817,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     try {
       let apiTopic = topic;
       if (uploadedDocText) {
-        apiTopic = `${topic}\n\nTÀI LIỆU ĐÍNH KÈM:\nTên tài liệu: ${uploadedDocName}\nNội dung tài liệu:\n${uploadedDocText}`;
+        apiTopic = `${topic}\n\nTÃ€I LIá»†U ÄÃNH KÃˆM:\nTÃªn tÃ i liá»‡u: ${uploadedDocName}\nNá»™i dung tÃ i liá»‡u:\n${uploadedDocText}`;
       }
       const data = await geminiApi.analyzeMarketingPillars(apiTopic, uploadedImageBase64 ? [uploadedImageBase64] : undefined);
       if (data.pillars && Array.isArray(data.pillars) && data.pillars.length > 0) {
@@ -842,7 +842,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const mappedPillars = data.pillars.map((p: any, idx: number) => ({
           id: p.id,
           title: p.title,
-          ratio: p.ratio || "33% tỉ trọng",
+          ratio: p.ratio || "33% tá»‰ trá»ng",
           description: p.description,
           ...styles[idx % styles.length]
         }));
@@ -852,8 +852,8 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         setAnalyzedTopic(topic);
       }
     } catch (err: any) {
-      console.error("Lỗi phân tích Content Pillars:", err);
-      toast.error(err.message || "Lỗi phân tích Content Pillars.");
+      console.error("Lá»—i phÃ¢n tÃ­ch Content Pillars:", err);
+      toast.error(err.message || "Lá»—i phÃ¢n tÃ­ch Content Pillars.");
     } finally {
       setLoadingPillars(false);
     }
@@ -862,7 +862,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
   const handleSwapPillar = async (pillarIdToReplace: string) => {
     const topic = campaignInput.trim();
     if (!topic) {
-      toast.warning("Vui lòng nhập mục tiêu chiến dịch trước khi đổi trụ cột.");
+      toast.warning("Vui lÃ²ng nháº­p má»¥c tiÃªu chiáº¿n dá»‹ch trÆ°á»›c khi Ä‘á»•i trá»¥ cá»™t.");
       return;
     }
     setSwappingPillarId(pillarIdToReplace);
@@ -870,20 +870,20 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
       const originalPillar = pillars.find(p => p.id === pillarIdToReplace);
       const pillarIndex = pillars.findIndex(p => p.id === pillarIdToReplace);
 
-      // Gọi analyzeMarketingPillars với variation hint để lấy bộ pillars mới
-      // Dùng biến thể ngẫu nhiên để AI trả về nội dung khác nhau mỗi lần
+      // Gá»i analyzeMarketingPillars vá»›i variation hint Ä‘á»ƒ láº¥y bá»™ pillars má»›i
+      // DÃ¹ng biáº¿n thá»ƒ ngáº«u nhiÃªn Ä‘á»ƒ AI tráº£ vá» ná»™i dung khÃ¡c nhau má»—i láº§n
       const variants = [
-        "góc độ khác biệt",
-        "hướng tiếp cận mới",
-        "phương án thay thế sáng tạo",
-        "quan điểm độc đáo hơn",
-        "chiến lược nội dung khác"
+        "gÃ³c Ä‘á»™ khÃ¡c biá»‡t",
+        "hÆ°á»›ng tiáº¿p cáº­n má»›i",
+        "phÆ°Æ¡ng Ã¡n thay tháº¿ sÃ¡ng táº¡o",
+        "quan Ä‘iá»ƒm Ä‘á»™c Ä‘Ã¡o hÆ¡n",
+        "chiáº¿n lÆ°á»£c ná»™i dung khÃ¡c"
       ];
       const randomVariant = variants[Math.floor(Math.random() * variants.length)];
 
-      let apiTopic = `${topic} - tập trung vào ${randomVariant}`;
+      let apiTopic = `${topic} - táº­p trung vÃ o ${randomVariant}`;
       if (uploadedDocText) {
-        apiTopic = `${apiTopic}\n\nTÀI LIỆU ĐÍNH KÈM:\nTên tài liệu: ${uploadedDocName}\nNội dung tài liệu:\n${uploadedDocText}`;
+        apiTopic = `${apiTopic}\n\nTÃ€I LIá»†U ÄÃNH KÃˆM:\nTÃªn tÃ i liá»‡u: ${uploadedDocName}\nNá»™i dung tÃ i liá»‡u:\n${uploadedDocText}`;
       }
 
       const data = await geminiApi.analyzeMarketingPillars(
@@ -892,7 +892,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
       );
 
       if (data.pillars && Array.isArray(data.pillars) && data.pillars.length > 0) {
-        // Lấy pillar ở cùng vị trí index, fallback sang pillar đầu tiên
+        // Láº¥y pillar á»Ÿ cÃ¹ng vá»‹ trÃ­ index, fallback sang pillar Ä‘áº§u tiÃªn
         const targetIdx = pillarIndex >= 0 && pillarIndex < data.pillars.length
           ? pillarIndex
           : 0;
@@ -901,9 +901,9 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const newPillar = {
           id: rawPillar.id || `pillar-swap-${Date.now()}`,
           title: rawPillar.title,
-          ratio: rawPillar.ratio || (originalPillar ? originalPillar.ratio : "33% tỉ trọng"),
+          ratio: rawPillar.ratio || (originalPillar ? originalPillar.ratio : "33% tá»‰ trá»ng"),
           description: rawPillar.description,
-          // Giữ nguyên màu sắc của pillar cũ để UI nhất quán
+          // Giá»¯ nguyÃªn mÃ u sáº¯c cá»§a pillar cÅ© Ä‘á»ƒ UI nháº¥t quÃ¡n
           colorClass: originalPillar?.colorClass || "border-gray-200 bg-white text-gray-500",
           selectedColorClass: originalPillar?.selectedColorClass || "border-indigo-500 bg-indigo-50 text-indigo-700",
           bulletColor: originalPillar?.bulletColor || "bg-indigo-500",
@@ -916,13 +916,13 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           }
           return prev;
         });
-        toast.success(`Đã đổi sang trụ cột: ${newPillar.title}`);
+        toast.success(`ÄÃ£ Ä‘á»•i sang trá»¥ cá»™t: ${newPillar.title}`);
       } else {
-        toast.error("Không thể thay thế trụ cột nội dung.");
+        toast.error("KhÃ´ng thá»ƒ thay tháº¿ trá»¥ cá»™t ná»™i dung.");
       }
     } catch (err: any) {
-      console.error("Lỗi thay đổi content pillar:", err);
-      toast.error(err.message || "Lỗi khi thay đổi Content Pillar.");
+      console.error("Lá»—i thay Ä‘á»•i content pillar:", err);
+      toast.error(err.message || "Lá»—i khi thay Ä‘á»•i Content Pillar.");
     } finally {
       setSwappingPillarId(null);
     }
@@ -931,7 +931,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
   const togglePillar = (id: string) => {
     if (selectedPillars.includes(id)) {
       if (selectedPillars.length === 1) {
-        toast.warning("Cần chọn nhất 1 trụ cột nội dung để trợ lý AI định hướng.");
+        toast.warning("Cáº§n chá»n nháº¥t 1 trá»¥ cá»™t ná»™i dung Ä‘á»ƒ trá»£ lÃ½ AI Ä‘á»‹nh hÆ°á»›ng.");
         return;
       }
       setSelectedPillars(selectedPillars.filter(p => p !== id));
@@ -948,13 +948,13 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     if (mediaType === "video") {
       const durVal = parseInt(videoDuration, 10);
       if (!videoDuration || isNaN(durVal) || durVal <= 0) {
-        toast.error("Vui lòng nhập thời lượng video hợp lệ.");
+        toast.error("Vui lÃ²ng nháº­p thá»i lÆ°á»£ng video há»£p lá»‡.");
         return;
       }
     } else if (mediaType === "human-video") {
       const durVal = parseInt(estimatedHumanVoiceDuration, 10);
       if (!estimatedHumanVoiceDuration || isNaN(durVal) || durVal <= 0) {
-        toast.error("Vui lòng nhập thời lượng video người thật hợp lệ.");
+        toast.error("Vui lÃ²ng nháº­p thá»i lÆ°á»£ng video ngÆ°á»i tháº­t há»£p lá»‡.");
         return;
       }
     }
@@ -966,7 +966,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     try {
       let apiTopic = topic;
       if (uploadedDocText) {
-        apiTopic = `${topic}\n\nTÀI LIỆU ĐÍNH KÈM:\nTên tài liệu: ${uploadedDocName}\nNội dung tài liệu:\n${uploadedDocText}`;
+        apiTopic = `${topic}\n\nTÃ€I LIá»†U ÄÃNH KÃˆM:\nTÃªn tÃ i liá»‡u: ${uploadedDocName}\nNá»™i dung tÃ i liá»‡u:\n${uploadedDocText}`;
       }
 
       const voiceBrief = buildHumanVideoVoiceBrief();
@@ -977,10 +977,10 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
       let pillarsToUse = selectedPillars;
       if (isAutoPilot) {
         if (analyzedTopic === topic && selectedPillars.length > 0) {
-          // Sử dụng pillars đã phân tích từ trước để tránh gọi lại API trùng lặp
+          // Sá»­ dá»¥ng pillars Ä‘Ã£ phÃ¢n tÃ­ch tá»« trÆ°á»›c Ä‘á»ƒ trÃ¡nh gá»i láº¡i API trÃ¹ng láº·p
           pillarsToUse = selectedPillars;
         } else {
-          setAutoPilotStatus("Đang phân tích định hướng Content Pillars...");
+          setAutoPilotStatus("Äang phÃ¢n tÃ­ch Ä‘á»‹nh hÆ°á»›ng Content Pillars...");
           setAutoPilotProgress(12);
           autoPilotStageCapRef.current = 25;
           try {
@@ -1006,7 +1006,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               const mappedPillars = pillarsData.pillars.map((p: any, idx: number) => ({
                 id: p.id,
                 title: p.title,
-                ratio: p.ratio || "33% tỉ trọng",
+                ratio: p.ratio || "33% tá»‰ trá»ng",
                 description: p.description,
                 ...styles[idx % styles.length]
               }));
@@ -1017,27 +1017,27 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               pillarsToUse = activePillars;
             }
           } catch (pillarErr: any) {
-            console.error("Lỗi phân tích pillars tự động:", pillarErr);
-            toast.warning("Lỗi phân tích Content Pillars tự động, đang thử lên ý tưởng trực tiếp...");
+            console.error("Lá»—i phÃ¢n tÃ­ch pillars tá»± Ä‘á»™ng:", pillarErr);
+            toast.warning("Lá»—i phÃ¢n tÃ­ch Content Pillars tá»± Ä‘á»™ng, Ä‘ang thá»­ lÃªn Ã½ tÆ°á»Ÿng trá»±c tiáº¿p...");
           }
         }
       }
 
-      setAutoPilotStatus("Đang lên ý tưởng chiến dịch...");
+      setAutoPilotStatus("Äang lÃªn Ã½ tÆ°á»Ÿng chiáº¿n dá»‹ch...");
       setAutoPilotProgress(35);
       autoPilotStageCapRef.current = 55;
       const actualMediaType = mediaType;
       const data = await geminiApi.generateMarketingIdeas(apiTopic, pillarsToUse, selectedChannels, actualMediaType, uploadedImageBase64 ? [uploadedImageBase64] : undefined);
       if (data.isMock) {
         console.warn("[IdeationTab] Marketing ideas fallbacked to mock data.");
-        toast.warning("AI đang trả về dữ liệu mẫu. Có thể backend vừa fallback sang mock.");
+        toast.warning("AI Ä‘ang tráº£ vá» dá»¯ liá»‡u máº«u. CÃ³ thá»ƒ backend vá»«a fallback sang mock.");
       }
 
       const generatedConcepts = (data.concepts || [])
         .map((concept: MarketingConcept) => normalizeGeneratedConcept(concept, actualMediaType))
         .filter((concept: MarketingConcept) => concept.title && concept.summary && concept.suggestedContent);
       if (generatedConcepts.length === 0) {
-        throw new Error("AI không thể tạo ý tưởng chiến dịch phù hợp.");
+        throw new Error("AI khÃ´ng thá»ƒ táº¡o Ã½ tÆ°á»Ÿng chiáº¿n dá»‹ch phÃ¹ há»£p.");
       }
 
       setConcepts(generatedConcepts);
@@ -1049,7 +1049,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const sortedConcepts = [...generatedConcepts].sort((a: any, b: any) => (b.matchPercent || 0) - (a.matchPercent || 0));
         const bestConcept = sortedConcepts[0];
 
-        setAutoPilotStatus(`Đang tự động viết nội dung chi tiết cho ý tưởng: "${bestConcept.title}"...`);
+        setAutoPilotStatus(`Äang tá»± Ä‘á»™ng viáº¿t ná»™i dung chi tiáº¿t cho Ã½ tÆ°á»Ÿng: "${bestConcept.title}"...`);
         setAutoPilotProgress(65);
         const result = await marketingService.developIdea({
           title: bestConcept.title,
@@ -1071,7 +1071,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         });
 
         if (!result || !result.posts || result.posts.length === 0) {
-          throw new Error("AI không thể phát triển chi tiết bài viết.");
+          throw new Error("AI khÃ´ng thá»ƒ phÃ¡t triá»ƒn chi tiáº¿t bÃ i viáº¿t.");
         }
 
         const sourceBriefContext = buildSourceBriefContext(bestConcept.title);
@@ -1115,7 +1115,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
             voiceId: cardMediaType === "human-video" ? selectedHumanVoice : undefined,
             inputText: cardMediaType === "human-video" ? voiceScriptVal : undefined,
             usePersonalVoice: cardMediaType === "human-video" ? selectedHumanVoiceSource === "personal" : undefined,
-            isNew: true // Đánh dấu card mới phát triển
+            isNew: true // ÄÃ¡nh dáº¥u card má»›i phÃ¡t triá»ƒn
           };
         });
 
@@ -1129,16 +1129,16 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         void runBackgroundMediaGeneration(savedCards, result.posts, bestConcept);
 
         setAutoPilotProgress(100);
-        // Chờ 800ms để người dùng nhìn thấy tiến trình đạt 100% trước khi chuyển tab
+        // Chá» 800ms Ä‘á»ƒ ngÆ°á»i dÃ¹ng nhÃ¬n tháº¥y tiáº¿n trÃ¬nh Ä‘áº¡t 100% trÆ°á»›c khi chuyá»ƒn tab
         await new Promise((resolve) => setTimeout(resolve, 800));
 
-        toast.success("Chiến dịch đã khởi chạy! Đang tự động tạo phương tiện truyền thông chạy nền...");
-        setSubTab("DUYỆT NỘI DUNG");
+        toast.success("Chiáº¿n dá»‹ch Ä‘Ã£ khá»Ÿi cháº¡y! Äang tá»± Ä‘á»™ng táº¡o phÆ°Æ¡ng tiá»‡n truyá»n thÃ´ng cháº¡y ná»n...");
+        setSubTab("DUYá»†T Ná»˜I DUNG");
       }
     } catch (err: any) {
       console.error(err);
       setConcepts([]);
-      toast.error(err.message || "Tự động hóa thất bại. Vui lòng kiểm tra lại cấu hình hoặc số dư ví.");
+      toast.error(err.message || "Tá»± Ä‘á»™ng hÃ³a tháº¥t báº¡i. Vui lÃ²ng kiá»ƒm tra láº¡i cáº¥u hÃ¬nh hoáº·c sá»‘ dÆ° vÃ­.");
     } finally {
       setLoadingAI(false);
       setAutoPilotBackgroundRunning(false);
@@ -1153,13 +1153,13 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     if (mediaType === "video") {
       const durVal = parseInt(videoDuration, 10);
       if (!videoDuration || isNaN(durVal) || durVal <= 0) {
-        toast.error("Vui lòng nhập thời lượng video hợp lệ.");
+        toast.error("Vui lÃ²ng nháº­p thá»i lÆ°á»£ng video há»£p lá»‡.");
         return;
       }
     } else if (mediaType === "human-video") {
       const durVal = parseInt(estimatedHumanVoiceDuration, 10);
       if (!estimatedHumanVoiceDuration || isNaN(durVal) || durVal <= 0) {
-        toast.error("Vui lòng nhập thời lượng video người thật hợp lệ.");
+        toast.error("Vui lÃ²ng nháº­p thá»i lÆ°á»£ng video ngÆ°á»i tháº­t há»£p lá»‡.");
         return;
       }
     }
@@ -1190,7 +1190,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
       if (!result) {
         console.error("[handleDevelopConcept] API returned null/undefined result");
-        toast.error("API không phản hồi. Vui lòng thử lại sau.");
+        toast.error("API khÃ´ng pháº£n há»“i. Vui lÃ²ng thá»­ láº¡i sau.");
         return;
       }
       if (result && result.posts && result.posts.length > 0) {
@@ -1201,7 +1201,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
             id: `dev_${Date.now()}_${index}_${Math.floor(Math.random() * 1000)}`,
             title: concept.title,
             channel: post.channel as any || "Facebook",
-            contentType: post.contentType || "Bài viết truyền thông",
+            contentType: post.contentType || "BÃ i viáº¿t truyá»n thÃ´ng",
             status: "pending",
             outline: post.outline || "",
             bodyText: post.bodyText || "",
@@ -1231,15 +1231,15 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
         const savedCards = await marketingService.saveCards(newCards);
         console.log("[handleDevelopConcept] Cards saved successfully. Updating local state and switching subTab...");
         setApprovalCards(prev => [...savedCards, ...prev]);
-        setSubTab("DUYỆT NỘI DUNG");
+        setSubTab("DUYá»†T Ná»˜I DUNG");
       } else {
         console.warn("[handleDevelopConcept] Result has no posts:", result);
-        const reason = result?.isMock ? "AI đang dùng dữ liệu mẫu (mock)." : "API Gemini không trả về bài viết nào.";
-        toast.error(`Không thể tạo nội dung: ${reason}`);
+        const reason = result?.isMock ? "AI Ä‘ang dÃ¹ng dá»¯ liá»‡u máº«u (mock)." : "API Gemini khÃ´ng tráº£ vá» bÃ i viáº¿t nÃ o.";
+        toast.error(`KhÃ´ng thá»ƒ táº¡o ná»™i dung: ${reason}`);
       }
     } catch (e: any) {
-      console.error("Lỗi phát triển ý tưởng đa kênh:", e);
-      toast.error(e.message || "Lỗi kết nối Trợ lý AI khi lập dàn ý chi tiết.");
+      console.error("Lá»—i phÃ¡t triá»ƒn Ã½ tÆ°á»Ÿng Ä‘a kÃªnh:", e);
+      toast.error(e.message || "Lá»—i káº¿t ná»‘i Trá»£ lÃ½ AI khi láº­p dÃ n Ã½ chi tiáº¿t.");
     } finally {
       console.log("[handleDevelopConcept] Resetting developing index.");
       setDevelopingIdx(null);
@@ -1258,7 +1258,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 <Sparkles className="h-6 w-6 text-purple-600" />
               </div>
               <h4 className="font-extrabold text-purple-800 text-[11px] tracking-wide uppercase font-mono">
-                🤖 Chế độ Auto-pilot đang vận hành...
+                ðŸ¤– Cháº¿ Ä‘á»™ Auto-pilot Ä‘ang váº­n hÃ nh...
               </h4>
               
               {/* Circular Progress Ring */}
@@ -1293,7 +1293,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     {autoPilotProgress}%
                   </span>
                   <span className="text-[7px] font-extrabold text-purple-400 mt-0.5 uppercase tracking-wider font-mono">
-                    TIẾN ĐỘ
+                    TIáº¾N Äá»˜
                   </span>
                 </div>
               </div>
@@ -1302,7 +1302,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 {autoPilotStatus}
               </p>
               <p className="text-[10px] text-slate-400 mt-1 font-mono italic">
-                Hệ thống đang tự động kết nối API Gemini & n8n Scheduler
+                Há»‡ thá»‘ng Ä‘ang tá»± Ä‘á»™ng káº¿t ná»‘i API Gemini & n8n Scheduler
               </p>
             </div>
           )}
@@ -1312,24 +1312,24 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 <div className="flex items-center gap-2 text-indigo-700">
                   <RefreshCw className="h-4 w-4 animate-spin" />
                   <span className="text-xs font-bold uppercase tracking-wide">
-                    Auto-pilot đang chạy nền
+                    Auto-pilot Ä‘ang cháº¡y ná»n
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-600">
-                  {autoPilotStatus || "AI đang tiếp tục xử lý lưu nội dung, media và lịch đăng."}
+                  {autoPilotStatus || "AI Ä‘ang tiáº¿p tá»¥c xá»­ lÃ½ lÆ°u ná»™i dung, media vÃ  lá»‹ch Ä‘Äƒng."}
                 </p>
               </div>
             )}
             <h4 className="font-bold text-gray-850 text-sm tracking-wide font-sans flex items-center gap-1.5 uppercase">
               <Sparkles className="h-4.5 w-4.5 text-indigo-500 animate-pulse" />
-              Khởi tạo ý tưởng chiến dịch marketing
+              Khá»Ÿi táº¡o Ã½ tÆ°á»Ÿng chiáº¿n dá»‹ch marketing
             </h4>
 
             <form onSubmit={handleGenerateIdeas} className="mt-5 space-y-4">
               <div className="flex flex-col gap-1.5">
                 <div className="flex justify-between items-center select-none">
                   <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider">
-                    Mô tả mục tiêu chiến dịch của bạn:
+                    MÃ´ táº£ má»¥c tiÃªu chiáº¿n dá»‹ch cá»§a báº¡n:
                   </span>
                   {(campaignInput || uploadedDocName) && (
                     <button
@@ -1337,12 +1337,12 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                       onClick={() => {
                         setCampaignInput("");
                         handleRemoveDocument();
-                        toast.success("Đã xóa sạch nội dung prompt!");
+                        toast.success("ÄÃ£ xÃ³a sáº¡ch ná»™i dung prompt!");
                       }}
                       className="text-[10px] font-bold font-mono text-red-600 hover:text-red-750 transition-colors flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100/80 px-2.5 py-0.5 rounded border border-red-200/30"
                     >
                       <Trash2 className="h-3 w-3" />
-                      Xóa tất cả
+                      XÃ³a táº¥t cáº£
                     </button>
                   )}
                 </div>
@@ -1358,7 +1358,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                   onDrop={handleDrop}
                 >
                   <textarea
-                    placeholder="Mô tả mục tiêu của bạn (Ex: Khởi động giới thiệu dòng Bàn phím cơ Workspace V2 phân khúc lập trình viên, chiết khấu 10%)..."
+                    placeholder="MÃ´ táº£ má»¥c tiÃªu cá»§a báº¡n (Ex: Khá»Ÿi Ä‘á»™ng giá»›i thiá»‡u dÃ²ng BÃ n phÃ­m cÆ¡ Workspace V2 phÃ¢n khÃºc láº­p trÃ¬nh viÃªn, chiáº¿t kháº¥u 10%)..."
                     className="w-full text-left min-h-[100px] max-h-[200px] p-4 pb-2 bg-transparent text-xs font-sans outline-none resize-none"
                     value={campaignInput}
                     onChange={(e) => setCampaignInput(e.target.value)}
@@ -1379,10 +1379,10 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                           <p className="text-[11px] font-semibold text-gray-700 truncate leading-tight">{uploadedDocName}</p>
                           <p className="text-[9px] text-gray-400 font-mono leading-tight">
                             {loadingDoc
-                              ? "Đang xử lý..."
+                              ? "Äang xá»­ lÃ½..."
                               : uploadedImageBase64
-                                ? "Hình ảnh"
-                                : "Tài liệu"
+                                ? "HÃ¬nh áº£nh"
+                                : "TÃ i liá»‡u"
                             }
                           </p>
                         </div>
@@ -1390,7 +1390,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                           type="button"
                           onClick={handleRemoveDocument}
                           className="p-0.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
-                          title="Gỡ tệp đính kèm"
+                          title="Gá»¡ tá»‡p Ä‘Ã­nh kÃ¨m"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -1402,7 +1402,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                   {loadingDoc && (
                     <div className="flex items-center gap-1.5 px-3.5 pb-1.5 text-indigo-600 text-[10px] font-bold font-mono select-none">
                       <RefreshCw className="h-3 w-3 animate-spin" />
-                      <span>Đang xử lý dữ liệu...</span>
+                      <span>Äang xá»­ lÃ½ dá»¯ liá»‡u...</span>
                     </div>
                   )}
 
@@ -1411,7 +1411,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     {/* Attach document */}
                     <label
                       className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer group relative"
-                      title="Đính kèm tài liệu (PDF, DOCX, TXT, MD)"
+                      title="ÄÃ­nh kÃ¨m tÃ i liá»‡u (PDF, DOCX, TXT, MD)"
                     >
                       <Paperclip className="h-4 w-4" />
                       <input
@@ -1426,7 +1426,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     {/* Attach image */}
                     <label
                       className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer group relative"
-                      title="Đính kèm hình ảnh"
+                      title="ÄÃ­nh kÃ¨m hÃ¬nh áº£nh"
                     >
                       <ImageIcon className="h-4 w-4" />
                       <input
@@ -1465,12 +1465,12 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                       {isAutoPilot ? (
                         <>
                           <Zap className={`h-3.5 w-3.5 text-purple-600 ${loadingAI || autoPilotBackgroundRunning ? "animate-spin" : ""}`} />
-                          <span>{loadingAI || autoPilotBackgroundRunning ? "Đang chạy..." : "Khởi chạy Tự động 1-Click"}</span>
+                          <span>{loadingAI || autoPilotBackgroundRunning ? "Äang cháº¡y..." : "Khá»Ÿi cháº¡y Tá»± Ä‘á»™ng 1-Click"}</span>
                         </>
                       ) : (
                         <>
                           <Sparkles className={`h-3.5 w-3.5 text-indigo-500 ${loadingPillars ? "animate-spin" : ""}`} />
-                          <span>{loadingPillars ? "Đang phân tích..." : "Phân tích Mục tiêu AI"}</span>
+                          <span>{loadingPillars ? "Äang phÃ¢n tÃ­ch..." : "PhÃ¢n tÃ­ch Má»¥c tiÃªu AI"}</span>
                         </>
                       )}
                     </button>
@@ -1479,27 +1479,27 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               </div>
               {!isAutoPilot && campaignInput.trim() && campaignInput.trim() !== analyzedTopic.trim() && (
                 <p className="text-[10px] text-amber-600 font-bold font-mono tracking-wide animate-pulse mt-1 select-none text-left">
-                  ⚠️ Bạn đã thay đổi nội dung mục tiêu. Vui lòng bấm "Phân tích Mục tiêu & Đề xuất Trụ cột AI" ở cột bên phải trước để cập nhật định hướng trước khi phát sinh ý tưởng!
+                  âš ï¸ Báº¡n Ä‘Ã£ thay Ä‘á»•i ná»™i dung má»¥c tiÃªu. Vui lÃ²ng báº¥m "PhÃ¢n tÃ­ch Má»¥c tiÃªu & Äá» xuáº¥t Trá»¥ cá»™t AI" á»Ÿ cá»™t bÃªn pháº£i trÆ°á»›c Ä‘á»ƒ cáº­p nháº­t Ä‘á»‹nh hÆ°á»›ng trÆ°á»›c khi phÃ¡t sinh Ã½ tÆ°á»Ÿng!
                 </p>
               )}
 
               {/* Quick suggestions chips bubble list */}
               <div className="space-y-1.5 font-sans">
-                <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider block">Gợi ý chủ đề nhanh:</span>
+                <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider block">Gá»£i Ã½ chá»§ Ä‘á» nhanh:</span>
                 <div className="flex flex-wrap gap-2">
                   {loadingSuggestions ? (
                     <>
                       <div className="px-2.5 py-1 text-[10px] rounded-md border border-gray-100 bg-slate-50 text-gray-400 flex items-center gap-1.5 animate-pulse select-none">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-                        <span>Gợi ý 1 đang tải...</span>
+                        <span>Gá»£i Ã½ 1 Ä‘ang táº£i...</span>
                       </div>
                       <div className="px-2.5 py-1 text-[10px] rounded-md border border-gray-100 bg-slate-50 text-gray-400 flex items-center gap-1.5 animate-pulse select-none">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-                        <span>Gợi ý 2 đang tải...</span>
+                        <span>Gá»£i Ã½ 2 Ä‘ang táº£i...</span>
                       </div>
                       <div className="px-2.5 py-1 text-[10px] rounded-md border border-gray-100 bg-slate-50 text-gray-400 flex items-center gap-1.5 animate-pulse select-none">
                         <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-                        <span>Gợi ý 3 đang tải...</span>
+                        <span>Gá»£i Ã½ 3 Ä‘ang táº£i...</span>
                       </div>
                     </>
                   ) : (
@@ -1528,7 +1528,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               {/* Platform Selector */}
               <div className="space-y-2 text-left mt-4">
                 <span className="text-xs font-bold text-gray-750 block uppercase tracking-wider font-mono">
-                  📢 Chọn nền tảng truyền thông:
+                  ðŸ“¢ Chá»n ná»n táº£ng truyá»n thÃ´ng:
                 </span>
                 <div className="flex flex-wrap gap-2.5">
                   {[
@@ -1544,12 +1544,12 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                         disabled={chan.disabled}
                         onClick={() => {
                           if (chan.disabled) {
-                            toast.warning(`${chan.id} đang được tắt tạm thời.`);
+                            toast.warning(`${chan.id} Ä‘ang Ä‘Æ°á»£c táº¯t táº¡m thá»i.`);
                             return;
                           }
                           if (isSelected) {
                             if (selectedChannels.length === 1) {
-                              toast.warning("Bạn phải chọn ít nhất một nền tảng!");
+                              toast.warning("Báº¡n pháº£i chá»n Ã­t nháº¥t má»™t ná»n táº£ng!");
                               return;
                             }
                             setSelectedChannels(selectedChannels.filter(c => c !== chan.id));
@@ -1557,7 +1557,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                             setSelectedChannels([...selectedChannels, chan.id]);
                           }
                         }}
-                        title={chan.disabled ? `${chan.id} tạm thời chưa khả dụng` : undefined}
+                        title={chan.disabled ? `${chan.id} táº¡m thá»i chÆ°a kháº£ dá»¥ng` : undefined}
                         className={`px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 select-none ${chan.disabled
                           ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed opacity-70"
                           : isSelected
@@ -1584,15 +1584,15 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                   />
                   <div className="relative shrink-0 w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-650 peer-checked:bg-purple-600 font-sans mt-[1px]"></div>
                   <span className="ml-2.5 text-xs font-bold text-gray-750 uppercase tracking-wider font-mono text-purple-700 select-none leading-relaxed">
-                    🤖 Chế độ Tự động hoàn toàn (Auto-pilot: Ý tưởng → Viết bài → Đặt lịch đăng)
+                    ðŸ¤– Cháº¿ Ä‘á»™ Tá»± Ä‘á»™ng hoÃ n toÃ n (Auto-pilot: Ã tÆ°á»Ÿng â†’ Viáº¿t bÃ i â†’ Äáº·t lá»‹ch Ä‘Äƒng)
                   </span>
                 </label>
 
                 {isAutoPilot && (
                   <div className="mt-2.5 border-t border-purple-200/50 pt-3.5 space-y-3.5 text-left animate-fadeIn">
-                    {/* Switch: Lên lịch vs Đăng ngay */}
+                    {/* Switch: LÃªn lá»‹ch vs ÄÄƒng ngay */}
                     <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-purple-100 shadow-3xs">
-                      <span className="text-xs font-bold text-gray-700 font-sans">Chế độ xuất bản:</span>
+                      <span className="text-xs font-bold text-gray-700 font-sans">Cháº¿ Ä‘á»™ xuáº¥t báº£n:</span>
                       <div className="flex rounded-lg bg-slate-100 p-0.5">
                         <button
                           type="button"
@@ -1602,7 +1602,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                             : "text-slate-500 hover:text-slate-700"
                             }`}
                         >
-                          Lên lịch đăng
+                          LÃªn lá»‹ch Ä‘Äƒng
                         </button>
                         <button
                           type="button"
@@ -1612,7 +1612,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                             : "text-slate-500 hover:text-slate-700"
                             }`}
                         >
-                          Đăng ngay
+                          ÄÄƒng ngay
                         </button>
                       </div>
                     </div>
@@ -1621,7 +1621,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
                         {/* Scheduled Date */}
                         <div className="space-y-1.5">
-                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Ngày đăng bài *</label>
+                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">NgÃ y Ä‘Äƒng bÃ i *</label>
                           <input
                             type="date"
                             required
@@ -1633,7 +1633,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
                         {/* Scheduled Time */}
                         <div className="space-y-1.5">
-                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Giờ đăng bài *</label>
+                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Giá» Ä‘Äƒng bÃ i *</label>
                           <input
                             type="time"
                             required
@@ -1656,11 +1656,11 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                         return (
                           <div key={platform} className="space-y-1.5">
                             <label className="block text-gray-655 font-bold text-[10px] uppercase font-mono">
-                              Chọn tài khoản {platform} đăng bài *
+                              Chá»n tÃ i khoáº£n {platform} Ä‘Äƒng bÃ i *
                             </label>
                             {loadingIntegrations ? (
                               <div className="p-2 border border-slate-200 rounded-lg text-xs text-gray-400 bg-white">
-                                Đang tải danh sách tài khoản...
+                                Äang táº£i danh sÃ¡ch tÃ i khoáº£n...
                               </div>
                             ) : available.length > 0 ? (
                               <select
@@ -1676,7 +1676,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                               </select>
                             ) : (
                               <div className="p-2.5 border border-amber-250 bg-amber-50 text-amber-800 rounded-lg text-[10px] leading-normal font-sans">
-                                ⚠️ Chưa có tài khoản {platform} nào được liên kết. Vui lòng vào Cài đặt &rarr; Liên kết mạng xã hội để kết nối trước khi đặt lịch.
+                                âš ï¸ ChÆ°a cÃ³ tÃ i khoáº£n {platform} nÃ o Ä‘Æ°á»£c liÃªn káº¿t. Vui lÃ²ng vÃ o CÃ i Ä‘áº·t &rarr; LiÃªn káº¿t máº¡ng xÃ£ há»™i Ä‘á»ƒ káº¿t ná»‘i trÆ°á»›c khi Ä‘áº·t lá»‹ch.
                               </div>
                             )}
                           </div>
@@ -1690,13 +1690,13 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               {/* Media Type Selection */}
               <div className="space-y-2 text-left mt-4 animate-fadeIn">
                 <span className="text-xs font-bold text-gray-750 block uppercase tracking-wider font-mono">
-                  🖼️ Chọn loại phương tiện (Media):
+                  ðŸ–¼ï¸ Chá»n loáº¡i phÆ°Æ¡ng tiá»‡n (Media):
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {[
-                    { value: "image", label: "Hình ảnh AI", icon: <ImageIcon className="h-3.5 w-3.5" /> },
+                    { value: "image", label: "HÃ¬nh áº£nh AI", icon: <ImageIcon className="h-3.5 w-3.5" /> },
                     { value: "video", label: "Video AI", icon: <Video className="h-3.5 w-3.5" /> },
-                    { value: "human-video", label: "Video người thật", icon: <Video className="h-3.5 w-3.5" /> }
+                    { value: "human-video", label: "Video ngÆ°á»i tháº­t", icon: <Video className="h-3.5 w-3.5" /> }
                   ].map((opt) => {
                     const isSelected = mediaType === opt.value;
                     return (
@@ -1721,7 +1721,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               {(mediaType === "video" || mediaType === "human-video") && (
                 <div className="space-y-2.5 text-left mt-4 animate-fadeIn p-4 border border-slate-200 bg-white rounded-2xl shadow-2xs">
                   <span className="text-xs font-bold text-gray-750 block uppercase tracking-wider font-mono flex items-center gap-1.5">
-                    ⏱️ Thời lượng video (giây):
+                    â±ï¸ Thá»i lÆ°á»£ng video (giÃ¢y):
                   </span>
                   <div className="flex flex-wrap gap-2 items-center">
                     {(mediaType === "video" ? ["8", "16", "24", "32"] : ["4", "6", "8"]).map((dur) => {
@@ -1738,7 +1738,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                               setVideoDuration(dur);
                               if (parseInt(dur) <= 4 && videoQuality === "1080p") {
                                 setVideoQuality("720p");
-                                toast.warning("1080p yêu cầu tối thiểu 6 giây. Đã tự động chuyển sang 720p.");
+                                toast.warning("1080p yÃªu cáº§u tá»‘i thiá»ƒu 6 giÃ¢y. ÄÃ£ tá»± Ä‘á»™ng chuyá»ƒn sang 720p.");
                               }
                             } else {
                               setEstimatedHumanVoiceDuration(dur);
@@ -1772,7 +1772,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                         : "border-slate-200 bg-white text-gray-500 hover:bg-slate-50 hover:border-slate-350"
                         }`}
                     >
-                      Khác
+                      KhÃ¡c
                     </button>
 
                     {mediaType === "video" && !["8", "16", "24", "32"].includes(videoDuration) && (
@@ -1800,10 +1800,10 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                               setVideoDuration("8");
                             }
                           }}
-                          placeholder="Thời lượng"
+                          placeholder="Thá»i lÆ°á»£ng"
                           className="w-24 text-xs p-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-center font-bold"
                         />
-                        <span className="text-xs text-gray-500 font-bold">giây </span>
+                        <span className="text-xs text-gray-500 font-bold">giÃ¢y </span>
                       </div>
                     )}
 
@@ -1823,16 +1823,16 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                             let num = parseInt(val, 10);
                             if (num > 600) {
                               num = 600;
-                              toast.warning("Video người thật chỉ hỗ trợ thời lượng tối đa 600 giây (10 phút).");
+                              toast.warning("Video ngÆ°á»i tháº­t chá»‰ há»— trá»£ thá»i lÆ°á»£ng tá»‘i Ä‘a 600 giÃ¢y (10 phÃºt).");
                             } else if (num < 1) {
                               num = 1;
                             }
                             setEstimatedHumanVoiceDuration(String(num));
                           }}
-                          placeholder="Nhập số giây"
+                          placeholder="Nháº­p sá»‘ giÃ¢y"
                           className="w-24 text-xs p-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-center font-bold"
                         />
-                        <span className="text-xs text-gray-500 font-bold">giây (tối đa 600s)</span>
+                        <span className="text-xs text-gray-500 font-bold">giÃ¢y (tá»‘i Ä‘a 600s)</span>
                       </div>
                     )}
                   </div>
@@ -1844,12 +1844,12 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 <div className="p-4 border border-slate-200 bg-white rounded-2xl space-y-4 text-left mt-4 shadow-2xs">
                   <span className="text-xs font-extrabold text-slate-800 block border-b pb-2 uppercase tracking-wide font-mono flex items-center gap-1.5">
                     <ImageIcon className="h-4 w-4 text-indigo-500" />
-                    Cấu hình hình ảnh AI
+                    Cáº¥u hÃ¬nh hÃ¬nh áº£nh AI
                   </span>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-gray-500 font-mono">Mô hình AI</span>
+                      <span className="text-xs font-bold text-gray-500 font-mono">MÃ´ hÃ¬nh AI</span>
                       <select
                         value={imageModel}
                         onChange={(e) => setImageModel(e.target.value)}
@@ -1860,7 +1860,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     </div>
 
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-gray-500 font-mono">Độ phân giải</span>
+                      <span className="text-xs font-bold text-gray-500 font-mono">Äá»™ phÃ¢n giáº£i</span>
                       <div className="grid grid-cols-1 gap-2">
                         <button
                           type="button"
@@ -1873,7 +1873,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                   </div>
 
                   <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-gray-500 font-mono block">Tỉ lệ khung hình</span>
+                    <span className="text-xs font-bold text-gray-500 font-mono block">Tá»‰ lá»‡ khung hÃ¬nh</span>
                     <div className="grid grid-cols-5 gap-2">
                       {["1:1", "4:3", "16:9", "9:16", "3:4"].map((ratio) => (
                         <button
@@ -1898,12 +1898,12 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 <div className="p-4 border border-slate-200 bg-white rounded-2xl space-y-4 text-left mt-4 shadow-2xs">
                   <span className="text-xs font-extrabold text-slate-800 block border-b pb-2 uppercase tracking-wide font-mono flex items-center gap-1.5">
                     <Video className="h-4 w-4 text-indigo-500" />
-                    Cấu hình video AI
+                    Cáº¥u hÃ¬nh video AI
                   </span>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-gray-500 font-mono">Mô hình AI Video</span>
+                      <span className="text-xs font-bold text-gray-500 font-mono">MÃ´ hÃ¬nh AI Video</span>
                       <select
                         value={videoModel}
                         onChange={(e) => setVideoModel(e.target.value)}
@@ -1916,12 +1916,12 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     </div>
 
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-gray-500 font-mono">Chất lượng video</span>
+                      <span className="text-xs font-bold text-gray-500 font-mono">Cháº¥t lÆ°á»£ng video</span>
                       <select
                         value={videoQuality}
                         onChange={(e) => {
                           if (e.target.value === "1080p" && parseInt(videoDuration) <= 4) {
-                            toast.warning("1080p không hỗ trợ cho video 4 giây. Vui lòng chọn 6 hoặc 8 giây trước.");
+                            toast.warning("1080p khÃ´ng há»— trá»£ cho video 4 giÃ¢y. Vui lÃ²ng chá»n 6 hoáº·c 8 giÃ¢y trÆ°á»›c.");
                             return;
                           }
                           setVideoQuality(e.target.value);
@@ -1936,7 +1936,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
                   <div className="grid grid-cols-1 gap-4">
                     <div className="space-y-1.5">
-                      <span className="text-xs font-bold text-gray-500 font-mono block">Tỉ lệ khung hình</span>
+                      <span className="text-xs font-bold text-gray-500 font-mono block">Tá»‰ lá»‡ khung hÃ¬nh</span>
                       <div className="grid grid-cols-2 gap-2">
                         {["16:9", "9:16"].map((ratio) => (
                           <button
@@ -1948,7 +1948,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                               : "border-slate-200 bg-white text-gray-500 hover:bg-slate-50"
                               }`}
                           >
-                            {ratio === "16:9" ? "Ngang 16:9" : "Dọc 9:16"}
+                            {ratio === "16:9" ? "Ngang 16:9" : "Dá»c 9:16"}
                           </button>
                         ))}
                       </div>
@@ -2007,7 +2007,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           <div className="mt-6 pt-4 border-t border-gray-200 flex items-center justify-between gap-4">
             {isAutoPilot && (
               <div className="flex-1 text-left text-[11px] text-purple-750 bg-purple-50 border border-purple-100 p-2 px-3 rounded-xl flex items-center gap-1.5 font-medium animate-fadeIn">
-                <span>💡 <b>Quy trình 1-Click:</b> AI sẽ tự động phân tích Pillar, viết nội dung, tạo ảnh/video và tự động xuất bản lên các kênh đã cấu hình.</span>
+                <span>ðŸ’¡ <b>Quy trÃ¬nh 1-Click:</b> AI sáº½ tá»± Ä‘á»™ng phÃ¢n tÃ­ch Pillar, viáº¿t ná»™i dung, táº¡o áº£nh/video vÃ  tá»± Ä‘á»™ng xuáº¥t báº£n lÃªn cÃ¡c kÃªnh Ä‘Ã£ cáº¥u hÃ¬nh.</span>
               </div>
             )}
             <button
@@ -2021,7 +2021,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 }`}
             >
               {loadingAI || autoPilotBackgroundRunning ? <RefreshCw className="h-4 w-4 animate-spin" /> : isAutoPilot ? <Zap className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-              {loadingAI ? "AI Đang sáng tạo..." : isAutoPilot ? "Khởi chạy Chiến dịch Tự động" : "Phát sinh Ý tưởng từ AI"}
+              {loadingAI ? "AI Äang sÃ¡ng táº¡o..." : isAutoPilot ? "Khá»Ÿi cháº¡y Chiáº¿n dá»‹ch Tá»± Ä‘á»™ng" : "PhÃ¡t sinh Ã tÆ°á»Ÿng tá»« AI"}
             </button>
           </div>
         </div>
@@ -2031,7 +2031,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           <div>
             <div className="flex justify-between items-center">
               <h4 className="font-bold text-gray-850 text-sm tracking-wide font-sans uppercase">
-                📚 Content Pillars Đề xuất
+                ðŸ“š Content Pillars Äá» xuáº¥t
               </h4>
               <button
                 type="button"
@@ -2041,20 +2041,20 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                   ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                   : "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200 hover:border-indigo-300 active:scale-95 cursor-pointer shadow-xs"
                   }`}
-                title="Tạo lại content pillars"
+                title="Táº¡o láº¡i content pillars"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${loadingPillars ? "animate-spin" : ""}`} />
-                <span>Tạo lại</span>
+                <span>Táº¡o láº¡i</span>
               </button>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5 mb-4">Phân tích mục tiêu để đề xuất ra các trụ cột nội dung cốt lõi của chiến dịch, đảm bảo phân bổ đa dạng:</p>
+            <p className="text-xs text-slate-500 mt-1.5 mb-4">PhÃ¢n tÃ­ch má»¥c tiÃªu Ä‘á»ƒ Ä‘á» xuáº¥t ra cÃ¡c trá»¥ cá»™t ná»™i dung cá»‘t lÃµi cá»§a chiáº¿n dá»‹ch, Ä‘áº£m báº£o phÃ¢n bá»• Ä‘a dáº¡ng:</p>
 
             <div className="space-y-3 text-xs text-left relative">
               {loadingPillars && (
                 <div className="absolute inset-0 bg-white/70 backdrop-blur-xs flex flex-col items-center justify-center text-center p-4 z-10 rounded-xl">
                   <RefreshCw className="h-6 w-6 text-indigo-600 animate-spin mb-2" />
-                  <span className="text-[11px] text-indigo-800 font-bold font-mono">AI ĐANG PHÂN TÍCH KHUNG NỘI DUNG...</span>
-                  <p className="text-[10px] text-gray-400 mt-1">Đảm bảo khung tranh phân phối đa dạng, tránh chỉ đăng tải bán hàng.</p>
+                  <span className="text-[11px] text-indigo-800 font-bold font-mono">AI ÄANG PHÃ‚N TÃCH KHUNG Ná»˜I DUNG...</span>
+                  <p className="text-[10px] text-gray-400 mt-1">Äáº£m báº£o khung tranh phÃ¢n phá»‘i Ä‘a dáº¡ng, trÃ¡nh chá»‰ Ä‘Äƒng táº£i bÃ¡n hÃ ng.</p>
                 </div>
               )}
 
@@ -2076,7 +2076,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     {isSwapping && (
                       <div className="absolute inset-0 bg-white/70 backdrop-blur-3xs flex flex-col items-center justify-center text-center p-2 z-10 rounded-xl">
                         <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin" />
-                        <span className="text-[9px] text-indigo-850 font-bold mt-1 font-mono uppercase tracking-wide">ĐANG ĐỔI...</span>
+                        <span className="text-[9px] text-indigo-850 font-bold mt-1 font-mono uppercase tracking-wide">ÄANG Äá»”I...</span>
                       </div>
                     )}
                     <div className="flex justify-between items-start gap-2 font-bold">
@@ -2091,7 +2091,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     </p>
                     <div className="mt-3 flex items-center justify-between text-[9px] font-mono uppercase font-bold tracking-wider">
                       <span className={isSelected ? "text-indigo-650 font-semibold" : "text-gray-400"}>
-                        {isSelected ? "● Đang tuyển chọn" : "○ Tạm tắt"}
+                        {isSelected ? "â— Äang tuyá»ƒn chá»n" : "â—‹ Táº¡m táº¯t"}
                       </span>
                       <span
                         onClick={(e) => {
@@ -2101,7 +2101,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                         }}
                         className="text-slate-400 hover:text-indigo-600 hover:font-bold transition-all cursor-pointer"
                       >
-                        Click để đổi
+                        Click Ä‘á»ƒ Ä‘á»•i
                       </span>
                     </div>
                   </div>
@@ -2111,7 +2111,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           </div>
 
           <div className="pt-4 border-t border-slate-100 text-center text-[10px] text-gray-400 font-mono">
-            Phân tích bởi iGen Marketing Advisor
+            PhÃ¢n tÃ­ch bá»Ÿi iGen Marketing Advisor
           </div>
         </div>
 
@@ -2119,7 +2119,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
       {/* Campaign concepts generator list */}
       <div className="space-y-4" id="campaign_draft_concepts_section">
-        <span className="text-[10px] font-bold text-gray-500 font-mono uppercase tracking-wider block">Bản nháp ý tưởng sáng tạo ({concepts.length})</span>
+        <span className="text-[10px] font-bold text-gray-500 font-mono uppercase tracking-wider block">Báº£n nhÃ¡p Ã½ tÆ°á»Ÿng sÃ¡ng táº¡o ({concepts.length})</span>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3" id="concepts_container">
           {concepts.map((concept, idx) => (
@@ -2132,7 +2132,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                       {activeMediaMeta.label}
                     </span>
                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-full font-bold font-mono text-[9px] whitespace-nowrap shrink-0">
-                      Phù hợp: {concept.matchPercent}%
+                      PhÃ¹ há»£p: {concept.matchPercent}%
                     </span>
                   </div>
                 );
@@ -2164,7 +2164,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               <div className="mt-5 border-t border-slate-100 pt-4 bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200">
                 <div className="flex items-center gap-1.5 text-indigo-600 font-bold mb-1.5">
                   <Zap className="h-3.5 w-3.5" />
-                  <span className="text-[10px] font-mono uppercase">Mẫu Content sinh ra từ AI:</span>
+                  <span className="text-[10px] font-mono uppercase">Máº«u Content sinh ra tá»« AI:</span>
                 </div>
                 <p className="text-xs text-gray-600 line-clamp-3 italic leading-relaxed font-sans">{concept.suggestedContent}</p>
 
@@ -2178,11 +2178,11 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     {developingIdx === idx ? (
                       <>
                         <RefreshCw className="h-3 w-3 animate-spin" />
-                        <span>Đang viết chi tiết...</span>
+                        <span>Äang viáº¿t chi tiáº¿t...</span>
                       </>
                     ) : (
                       <>
-                        <span>Phát triển tiếp 🚀</span>
+                        <span>PhÃ¡t triá»ƒn tiáº¿p ðŸš€</span>
                       </>
                     )}
                   </button>
@@ -2196,3 +2196,5 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
     </div>
   );
 }
+
+

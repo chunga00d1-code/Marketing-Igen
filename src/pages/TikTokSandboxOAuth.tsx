@@ -1,229 +1,176 @@
 import React, { useState } from "react";
-import { ShieldAlert, ArrowLeftRight, HelpCircle, Video, MessageSquare, MessageCircle, ShoppingBag } from "lucide-react";
+import { ArrowLeftRight, HelpCircle, ShieldAlert, UserCircle, Video } from "lucide-react";
 
 export default function TikTokSandboxOAuth() {
   const [authorizing, setAuthorizing] = useState(false);
   const searchParams = new URLSearchParams(window.location.search);
   const target = searchParams.get("target") || "personal";
 
-  const handleAuthorize = () => {
-    setAuthorizing(true);
-    setTimeout(() => {
-      const payload = {
-        ok: true,
-        target,
+  type SandboxOAuthPayload =
+    | {
+        ok: true;
+        target: string;
         profile: {
-          username: "igen_marketing_sandbox",
-          displayName: target === "company" ? "iGen Marketing Business Shop" : "iGen Marketing Sandbox",
-          avatarUrl: "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=80"
-        }
+          username: string;
+          displayName: string;
+          avatarUrl: string;
+        };
+      }
+    | {
+        ok: false;
+        target: string;
+        error: string;
       };
 
-      try {
-        localStorage.setItem("tt_oauth_result", JSON.stringify(payload));
-      } catch (e) {
-        console.error("Local storage error:", e);
-      }
-
-      try {
-        if (window.opener) {
-          window.opener.postMessage({ type: "TIKTOK_OAUTH_RESULT", payload }, window.location.origin);
-        }
-      } catch (e) {
-        console.error("PostMessage error:", e);
-      }
-
-      // Đóng popup
-      window.close();
-    }, 1200);
-  };
-
-  const handleCancel = () => {
-    const payload = {
-      ok: false,
-      target,
-      error: "Người dùng đã hủy ủy quyền kết nối TikTok Sandbox."
-    };
-
+  const sendResult = (payload: SandboxOAuthPayload) => {
     try {
       localStorage.setItem("tt_oauth_result", JSON.stringify(payload));
-    } catch (e) {
-      console.warn("Cancel local storage save error:", e);
+    } catch (error) {
+      console.error("TikTok sandbox localStorage error:", error);
     }
 
     try {
       if (window.opener) {
         window.opener.postMessage({ type: "TIKTOK_OAUTH_RESULT", payload }, window.location.origin);
       }
-    } catch (e) {
-      console.warn("Cancel postMessage send error:", e);
+    } catch (error) {
+      console.error("TikTok sandbox postMessage error:", error);
     }
+  };
 
+  const handleAuthorize = () => {
+    setAuthorizing(true);
+    setTimeout(() => {
+      sendResult({
+        ok: true,
+        target,
+        profile: {
+          username: "igen_marketing_sandbox",
+          displayName: target === "company" ? "iGen Marketing Business Sandbox" : "iGen Marketing Sandbox",
+          avatarUrl: "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=80",
+        },
+      });
+      window.close();
+    }, 900);
+  };
+
+  const handleCancel = () => {
+    sendResult({
+      ok: false,
+      target,
+      error: "User cancelled TikTok Sandbox authorization.",
+    });
     window.close();
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-slate-100 font-sans flex flex-col justify-between selection:bg-[#fe2c55]/30">
-      {/* Top Header */}
-      <header className="border-b border-slate-900 bg-[#0f0f10] px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <div className="flex min-h-screen flex-col justify-between bg-[#0a0a0a] font-sans text-slate-100 selection:bg-[#fe2c55]/30">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-900 bg-[#0f0f10] px-6 py-4">
         <div className="flex items-center gap-2.5">
-          {/* TikTok Mini Logo */}
-          <div className="relative w-8 h-8 flex items-center justify-center bg-black rounded-lg border border-slate-800">
-            <span className="text-white font-black text-sm tracking-tighter">TikTok</span>
-            <div className="absolute -inset-0.5 bg-[#fe2c55] rounded-lg blur-xs opacity-20 animate-pulse"></div>
+          <div className="relative flex h-8 w-8 items-center justify-center rounded-lg border border-slate-800 bg-black">
+            <span className="text-sm font-black tracking-tighter text-white">TikTok</span>
+            <div className="absolute -inset-0.5 rounded-lg bg-[#fe2c55] opacity-20 blur-xs" />
           </div>
           <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Developer Sandbox</span>
         </div>
-        <div className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/25 text-amber-500 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
+        <div className="flex items-center gap-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
           Testing Environment
         </div>
       </header>
 
-      {/* Main Consent Form */}
-      <main className="flex-1 max-w-md w-full mx-auto px-6 py-8 flex flex-col justify-center">
-        {/* App Info Panel */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-6 mb-5">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-650 flex items-center justify-center shadow-lg border border-indigo-500/30">
-              <span className="text-white font-extrabold text-2xl font-serif">iM</span>
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-8">
+        <div className="mb-8 text-center">
+          <div className="mb-5 flex items-center justify-center gap-6">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-indigo-500/30 bg-indigo-650 shadow-lg">
+              <span className="font-serif text-2xl font-extrabold text-white">iM</span>
             </div>
-            <ArrowLeftRight className="h-5 w-5 text-slate-500 animate-pulse" />
-            <div className="w-16 h-16 rounded-full bg-[#111] border border-slate-800 flex items-center justify-center overflow-hidden">
+            <ArrowLeftRight className="h-5 w-5 animate-pulse text-slate-500" />
+            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-slate-800 bg-[#111]">
               <img
                 src="https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=80"
                 alt="TikTok Sandbox"
-                className="w-full h-full object-cover"
+                className="h-full w-full object-cover"
               />
             </div>
           </div>
 
-          <h1 className="text-xl font-bold text-white tracking-tight">
+          <h1 className="text-xl font-bold tracking-tight text-white">
             Authorize <span className="text-indigo-400">iGen Marketing</span>
           </h1>
-          <p className="text-slate-400 text-xs mt-2 leading-relaxed">
-            to access your TikTok Sandbox Account. This application is undergoing TikTok developer review.
+          <p className="mt-2 text-xs leading-relaxed text-slate-400">
+            to access your TikTok Sandbox account for account connection and video publishing.
           </p>
         </div>
 
-        {/* Sandbox Warning Banner */}
-        <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 mb-6 flex gap-3 text-left">
-          <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+        <div className="mb-6 flex gap-3 rounded-2xl border border-slate-800/80 bg-slate-900/60 p-4 text-left">
+          <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
           <div className="space-y-1">
             <p className="text-xs font-bold text-slate-200">Developer Testing Mode Enabled</p>
             <p className="text-[11px] leading-relaxed text-slate-400">
-              You are authorizing in the Developer Sandbox. This allows testing automation features for **Auto-posting**, **Auto-replies**, and **Comment integration** before the app is fully published.
+              This mock consent screen demonstrates only the TikTok scopes requested for review: basic account identity and video publishing.
             </p>
           </div>
         </div>
 
-        {/* Scopes Section */}
         <div className="space-y-4 text-left">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-            This App will receive permission to:
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            This app will receive permission to:
           </p>
 
-          <div className="bg-[#0f0f10] border border-slate-900 rounded-2xl p-4 space-y-4">
-            {/* Scope 1: video.publish */}
-            <div className="flex gap-3.5 items-start">
-              <div className="w-8 h-8 rounded-xl bg-[#fe2c55]/10 border border-[#fe2c55]/20 flex items-center justify-center text-[#fe2c55] shrink-0">
+          <div className="space-y-4 rounded-2xl border border-slate-900 bg-[#0f0f10] p-4">
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-400">
+                <UserCircle className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold text-slate-200">Read basic account identity</p>
+                  <span className="rounded-md bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">user.info.basic</span>
+                </div>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                  Used to confirm which sandbox TikTok account is connected and display the account name in iGen Marketing.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3.5 border-t border-slate-950 pt-4">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-[#fe2c55]/20 bg-[#fe2c55]/10 text-[#fe2c55]">
                 <Video className="h-4 w-4" />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-slate-200">Đăng bài tự động (Publish videos)</p>
-                  <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded-md">video.publish</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold text-slate-200">Publish videos prepared by the user</p>
+                  <span className="rounded-md bg-slate-950 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">video.publish</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                  Cho phép ứng dụng tải video lên tài khoản của bạn dưới dạng nháp hoặc công khai trực tiếp theo lịch biểu.
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                  Used to submit a video from a TikTok content card after the user reviews and clicks the publish action.
                 </p>
               </div>
             </div>
-
-            {/* Scope 2: business.message */}
-            <div className="flex gap-3.5 items-start border-t border-slate-950 pt-4">
-              <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
-                <MessageSquare className="h-4 w-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-slate-200">Quản lý hộp thư Inbox (Direct Messages)</p>
-                  <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded-md">business.message</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                  Đọc tin nhắn từ khách hàng gửi đến kênh TikTok và kích hoạt gửi câu trả lời tự động thông qua cấu hình AI.
-                </p>
-              </div>
-            </div>
-
-            {/* Scope 3: comment.reply */}
-            <div className="flex gap-3.5 items-start border-t border-slate-950 pt-4">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                <MessageCircle className="h-4 w-4" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-slate-200">Đọc và trả lời Bình luận (Comments)</p>
-                  <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded-md">comment.reply</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                  Cho phép quét tất cả các bình luận bên dưới video đã đăng tải và tự động viết phản hồi trả lời tương tác.
-                </p>
-              </div>
-            </div>
-
-            {/* Scope 4: TikTok Shop Sandbox (only if company) */}
-            {target === "company" && (
-              <div className="flex gap-3.5 items-start border-t border-slate-950 pt-4 animate-fadeIn">
-                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shrink-0">
-                  <ShoppingBag className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-slate-200">Tích hợp TikTok Shop Sandbox</p>
-                    <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded-md">seller.order</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                    Đồng bộ danh sách sản phẩm và quản lý trạng thái đơn hàng của cửa hàng thử nghiệm (Sandbox Seller).
-                  </p>
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Security Help Text */}
-        <div className="flex items-center justify-center gap-1.5 mt-6 text-slate-500">
+        <div className="mt-6 flex items-center justify-center gap-1.5 text-slate-500">
           <HelpCircle className="h-3.5 w-3.5" />
-          <span className="text-[10px]">Bạn có thể thu hồi quyền truy cập này bất kỳ lúc nào trong phần cài đặt của TikTok.</span>
+          <span className="text-[10px]">Access can be revoked from TikTok or from the integration settings.</span>
         </div>
       </main>
 
-      {/* Sticky Bottom Actions */}
-      <footer className="border-t border-slate-900 bg-[#0f0f10] px-6 py-5 flex items-center gap-4 sticky bottom-0 z-10">
+      <footer className="sticky bottom-0 z-10 flex items-center gap-4 border-t border-slate-900 bg-[#0f0f10] px-6 py-5">
         <button
           onClick={handleCancel}
           disabled={authorizing}
-          className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer border border-slate-700/50"
+          className="flex-1 cursor-pointer rounded-xl border border-slate-700/50 bg-slate-800 py-3 text-xs font-bold text-slate-300 transition-all hover:bg-slate-700 disabled:opacity-50"
         >
-          Cancel (Từ chối)
+          Cancel
         </button>
         <button
           onClick={handleAuthorize}
           disabled={authorizing}
-          className="flex-1 py-3 bg-gradient-to-r from-[#fe2c55] to-[#f2203e] hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-[#fe2c55]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#fe2c55] to-[#f2203e] py-3 text-xs font-bold text-white shadow-md shadow-[#fe2c55]/20 transition-all hover:brightness-110 disabled:opacity-50"
         >
-          {authorizing ? (
-            <>
-              <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              <span>Đang kết nối...</span>
-            </>
-          ) : (
-            <span>Authorize (Đồng ý ủy quyền)</span>
-          )}
+          {authorizing ? "Connecting..." : "Authorize"}
         </button>
       </footer>
     </div>

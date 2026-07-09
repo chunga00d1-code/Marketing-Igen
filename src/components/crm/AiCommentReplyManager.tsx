@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from "react";
 import { 
   MessageSquare, Zap, RefreshCw, Terminal, CheckCircle, 
@@ -167,7 +167,7 @@ export function AiCommentReplyManager({
         setPostDetails(prev => ({
           ...prev,
           [postId]: {
-            message: result.data.message || `Bài viết ID: ${postId}`,
+            message: result.data.message || `BÃ i viáº¿t ID: ${postId}`,
             full_picture: result.data.full_picture
           }
         }));
@@ -175,7 +175,7 @@ export function AiCommentReplyManager({
         setPostDetails(prev => ({
           ...prev,
           [postId]: {
-            message: `Bài viết ID: ${postId}`,
+            message: `BÃ i viáº¿t ID: ${postId}`,
             full_picture: null
           }
         }));
@@ -194,7 +194,7 @@ export function AiCommentReplyManager({
     }
     
     if (activePlatform === "tiktok") {
-      // Giả lập logs TikTok comment
+      // Giáº£ láº­p logs TikTok comment
       setTimeout(() => {
         const mockLogs = [
           {
@@ -203,9 +203,9 @@ export function AiCommentReplyManager({
             status: "success",
             latencyMs: 1240,
             createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-            customerMessage: "Có bản pdf hướng dẫn chi tiết không ạ?",
-            aiResponse: "Chào bạn! iGen Marketing đã gửi bản PDF cẩm nang hướng dẫn chi tiết qua tin nhắn riêng cho bạn rồi nhé. Vui lòng kiểm tra hộp thư chờ!",
-            contextPreview: "[iGen Marketing Guide] Tài liệu chiến dịch Marketing 2026. Để nhận file PDF hướng dẫn chạy quảng cáo, khách hàng hãy bình luận từ khóa PDF...",
+            customerMessage: "CÃ³ báº£n pdf hÆ°á»›ng dáº«n chi tiáº¿t khÃ´ng áº¡?",
+            aiResponse: "ChÃ o báº¡n! iGen Marketing Ä‘Ã£ gá»­i báº£n PDF cáº©m nang hÆ°á»›ng dáº«n chi tiáº¿t qua tin nháº¯n riÃªng cho báº¡n rá»“i nhÃ©. Vui lÃ²ng kiá»ƒm tra há»™p thÆ° chá»!",
+            contextPreview: "[iGen Marketing Guide] TÃ i liá»‡u chiáº¿n dá»‹ch Marketing 2026. Äá»ƒ nháº­n file PDF hÆ°á»›ng dáº«n cháº¡y quáº£ng cÃ¡o, khÃ¡ch hÃ ng hÃ£y bÃ¬nh luáº­n tá»« khÃ³a PDF...",
             contextMatches: 1,
             commentId: "tiktok_cmt_1",
             feedback: "good"
@@ -216,9 +216,9 @@ export function AiCommentReplyManager({
             status: "success",
             latencyMs: 1580,
             createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
-            customerMessage: "Tư vấn giúp em gói dịch vụ cho doanh nghiệp nhỏ với ạ",
-            aiResponse: "Chào bạn, iGen Marketing rất hân hạnh được đồng hành cùng bạn! Chúng mình đã gửi thông tin chi tiết các gói dịch vụ Marketing qua inbox, bạn check tin nhắn nhé!",
-            contextPreview: "[iGen Marketing Pricing] Gói Starter: 5.000.000đ/tháng hỗ trợ 3 tài khoản doanh nghiệp nhỏ...",
+            customerMessage: "TÆ° váº¥n giÃºp em gÃ³i dá»‹ch vá»¥ cho doanh nghiá»‡p nhá» vá»›i áº¡",
+            aiResponse: "ChÃ o báº¡n, iGen Marketing ráº¥t hÃ¢n háº¡nh Ä‘Æ°á»£c Ä‘á»“ng hÃ nh cÃ¹ng báº¡n! ChÃºng mÃ¬nh Ä‘Ã£ gá»­i thÃ´ng tin chi tiáº¿t cÃ¡c gÃ³i dá»‹ch vá»¥ Marketing qua inbox, báº¡n check tin nháº¯n nhÃ©!",
+            contextPreview: "[iGen Marketing Pricing] GÃ³i Starter: 5.000.000Ä‘/thÃ¡ng há»— trá»£ 3 tÃ i khoáº£n doanh nghiá»‡p nhá»...",
             contextMatches: 2,
             commentId: "tiktok_cmt_2",
             feedback: null
@@ -228,7 +228,7 @@ export function AiCommentReplyManager({
         setPostDetails(prev => ({
           ...prev,
           "mock_tiktok_post_1": {
-            message: "Video Hướng dẫn chạy chiến dịch Marketing hiệu quả 2026",
+            message: "Video HÆ°á»›ng dáº«n cháº¡y chiáº¿n dá»‹ch Marketing hiá»‡u quáº£ 2026",
             full_picture: "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=80"
           }
         }));
@@ -284,9 +284,9 @@ export function AiCommentReplyManager({
             status: "success",
             latencyMs: 1450,
             createdAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-            customerMessage: "Tư vấn cho mình gói tự động đăng bài với",
-            aiResponse: "Chào bạn! iGen Marketing đã gửi thông tin chi tiết các gói đăng bài tự động vào hộp thư tin nhắn của bạn. Vui lòng check tin nhắn hỗ trợ nhé!",
-            contextPreview: "[iGen Facebook Post Scheduler] Hỗ trợ lên lịch đăng bài hàng loạt trên nhiều Fanpage...",
+            customerMessage: "TÆ° váº¥n cho mÃ¬nh gÃ³i tá»± Ä‘á»™ng Ä‘Äƒng bÃ i vá»›i",
+            aiResponse: "ChÃ o báº¡n! iGen Marketing Ä‘Ã£ gá»­i thÃ´ng tin chi tiáº¿t cÃ¡c gÃ³i Ä‘Äƒng bÃ i tá»± Ä‘á»™ng vÃ o há»™p thÆ° tin nháº¯n cá»§a báº¡n. Vui lÃ²ng check tin nháº¯n há»— trá»£ nhÃ©!",
+            contextPreview: "[iGen Facebook Post Scheduler] Há»— trá»£ lÃªn lá»‹ch Ä‘Äƒng bÃ i hÃ ng loáº¡t trÃªn nhiá»u Fanpage...",
             contextMatches: 2,
             commentId: "fb_cmt_1",
             feedback: "good"
@@ -297,9 +297,9 @@ export function AiCommentReplyManager({
             status: "success",
             latencyMs: 1820,
             createdAt: new Date(Date.now() - 18 * 60 * 1000).toISOString(),
-            customerMessage: "Phí dịch vụ hàng tháng là bao nhiêu vậy?",
-            aiResponse: "Dạ chào bạn, chi phí dịch vụ iGen Marketing chỉ từ 199k/tháng. Mình đã gửi báo giá cụ thể qua messenger cho bạn rồi nha!",
-            contextPreview: "[Pricing] Gói cá nhân: 199.000đ/tháng. Gói doanh nghiệp: 599.000đ/tháng...",
+            customerMessage: "PhÃ­ dá»‹ch vá»¥ hÃ ng thÃ¡ng lÃ  bao nhiÃªu váº­y?",
+            aiResponse: "Dáº¡ chÃ o báº¡n, chi phÃ­ dá»‹ch vá»¥ iGen Marketing chá»‰ tá»« 199k/thÃ¡ng. MÃ¬nh Ä‘Ã£ gá»­i bÃ¡o giÃ¡ cá»¥ thá»ƒ qua messenger cho báº¡n rá»“i nha!",
+            contextPreview: "[Pricing] GÃ³i cÃ¡ nhÃ¢n: 199.000Ä‘/thÃ¡ng. GÃ³i doanh nghiá»‡p: 599.000Ä‘/thÃ¡ng...",
             contextMatches: 1,
             commentId: "fb_cmt_2",
             feedback: null
@@ -309,7 +309,7 @@ export function AiCommentReplyManager({
         setPostDetails(prev => ({
           ...prev,
           "mock_facebook_post_1": {
-            message: "💥 GIẢI PHÁP MARKETING TỰ ĐỘNG THẾ HỆ MỚI 💥 Tiết kiệm 80% thời gian quản lý Fanpage, tự động chốt leads cực nhanh bằng AI!",
+            message: "ðŸ’¥ GIáº¢I PHÃP MARKETING Tá»° Äá»˜NG THáº¾ Há»† Má»šI ðŸ’¥ Tiáº¿t kiá»‡m 80% thá»i gian quáº£n lÃ½ Fanpage, tá»± Ä‘á»™ng chá»‘t leads cá»±c nhanh báº±ng AI!",
             full_picture: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=150&auto=format&fit=crop&q=80"
           }
         }));
@@ -321,7 +321,7 @@ export function AiCommentReplyManager({
       }
     } catch (err: any) {
       console.error(err);
-      toast.error("Lỗi khi tải nhật ký phản hồi.");
+      toast.error("Lá»—i khi táº£i nháº­t kÃ½ pháº£n há»“i.");
     } finally {
       setLoadingLogs(false);
       setLoadingMoreLogs(false);
@@ -412,15 +412,15 @@ export function AiCommentReplyManager({
         });
         const result = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(result.message || "Không thể lưu cấu hình.");
+          throw new Error(result.message || "KhÃ´ng thá»ƒ lÆ°u cáº¥u hÃ¬nh.");
         }
       } else {
         await updateAiAutoReplyConfig(configToSave);
       }
-      toast.success(`Đã cập nhật cấu hình tự động trả lời bình luận ${activePlatform === "facebook" ? "Facebook" : "TikTok"}!`);
+      toast.success(`ÄÃ£ cáº­p nháº­t cáº¥u hÃ¬nh tá»± Ä‘á»™ng tráº£ lá»i bÃ¬nh luáº­n ${activePlatform === "facebook" ? "Facebook" : "TikTok"}!`);
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Lỗi khi lưu cấu hình.");
+      toast.error(err.message || "Lá»—i khi lÆ°u cáº¥u hÃ¬nh.");
     } finally {
       setSavingConfig(false);
     }
@@ -434,18 +434,18 @@ export function AiCommentReplyManager({
     const selectedItem = selectedList.find(p => p.username === selectedUser);
     
     if (!selectedItem || selectedItem._id === "personal") {
-      toast.warning("Chỉ hỗ trợ đồng bộ cấu hình giữa các tài khoản doanh nghiệp.");
+      toast.warning("Chá»‰ há»— trá»£ Ä‘á»“ng bá»™ cáº¥u hÃ¬nh giá»¯a cÃ¡c tÃ i khoáº£n doanh nghiá»‡p.");
       return;
     }
 
     const otherItems = selectedList.filter(p => p._id !== "personal" && p.username !== selectedUser);
     if (otherItems.length === 0) {
-      toast.info("Không có tài khoản doanh nghiệp nào khác để đồng bộ.");
+      toast.info("KhÃ´ng cÃ³ tÃ i khoáº£n doanh nghiá»‡p nÃ o khÃ¡c Ä‘á»ƒ Ä‘á»“ng bá»™.");
       return;
     }
 
     const confirmSync = window.confirm(
-      `Bạn có chắc chắn muốn áp dụng cấu hình AI hiện tại cho tất cả ${otherItems.length} tài khoản khác không?`
+      `Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n Ã¡p dá»¥ng cáº¥u hÃ¬nh AI hiá»‡n táº¡i cho táº¥t cáº£ ${otherItems.length} tÃ i khoáº£n khÃ¡c khÃ´ng?`
     );
     if (!confirmSync) return;
 
@@ -471,10 +471,10 @@ export function AiCommentReplyManager({
           successCount++;
         }
       }
-      toast.success(`Đã sao chép cấu hình thành công sang ${successCount}/${otherItems.length} tài khoản khác!`);
+      toast.success(`ÄÃ£ sao chÃ©p cáº¥u hÃ¬nh thÃ nh cÃ´ng sang ${successCount}/${otherItems.length} tÃ i khoáº£n khÃ¡c!`);
     } catch (err: any) {
       console.error(err);
-      toast.error("Lỗi xảy ra trong quá trình đồng bộ cấu hình.");
+      toast.error("Lá»—i xáº£y ra trong quÃ¡ trÃ¬nh Ä‘á»“ng bá»™ cáº¥u hÃ¬nh.");
     } finally {
       setCopyingConfig(false);
     }
@@ -483,7 +483,7 @@ export function AiCommentReplyManager({
   // Sync Google Drive
   const handleSyncDrive = async () => {
     if (!driveLink.trim()) {
-      toast.error("Vui lòng nhập đường dẫn tài liệu Google Drive / Doc.");
+      toast.error("Vui lÃ²ng nháº­p Ä‘Æ°á»ng dáº«n tÃ i liá»‡u Google Drive / Doc.");
       return;
     }
     setSyncingDrive(true);
@@ -504,14 +504,14 @@ export function AiCommentReplyManager({
           trainingKnowledge: data.text
         };
         setLocalConfig(nextConfig);
-        toast.success(`Đồng bộ thành công từ ${data.title}! Hãy bấm "Lưu cấu hình auto-reply" để áp dụng.`);
+        toast.success(`Äá»“ng bá»™ thÃ nh cÃ´ng tá»« ${data.title}! HÃ£y báº¥m "LÆ°u cáº¥u hÃ¬nh auto-reply" Ä‘á»ƒ Ã¡p dá»¥ng.`);
         void fetchAIHealth();
       } else {
-        toast.error(data.message || "Lỗi đồng bộ từ Google Drive.");
+        toast.error(data.message || "Lá»—i Ä‘á»“ng bá»™ tá»« Google Drive.");
       }
     } catch (err) {
       console.error(err);
-      toast.error("Không thể kết nối tới máy chủ.");
+      toast.error("KhÃ´ng thá»ƒ káº¿t ná»‘i tá»›i mÃ¡y chá»§.");
     } finally {
       setSyncingDrive(false);
     }
@@ -521,7 +521,7 @@ export function AiCommentReplyManager({
   const handleUploadLocalDoc = async (file: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1025) {
-      toast.error("Tệp tin vượt quá dung lượng tối đa cho phép (10MB).");
+      toast.error("Tá»‡p tin vÆ°á»£t quÃ¡ dung lÆ°á»£ng tá»‘i Ä‘a cho phÃ©p (10MB).");
       return;
     }
 
@@ -542,22 +542,22 @@ export function AiCommentReplyManager({
             trainingKnowledge: data.text
           };
           setLocalConfig(nextConfig);
-          toast.success(`Đã trích xuất & nạp tài liệu: ${file.name} thành công! Hãy bấm "Lưu cấu hình" để hoàn tất.`);
+          toast.success(`ÄÃ£ trÃ­ch xuáº¥t & náº¡p tÃ i liá»‡u: ${file.name} thÃ nh cÃ´ng! HÃ£y báº¥m "LÆ°u cáº¥u hÃ¬nh" Ä‘á»ƒ hoÃ n táº¥t.`);
           void fetchAIHealth();
         } catch (err: any) {
           console.error(err);
-          toast.error(err.message || "Lỗi trích xuất và nạp tài liệu.");
+          toast.error(err.message || "Lá»—i trÃ­ch xuáº¥t vÃ  náº¡p tÃ i liá»‡u.");
         } finally {
           setUploadingDoc(false);
         }
       };
       reader.onerror = () => {
-        toast.error("Không thể đọc tệp tin.");
+        toast.error("KhÃ´ng thá»ƒ Ä‘á»c tá»‡p tin.");
         setUploadingDoc(false);
       };
     } catch (err: any) {
       console.error(err);
-      toast.error("Lỗi khi tải tài liệu lên.");
+      toast.error("Lá»—i khi táº£i tÃ i liá»‡u lÃªn.");
       setUploadingDoc(false);
     }
   };
@@ -566,7 +566,7 @@ export function AiCommentReplyManager({
   const handleClearKnowledge = async () => {
     if (clearingKnowledge) return;
 
-    const confirmed = window.confirm("Xóa toàn bộ tài liệu AI đã feed và reset dữ liệu huấn luyện hiện tại?");
+    const confirmed = window.confirm("XÃ³a toÃ n bá»™ tÃ i liá»‡u AI Ä‘Ã£ feed vÃ  reset dá»¯ liá»‡u huáº¥n luyá»‡n hiá»‡n táº¡i?");
     if (!confirmed) return;
 
     setClearingKnowledge(true);
@@ -575,11 +575,11 @@ export function AiCommentReplyManager({
       await geminiApi.clearKnowledge();
       const nextConfig = { ...localConfig, trainingKnowledge: "" };
       setLocalConfig(nextConfig);
-      toast.success("Đã xóa toàn bộ tài liệu AI đã feed.");
+      toast.success("ÄÃ£ xÃ³a toÃ n bá»™ tÃ i liá»‡u AI Ä‘Ã£ feed.");
       void fetchAIHealth();
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Không thể xóa tri thức AI.");
+      toast.error(err.message || "KhÃ´ng thá»ƒ xÃ³a tri thá»©c AI.");
     } finally {
       setClearingKnowledge(false);
     }
@@ -599,7 +599,7 @@ export function AiCommentReplyManager({
         body: JSON.stringify({ feedback }),
       });
       if (res.ok) {
-        toast.success("Đã ghi nhận phản hồi của bạn.");
+        toast.success("ÄÃ£ ghi nháº­n pháº£n há»“i cá»§a báº¡n.");
         void fetchLogs();
       }
     } catch (err) {
@@ -656,10 +656,10 @@ export function AiCommentReplyManager({
           <div className="text-left">
             <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-indigo-650" />
-              Tự động phản hồi bình luận {activePlatform === "facebook" ? "Facebook" : "TikTok"}
+              Tá»± Ä‘á»™ng pháº£n há»“i bÃ¬nh luáº­n {activePlatform === "facebook" ? "Facebook" : "TikTok"}
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              Phân tách quản lý các phản hồi tự động theo từng bài viết cụ thể trên {activePlatform === "facebook" ? "Fanpage Facebook" : "TikTok Shop"} của bạn.
+              PhÃ¢n tÃ¡ch quáº£n lÃ½ cÃ¡c pháº£n há»“i tá»± Ä‘á»™ng theo tá»«ng bÃ i viáº¿t cá»¥ thá»ƒ trÃªn {activePlatform === "facebook" ? "Fanpage Facebook" : "TikTok"} cá»§a báº¡n.
             </p>
           </div>
 
@@ -721,7 +721,7 @@ export function AiCommentReplyManager({
             ) : (
               tiktokAccounts && tiktokAccounts.length > 0 && (
                 <div className="flex items-center gap-2 min-w-[180px]" id="comment_tiktok_switcher">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Kênh:</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">KÃªnh:</span>
                   <div className="relative flex-1">
                     <select
                       value={selectedTiktokAccountId}
@@ -751,7 +751,7 @@ export function AiCommentReplyManager({
           {/* Left Column: Config settings (Accordion style) */}
           <div className="xl:col-span-2 bg-gray-50/50 border border-gray-150 rounded-2xl p-4 space-y-4">
             
-            {/* Accordion 1: Cấu hình kịch bản & Chạy */}
+            {/* Accordion 1: Cáº¥u hÃ¬nh ká»‹ch báº£n & Cháº¡y */}
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-2xs">
               <button
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, script: !prev.script }))}
@@ -759,7 +759,7 @@ export function AiCommentReplyManager({
               >
                 <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
                   <Sliders className="h-4 w-4 text-indigo-650" />
-                  Kịch bản & Chạy
+                  Ká»‹ch báº£n & Cháº¡y
                 </span>
                 {sectionsExpanded.script ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
               </button>
@@ -769,8 +769,8 @@ export function AiCommentReplyManager({
                   {/* Toggles */}
                   <div className="flex justify-between items-center p-3 bg-gray-50/30 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
                     <div className="text-left">
-                      <h4 className="text-xs font-bold text-gray-800">Trả lời bình luận {activePlatform === "facebook" ? "FB" : "TikTok"}</h4>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Cho phép AI phản hồi bình luận.</p>
+                      <h4 className="text-xs font-bold text-gray-800">Tráº£ lá»i bÃ¬nh luáº­n {activePlatform === "facebook" ? "FB" : "TikTok"}</h4>
+                      <p className="text-[10px] text-gray-500 mt-0.5">Cho phÃ©p AI pháº£n há»“i bÃ¬nh luáº­n.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer select-none">
                       <input
@@ -786,9 +786,9 @@ export function AiCommentReplyManager({
                   {/* Delay setting */}
                   <div className="space-y-2 p-3 bg-gray-50/30 border border-gray-200 rounded-xl">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-gray-700">Độ trễ gửi câu trả lời</span>
+                      <span className="font-bold text-gray-700">Äá»™ trá»… gá»­i cÃ¢u tráº£ lá»i</span>
                       <strong className="font-mono bg-white px-2 py-0.5 border border-gray-200 rounded text-gray-600">
-                        {localConfig.replyDelay} giây (s)
+                        {localConfig.replyDelay} giÃ¢y (s)
                       </strong>
                     </div>
                     <input
@@ -808,7 +808,7 @@ export function AiCommentReplyManager({
                       className="w-full py-2.5 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
                     >
                       {savingConfig ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                      Lưu cấu hình auto-reply
+                      LÆ°u cáº¥u hÃ¬nh auto-reply
                     </button>
                     {facebookPages && facebookPages.filter(p => p._id !== "personal" && p.username !== selectedFacebookPageId).length > 0 && (
                       <button
@@ -817,7 +817,7 @@ export function AiCommentReplyManager({
                         className="w-full py-2.5 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                       >
                         {copyingConfig ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
-                        Đồng bộ cho Fanpage khác
+                        Äá»“ng bá»™ cho Fanpage khÃ¡c
                       </button>
                     )}
                   </div>
@@ -825,7 +825,7 @@ export function AiCommentReplyManager({
               )}
             </div>
 
-            {/* Accordion 2: Nạp tài liệu tri thức RAG */}
+            {/* Accordion 2: Náº¡p tÃ i liá»‡u tri thá»©c RAG */}
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-2xs">
               <button
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, rag: !prev.rag }))}
@@ -833,7 +833,7 @@ export function AiCommentReplyManager({
               >
                 <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
                   <Database className="h-4 w-4 text-emerald-600" />
-                  Nạp tài liệu tri thức (RAG)
+                  Náº¡p tÃ i liá»‡u tri thá»©c (RAG)
                 </span>
                 {sectionsExpanded.rag ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
               </button>
@@ -846,12 +846,12 @@ export function AiCommentReplyManager({
                       <svg className="h-3.5 w-3.5 text-emerald-600 fill-emerald-600/10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
                       </svg>
-                      Đồng bộ Google Drive
+                      Äá»“ng bá»™ Google Drive
                     </label>
                     <div className="flex gap-1.5">
                       <input
                         type="text"
-                        placeholder="Dán link Google Drive hoặc Doc/Sheet..."
+                        placeholder="DÃ¡n link Google Drive hoáº·c Doc/Sheet..."
                         value={driveLink}
                         onChange={(e) => setDriveLink(e.target.value)}
                         disabled={syncingDrive}
@@ -863,7 +863,7 @@ export function AiCommentReplyManager({
                         disabled={syncingDrive}
                         className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[9px] shrink-0 transition-all flex items-center gap-1 active:scale-95 disabled:opacity-60 cursor-pointer"
                       >
-                        {syncingDrive ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Đồng bộ"}
+                        {syncingDrive ? <RefreshCw className="h-3 w-3 animate-spin" /> : "Äá»“ng bá»™"}
                       </button>
                     </div>
                   </div>
@@ -872,7 +872,7 @@ export function AiCommentReplyManager({
                   <div className="space-y-2">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide flex items-center gap-1">
                       <UploadCloud className="h-3.5 w-3.5 text-blue-600" />
-                      Tải tệp tài liệu trực tiếp
+                      Táº£i tá»‡p tÃ i liá»‡u trá»±c tiáº¿p
                     </label>
                     <label className={`flex flex-col items-center justify-center border border-dashed rounded-xl p-3 text-center cursor-pointer transition-all ${uploadingDoc
                         ? "border-blue-400 bg-blue-50/30"
@@ -891,7 +891,7 @@ export function AiCommentReplyManager({
                       />
                       <UploadCloud className={`h-5 w-5 mb-0.5 ${uploadingDoc ? "text-blue-500 animate-bounce" : "text-slate-400"}`} />
                       <span className="text-[9px] font-bold text-slate-700">
-                        {uploadingDoc ? "Đang xử lý..." : "Kéo thả hoặc click để chọn tệp"}
+                        {uploadingDoc ? "Äang xá»­ lÃ½..." : "KÃ©o tháº£ hoáº·c click Ä‘á»ƒ chá»n tá»‡p"}
                       </span>
                     </label>
                   </div>
@@ -899,7 +899,7 @@ export function AiCommentReplyManager({
                   {/* RAG Health Status Grid */}
                   <div className="pt-3 border-t border-gray-200 text-left">
                     <div className="flex items-center justify-between mb-2">
-                      <h5 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Trạng thái tri thức RAG</h5>
+                      <h5 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Tráº¡ng thÃ¡i tri thá»©c RAG</h5>
                       <button
                         onClick={fetchAIHealth}
                         disabled={loadingHealth}
@@ -911,11 +911,11 @@ export function AiCommentReplyManager({
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="bg-gray-50 border border-gray-200 rounded-xl p-2 flex flex-col justify-between">
-                        <span className="text-gray-400 text-[9px]">Chế độ</span>
+                        <span className="text-gray-400 text-[9px]">Cháº¿ Ä‘á»™</span>
                         <strong className={`mt-0.5 text-[10px] font-bold ${
                           knowledgeHealth?.mode === "trained" ? "text-green-700" : "text-amber-700"
                         }`}>
-                          {knowledgeHealth?.mode === "trained" ? "Đã huấn luyện" : "Mặc định hệ thống"}
+                          {knowledgeHealth?.mode === "trained" ? "ÄÃ£ huáº¥n luyá»‡n" : "Máº·c Ä‘á»‹nh há»‡ thá»‘ng"}
                         </strong>
                       </div>
 
@@ -935,13 +935,13 @@ export function AiCommentReplyManager({
                     className="w-full py-2 border border-red-200 hover:bg-red-50 text-red-650 rounded-xl font-bold text-[10px] transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Xóa sạch tri thức đã huấn luyện
+                    XÃ³a sáº¡ch tri thá»©c Ä‘Ã£ huáº¥n luyá»‡n
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Accordion 3: Chỉ dẫn & Dữ liệu thủ công */}
+            {/* Accordion 3: Chá»‰ dáº«n & Dá»¯ liá»‡u thá»§ cÃ´ng */}
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-2xs">
               <button
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, manual: !prev.manual }))}
@@ -949,7 +949,7 @@ export function AiCommentReplyManager({
               >
                 <span className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-2">
                   <FileText className="h-4 w-4 text-amber-600" />
-                  Chỉ dẫn & Dữ liệu thủ công
+                  Chá»‰ dáº«n & Dá»¯ liá»‡u thá»§ cÃ´ng
                 </span>
                 {sectionsExpanded.manual ? <ChevronUp className="h-4 w-4 text-gray-500" /> : <ChevronDown className="h-4 w-4 text-gray-500" />}
               </button>
@@ -959,10 +959,10 @@ export function AiCommentReplyManager({
                   {/* Advanced Instructions */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                      Chỉ dẫn nâng cao (AI Prompts)
+                      Chá»‰ dáº«n nÃ¢ng cao (AI Prompts)
                     </label>
                     <textarea
-                      placeholder="Nhập luật hành xử nghiêm ngặt cho AI (vd: xưng hô Dạ/Thưa, tập trung trả lời đúng trọng tâm)..."
+                      placeholder="Nháº­p luáº­t hÃ nh xá»­ nghiÃªm ngáº·t cho AI (vd: xÆ°ng hÃ´ Dáº¡/ThÆ°a, táº­p trung tráº£ lá»i Ä‘Ãºng trá»ng tÃ¢m)..."
                       value={localConfig.advancedInstructions}
                       onChange={(e) => setLocalConfig({ ...localConfig, advancedInstructions: e.target.value })}
                       className="w-full h-24 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
@@ -972,16 +972,16 @@ export function AiCommentReplyManager({
                   {/* Manual Training Knowledge */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                      Dữ liệu tri thức huấn luyện AI
+                      Dá»¯ liá»‡u tri thá»©c huáº¥n luyá»‡n AI
                     </label>
                     <textarea
-                      placeholder="Nhập thông tin sản phẩm, câu hỏi thường gặp FAQ, chính sách giao hàng..."
+                      placeholder="Nháº­p thÃ´ng tin sáº£n pháº©m, cÃ¢u há»i thÆ°á»ng gáº·p FAQ, chÃ­nh sÃ¡ch giao hÃ ng..."
                       value={localConfig.trainingKnowledge}
                       onChange={(e) => setLocalConfig({ ...localConfig, trainingKnowledge: e.target.value })}
                       className="w-full h-36 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                     <p className="text-[8px] text-slate-400 leading-normal">
-                      Bạn có thể dán nội dung văn bản tự do hoặc các câu hỏi đáp FAQs tại đây. Nhấp "Lưu cấu hình auto-reply" để áp dụng cho AI.
+                      Báº¡n cÃ³ thá»ƒ dÃ¡n ná»™i dung vÄƒn báº£n tá»± do hoáº·c cÃ¡c cÃ¢u há»i Ä‘Ã¡p FAQs táº¡i Ä‘Ã¢y. Nháº¥p "LÆ°u cáº¥u hÃ¬nh auto-reply" Ä‘á»ƒ Ã¡p dá»¥ng cho AI.
                     </p>
                   </div>
                 </div>
@@ -997,12 +997,12 @@ export function AiCommentReplyManager({
             <div className="space-y-4 text-left">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider shrink-0">
-                  Quản lý phản hồi theo bài viết
+                  Quáº£n lÃ½ pháº£n há»“i theo bÃ i viáº¿t
                 </h4>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                   <input
                     type="text"
-                    placeholder="Tìm theo Post ID, comment..."
+                    placeholder="TÃ¬m theo Post ID, comment..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="px-3 py-1.5 bg-white border border-gray-200 focus:border-indigo-650 rounded-xl text-[10px] outline-none transition-all w-full sm:w-48 focus:sm:w-60 shadow-2xs"
@@ -1011,7 +1011,7 @@ export function AiCommentReplyManager({
                     onClick={() => fetchLogs(1)}
                     disabled={loadingLogs}
                     className="p-1.5 hover:bg-gray-100 text-gray-500 hover:text-gray-700 rounded-xl transition-all cursor-pointer border border-gray-200 shrink-0 bg-white"
-                    title="Tải lại nhật ký"
+                    title="Táº£i láº¡i nháº­t kÃ½"
                   >
                     <RefreshCw className={`h-3.5 w-3.5 ${loadingLogs ? "animate-spin" : ""}`} />
                   </button>
@@ -1021,14 +1021,14 @@ export function AiCommentReplyManager({
               {loadingLogs ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-3 bg-gray-50/30 border border-gray-150 rounded-2xl">
                   <div className="w-6 h-6 border-2 border-indigo-650 border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs text-gray-500">Đang tải nhật ký phản hồi...</p>
+                  <p className="text-xs text-gray-500">Äang táº£i nháº­t kÃ½ pháº£n há»“i...</p>
                 </div>
               ) : postIds.length === 0 ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-2 bg-gray-50/30 border border-gray-150 rounded-2xl text-center px-4">
                   <HelpCircle className="h-8 w-8 text-gray-300 mb-1" />
-                  <p className="text-xs font-bold text-gray-600">Chưa có nhật ký phản hồi nào</p>
+                  <p className="text-xs font-bold text-gray-600">ChÆ°a cÃ³ nháº­t kÃ½ pháº£n há»“i nÃ o</p>
                   <p className="text-[10px] text-gray-400 max-w-xs leading-normal">
-                    {searchQuery ? "Không tìm thấy phản hồi khớp với từ khóa tìm kiếm." : "Khi có bình luận mới trên Fanpage, AI sẽ tự động phản hồi và hiển thị nhật ký tại đây."}
+                    {searchQuery ? "KhÃ´ng tÃ¬m tháº¥y pháº£n há»“i khá»›p vá»›i tá»« khÃ³a tÃ¬m kiáº¿m." : "Khi cÃ³ bÃ¬nh luáº­n má»›i trÃªn Fanpage, AI sáº½ tá»± Ä‘á»™ng pháº£n há»“i vÃ  hiá»ƒn thá»‹ nháº­t kÃ½ táº¡i Ä‘Ã¢y."}
                   </p>
                 </div>
               ) : (
@@ -1058,12 +1058,12 @@ export function AiCommentReplyManager({
                             <div className="text-left min-w-0 flex-1">
                               <span 
                                 className="text-[11px] font-bold text-gray-800 line-clamp-1 block pr-4" 
-                                title={details?.message || `Bài viết ID: ${postId}`}
+                                title={details?.message || `BÃ i viáº¿t ID: ${postId}`}
                               >
-                                {details?.message || `Bài viết ID: ${postId}`}
+                                {details?.message || `BÃ i viáº¿t ID: ${postId}`}
                               </span>
                               <span className="text-[9px] text-gray-400 font-semibold block mt-0.5">
-                                ID: {postId} • Tổng số {postLogs.length} phản hồi tự động
+                                ID: {postId} â€¢ Tá»•ng sá»‘ {postLogs.length} pháº£n há»“i tá»± Ä‘á»™ng
                               </span>
                             </div>
                           </div>
@@ -1076,7 +1076,7 @@ export function AiCommentReplyManager({
                                 rel="noreferrer"
                                 onClick={(e) => e.stopPropagation()} // Avoid expanding/collapsing when clicking link
                                 className="p-1.5 hover:bg-gray-200 text-gray-455 hover:text-indigo-650 rounded-lg transition-all"
-                                title="Xem trên Facebook"
+                                title="Xem trÃªn Facebook"
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </a>
@@ -1097,11 +1097,11 @@ export function AiCommentReplyManager({
                                         ? "bg-green-50 border border-green-200 text-green-700" 
                                         : "bg-red-50 border border-red-200 text-red-700"
                                     }`}>
-                                      {(log.status === "sent" || log.status === "success") ? "Thành công" : "Thất bại"}
+                                      {(log.status === "sent" || log.status === "success") ? "ThÃ nh cÃ´ng" : "Tháº¥t báº¡i"}
                                     </span>
-                                    {log.aiResponse?.includes("Inbox Thất bại") && (
-                                      <span className="px-1.5 py-0.5 rounded-full font-bold uppercase bg-amber-50 border border-amber-200 text-amber-700" title="AI trả lời bình luận thành công nhưng gửi inbox riêng tư bị lỗi. Vui lòng nhắn tin tay.">
-                                        Lỗi gửi Inbox
+                                    {log.aiResponse?.includes("Inbox Tháº¥t báº¡i") && (
+                                      <span className="px-1.5 py-0.5 rounded-full font-bold uppercase bg-amber-50 border border-amber-200 text-amber-700" title="AI tráº£ lá»i bÃ¬nh luáº­n thÃ nh cÃ´ng nhÆ°ng gá»­i inbox riÃªng tÆ° bá»‹ lá»—i. Vui lÃ²ng nháº¯n tin tay.">
+                                        Lá»—i gá»­i Inbox
                                       </span>
                                     )}
                                   </div>
@@ -1112,11 +1112,11 @@ export function AiCommentReplyManager({
 
                                 <div className="space-y-2 text-xs text-left">
                                   <div className="bg-white border border-gray-150 rounded-lg p-2.5 shadow-2xs">
-                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Khách bình luận:</p>
+                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">KhÃ¡ch bÃ¬nh luáº­n:</p>
                                     <p className="text-gray-700 font-sans mt-0.5">{log.customerMessage}</p>
                                   </div>
                                   <div className="bg-indigo-50/25 border border-indigo-100/50 rounded-lg p-2.5 shadow-2xs">
-                                    <p className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider">AI trả lời:</p>
+                                    <p className="text-[9px] font-bold text-indigo-600 uppercase tracking-wider">AI tráº£ lá»i:</p>
                                     <p className="text-gray-800 font-sans font-semibold mt-0.5">{log.aiResponse}</p>
                                   </div>
                                 </div>
@@ -1130,7 +1130,7 @@ export function AiCommentReplyManager({
                                     >
                                       <span className="flex items-center gap-1">
                                         <Terminal className="h-3 w-3 text-indigo-500 shrink-0" />
-                                        Nguồn tri thức đối chiếu RAG ({log.contextMatches || 0} khớp)
+                                        Nguá»“n tri thá»©c Ä‘á»‘i chiáº¿u RAG ({log.contextMatches || 0} khá»›p)
                                       </span>
                                       {expandedContexts[log._id] ? (
                                         <ChevronUp className="h-3 w-3 text-gray-400" />
@@ -1156,7 +1156,7 @@ export function AiCommentReplyManager({
                                           : "bg-green-50 hover:bg-green-100 border border-green-200 text-green-700"
                                       }`}
                                     >
-                                      Đúng
+                                      ÄÃºng
                                     </button>
                                     <button
                                       onClick={() => handleFeedback(log._id, "needs_fix")}
@@ -1166,7 +1166,7 @@ export function AiCommentReplyManager({
                                           : "bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700"
                                       }`}
                                     >
-                                      Cần sửa
+                                      Cáº§n sá»­a
                                     </button>
                                     <button
                                       onClick={() => handleFeedback(log._id, "bad")}
@@ -1204,7 +1204,7 @@ export function AiCommentReplyManager({
                         ) : (
                           <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
                         )}
-                        Tải thêm bài viết & bình luận
+                        Táº£i thÃªm bÃ i viáº¿t & bÃ¬nh luáº­n
                       </button>
                     </div>
                   )}
@@ -1217,3 +1217,5 @@ export function AiCommentReplyManager({
     </div>
   );
 }
+
+

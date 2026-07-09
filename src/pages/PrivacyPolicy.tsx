@@ -15,7 +15,7 @@ const policySections = [
   {
     title: "1. Scope",
     content: [
-      `${BRAND_NAME} is a business management platform that may connect with third-party services such as TikTok Shop, Facebook and other approved channels to help users manage operations, content, orders and customer interactions.`,
+      `${BRAND_NAME} is a marketing workspace that may connect with third-party services such as TikTok, Facebook and other approved channels to help users manage content, publishing workflows and customer interactions.`,
       "This Privacy Policy explains what data we collect, how we use it, how long we retain it and how users can revoke access or request deletion.",
     ],
   },
@@ -23,8 +23,8 @@ const policySections = [
     title: "2. Data We Receive",
     content: [
       "Account and profile data you provide directly, such as name, email address, phone number, company information and login credentials.",
-      "Connection data received after you authorize a third-party platform, such as public profile identifiers, shop identifiers, page identifiers, OAuth access tokens, refresh tokens and permission scopes.",
-      "Business data synchronized at your request, such as selected product catalog data, order data, inventory-related data, conversation metadata and media or text content that you choose to process through the platform.",
+      "Connection data received after you authorize a third-party platform, such as public profile identifiers, page identifiers, OAuth access tokens, refresh tokens and permission scopes.",
+      "Content and publishing data processed at your request, such as video captions, media files, scheduling details, publishing status and text content that you choose to process through the platform.",
       "Technical usage data such as IP address, browser type, device information, timestamps, logs and security events.",
     ],
   },
@@ -32,17 +32,17 @@ const policySections = [
     title: "3. How We Use Data",
     content: [
       "To authenticate users and maintain secure access to the platform.",
-      "To establish and maintain approved integrations, including TikTok Shop OAuth connections and related synchronization flows.",
-      "To sync and display the data you explicitly authorize, including profile, order, product, messaging or publishing-related data supported by the connected platform.",
+      "To establish and maintain approved integrations, including TikTok OAuth connections and publishing flows.",
+      "To display account profile data and publish user-approved video content through supported connected-platform features.",
       "To generate AI-assisted drafts, content suggestions, media prompts or workflow automations based only on the materials and instructions you submit to the system.",
       "To monitor service reliability, prevent abuse, troubleshoot incidents and comply with applicable legal obligations.",
     ],
   },
   {
-    title: "4. TikTok Shop And Other Platform Permissions",
+    title: "4. TikTok And Other Platform Permissions",
     content: [
-      "When you connect TikTok Shop or another third-party service, we only request and use the permissions required for the features you activate.",
-      "For TikTok-related features, this may include scopes such as user identity verification, shop order synchronization or product synchronization when those features are enabled in your account.",
+      "When you connect TikTok or another third-party service, we only request and use the permissions required for the features you activate.",
+      "For the TikTok video publishing integration, we use user.info.basic to identify the connected account and video.publish to publish videos after the user creates, reviews and confirms the action.",
       "We do not ask users to provide their TikTok password directly to us. Access is granted through the platform's official authorization flow.",
     ],
   },
@@ -93,8 +93,8 @@ const policySections = [
 export default function PrivacyPolicy() {
   const meta = {
     title: `${BRAND_NAME} Privacy Policy`,
-    description: `Privacy Policy for ${BRAND_NAME}, including account data, connected platform data, TikTok Shop integration data and deletion rights.`,
-    keywords: "privacy policy, TikTok Shop API, user data deletion, iGen Marketing",
+    description: `Privacy Policy for ${BRAND_NAME}, including account data, connected platform data, TikTok video publishing data and deletion rights.`,
+    keywords: "privacy policy, TikTok API, video publishing, user data deletion, iGen Marketing",
     path: "/privacy-policy",
   };
 
