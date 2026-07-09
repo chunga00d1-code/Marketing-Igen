@@ -45,6 +45,6 @@ Mỗi khi bạn thực hiện **Push** hoặc **Tạo Pull Request** hướng v�
 
 ### 3. Quy trình triển khai tự động (CD)
 Khi mã nguồn được merge thành công vào các nhánh chỉ định, CD sẽ tự động triển khai tương ứng:
-* **Nhánh `develop`**: Triển khai lên môi trường **Staging** trên VPS (đường dẫn `/opt/igen-erp/staging`).
-* **Nhánh `main`**: Triển khai lên môi trường **Production** trên VPS (đường dẫn `/opt/igen-erp/production`).
+* **Nhánh `develop`**: Triển khai lên môi trường **Staging** trên VPS (đường dẫn `/opt/igen-marketing/staging`).
+* **Nhánh `production`**: Triển khai lên môi trường **Production** trên VPS (đường dẫn `/opt/igen-marketing/production`).
 * Cả hai môi trường đều tự động cập nhật Firebase Cloud Functions, Firestore & Storage Security Rules.
