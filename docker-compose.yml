@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  igen-erp:
-    image: ghcr.io/chung2310/igen-erp:${IMAGE_TAG:-latest}
-    container_name: ${CONTAINER_NAME:-igen-erp}
+  igen-marketing:
+    image: ghcr.io/chung2310/marketing-igen:${IMAGE_TAG:-latest}
+    container_name: ${CONTAINER_NAME:-igen-marketing}
     restart: always
     ports:
       - "3005:3005"

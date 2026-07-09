@@ -86,9 +86,10 @@ export default function CRMTab() {
   }, [userProfile, companySocialIntegrations]);
 
   const isZaloConnected = React.useMemo(() => {
+    const hasPersonal = !!(userProfile?.zaloIntegration?.isConnected && userProfile.zaloIntegration.oaId);
     const hasCompany = companySocialIntegrations.some(item => item.platform === "Zalo" && item.isConnected);
-    return hasCompany || true;
-  }, [companySocialIntegrations]);
+    return hasPersonal || hasCompany || true;
+  }, [userProfile, companySocialIntegrations]);
 
   const isTiktokConnected = React.useMemo(() => {
     const hasPersonal = !!(userProfile?.tiktokIntegration?.isConnected && userProfile.tiktokIntegration.username);
@@ -140,6 +141,14 @@ export default function CRMTab() {
   // Zalo Accounts
   const zaloAccounts = React.useMemo(() => {
     const list: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }> = [];
+    if (userProfile?.zaloIntegration?.isConnected && userProfile.zaloIntegration.oaId) {
+      list.push({
+        _id: "personal",
+        displayName: userProfile.zaloIntegration.oaName || "Zalo OA cá nhân",
+        username: userProfile.zaloIntegration.oaId,
+        isMock: !!userProfile.zaloIntegration.isMock,
+      });
+    }
     companySocialIntegrations.forEach((item) => {
       if (item.platform === "Zalo" && item.isConnected && item.username) {
         list.push({
@@ -161,13 +170,21 @@ export default function CRMTab() {
     }
 
     return list;
-  }, [companySocialIntegrations]);
+  }, [userProfile, companySocialIntegrations]);
 
   const [selectedZaloAccountId, setSelectedZaloAccountId] = useState<string>("");
 
   // TikTok Accounts
   const tiktokAccounts = React.useMemo(() => {
     const list: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }> = [];
+    if (userProfile?.tiktokIntegration?.isConnected && userProfile.tiktokIntegration.username) {
+      list.push({
+        _id: "personal",
+        displayName: userProfile.tiktokIntegration.displayName || userProfile.tiktokIntegration.username || "Tài khoản TikTok cá nhân",
+        username: userProfile.tiktokIntegration.username,
+        isMock: !!userProfile.tiktokIntegration.isMock,
+      });
+    }
     companySocialIntegrations.forEach((item) => {
       if (item.platform === "TikTok" && item.isConnected && item.username) {
         list.push({
@@ -189,7 +206,7 @@ export default function CRMTab() {
     }
 
     return list;
-  }, [companySocialIntegrations]);
+  }, [userProfile, companySocialIntegrations]);
 
   const [selectedTiktokAccountId, setSelectedTiktokAccountId] = useState<string>("");
 

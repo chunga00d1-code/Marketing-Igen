@@ -117,7 +117,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT || '22' }}
           source: "docker-compose.yml"
-          target: "/opt/igen-erp/staging"
+          target: "/opt/igen-marketing/staging"
 
       - name: Deploy via SSH to Staging VPS
         if: github.ref_name == 'develop'
@@ -131,9 +131,9 @@ jobs:
           port: ${{ secrets.SSH_PORT || '22' }}
           envs: ENV_FILE_CONTENT
           script: |
-            TARGET_DIR="/opt/igen-erp/staging"
+            TARGET_DIR="/opt/igen-marketing/staging"
             IMAGE_TAG="develop"
-            CONTAINER_NAME="igen-erp-staging"
+            CONTAINER_NAME="igen-marketing-staging"
 
             # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
             mkdir -p "$TARGET_DIR"
@@ -165,7 +165,7 @@ jobs:
           key: ${{ secrets.SSH_KEY_PROD }}
           port: ${{ secrets.SSH_PORT_PROD || '22' }}
           source: "docker-compose.yml"
-          target: "/opt/igen-erp/production"
+          target: "/opt/igen-marketing/production"
 
       - name: Deploy via SSH to Production VPS
         if: github.ref_name == 'production'
@@ -179,9 +179,9 @@ jobs:
           port: ${{ secrets.SSH_PORT_PROD || '22' }}
           envs: ENV_FILE_CONTENT
           script: |
-            TARGET_DIR="/opt/igen-erp/production"
+            TARGET_DIR="/opt/igen-marketing/production"
             IMAGE_TAG="production"
-            CONTAINER_NAME="igen-erp-production"
+            CONTAINER_NAME="igen-marketing-production"
 
             # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
             mkdir -p "$TARGET_DIR"
