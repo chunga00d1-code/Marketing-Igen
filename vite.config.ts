@@ -15,16 +15,16 @@ export default defineConfig(() => {
       allowedHosts: true as const,
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: 'http://localhost:3005',
           changeOrigin: true,
         },
         '/socket.io': {
-          target: 'http://localhost:3000',
+          target: 'http://localhost:3005',
           changeOrigin: true,
           ws: true,
         },
         '/uploads': {
-          target: 'http://localhost:3000',
+          target: 'http://localhost:3005',
           changeOrigin: true,
         },
       },

@@ -16,7 +16,7 @@ import { telegramService } from "./server/service/telegram.service";
 
 dotenv.config();
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
 
 function shouldSkipRoutineApiLog(method: string, url: string) {
   const normalizedMethod = String(method || "").toUpperCase();
@@ -215,7 +215,7 @@ async function startServer() {
   // 1. Cấu hình CORS bảo mật sử dụng allowedOrigins từ biến môi trường LINK_COR
   const allowedOrigins = process.env.LINK_COR
     ? process.env.LINK_COR.split(",")
-    : ["http://localhost:5173", "http://localhost:3000"];
+    : ["http://localhost:5173", "http://localhost:3005"];
 
   app.use((req, res, next) => {
     const origin = req.headers.origin;

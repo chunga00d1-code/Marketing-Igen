@@ -17,7 +17,7 @@ export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
-  
+
   // Error states for local validation & server responses
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen w-screen h-screen flex items-center justify-center bg-gradient-to-br from-[#f6f8fd] via-[#eef2f7] to-[#e3ecf5] p-4 overflow-hidden relative font-sans">
-      
+
       {/* Background Decorative Blobs */}
       <div className="absolute top-[-10%] left-[-10%] w-[600px] h-[600px] rounded-full bg-blue-400/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] rounded-full bg-indigo-400/10 blur-[120px] pointer-events-none" />
@@ -85,7 +85,7 @@ export default function AuthPage() {
             <span>Về trang chủ</span>
           </a>
         </div>
-        
+
         {/* Brand Header */}
         <div className="text-center space-y-3">
           <div className="inline-block relative">
@@ -112,27 +112,25 @@ export default function AuthPage() {
 
         {/* Input Form */}
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          
+
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Địa chỉ Email *</label>
             <div className="relative group">
-              <Mail className={`absolute left-3.5 top-3.5 h-4 w-4 transition-colors ${
-                emailError ? "text-red-500" : "text-slate-400 group-focus-within:text-blue-600"
-              }`} />
-              <input 
-                type="email" 
-                placeholder="name@company.com" 
+              <Mail className={`absolute left-3.5 top-3.5 h-4 w-4 transition-colors ${emailError ? "text-red-500" : "text-slate-400 group-focus-within:text-blue-600"
+                }`} />
+              <input
+                type="email"
+                placeholder="name@company.com"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (emailError) setEmailError(null);
                   if (error) setError(null);
                 }}
-                className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white outline-none transition-all duration-200 ${
-                  emailError 
-                    ? "border-red-300 focus:ring-4 focus:ring-red-500/10 focus:border-red-500" 
+                className={`w-full pl-11 pr-4 py-3 bg-slate-50 border rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white outline-none transition-all duration-200 ${emailError
+                    ? "border-red-300 focus:ring-4 focus:ring-red-500/10 focus:border-red-500"
                     : "border-slate-200 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                }`}
+                  }`}
               />
             </div>
             {emailError && (
@@ -145,23 +143,21 @@ export default function AuthPage() {
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Mật khẩu *</label>
             <div className="relative group">
-              <Lock className={`absolute left-3.5 top-3.5 h-4 w-4 transition-colors ${
-                passwordError ? "text-red-500" : "text-slate-400 group-focus-within:text-blue-600"
-              }`} />
-              <input 
-                type={showPassword ? "text" : "password"} 
-                placeholder="••••••••" 
+              <Lock className={`absolute left-3.5 top-3.5 h-4 w-4 transition-colors ${passwordError ? "text-red-500" : "text-slate-400 group-focus-within:text-blue-600"
+                }`} />
+              <input
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   if (passwordError) setPasswordError(null);
                   if (error) setError(null);
                 }}
-                className={`w-full pl-11 pr-11 py-3 bg-slate-50 border rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white outline-none transition-all duration-200 ${
-                  passwordError 
-                    ? "border-red-300 focus:ring-4 focus:ring-red-500/10 focus:border-red-500" 
+                className={`w-full pl-11 pr-11 py-3 bg-slate-50 border rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white outline-none transition-all duration-200 ${passwordError
+                    ? "border-red-300 focus:ring-4 focus:ring-red-500/10 focus:border-red-500"
                     : "border-slate-200 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-                }`}
+                  }`}
               />
               <button
                 type="button"
@@ -181,18 +177,18 @@ export default function AuthPage() {
           {/* Remember me checkbox */}
           <div className="flex items-center justify-between text-xs select-none pt-1">
             <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={rememberMe} 
-                onChange={(e) => setRememberMe(e.target.checked)} 
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
                 className="rounded border-slate-300 bg-white text-blue-600 focus:ring-blue-500 h-4 w-4"
               />
               <span>Ghi nhớ đăng nhập</span>
             </label>
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-600/10 hover:shadow-lg hover:shadow-blue-600/20 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer duration-200"
           >
