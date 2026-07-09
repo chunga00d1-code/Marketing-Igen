@@ -67,22 +67,22 @@ const toneClasses: Record<MenuTone, { active: string; icon: string; hoverIcon: s
 const baseMenuItems: MenuItem[] = [
   {
     label: "TONG QUAN",
-    title: "Dashboard dieu hanh",
-    desc: "Tong quan sales va marketing",
+    title: "Dashboard điều hành",
+    desc: "Tổng quan sales và marketing",
     icon: LayoutDashboard,
     tone: "slate",
   },
   {
     label: "MARKETING",
     title: "AI Marketing Hub",
-    desc: "Sang tao noi dung va dang lich",
+    desc: "Sáng tạo nội dung và đăng lịch",
     icon: Megaphone,
     tone: "purple",
   },
   {
     label: "SALES CRM",
     title: "Sales CRM Omni-Inbox",
-    desc: "Cham soc va pheu khach hang",
+    desc: "Chăm sóc và phễu khách hàng",
     icon: MessageSquareShare,
     tone: "rose",
   },
@@ -96,8 +96,8 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   if (userProfile?.role === "superadmin" || userProfile?.role === "admin") {
     menuItems.push({
       label: "QUAN TRI USER",
-      title: "Quan tri user",
-      desc: "Cap quyen va phan vai tro",
+      title: "Quản trị user",
+      desc: "Cấp quyền và phân vai trò",
       icon: Shield,
       tone: "indigo",
     });
@@ -106,8 +106,8 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   if (userProfile) {
     menuItems.push({
       label: "VI & NAP TIEN",
-      title: "Vi & Nap tien",
-      desc: "So du vi va cong PayOS",
+      title: "Ví & Nạp tiền",
+      desc: "Số dư ví và cổng PayOS",
       icon: Wallet,
       tone: "blue",
     });
@@ -115,8 +115,8 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
 
   menuItems.push({
     label: "CAI DAT",
-    title: "Cai dat he thong",
-    desc: "Thong tin ca nhan va cau hinh",
+    title: "Cài đặt hệ thống",
+    desc: "Thông tin cá nhân và cấu hình",
     icon: Settings,
     tone: "slate",
   });
@@ -134,7 +134,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
             src={BRAND_LOGO_PATH}
             alt={BRAND_NAME}
             onClick={() => setActiveTab("TONG QUAN")}
-            title="Ve dashboard"
+            title="Về dashboard"
             className="h-11 w-11 shrink-0 rounded-2xl border border-blue-100 object-cover shadow-lg shadow-blue-500/15 cursor-pointer transition-transform hover:scale-110 active:scale-95"
           />
           {!isCollapsed ? (
@@ -198,12 +198,12 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
           className={`flex items-center rounded-2xl border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 ${
             isCollapsed ? "mx-auto h-11 w-11 justify-center" : "w-full justify-between px-4 py-3"
           }`}
-          title={isCollapsed ? "Mo rong thanh ben" : "Thu gon thanh ben"}
-          aria-label={isCollapsed ? "Mo rong thanh ben" : "Thu gon thanh ben"}
+          title={isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+          aria-label={isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
         >
           <span className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
             {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            {!isCollapsed ? <span className="text-sm font-semibold">Thu gon danh sach</span> : null}
+            {!isCollapsed ? <span className="text-sm font-semibold">Thu gọn danh sách</span> : null}
           </span>
           {!isCollapsed ? <ChevronRight className="h-4 w-4" /> : null}
         </button>

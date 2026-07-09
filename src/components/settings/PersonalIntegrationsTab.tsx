@@ -663,7 +663,7 @@ export default function PersonalIntegrationsTab() {
                 className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Go bo
+                Gỡ bỏ
               </button>
             </div>
           </form>
@@ -703,7 +703,7 @@ export default function PersonalIntegrationsTab() {
 
           <form onSubmit={handleSaveTikTok} className="mt-4 space-y-3 text-left">
             <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Cau hinh app TikTok</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Cấu hình app TikTok</p>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
                 Chỉ cần điền nếu bạn muốn sử dụng Client Key và Client Secret của ứng dụng TikTok riêng. Bỏ trống để dùng mặc định hệ thống.
               </p>
@@ -770,7 +770,7 @@ export default function PersonalIntegrationsTab() {
                 disabled={savingTikTok}
                 className="flex-1 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
               >
-                {savingTikTok ? "Đang lưu..." : "Luu TikTok cá nhân"}
+                {savingTikTok ? "Đang lưu..." : "Lưu TikTok cá nhân"}
               </button>
               <button
                 type="button"
@@ -778,7 +778,7 @@ export default function PersonalIntegrationsTab() {
                 className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-700"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Go bo
+                Gỡ bỏ
               </button>
             </div>
           </form>

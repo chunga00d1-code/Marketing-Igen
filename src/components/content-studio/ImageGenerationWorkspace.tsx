@@ -260,7 +260,10 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
           ? `Reference images attached: ${inputImageUrls.length}. Preserve the same subject, context, and meaning from the text and references.`
           : "No reference image attached.",
         "Translate into English and enrich the prompt with appropriate visual details for image generation.",
-        "If the user description is a recruitment, advertisement, or marketing brief, enhance it into a professional layout or a highly realistic workplace photo setting.",
+        "Infer the requested output format from the user's words. If the user asks for a banner, poster, ad creative, cover, thumbnail, flyer, or social post, the final prompt MUST describe a designed commercial graphic layout, not just a documentary/product photo.",
+        "For banner/ad/poster requests, include: clear hero product/subject, intentional composition, background design, headline area, subheadline area, CTA/button area, brand/logo placeholder if no brand name is provided, clean typography, safe margins, and enough negative space for readable Vietnamese text.",
+        "For product or shop introduction banners, show the product assortment as the hero visual but frame it as a promotional banner design with text zones, not a plain food/product photography scene.",
+        "Only use a purely realistic photo scene when the user explicitly asks for a photo, realistic scene, or lifestyle/workplace photo.",
         "Preserve all core business details (company name, salary/numbers, location, products) and ensure they are explicitly described to be rendered as clear text in the image.",
         "Make the final prompt highly descriptive, realistic, and contextually rich, matching the style of professional commercial photography or clean promotional layouts."
       ].join("\n");
@@ -281,14 +284,9 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
       setIsGeneratingPrompt(false);
     }
   };
-
   const handleGenerateImage = async () => {
     let finalPrompt = prompt.trim();
-    if (!finalPrompt) {
-      finalPrompt = simplePrompt;
-    }
-
-    if (!finalPrompt.trim()) {
+    if (!isPromptAnalyzed || !finalPrompt) {
       toast.warning('Vui lòng nhập prompt hoặc tối ưu hóa prompt trước khi tạo ảnh.');
       return;
     }
@@ -539,7 +537,10 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
               placeholder="Mô tả hình ảnh bạn muốn tạo. Ví dụ: một cô gái cyborg với mái tóc neon..."
               className="w-full text-xs font-mono p-3 border border-slate-200 rounded-xl h-24 focus:ring-1 focus:ring-cyan-500 focus:outline-none leading-relaxed bg-slate-50/30"
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                setIsPromptAnalyzed(true);
+              }}
             />
           </div>
 
@@ -551,10 +552,10 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
               value={imageModel}
               onChange={(e) => setImageModel(e.target.value)}
             >
-              <option value="nano-banana-pro">iGen Image Pro (PiAPI)</option>
-              <option value="nano-banana-2">iGen Image Flash (PiAPI)</option>
-              <option value="gemini-banana-pro">iGen Gemini Image Pro</option>
-              <option value="gemini-banana-flash">iGen Gemini Image Flash</option>
+              {/* <option value="nano-banana-pro">iGen Image Pro (PiAPI)</option>
+              <option value="nano-banana-2">iGen Image Flash (PiAPI)</option> */}
+              <option value="gemini-banana-pro">iGen Image Pro</option>
+              <option value="gemini-banana-flash">iGen Image Flash</option>
             </select>
           </div>
 
@@ -617,10 +618,11 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
               onClick={handleGenerateImage}
               disabled={isGenerating || isGeneratingPrompt || !isPromptAnalyzed}
               title={!isPromptAnalyzed ? "Vui lòng ấn nút 'Phân tích và hoàn thiện prompt' trước khi tạo ảnh" : undefined}
-              className={`w-full py-3 rounded-2xl text-xs font-bold tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 ${isGenerating || isGeneratingPrompt || !isPromptAnalyzed
-                ? "bg-gray-200 text-gray-400 border border-gray-300 shadow-none cursor-not-allowed"
-                : "bg-cyan-500 hover:bg-cyan-600 text-white active:scale-[0.99] shadow-cyan-500/20 cursor-pointer"
-                }`}
+              className={`w-full py-3 rounded-2xl text-xs font-bold tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 ${
+                isGenerating || isGeneratingPrompt || !isPromptAnalyzed
+                  ? "bg-gray-200 text-gray-400 border border-gray-300 shadow-none cursor-not-allowed"
+                  : "bg-cyan-500 hover:bg-cyan-600 text-white active:scale-[0.99] shadow-cyan-500/20 cursor-pointer"
+              }`}
             >
               {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
               Tạo ảnh
