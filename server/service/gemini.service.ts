@@ -34,13 +34,51 @@ const Type = {
 
 function safeParseJson(text: string): any {
   let cleaned = text.trim();
-  if (cleaned.startsWith("```")) {
-    const match = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (match) {
-      cleaned = match[1].trim();
+
+  // Try extracting markdown json block first
+  const markdownMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (markdownMatch) {
+    cleaned = markdownMatch[1].trim();
+  }
+
+  // Try parsing directly first
+  try {
+    return JSON.parse(cleaned);
+  } catch (initialError) {
+    // If first attempt fails, try extracting exact JSON structure between outermost braces/brackets
+    const firstBrace = cleaned.indexOf("{");
+    const firstBracket = cleaned.indexOf("[");
+    const lastBrace = cleaned.lastIndexOf("}");
+    const lastBracket = cleaned.lastIndexOf("]");
+
+    let startIdx = -1;
+    let endIdx = -1;
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      startIdx = firstBrace;
+      endIdx = lastBrace;
+    } else if (firstBracket !== -1) {
+      startIdx = firstBracket;
+      endIdx = lastBracket;
+    }
+
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.slice(startIdx, endIdx + 1).trim();
+    }
+
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      // If still fails, try removing trailing commas
+      const withoutTrailingCommas = cleaned.replace(/,\s*([\]}])/g, "$1");
+      try {
+        return JSON.parse(withoutTrailingCommas);
+      } catch {
+        // Re-throw the original parsing error for maximum debugging clarity
+        throw initialError;
+      }
     }
   }
-  return JSON.parse(cleaned);
 }
 
 async function fetchWithRetry(url: string, retries = 3, delay = 2000): Promise<Response> {
@@ -443,13 +481,44 @@ async function generateText(
 
   console.log(`[generateText] Calling OpenRouter | model=${mapModelName(modelId)} | msgs=${messages.length} | hasSchema=${!!config?.responseSchema} | hasImages=${!!(config?.images?.length)}`);
 
-  return openrouterChat({
-    model: modelId,
-    messages,
-    temperature: config?.temperature ?? 0.7,
-    jsonMode: needsJson,
-    responseSchema: config?.responseSchema,
-  });
+  try {
+    const res = await openrouterChat({
+      model: modelId,
+      messages,
+      temperature: config?.temperature ?? 0.7,
+      jsonMode: needsJson,
+      responseSchema: config?.responseSchema,
+    });
+
+    if (needsJson) {
+      safeParseJson(res.text); // Validate that the response is parseable JSON
+    }
+
+    return res;
+  } catch (error: any) {
+    const fallbackModel = process.env.FALLBACK_MODEL || "qwen/qwen-2.5-72b-instruct";
+    console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
+
+    try {
+      const res = await openrouterChat({
+        model: fallbackModel,
+        messages,
+        temperature: config?.temperature ?? 0.7,
+        jsonMode: needsJson,
+        responseSchema: config?.responseSchema,
+      });
+
+      if (needsJson) {
+        safeParseJson(res.text); // Validate fallback JSON
+      }
+
+      console.log(`[generateText] Fallback to ${fallbackModel} succeeded.`);
+      return res;
+    } catch (fallbackError: any) {
+      console.error(`[generateText] Fallback model ${fallbackModel} also failed. Error: ${fallbackError?.message || fallbackError}`);
+      throw error; // Throw the original error
+    }
+  }
 }
 
 export const geminiService = {
@@ -1935,13 +2004,19 @@ Hãy tối ưu hóa văn bản gốc của người dùng để biến nó thàn
     const normalizedDescription = String(description || "").trim();
 
     const getMockImagePrompt = () => {
+      const wantsGraphicLayout = /\b(banner|poster|advertisement|ad creative|cover|thumbnail|flyer|social post)\b/i.test(normalizedDescription)
+        || /(băng rôn|banner|áp phích|poster|quảng cáo|giới thiệu|mặt hàng|bìa|thumbnail|tờ rơi|bài đăng)/i.test(normalizedDescription);
+      const optimizedPrompt = wantsGraphicLayout
+        ? `A professional commercial banner design that faithfully represents this exact brief: ${normalizedDescription || "the provided concept"}. Use a clear hero product or subject, designed background, headline area, subheadline area, CTA button area, brand/logo placeholder, clean typography, safe margins, and negative space for readable Vietnamese text. Do not make it a plain product photo.`
+        : `A precise visual that faithfully represents this exact marketing or business concept: ${normalizedDescription || "the provided concept"}`;
+
       return {
         subject: normalizedDescription || "image concept",
         clothing_material: "",
         action_pose: "",
         setting_lighting: "",
         camera_parameters: "",
-        optimized_english_prompt: `A precise visual that faithfully represents this exact marketing or business concept: ${normalizedDescription || "the provided concept"}`,
+        optimized_english_prompt: optimizedPrompt,
         negative_prompt: "ugly, blurry, low quality",
       };
     };
@@ -1961,6 +2036,10 @@ Hãy tối ưu hóa văn bản gốc của người dùng để biến nó thàn
           content: `You are an expert prompt engineer for image generators. Optimize the user's image description into a high-quality, descriptive English prompt.
 Preserve the exact business topic, audience, use-case, and key message from the user's input.
 Do not convert a concrete brief into a generic product shot, generic lifestyle image, abstract office scene, or unrelated beauty visual.
+Respect the requested media format. If the user asks for a banner, poster, ad creative, cover, thumbnail, flyer, or social post, the optimized prompt MUST describe a designed commercial graphic layout, not just a realistic product/photo scene.
+For banner/ad/poster/social creative requests, include a clear hero subject, intentional composition, designed background, headline area, subheadline area, CTA/button area, brand/logo placeholder if no brand is provided, clean typography, safe margins, and enough negative space for readable text.
+For product or shop introduction banners, show the product assortment as the hero visual but frame it as a promotional banner design with text zones and CTA, not plain documentary product photography.
+Only choose a pure photo/lifestyle scene when the user explicitly requests a photo, realistic scene, or workplace/lifestyle image.
 If the prompt is about software, ecommerce, omnichannel, logistics, operations, training, consulting, customer growth, or workflow, explicitly visualize that real context.
 Translate faithfully from Vietnamese to English when needed. Semantic fidelity is more important than creative embellishment.
 Do not introduce new objects, characters, industries, locations, demographics, props, outfits, or claims unless they are explicitly grounded in the source input or attached references.

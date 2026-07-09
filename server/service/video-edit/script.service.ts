@@ -98,11 +98,51 @@ export interface VideoEditScript {
 
 function safeParseJson(text: string): any {
   let cleaned = text.trim();
-  if (cleaned.startsWith("```")) {
-    const match = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-    if (match) cleaned = match[1].trim();
+
+  // Try extracting markdown json block first
+  const markdownMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (markdownMatch) {
+    cleaned = markdownMatch[1].trim();
   }
-  return JSON.parse(cleaned);
+
+  // Try parsing directly first
+  try {
+    return JSON.parse(cleaned);
+  } catch (initialError) {
+    // If first attempt fails, try extracting exact JSON structure between outermost braces/brackets
+    const firstBrace = cleaned.indexOf("{");
+    const firstBracket = cleaned.indexOf("[");
+    const lastBrace = cleaned.lastIndexOf("}");
+    const lastBracket = cleaned.lastIndexOf("]");
+
+    let startIdx = -1;
+    let endIdx = -1;
+
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      startIdx = firstBrace;
+      endIdx = lastBrace;
+    } else if (firstBracket !== -1) {
+      startIdx = firstBracket;
+      endIdx = lastBracket;
+    }
+
+    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+      cleaned = cleaned.slice(startIdx, endIdx + 1).trim();
+    }
+
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      // If still fails, try removing trailing commas
+      const withoutTrailingCommas = cleaned.replace(/,\s*([\]}])/g, "$1");
+      try {
+        return JSON.parse(withoutTrailingCommas);
+      } catch {
+        // Re-throw the original parsing error for maximum debugging clarity
+        throw initialError;
+      }
+    }
+  }
 }
 
 async function downloadFile(url: string, destPath: string): Promise<void> {

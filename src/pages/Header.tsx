@@ -34,7 +34,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
         const nextBalance = await walletService.getWalletBalance();
         setBalance(nextBalance);
       } catch (error) {
-        console.error("Khong the tai so du vi trong Header:", error);
+        console.error("Không thể tải số dư ví trong Header:", error);
       }
     };
 
@@ -48,10 +48,10 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
     normalizedQuery === ""
       ? []
       : searchIndex.filter(
-          (item) =>
-            item.label.toLowerCase().includes(normalizedQuery) ||
-            item.keywords.toLowerCase().includes(normalizedQuery)
-        );
+        (item) =>
+          item.label.toLowerCase().includes(normalizedQuery) ||
+          item.keywords.toLowerCase().includes(normalizedQuery)
+      );
 
   return (
     <header className="sticky top-0 z-40 flex h-18 items-center justify-between border-b border-gray-100 bg-white px-6 shadow-xs" id="app_header">
@@ -152,7 +152,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
               <>
                 {/* Backdrop overlay to click away */}
                 <div className="fixed inset-0 z-40" onClick={() => setShowProfileDropdown(false)} />
-                
+
                 <div className="absolute right-0 mt-2.5 w-64 rounded-2xl border border-gray-150 bg-white p-4 shadow-xl z-50 animate-fade-in text-left">
                   <div className="flex items-center gap-3 border-b border-gray-100 pb-3 mb-3">
                     {userProfile.photoURL ? (
@@ -173,11 +173,10 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                       <span className="text-[10px] text-gray-500 truncate">
                         {userProfile.email}
                       </span>
-                      <span className={`mt-1 max-w-fit px-2 py-0.5 rounded-full font-mono font-bold text-[8px] uppercase tracking-wider border ${
-                        userProfile.role === "superadmin" || userProfile.role === "admin"
+                      <span className={`mt-1 max-w-fit px-2 py-0.5 rounded-full font-mono font-bold text-[8px] uppercase tracking-wider border ${userProfile.role === "superadmin" || userProfile.role === "admin"
                           ? "bg-rose-50 border-rose-200 text-rose-600"
                           : "bg-slate-50 border-slate-200 text-slate-600"
-                      }`}>
+                        }`}>
                         {userProfile.role}
                       </span>
                     </div>
@@ -194,7 +193,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                       <Settings className="h-4 w-4 text-gray-400" />
                       Cài đặt tài khoản
                     </button>
-                    
+
                     <button
                       onClick={() => {
                         logout();

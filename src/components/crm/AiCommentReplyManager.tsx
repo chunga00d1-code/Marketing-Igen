@@ -332,14 +332,14 @@ export function AiCommentReplyManager({
   const fetchAIHealth = async () => {
     setLoadingHealth(true);
     try {
-      const res = await fetch("/api/v1/gemini/ai-health", {
+      const res = await fetch("/api/v1/gemini/knowledge-health", {
         headers: {
           Authorization: `Bearer ${getAccessToken()}`,
         },
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) {
-        setKnowledgeHealth(data.data || null);
+      if (res.ok) {
+        setKnowledgeHealth(data || null);
       }
     } catch (err) {
       console.error(err);
