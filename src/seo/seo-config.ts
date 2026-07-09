@@ -23,7 +23,7 @@ export function buildDocumentTitle(title: string) {
 }
 
 export const DEFAULT_SEO: SeoMeta = {
-  title: "Marketing & Sales Workspace tích hợp AI",
+  title: BRAND_NAME,
   description:
     "Workspace tách riêng cho Marketing và Sales CRM của iGen, hỗ trợ sáng tạo nội dung, quản lý chiến dịch và omni-inbox bán hàng.",
   keywords:

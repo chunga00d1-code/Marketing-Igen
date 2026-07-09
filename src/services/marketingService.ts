@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+﻿/* eslint-disable @typescript-eslint/no-unused-vars */
 import { getAccessToken } from "./authService";
 import { ContentApprovalCard } from "../types";
 import { geminiApi } from "../api/gemini";
@@ -113,7 +113,7 @@ export const marketingService = {
       },
     });
     if (!res.ok) {
-      throw new Error("Không thể tải danh sách bài viết duyệt.");
+      throw new Error("KhÃ´ng thá»ƒ táº£i danh sÃ¡ch bÃ i viáº¿t duyá»‡t.");
     }
     const json = await res.json();
     return (json.data || []).map(normalizeMarketingCard);
@@ -126,21 +126,21 @@ export const marketingService = {
     currentRole?: string
   ): () => void {
     const isUserRole = currentRole === 'user' || currentRole === 'manager';
-    const authorUid = undefined; // Hiển thị với tất cả nhân viên trong doanh nghiệp, không lọc theo tác giả
+    const authorUid = undefined; // Hiá»ƒn thá»‹ vá»›i táº¥t cáº£ nhÃ¢n viÃªn trong doanh nghiá»‡p, khÃ´ng lá»c theo tÃ¡c giáº£
 
 
     const fetchCards = async () => {
       try {
         let data = await this.getCards(authorUid);
         
-        // Sắp xếp bài mới lên đầu (generatedAt giảm dần)
+        // Sáº¯p xáº¿p bÃ i má»›i lÃªn Ä‘áº§u (generatedAt giáº£m dáº§n)
         data.sort((a, b) => {
           const timeA = a.generatedAt ? new Date(a.generatedAt).getTime() : 0;
           const timeB = b.generatedAt ? new Date(b.generatedAt).getTime() : 0;
           return timeB - timeA;
         });
 
-        // Tự động đánh dấu isNew cho các bài viết tạo mới trong vòng 30 giây gần đây
+        // Tá»± Ä‘á»™ng Ä‘Ã¡nh dáº¥u isNew cho cÃ¡c bÃ i viáº¿t táº¡o má»›i trong vÃ²ng 30 giÃ¢y gáº§n Ä‘Ã¢y
         const nowTime = Date.now();
         data = data.map(card => {
           const isRecent = card.generatedAt && (nowTime - new Date(card.generatedAt).getTime() < 30000);
@@ -155,7 +155,7 @@ export const marketingService = {
         if (onError) {
           onError(err);
         } else {
-          console.error("Lỗi tải danh sách bài đăng marketing:", err);
+          console.error("Lá»—i táº£i danh sÃ¡ch bÃ i Ä‘Äƒng marketing:", err);
         }
       }
     };
@@ -175,33 +175,33 @@ export const marketingService = {
   },
 
   async scheduleCard(id: string, scheduledDate: string, scheduledTime: string, integrationId?: string): Promise<void> {
-    // 1. Lấy dữ liệu bài đăng đầy đủ trước
+    // 1. Láº¥y dá»¯ liá»‡u bÃ i Ä‘Äƒng Ä‘áº§y Ä‘á»§ trÆ°á»›c
     const cardData = await this.getCardById(id);
 
     if (!cardData.authorUid) {
-      throw new Error("Bài đăng không có thông tin tác giả (authorUid).");
+      throw new Error("BÃ i Ä‘Äƒng khÃ´ng cÃ³ thÃ´ng tin tÃ¡c giáº£ (authorUid).");
     }
 
     const channel = cardData.channel || 'Facebook';
     let integrationInfo: Record<string, unknown> | null = null;
 
-    // 2. Đọc cấu hình liên kết mạng xã hội
+    // 2. Äá»c cáº¥u hÃ¬nh liÃªn káº¿t máº¡ng xÃ£ há»™i
     if (integrationId) {
-      // Đọc cấu hình từ SocialIntegration cụ thể được chọn
+      // Äá»c cáº¥u hÃ¬nh tá»« SocialIntegration cá»¥ thá»ƒ Ä‘Æ°á»£c chá»n
       const res = await fetch(`/api/v1/crud/social-integrations/${integrationId}`, {
         headers: {
           "Authorization": `Bearer ${getAccessToken()}`,
         },
       });
       if (!res.ok) {
-        throw new Error("Không tìm thấy thông tin tài khoản liên kết được chọn.");
+        throw new Error("KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin tÃ i khoáº£n liÃªn káº¿t Ä‘Æ°á»£c chá»n.");
       }
       const json = await res.json();
       const integration = json.data;
 
       if (channel === 'Facebook') {
         integrationInfo = {
-          pageId: integration.username, // Page ID lưu ở username
+          pageId: integration.username, // Page ID lÆ°u á»Ÿ username
           pageAccessToken: integration.accessToken,
           isMock: !!integration.isMock
         };
@@ -214,17 +214,17 @@ export const marketingService = {
           isMock: !!integration.isMock
         };
       } else {
-        throw new Error(`Kênh đăng tải "${channel}" chưa hỗ trợ tự động lên lịch.`);
+        throw new Error(`KÃªnh Ä‘Äƒng táº£i "${channel}" chÆ°a há»— trá»£ tá»± Ä‘á»™ng lÃªn lá»‹ch.`);
       }
     } else {
-      // Fallback: Đọc cấu hình liên kết mạng xã hội cá nhân của tác giả qua user API
+      // Fallback: Äá»c cáº¥u hÃ¬nh liÃªn káº¿t máº¡ng xÃ£ há»™i cÃ¡ nhÃ¢n cá»§a tÃ¡c giáº£ qua user API
       const userRes = await fetch(`/api/v1/crud/users/${cardData.authorUid}`, {
         headers: {
           "Authorization": `Bearer ${getAccessToken()}`,
         },
       });
       if (!userRes.ok) {
-        throw new Error("Không tìm thấy thông tin hồ sơ của tác giả.");
+        throw new Error("KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin há»“ sÆ¡ cá»§a tÃ¡c giáº£.");
       }
       const userJson = await userRes.json();
       const userProfile = userJson.data;
@@ -232,7 +232,7 @@ export const marketingService = {
       if (channel === 'Facebook') {
         const fbInt = userProfile.facebookIntegration;
         if (!fbInt || !fbInt.isConnected) {
-          throw new Error("Tác giả chưa liên kết với Facebook Page.");
+          throw new Error("TÃ¡c giáº£ chÆ°a liÃªn káº¿t vá»›i Facebook Page.");
         }
         integrationInfo = {
           pageId: fbInt.pageId,
@@ -242,7 +242,7 @@ export const marketingService = {
       } else if (channel === 'TikTok') {
         const ttInt = userProfile.tiktokIntegration;
         if (!ttInt || !ttInt.isConnected) {
-          throw new Error("Tác giả chưa liên kết với tài khoản TikTok.");
+          throw new Error("TÃ¡c giáº£ chÆ°a liÃªn káº¿t vá»›i tÃ i khoáº£n TikTok.");
         }
         integrationInfo = {
           username: ttInt.username,
@@ -250,11 +250,11 @@ export const marketingService = {
           isMock: !!ttInt.isMock
         };
       } else {
-        throw new Error(`Kênh đăng tải "${channel}" chưa hỗ trợ tự động lên lịch.`);
+        throw new Error(`KÃªnh Ä‘Äƒng táº£i "${channel}" chÆ°a há»— trá»£ tá»± Ä‘á»™ng lÃªn lá»‹ch.`);
       }
     }
 
-    // 3. Gọi API Express Backend gửi yêu cầu schedule sang n8n
+    // 3. Gá»i API Express Backend gá»­i yÃªu cáº§u schedule sang n8n
     const response = await fetch('/api/v1/scheduler/schedule-post', {
       method: 'POST',
       headers: {
@@ -276,15 +276,15 @@ export const marketingService = {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Lên lịch qua n8n thất bại: ${response.status} - ${errText}`);
+      throw new Error(`LÃªn lá»‹ch qua n8n tháº¥t báº¡i: ${response.status} - ${errText}`);
     }
 
     const resData = await response.json();
     if (resData.status !== 'success') {
-      throw new Error(resData.message || 'Lỗi không xác định từ máy chủ khi lên lịch.');
+      throw new Error(resData.message || 'Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh tá»« mÃ¡y chá»§ khi lÃªn lá»‹ch.');
     }
 
-    // 4. Chỉ khi thành công hết, mới lưu thời gian đặt lịch, đổi status sang scheduled và lưu facebookPostId
+    // 4. Chá»‰ khi thÃ nh cÃ´ng háº¿t, má»›i lÆ°u thá»i gian Ä‘áº·t lá»‹ch, Ä‘á»•i status sang scheduled vÃ  lÆ°u facebookPostId
     const fbPostId = resData.data?.id || resData.data?.data?.id || '';
     
     await this.updateCard(id, {
@@ -295,7 +295,7 @@ export const marketingService = {
       ...(fbPostId ? { facebookPostId: fbPostId } : {})
     });
 
-    console.log(`[iGen Schedule Service]: Đã lên lịch bài đăng ${id} thành công qua n8n! ID bài viết: ${fbPostId}`);
+    console.log(`[iGen Schedule Service]: ÄÃ£ lÃªn lá»‹ch bÃ i Ä‘Äƒng ${id} thÃ nh cÃ´ng qua n8n! ID bÃ i viáº¿t: ${fbPostId}`);
   },
 
   async deleteCard(id: string): Promise<void> {
@@ -306,7 +306,7 @@ export const marketingService = {
       },
     });
     if (!res.ok) {
-      throw new Error("Không thể xóa bài đăng.");
+      throw new Error("KhÃ´ng thá»ƒ xÃ³a bÃ i Ä‘Äƒng.");
     }
   },
 
@@ -321,7 +321,7 @@ export const marketingService = {
       body: JSON.stringify(postBody),
     });
     if (!res.ok) {
-      throw new Error("Không thể lưu bài đăng.");
+      throw new Error("KhÃ´ng thá»ƒ lÆ°u bÃ i Ä‘Äƒng.");
     }
     const json = await res.json();
     return normalizeMarketingCard(json.data);
@@ -340,7 +340,7 @@ export const marketingService = {
           body: JSON.stringify(postBody),
         });
         if (!res.ok) {
-          throw new Error("Không thể lưu bài đăng.");
+          throw new Error("KhÃ´ng thá»ƒ lÆ°u bÃ i Ä‘Äƒng.");
         }
         const json = await res.json();
         return normalizeMarketingCard(json.data);
@@ -359,7 +359,7 @@ export const marketingService = {
       body: JSON.stringify(sanitizeMarketingPayload(card)),
     });
     if (!res.ok) {
-      throw new Error("Không thể cập nhật bài đăng.");
+      throw new Error("KhÃ´ng thá»ƒ cáº­p nháº­t bÃ i Ä‘Äƒng.");
     }
   },
 
@@ -370,7 +370,7 @@ export const marketingService = {
       },
     });
     if (!res.ok) {
-      throw new Error("Không tìm thấy thông tin bài đăng.");
+      throw new Error("KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin bÃ i Ä‘Äƒng.");
     }
     const json = await res.json();
     return normalizeMarketingCard(json.data);
@@ -393,7 +393,7 @@ export const marketingService = {
         publishedAt: new Date().toISOString(),
         facebookPostId: mockPostId
       });
-      console.log(`[iGen ERP Autopost (MOCK)]: Đã đăng bài thành công lên Facebook Page (Demo). ID bài viết: ${mockPostId}`);
+      console.log(`[iGen Marketing Autopost (MOCK)]: ÄÃ£ Ä‘Äƒng bÃ i thÃ nh cÃ´ng lÃªn Facebook Page (Demo). ID bÃ i viáº¿t: ${mockPostId}`);
       return mockPostId;
     }
 
@@ -415,7 +415,7 @@ export const marketingService = {
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.message || errData.details || `Lỗi máy chủ HTTP ${response.status}`);
+      throw new Error(errData.message || errData.details || `Lá»—i mÃ¡y chá»§ HTTP ${response.status}`);
     }
 
     const result = await response.json();
@@ -430,7 +430,7 @@ export const marketingService = {
       postUrl
     });
 
-    console.log(`[iGen ERP Autopost]: Đã đăng bài thành công lên Facebook Page qua n8n. Post ID: ${postId}`);
+    console.log(`[iGen Marketing Autopost]: ÄÃ£ Ä‘Äƒng bÃ i thÃ nh cÃ´ng lÃªn Facebook Page qua n8n. Post ID: ${postId}`);
     return postId;
   },
 
@@ -490,7 +490,7 @@ export const marketingService = {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Lỗi tải lên Cloudinary: ${response.statusText}`);
+        throw new Error(errorData.message || `Lá»—i táº£i lÃªn Cloudinary: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -522,7 +522,7 @@ export const marketingService = {
         tiktokPostId: mockPostId,
         tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
       });
-      console.log(`[iGen ERP TikTok (MOCK)]: Đã đăng video thành công. ID: ${mockPostId}`);
+      console.log(`[iGen Marketing TikTok (MOCK)]: ÄÃ£ Ä‘Äƒng video thÃ nh cÃ´ng. ID: ${mockPostId}`);
       return {
         postId: mockPostId,
         status: "success",
@@ -551,16 +551,16 @@ export const marketingService = {
       let errMsg = "";
       try {
         const errData = await response.json();
-        errMsg = errData.details || errData.message || `Lỗi máy chủ HTTP ${response.status}`;
+        errMsg = errData.details || errData.message || `Lá»—i mÃ¡y chá»§ HTTP ${response.status}`;
       } catch {
-        errMsg = `Lỗi máy chủ HTTP ${response.status}`;
+        errMsg = `Lá»—i mÃ¡y chá»§ HTTP ${response.status}`;
       }
       throw new Error(errMsg);
     }
 
     const resData = await response.json();
     if (resData.status !== 'success' && resData.status !== 'pending') {
-      throw new Error(resData.message || 'Lỗi không xác định từ máy chủ khi đăng TikTok.');
+      throw new Error(resData.message || 'Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh tá»« mÃ¡y chá»§ khi Ä‘Äƒng TikTok.');
     }
 
     const { postId, shareUrl, publishId } = resData.data || {};
@@ -574,7 +574,7 @@ export const marketingService = {
         tiktokShareUrl: shareUrl
       });
 
-      console.log(`[iGen ERP TikTok]: Đã đăng video thành công. Post ID: ${postId}`);
+      console.log(`[iGen Marketing TikTok]: ÄÃ£ Ä‘Äƒng video thÃ nh cÃ´ng. Post ID: ${postId}`);
     } else {
       await this.updateCard(id, {
         status: 'processing',
@@ -582,7 +582,7 @@ export const marketingService = {
         tiktokShareUrl: shareUrl || ''
       });
 
-      console.log(`[iGen ERP TikTok]: Video đang được TikTok xử lý. Publish ID: ${publishId || postId || "n/a"}`);
+      console.log(`[iGen Marketing TikTok]: Video Ä‘ang Ä‘Æ°á»£c TikTok xá»­ lÃ½. Publish ID: ${publishId || postId || "n/a"}`);
     }
 
     return {
@@ -625,11 +625,11 @@ export const marketingService = {
       }
 
       if (jobStatus === "failed" || jobStatus === "error") {
-        throw new Error(status?.error || "HeyGen không thể tạo video từ audio đã sinh.");
+        throw new Error(status?.error || "HeyGen khÃ´ng thá»ƒ táº¡o video tá»« audio Ä‘Ã£ sinh.");
       }
     }
 
-    throw new Error("HeyGen tạo video quá lâu. Vui lòng kiểm tra lại lịch sử render sau.");
+    throw new Error("HeyGen táº¡o video quÃ¡ lÃ¢u. Vui lÃ²ng kiá»ƒm tra láº¡i lá»‹ch sá»­ render sau.");
   },
 
   async generateHumanVideoForCard(
@@ -648,7 +648,7 @@ export const marketingService = {
   ): Promise<ContentApprovalCard> {
     const card = await this.getCardById(cardId);
     if (!card) {
-      throw new Error("Không tìm thấy bài đăng.");
+      throw new Error("KhÃ´ng tÃ¬m tháº¥y bÃ i Ä‘Äƒng.");
     }
 
     const engineType = options?.engineType || card.engineType || "avatar_iv";
@@ -670,11 +670,11 @@ export const marketingService = {
 
     if (isAvatarThree || usePersonalVoice) {
       if (onProgressUpdate) {
-        onProgressUpdate("Đang gửi yêu cầu tạo video trực tiếp bằng văn bản sang HeyGen...");
+        onProgressUpdate("Äang gá»­i yÃªu cáº§u táº¡o video trá»±c tiáº¿p báº±ng vÄƒn báº£n sang HeyGen...");
       }
     } else {
       if (onProgressUpdate) {
-        onProgressUpdate("Đang tạo giọng nói Tiếng Việt...");
+        onProgressUpdate("Äang táº¡o giá»ng nÃ³i Tiáº¿ng Viá»‡t...");
       }
 
       const voiceResult = await elevenlabsApi.generateVoice({
@@ -690,11 +690,11 @@ export const marketingService = {
       audioRecordId = voiceResult.record?._id || voiceResult.record?.id;
       audioUrl = voiceResult.record?.url || voiceResult.url;
       if (!audioUrl) {
-        throw new Error("Không nhận được audio từ ElevenLabs để tạo video người thật.");
+        throw new Error("KhÃ´ng nháº­n Ä‘Æ°á»£c audio tá»« ElevenLabs Ä‘á»ƒ táº¡o video ngÆ°á»i tháº­t.");
       }
 
       if (onProgressUpdate) {
-        onProgressUpdate("Đang gửi audio sang HeyGen...");
+        onProgressUpdate("Äang gá»­i audio sang HeyGen...");
       }
     }
 
@@ -715,11 +715,11 @@ export const marketingService = {
 
     const videoId = String(heygenCreated?.videoId || heygenCreated?.record?.metadata?.heygenVideoId || "").trim();
     if (!videoId) {
-      throw new Error("HeyGen không trả về videoId hợp lệ.");
+      throw new Error("HeyGen khÃ´ng tráº£ vá» videoId há»£p lá»‡.");
     }
 
     if (onProgressUpdate) {
-      onProgressUpdate("Đang chờ HeyGen xử lý video...");
+      onProgressUpdate("Äang chá» HeyGen xá»­ lÃ½ video...");
     }
 
     const resolvedVideo = await this.resolveHeyGenVideoUrl(videoId, {
@@ -741,7 +741,7 @@ export const marketingService = {
 
     try {
       if (onProgressUpdate) {
-        onProgressUpdate("Đang tối ưu hóa lưu trữ Cloudinary...");
+        onProgressUpdate("Äang tá»‘i Æ°u hÃ³a lÆ°u trá»¯ Cloudinary...");
       }
       const filename = `human_video_${Date.now()}.mp4`;
       finalVideoUrl = await this.uploadMediaToStorage(resolvedVideo.videoUrl, filename, 'video');
@@ -776,23 +776,23 @@ export function extractDraftContent(text: string): string {
   if (!text) return "";
   
   const markers = [
-    "# BẢN NHÁP CHI TIẾT (DRAFT)",
-    "# BẢN NHÁP CHI TIẾT",
-    "BẢN NHÁP CHI TIẾT (DRAFT)",
-    "BẢN NHÁP CHI TIẾT",
-    "[BẢN NHÁP CHI TIẾT (DRAFT)]",
-    "[BẢN NHÁP CHI TIẾT]",
-    "(BẢN NHÁP CHI TIẾT (DRAFT))",
-    "(BẢN NHÁP CHI TIẾT)",
+    "# Báº¢N NHÃP CHI TIáº¾T (DRAFT)",
+    "# Báº¢N NHÃP CHI TIáº¾T",
+    "Báº¢N NHÃP CHI TIáº¾T (DRAFT)",
+    "Báº¢N NHÃP CHI TIáº¾T",
+    "[Báº¢N NHÃP CHI TIáº¾T (DRAFT)]",
+    "[Báº¢N NHÃP CHI TIáº¾T]",
+    "(Báº¢N NHÃP CHI TIáº¾T (DRAFT))",
+    "(Báº¢N NHÃP CHI TIáº¾T)",
     
-    "✍️ NỘI DUNG CHI TIẾT (DRAFT CONTENT):",
-    "✍️ NỘI DUNG CHI TIẾT (DRAFT CONTENT)",
-    "NỘI DUNG CHI TIẾT (DRAFT CONTENT):",
-    "NỘI DUNG CHI TIẾT (DRAFT CONTENT)",
-    "✍️ NỘI DUNG CHI TIẾT:",
-    "✍️ NỘI DUNG CHI TIẾT",
-    "NỘI DUNG CHI TIẾT:",
-    "NỘI DUNG CHI TIẾT",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT):",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT)",
+    "Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT):",
+    "Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT)",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T:",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T",
+    "Ná»˜I DUNG CHI TIáº¾T:",
+    "Ná»˜I DUNG CHI TIáº¾T",
     
     "[DRAFT CONTENT]",
     "(DRAFT CONTENT)",
@@ -834,23 +834,23 @@ export function splitOutlineAndDraft(text: string): { outline: string; bodyText:
   if (!text) return { outline: "", bodyText: "" };
   
   const markers = [
-    "# BẢN NHÁP CHI TIẾT (DRAFT)",
-    "# BẢN NHÁP CHI TIẾT",
-    "BẢN NHÁP CHI TIẾT (DRAFT)",
-    "BẢN NHÁP CHI TIẾT",
-    "[BẢN NHÁP CHI TIẾT (DRAFT)]",
-    "[BẢN NHÁP CHI TIẾT]",
-    "(BẢN NHÁP CHI TIẾT (DRAFT))",
-    "(BẢN NHÁP CHI TIẾT)",
+    "# Báº¢N NHÃP CHI TIáº¾T (DRAFT)",
+    "# Báº¢N NHÃP CHI TIáº¾T",
+    "Báº¢N NHÃP CHI TIáº¾T (DRAFT)",
+    "Báº¢N NHÃP CHI TIáº¾T",
+    "[Báº¢N NHÃP CHI TIáº¾T (DRAFT)]",
+    "[Báº¢N NHÃP CHI TIáº¾T]",
+    "(Báº¢N NHÃP CHI TIáº¾T (DRAFT))",
+    "(Báº¢N NHÃP CHI TIáº¾T)",
     
-    "✍️ NỘI DUNG CHI TIẾT (DRAFT CONTENT):",
-    "✍️ NỘI DUNG CHI TIẾT (DRAFT CONTENT)",
-    "NỘI DUNG CHI TIẾT (DRAFT CONTENT):",
-    "NỘI DUNG CHI TIẾT (DRAFT CONTENT)",
-    "✍️ NỘI DUNG CHI TIẾT:",
-    "✍️ NỘI DUNG CHI TIẾT",
-    "NỘI DUNG CHI TIẾT:",
-    "NỘI DUNG CHI TIẾT",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT):",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT)",
+    "Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT):",
+    "Ná»˜I DUNG CHI TIáº¾T (DRAFT CONTENT)",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T:",
+    "âœï¸ Ná»˜I DUNG CHI TIáº¾T",
+    "Ná»˜I DUNG CHI TIáº¾T:",
+    "Ná»˜I DUNG CHI TIáº¾T",
     
     "[DRAFT CONTENT]",
     "(DRAFT CONTENT)",
@@ -887,10 +887,10 @@ export function getHumanVideoScript(card: Partial<ContentApprovalCard>): string 
   const outlineText = String(card.outline || "").trim();
   const bodyText = String(card.bodyText || "").trim();
   const fallbackParts = [
-    `Xin chào, đây là video giới thiệu cho chiến dịch ${card.title || ""}.`,
+    `Xin chÃ o, Ä‘Ã¢y lÃ  video giá»›i thiá»‡u cho chiáº¿n dá»‹ch ${card.title || ""}.`,
     card.outline || "",
     bodyText,
-    "Liên hệ ngay để nhận tư vấn và nhận ưu đãi phù hợp."
+    "LiÃªn há»‡ ngay Ä‘á»ƒ nháº­n tÆ° váº¥n vÃ  nháº­n Æ°u Ä‘Ã£i phÃ¹ há»£p."
   ]
     .filter(Boolean)
     .join(" ")
@@ -905,7 +905,7 @@ export function sanitizeHumanVideoVoiceScript(rawText: string): string {
   if (!text) return "";
 
   const instructionMarkers = [
-    "YÊU CẦU RIÊNG CHO VIDEO NGƯỜI THẬT:",
+    "YÃŠU Cáº¦U RIÃŠNG CHO VIDEO NGÆ¯á»œI THáº¬T:",
     "YEU CAU RIENG CHO VIDEO NGUOI THAT:",
   ];
 
@@ -919,9 +919,9 @@ export function sanitizeHumanVideoVoiceScript(rawText: string): string {
   }
 
   cleaned = cleaned
-    .replace(/^Xin chao,\s*/i, "Xin chào, ")
-    .replace(/\bday la\b/gi, "đây là")
-    .replace(/\bnoi dung gioi thieu ngan gon cho chien dich\b/gi, "nội dung giới thiệu cho chiến dịch")
+    .replace(/^Xin chao,\s*/i, "Xin chÃ o, ")
+    .replace(/\bday la\b/gi, "Ä‘Ã¢y lÃ ")
+    .replace(/\bnoi dung gioi thieu ngan gon cho chien dich\b/gi, "ná»™i dung giá»›i thiá»‡u cho chiáº¿n dá»‹ch")
     .replace(/\bHay lien he ngay de nhan tu van chi tiet va uu dai phu hop\.?$/i, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -951,3 +951,5 @@ export function stripHumanVideoOutlineSections(rawText: string): string {
 
   return cleaned.replace(/\s+/g, " ").trim();
 }
+
+
