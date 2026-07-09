@@ -1,0 +1,3 @@
+display_name: Repo Lint Fix
+short_description: Fix ESLint errors and warnings safely without changing repo lint config.
+default_prompt: Use the repo-lint-fix skill when fixing lint errors or warnings in this repository.
