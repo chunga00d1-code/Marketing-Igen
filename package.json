@@ -9,7 +9,8 @@
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "debug:fb-autoreply": "tsx scripts/fb-autoreply-debug.ts",
     "fix:fb-conversation-index": "tsx scripts/fix_fb_conversation_index.ts"
   },
@@ -42,6 +43,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/bcryptjs": "^3.0.0",
     "@types/cookie-parser": "^1.4.10",
@@ -52,9 +54,14 @@
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.0",
+    "globals": "^15.0.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.22.4",
     "typescript": "~5.8.2",
+    "typescript-eslint": "^8.0.0",
     "vite": "^6.2.3"
   }
 }
