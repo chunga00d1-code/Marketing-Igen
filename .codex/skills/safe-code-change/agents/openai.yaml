@@ -1,0 +1,3 @@
+display_name: Safe Code Change
+short_description: Guardrails for safe edits, lint fixes, and verification in this repo.
+default_prompt: Use the safe-code-change skill when adding, editing, refactoring, or lint-fixing code in this repository.

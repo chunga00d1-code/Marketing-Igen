@@ -1,0 +1,3 @@
+display_name: Backend API Change
+short_description: Safe workflow for Express, services, auth, sockets, queues, and integrations.
+default_prompt: Use the backend-api-change skill when editing backend or API code in this repository.
