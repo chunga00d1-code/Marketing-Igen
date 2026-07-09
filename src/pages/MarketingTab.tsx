@@ -137,6 +137,17 @@ export default function MarketingTab() {
       }
     });
 
+    if (list.length === 0 && platform) {
+      list.push({
+        id: "mock_" + platform.toLowerCase() + "_personal",
+        displayName: `${platform} Demo Account (Video)`,
+        username: `igen_${platform.toLowerCase()}_demo`,
+        accessToken: "mock_token",
+        isMock: true,
+        platform: platform,
+      });
+    }
+
     return list;
   };
 
@@ -440,7 +451,32 @@ export default function MarketingTab() {
   const handlePublishToTikTok = async (card: ContentApprovalCard) => {
     const tiktok = effectiveTikTokIntegration;
     if (!tiktok?.isConnected) {
-      toast.error("Chưa kết nối TikTok. Vui lòng vào Cài đặt → Liên kết MXH để kết nối.");
+      const confirmMock = window.confirm("Bạn chưa liên kết TikTok. Bạn có muốn đăng thử nghiệm bằng tài khoản TikTok Demo để quay video không?");
+      if (confirmMock) {
+        setPublishingTikTokId(card.id);
+        try {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          const mockPostId = `tiktok_mock_${Date.now()}`;
+          await marketingService.updateCard(card.id, {
+            status: 'published',
+            publishedAt: new Date().toISOString(),
+            tiktokPostId: mockPostId,
+            tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
+          });
+          setApprovalCards(prev => prev.map(c => c.id === card.id ? {
+            ...c,
+            status: "published",
+            publishedAt: new Date().toISOString(),
+            tiktokPostId: mockPostId,
+            tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
+          } : c));
+          toast.success(`Đã đăng video lên TikTok thành công! (Demo) ID: ${mockPostId.slice(-8)}`);
+        } catch (e) {
+          toast.error("Đăng bài demo thất bại.");
+        } finally {
+          setPublishingTikTokId(null);
+        }
+      }
       return;
     }
     if (!card.videoUrl) {
@@ -514,7 +550,32 @@ export default function MarketingTab() {
     if (card.channel === 'Facebook') {
       const fb = userProfile?.facebookIntegration;
       if (!fb?.isConnected) {
-        toast.error("Chưa kết nối Facebook Page. Vui lòng vào Cài đặt → Liên kết MXH để kết nối.");
+        const confirmMock = window.confirm("Bạn chưa liên kết Facebook Page. Bạn có muốn đăng thử nghiệm bằng tài khoản Facebook Page Demo để quay video không?");
+        if (confirmMock) {
+          setIsPublishing(true);
+          try {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            const mockPostId = `mock-post-${Date.now()}`;
+            await marketingService.updateCard(card.id, {
+              status: 'published',
+              publishedAt: new Date().toISOString(),
+              facebookPostId: mockPostId,
+              postUrl: `https://facebook.com/demo/${mockPostId}`
+            });
+            setApprovalCards(prev => prev.map(c => c.id === card.id ? {
+              ...c,
+              status: "published",
+              publishedAt: new Date().toISOString(),
+              facebookPostId: mockPostId,
+              postUrl: `https://facebook.com/demo/${mockPostId}`
+            } : c));
+            toast.success(`Đã đăng bài lên Facebook thành công! (Demo) ID: ${mockPostId.slice(-8)}`);
+          } catch (e) {
+            toast.error("Đăng bài demo thất bại.");
+          } finally {
+            setIsPublishing(false);
+          }
+        }
         return;
       }
       if (!fb.pageId || !fb.pageAccessToken) {
@@ -533,6 +594,13 @@ export default function MarketingTab() {
           card.videoUrl || undefined
         );
         toast.success(`Đã đăng bài lên Facebook thành công! ${fb.isMock ? '(Demo)' : ''} ID: ${postId.slice(-8)}`);
+        setApprovalCards(prev => prev.map(c => c.id === card.id ? {
+          ...c,
+          status: "published",
+          publishedAt: new Date().toISOString(),
+          facebookPostId: postId,
+          postUrl: `https://facebook.com/demo/${postId}`
+        } : c));
       } catch (e: any) {
         console.error("Lỗi đăng Facebook:", e);
         toast.error("Không thể đăng bài lên Facebook. Vui lòng thử lại.");

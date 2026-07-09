@@ -23,11 +23,11 @@ export function buildDocumentTitle(title: string) {
 }
 
 export const DEFAULT_SEO: SeoMeta = {
-  title: "Marketing & Sales Workspace tich hop AI",
+  title: "Marketing & Sales Workspace tích hợp AI",
   description:
-    "Workspace tach rieng cho Marketing va Sales CRM cua iGen, ho tro sang tao noi dung, quan ly chien dich va omni-inbox ban hang.",
+    "Workspace tách riêng cho Marketing và Sales CRM của iGen, hỗ trợ sáng tạo nội dung, quản lý chiến dịch và omni-inbox bán hàng.",
   keywords:
-    "marketing AI, sales crm, omni inbox, tao noi dung AI, quan ly chien dich, iGen workspace",
+    "marketing AI, sales crm, omni inbox, tạo nội dung AI, quản lý chiến dịch, iGen workspace",
   path: "/",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -37,10 +37,10 @@ export const DEFAULT_SEO: SeoMeta = {
 };
 
 export const AUTH_SEO: SeoMeta = {
-  title: "Dang nhap - Marketing & Sales Workspace",
+  title: "Đăng nhập - Marketing & Sales Workspace",
   description:
-    "Dang nhap vao workspace Marketing va Sales CRM de quan ly chien dich, noi dung va hoi thoai khach hang.",
-  keywords: "dang nhap marketing workspace, sales crm, omni inbox, iGen",
+    "Đăng nhập vào workspace Marketing và Sales CRM để quản lý chiến dịch, nội dung và hội thoại khách hàng.",
+  keywords: "đăng nhập marketing workspace, sales crm, omni inbox, iGen",
   path: "/dang-nhap",
   image: SEO_DEFAULT_IMAGE,
   robots: "noindex, nofollow",
@@ -50,9 +50,9 @@ export const AUTH_SEO: SeoMeta = {
 };
 
 export const PRIVACY_SEO: SeoMeta = {
-  title: "Chinh sach bao mat",
-  description: "Chinh sach bao mat thong tin nguoi dung va du lieu cua workspace Marketing iGen.",
-  keywords: "chinh sach bao mat, bao mat du lieu, iGen marketing",
+  title: "Chính sách bảo mật",
+  description: "Chính sách bảo mật thông tin người dùng và dữ liệu của workspace Marketing iGen.",
+  keywords: "chính sách bảo mật, bảo mật dữ liệu, iGen marketing",
   path: "/privacy-policy",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -62,9 +62,9 @@ export const PRIVACY_SEO: SeoMeta = {
 };
 
 export const TERMS_SEO: SeoMeta = {
-  title: "Dieu khoan dich vu",
-  description: "Dieu khoan dich vu va thoa thuan su dung workspace Marketing & Sales iGen.",
-  keywords: "dieu khoan dich vu, thoa thuan su dung, iGen marketing",
+  title: "Điều khoản dịch vụ",
+  description: "Điều khoản dịch vụ và thỏa thuận sử dụng workspace Marketing & Sales iGen.",
+  keywords: "điều khoản dịch vụ, thỏa thuận sử dụng, iGen marketing",
   path: "/terms-of-service",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -74,9 +74,9 @@ export const TERMS_SEO: SeoMeta = {
 };
 
 export const DELETION_SEO: SeoMeta = {
-  title: "Yeu cau xoa du lieu nguoi dung",
-  description: "Huong dan xoa du lieu nguoi dung va tra cuu trang thai yeu cau tren workspace Marketing iGen.",
-  keywords: "xoa du lieu nguoi dung, bao mat du lieu, user data deletion, iGen marketing",
+  title: "Yêu cầu xóa dữ liệu người dùng",
+  description: "Hướng dẫn xóa dữ liệu người dùng và tra cứu trạng thái yêu cầu trên workspace Marketing iGen.",
+  keywords: "xóa dữ liệu người dùng, bảo mật dữ liệu, user data deletion, iGen marketing",
   path: "/user-data-deletion",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -89,55 +89,55 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
   "TONG QUAN": {
     title: "Dashboard Sales & Marketing",
     description:
-      "Tong quan van hanh cho sales va marketing: theo doi content, publishing, lead CRM va trang thai kenh ban hang tren mot man hinh.",
-    keywords: "dashboard sales marketing, tong quan crm, tong quan content, dashboard omni inbox, igen workspace",
+      "Tổng quan vận hành cho sales và marketing: theo dõi content, publishing, lead CRM và trạng thái kênh bán hàng trên một màn hình.",
+    keywords: "dashboard sales marketing, tổng quan crm, tổng quan content, dashboard omni inbox, igen workspace",
     path: "/tong-quan",
     priority: "0.9",
     changeFrequency: "daily",
   },
   MARKETING: {
-    title: "Marketing AI - Sang tao noi dung, san xuat video AI",
+    title: "Marketing AI - Sáng tạo nội dung, sản xuất video AI",
     description:
-      "Tang toc chien dich tiep thi so voi bo cong cu Marketing AI tu dong tao y tuong bai viet, len ke hoach noi dung va san xuat video quang cao AI.",
-    keywords: "marketing AI, tao noi dung AI, tao video AI, lap ke hoach marketing, chien dich so, heygen video",
+      "Tăng tốc chiến dịch tiếp thị số với bộ công cụ Marketing AI tự động tạo ý tưởng bài viết, lên kế hoạch nội dung và sản xuất video quảng cáo AI.",
+    keywords: "marketing AI, tạo nội dung AI, tạo video AI, lập kế hoạch marketing, chiến dịch số, heygen video",
     path: "/marketing",
     priority: "0.9",
     changeFrequency: "daily",
   },
   "SALES CRM": {
-    title: "Sales CRM - Quan ly khach hang, hoi thoai Omni-Inbox",
+    title: "Sales CRM - Quản lý khách hàng, hội thoại Omni-Inbox",
     description:
-      "Cham soc khach hang tap trung voi tinh nang chat da kenh Omni-Inbox, AI tu dong phan hoi va quan ly pheu ban hang CRM hieu qua.",
-    keywords: "sales crm, quan ly khach hang, omni channel crm, cham soc khach hang, crm doanh nghiep, omni inbox",
+      "Chăm sóc khách hàng tập trung với tính năng chat đa kênh Omni-Inbox, AI tự động phản hồi và quản lý phễu bán hàng CRM hiệu quả.",
+    keywords: "sales crm, quản lý khách hàng, omni channel crm, chăm sóc khách hàng, crm doanh nghiệp, omni inbox",
     path: "/sales-crm",
     priority: "0.8",
     changeFrequency: "weekly",
   },
   "QUAN TRI USER": {
-    title: "Quan tri user - Tai khoan, vai tro va phan quyen",
+    title: "Quản trị user - Tài khoản, vai trò và phân quyền",
     description:
-      "Quan ly tai khoan nguoi dung, doanh nghiep, so du vi va cau hinh phan quyen cho workspace Marketing va Sales CRM.",
-    keywords: "quan tri user, phan quyen, role permission, quan ly tai khoan, doanh nghiep, vi nguoi dung",
+      "Quản lý tài khoản người dùng, doanh nghiệp, số dư ví và cấu hình phân quyền cho workspace Marketing và Sales CRM.",
+    keywords: "quản trị user, phân quyền, role permission, quản lý tài khoản, doanh nghiệp, ví người dùng",
     path: "/quan-tri-user",
     robots: "noindex, nofollow",
     priority: "0.3",
     changeFrequency: "monthly",
   },
   "CAI DAT": {
-    title: "Cai dat he thong - Ho so, tich hop va cau hinh nen tang",
+    title: "Cài đặt hệ thống - Hồ sơ, tích hợp và cấu hình nền tảng",
     description:
-      "Thiet lap thong tin ho so doanh nghiep, cau hinh tuy chinh hien thi, ket noi mang xa hoi va tich hop phuc vu Marketing, Sales.",
-    keywords: "cai dat marketing, cau hinh he thong, tich hop AI, settings workspace",
+      "Thiết lập thông tin hồ sơ doanh nghiệp, cấu hình tùy chỉnh hiển thị, kết nối mạng xã hội và tích hợp phục vụ Marketing, Sales.",
+    keywords: "cài đặt marketing, cấu hình hệ thống, tích hợp AI, settings workspace",
     path: "/cai-dat",
     robots: "noindex, nofollow",
     priority: "0.2",
     changeFrequency: "monthly",
   },
   "VI & NAP TIEN": {
-    title: "Vi & Nap tien - Nap tien tai khoan qua PayOS",
+    title: "Ví & Nạp tiền - Nạp tiền tài khoản qua PayOS",
     description:
-      "Quan ly vi tai khoan ca nhan, xem so du va nap tien nhanh chong bang QR Code qua cong thanh toan PayOS.",
-    keywords: "vi tai khoan, nap tien workspace, payos nap tien, vietqr, so du vi",
+      "Quản lý ví tài khoản cá nhân, xem số dư và nạp tiền nhanh chóng bằng QR Code qua cổng thanh toán PayOS.",
+    keywords: "ví tài khoản, nạp tiền workspace, payos nạp tiền, vietqr, số dư ví",
     path: "/vi-nap-tien",
     robots: "noindex, nofollow",
     priority: "0.5",

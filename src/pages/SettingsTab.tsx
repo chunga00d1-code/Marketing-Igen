@@ -144,7 +144,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            MXH Ca Nhan
+            MXH Cá nhân
           </button>
           <button
             onClick={() => setActiveSubTab("company-integrations")}
@@ -203,7 +203,7 @@ export default function SettingsTab() {
                   ? "bg-amber-50 border-amber-200 text-amber-600"
                   : "bg-slate-50 border-slate-200 text-slate-600"
                 }`}>
-                Quyền hạn: {userProfile?.role}
+                Quyền hạn: {userProfile?.role === "superadmin" ? "Siêu Admin" : userProfile?.role === "admin" ? "Admin" : "Thành viên"}
               </span>
             </div>
           </div>
