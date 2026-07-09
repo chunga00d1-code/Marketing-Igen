@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   requestHeyGenJson,
   upsertVideoRecord,
@@ -32,7 +33,7 @@ export const heygenLegacyService = {
     const accessContext = await getHeyGenAccessContext(userId);
     const apiKey = accessContext.apiKey || process.env.HEYGEN_API_KEY?.trim() || "";
     if (!apiKey) {
-      throw new Error("Chưa cấu hình khóa API HeyGen");
+      throw new Error("ChÆ°a cáº¥u hÃ¬nh khÃ³a API HeyGen");
     }
 
     const {
@@ -48,15 +49,15 @@ export const heygenLegacyService = {
     } = input;
 
     if (!avatarId?.trim()) {
-      throw new HeyGenApiError("Vui lòng chọn avatar HeyGen trước khi tạo video.", 400);
+      throw new HeyGenApiError("Vui lÃ²ng chá»n avatar HeyGen trÆ°á»›c khi táº¡o video.", 400);
     }
 
     if (!inputText?.trim()) {
-      throw new HeyGenApiError("Vui lòng nhập kịch bản phát thanh cho Avatar III.", 400);
+      throw new HeyGenApiError("Vui lÃ²ng nháº­p ká»‹ch báº£n phÃ¡t thanh cho Avatar III.", 400);
     }
 
     if (!voiceId?.trim()) {
-      throw new HeyGenApiError("Vui lòng chọn giọng nói HeyGen cho Avatar III.", 400);
+      throw new HeyGenApiError("Vui lÃ²ng chá»n giá»ng nÃ³i HeyGen cho Avatar III.", 400);
     }
 
     let width = 1280;
@@ -119,11 +120,11 @@ export const heygenLegacyService = {
       body: JSON.stringify(requestBody),
     });
 
-    const data = await parseHeyGenResponse(response, "Không thể tạo video với API v2");
+    const data = await parseHeyGenResponse(response, "KhÃ´ng thá»ƒ táº¡o video vá»›i API v2");
     const videoId = data?.data?.video_id || data?.video_id || data?.id;
 
     if (!videoId) {
-      throw new Error("HeyGen API v2 không trả về video_id");
+      throw new Error("HeyGen API v2 khÃ´ng tráº£ vá» video_id");
     }
 
     const record = await upsertVideoRecord(userId, {
@@ -134,7 +135,7 @@ export const heygenLegacyService = {
       aspectRatio,
       status: data?.data?.status || data?.status || "processing",
       title: title || "Video Avatar III",
-      description: description || "Tạo từ kịch bản văn bản",
+      description: description || "Táº¡o tá»« ká»‹ch báº£n vÄƒn báº£n",
     });
 
     return {

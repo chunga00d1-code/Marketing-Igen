@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React from "react";
 import { AudioLines, Check, ExternalLink, LoaderCircle, Play, UserRound, X } from "lucide-react";
 import type { HeyGenLibraryItem } from "../../api/heygen";

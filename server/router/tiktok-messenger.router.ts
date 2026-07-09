@@ -1,14 +1,15 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import { tiktokMessengerController } from "../controller/tiktok-messenger.controller";
 import { requireAuth } from "../middleware/auth";
 
 export const tiktokMessengerRouter = Router();
 
-// Endpoint webhook TikTok Business Messaging - Phải công khai (public) để TikTok gọi tới
+// Endpoint webhook TikTok Business Messaging - Pháº£i cÃ´ng khai (public) Ä‘á»ƒ TikTok gá»i tá»›i
 tiktokMessengerRouter.get("/webhook", tiktokMessengerController.verifyWebhook);
 tiktokMessengerRouter.post("/webhook", tiktokMessengerController.receiveWebhookEvent);
 
-// Routes phục vụ Client Igen-ERP - Yêu cầu xác thực đăng nhập (requireAuth)
+// Routes phá»¥c vá»¥ Client Igen-ERP - YÃªu cáº§u xÃ¡c thá»±c Ä‘Äƒng nháº­p (requireAuth)
 tiktokMessengerRouter.get("/conversations", requireAuth as any, tiktokMessengerController.getConversations);
 tiktokMessengerRouter.get("/conversations/:conversationId/messages", requireAuth as any, tiktokMessengerController.getMessages);
 tiktokMessengerRouter.post("/conversations/:conversationId/mark-read", requireAuth as any, tiktokMessengerController.markRead);

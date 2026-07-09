@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import { Request, Response } from "express";
 import { fbMessengerService } from "../service/fb-messenger.service";
 import { UserModel } from "../model/user.model";

@@ -15,7 +15,7 @@ export interface UserProfile {
   displayName: string;
   photoURL?: string;
   role: "user" | "manager" | "admin" | "superadmin";
-  createdAt: any;
+  createdAt: string | Date;
   facebookIntegration?: FacebookIntegration | null;
   tiktokIntegration?: TikTokIntegration | null;
   zaloIntegration?: ZaloIntegration | null;
@@ -43,15 +43,15 @@ export interface CompanyHeyGenConfig {
   defaultAvatarId: string;
   defaultVoiceId: string;
   isConnected: boolean;
-  connectedAt?: any | null;
-  lastSyncAt?: any | null;
+  connectedAt?: string | Date | null;
+  lastSyncAt?: string | Date | null;
 }
 
 export interface CompanyProfile {
   id: string;
   code: string;
   name: string;
-  createdAt: any;
+  createdAt: string | Date;
   ownerEmail: string;
   heygenConfig?: CompanyHeyGenConfig;
 }
@@ -60,8 +60,8 @@ export interface TelegramLinkStatus {
   linked: boolean;
   telegramChatId: number | null;
   telegramUserId: number | null;
-  linkedAt: any | null;
+  linkedAt: string | Date | null;
   pendingCode: string | null;
-  pendingCodeExpiresAt: any | null;
+  pendingCodeExpiresAt: string | Date | null;
   botUsername: string;
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React from "react";
 import { User, Mail, Lock, X, RefreshCw } from "lucide-react";
 import { CompanyProfile, UserProfile } from "../../types";

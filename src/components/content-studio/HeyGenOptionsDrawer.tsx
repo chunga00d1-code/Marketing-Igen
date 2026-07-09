@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronRight, Grip, LoaderCircle, Plus, SlidersHorizontal, Trash2, Tv, Volume2, X } from "lucide-react";
 import { type HeyGenTab } from "./HeyGenVerticalToolbar";

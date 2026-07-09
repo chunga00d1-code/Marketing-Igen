@@ -1,12 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import type { User } from "firebase/auth";
+/* eslint-disable react-refresh/only-export-components */
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { authService } from "../services/authService";
 import { UserProfile, FacebookIntegration, TikTokIntegration, ZaloIntegration, AIChatConfig } from "../types";
 import { toast } from "../pages/Toast";
-import { parseFirebaseError } from "../utils/firebaseErrorParser";
+import { parseAppError } from "../utils/errorParser";
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
   userProfile: UserProfile | null;
   loading: boolean;
   loginWithEmail: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
@@ -28,40 +28,39 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
 
-  // Khởi tạo trạng thái đăng nhập khi mount app
   useEffect(() => {
     const initAuth = async () => {
       try {
         const profile = await authService.getMe();
         if (profile) {
-          setUser(profile as any);
+          setUser(profile);
           setUserProfile(profile);
         } else {
           setUser(null);
           setUserProfile(null);
         }
       } catch (error) {
-        console.error("Lỗi khi tự động khôi phục phiên đăng nhập JWT:", error);
+        console.error("Loi khi khoi phuc phien dang nhap JWT:", error);
         setUser(null);
         setUserProfile(null);
       } finally {
         setLoading(false);
       }
     };
+
     initAuth();
 
-    // Thiết lập tự động làm mới access token mỗi 10 phút
     const refreshInterval = setInterval(async () => {
       const token = localStorage.getItem("accessToken");
       if (token) {
         try {
           await authService.getMe();
-        } catch (err) {
-          console.error("Lỗi làm mới token định kỳ:", err);
+        } catch (error) {
+          console.error("Loi lam moi token dinh ky:", error);
         }
       }
     }, 10 * 60 * 1000);
@@ -69,48 +68,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const loginWithEmail = async (email: string, password: string, rememberMe: boolean = true) => {
+  const loginWithEmail = async (email: string, password: string, _rememberMe = true) => {
     setLoading(true);
     try {
       const result = await authService.loginWithEmail(email, password);
-      const profile: UserProfile = {
-        ...result.user,
-        uid: result.user._id,
-      };
-      setUser(profile as any);
-      setUserProfile(profile);
-      toast.success("Đăng nhập tài khoản thành công!");
-    } catch (error: any) {
+      setUser(result.user);
+      setUserProfile(result.user);
+      toast.success("Dang nhap tai khoan thanh cong!");
+    } catch (error: unknown) {
       console.error("[loginWithEmail] Error:", error);
-      const friendlyMsg = parseFirebaseError(error, "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
-      toast.error(friendlyMsg);
+      toast.error(parseAppError(error, "Dang nhap that bai. Vui long kiem tra lai thong tin."));
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  const registerWithEmail = async (email: string, password: string, displayName: string, rememberMe: boolean = true) => {
+  const registerWithEmail = async (email: string, password: string, displayName: string, rememberMe = true) => {
     setLoading(true);
     try {
       await authService.registerWithEmail(email, password, displayName);
-      // Tự động đăng nhập sau khi đăng ký thành công
       await loginWithEmail(email, password, rememberMe);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[registerWithEmail] Error:", error);
-      const friendlyMsg = parseFirebaseError(error, "Đăng ký thất bại. Vui lòng thử lại.");
-      toast.error(friendlyMsg);
+      toast.error(parseAppError(error, "Dang ky that bai. Vui long thu lai."));
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  const loginWithGoogle = async (rememberMe: boolean = true) => {
+  const loginWithGoogle = async (_rememberMe = true) => {
     try {
       await authService.loginWithGoogle();
-    } catch (error: any) {
-      toast.error(error.message || "Đăng nhập bằng Google thất bại.");
+    } catch (error: unknown) {
+      toast.error(parseAppError(error, "Dang nhap that bai."));
       throw error;
     }
   };
@@ -121,10 +113,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await authService.logout();
       setUser(null);
       setUserProfile(null);
-      toast.success("Đã đăng xuất tài khoản thành công!");
+      toast.success("Da dang xuat tai khoan thanh cong!");
     } catch (error) {
       console.error("[logout] Error:", error);
-      toast.error("Lỗi khi đăng xuất.");
+      toast.error("Loi khi dang xuat.");
     } finally {
       setLoading(false);
     }
@@ -134,28 +126,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!userProfile) return;
     try {
       const updatedProfile = await authService.updateProfile({ displayName, photoURL });
-      setUser(updatedProfile as any);
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Cập nhật thông tin tài khoản thành công!");
-    } catch (error: any) {
+      toast.success("Cap nhat thong tin tai khoan thanh cong!");
+    } catch (error: unknown) {
       console.error("[updateProfileInfo] Error:", error);
-      toast.error(error.message || "Cập nhật thông tin thất bại.");
+      toast.error(parseAppError(error, "Cap nhat thong tin that bai."));
       throw error;
     }
   };
 
   const uploadAvatar = async (file: File): Promise<string> => {
-    if (!userProfile) throw new Error("Chưa đăng nhập");
+    if (!userProfile) throw new Error("Chua dang nhap");
     try {
       const downloadURL = await authService.uploadAvatar(userProfile.uid, file);
       const updatedProfile = await authService.updateProfile({ photoURL: downloadURL });
-      setUser(updatedProfile as any);
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Tải lên ảnh đại diện thành công!");
+      toast.success("Tai len anh dai dien thanh cong!");
       return downloadURL;
-    } catch (error: any) {
-      console.error("Lỗi upload avatar:", error);
-      toast.error(error.message || "Tải lên ảnh đại diện thất bại.");
+    } catch (error: unknown) {
+      console.error("Loi upload avatar:", error);
+      toast.error(parseAppError(error, "Tai len anh dai dien that bai."));
       throw error;
     }
   };
@@ -165,28 +157,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const profile = await authService.getMe();
       if (profile) {
-        setUser(profile as any);
+        setUser(profile);
         setUserProfile(profile);
       }
     } catch (error) {
-      console.error("Lỗi khi làm mới hồ sơ:", error);
+      console.error("Loi khi lam moi ho so:", error);
     }
   };
 
   const saveFacebookIntegration = async (integration: FacebookIntegration) => {
     if (!userProfile) return;
-    const finalIntegration = { ...integration };
-
     try {
       const updatedProfile = await authService.updateProfile({
-        facebookIntegration: finalIntegration
+        facebookIntegration: { ...integration },
       });
-      setUser(updatedProfile as any);
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Kết nối Facebook Page thành công!");
-    } catch (error: any) {
-      console.error("[iGen FB Connect] Lỗi kết nối:", error);
-      toast.error(error.message || "Không thể kết nối Facebook Page. Vui lòng kiểm tra lại.");
+      toast.success("Ket noi Facebook Page thanh cong!");
+    } catch (error: unknown) {
+      console.error("[FB Connect] Loi ket noi:", error);
+      toast.error(parseAppError(error, "Khong the ket noi Facebook Page. Vui long kiem tra lai."));
       throw error;
     }
   };
@@ -194,15 +184,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeFacebookIntegration = async () => {
     if (!userProfile) return;
     try {
-      const updatedProfile = await authService.updateProfile({
-        facebookIntegration: null
-      });
-      setUser(updatedProfile as any);
+      const updatedProfile = await authService.updateProfile({ facebookIntegration: null });
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Đã hủy liên kết Facebook Page.");
-    } catch (error: any) {
-      console.error("Lỗi xóa Facebook integration:", error);
-      toast.error("Lỗi khi hủy liên kết Facebook.");
+      toast.success("Da huy lien ket Facebook Page.");
+    } catch (error: unknown) {
+      console.error("Loi xoa Facebook integration:", error);
+      toast.error("Loi khi huy lien ket Facebook.");
       throw error;
     }
   };
@@ -217,14 +205,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const updatedProfile = await authService.updateProfile({
-        tiktokIntegration: finalIntegration
+        tiktokIntegration: finalIntegration,
       });
-      setUser(updatedProfile as any);
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success(integration.accessToken ? "Kết nối TikTok thành công!" : "Đã lưu cấu hình app TikTok.");
-    } catch (error: any) {
-      console.error("[iGen TikTok Connect] Lỗi kết nối:", error);
-      toast.error(error.message || "Không thể kết nối TikTok. Vui lòng kiểm tra lại.");
+      toast.success(integration.accessToken ? "Ket noi TikTok thanh cong!" : "Da luu cau hinh app TikTok.");
+    } catch (error: unknown) {
+      console.error("[TikTok Connect] Loi ket noi:", error);
+      toast.error(parseAppError(error, "Khong the ket noi TikTok. Vui long kiem tra lai."));
       throw error;
     }
   };
@@ -232,33 +220,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeTikTokIntegration = async () => {
     if (!userProfile) return;
     try {
-      const updatedProfile = await authService.updateProfile({
-        tiktokIntegration: null
-      });
-      setUser(updatedProfile as any);
+      const updatedProfile = await authService.updateProfile({ tiktokIntegration: null });
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Đã hủy liên kết TikTok.");
-    } catch (error: any) {
-      console.error("Lỗi xóa TikTok integration:", error);
-      toast.error("Lỗi khi hủy liên kết TikTok.");
+      toast.success("Da huy lien ket TikTok.");
+    } catch (error: unknown) {
+      console.error("Loi xoa TikTok integration:", error);
+      toast.error("Loi khi huy lien ket TikTok.");
       throw error;
     }
   };
 
   const saveZaloIntegration = async (integration: ZaloIntegration) => {
     if (!userProfile) return;
-    const finalIntegration = { ...integration };
-
     try {
       const updatedProfile = await authService.updateProfile({
-        zaloIntegration: finalIntegration
+        zaloIntegration: { ...integration },
       });
-      setUser(updatedProfile as any);
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Kết nối Zalo OA thành công!");
-    } catch (error: any) {
-      console.error("[iGen Zalo Connect] Lỗi kết nối:", error);
-      toast.error(error.message || "Không thể kết nối Zalo OA. Vui lòng kiểm tra lại.");
+      toast.success("Ket noi Zalo OA thanh cong!");
+    } catch (error: unknown) {
+      console.error("[Zalo Connect] Loi ket noi:", error);
+      toast.error(parseAppError(error, "Khong the ket noi Zalo OA. Vui long kiem tra lai."));
       throw error;
     }
   };
@@ -266,22 +250,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const removeZaloIntegration = async () => {
     if (!userProfile) return;
     try {
-      await fetch('/api/v1/zalo/integration', {
-        method: 'DELETE',
+      await fetch("/api/v1/zalo/integration", {
+        method: "DELETE",
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem("accessToken")}`
-        }
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        },
       });
 
-      const updatedProfile = await authService.updateProfile({
-        zaloIntegration: null
-      });
-      setUser(updatedProfile as any);
+      const updatedProfile = await authService.updateProfile({ zaloIntegration: null });
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-      toast.success("Đã hủy liên kết Zalo OA.");
-    } catch (error: any) {
-      console.error("Lỗi xóa Zalo integration:", error);
-      toast.error("Lỗi khi hủy liên kết Zalo.");
+      toast.success("Da huy lien ket Zalo OA.");
+    } catch (error: unknown) {
+      console.error("Loi xoa Zalo integration:", error);
+      toast.error("Loi khi huy lien ket Zalo.");
       throw error;
     }
   };
@@ -290,11 +272,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!userProfile) return;
     try {
       const updatedProfile = await authService.updateProfile({ aiAutoReplyConfig: config });
-      setUser(updatedProfile as any);
+      setUser(updatedProfile);
       setUserProfile(updatedProfile);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[updateAiAutoReplyConfig] Error:", error);
-      toast.error(error.message || "Lỗi khi lưu cấu hình AI.");
+      toast.error(parseAppError(error, "Loi khi luu cau hinh AI."));
       throw error;
     }
   };
@@ -329,7 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error("useAuth phải được sử dụng trong một AuthProvider");
+    throw new Error("useAuth phai duoc su dung trong mot AuthProvider");
   }
   return context;
 };

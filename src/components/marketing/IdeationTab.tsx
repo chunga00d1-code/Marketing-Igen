@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, prefer-const, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,

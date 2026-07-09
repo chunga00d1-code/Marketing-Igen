@@ -1,10 +1,13 @@
 import { getAccessToken } from "./authService";
 
+type TikTokMessengerRecord = Record<string, unknown>;
+type TikTokMessengerPagination = { limit: number; hasMore: boolean; nextBefore: string | null };
+
 export const tiktokMessengerService = {
   /**
    * Lay danh sach cuoc hoi thoai cua TikTok Business Account da lien ket
    */
-  async getConversations(options?: { limit?: number; skip?: number }): Promise<any[]> {
+  async getConversations(options?: { limit?: number; skip?: number }): Promise<TikTokMessengerRecord[]> {
     console.log("[FE TikTok Service] Bat dau goi API getConversations...");
     const params = new URLSearchParams();
     if (options?.limit !== undefined) {
@@ -34,7 +37,7 @@ export const tiktokMessengerService = {
   /**
    * Lay lich su tin nhan cua mot cuoc hoi thoai cu the
    */
-  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean }): Promise<{ data: any[]; pagination: { limit: number; hasMore: boolean; nextBefore: string | null } }> {
+  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean }): Promise<{ data: TikTokMessengerRecord[]; pagination: TikTokMessengerPagination }> {
     const params = new URLSearchParams();
     params.set("limit", String(options?.limit || 20));
     if (options?.before) {
@@ -67,7 +70,7 @@ export const tiktokMessengerService = {
   /**
    * Danh dau da doc cuoc hoi thoai TikTok
    */
-  async markRead(conversationId: string): Promise<any> {
+  async markRead(conversationId: string): Promise<TikTokMessengerRecord | null> {
     console.log(`[FE TikTok Service] Bat dau goi API markRead cho conversation ${conversationId}...`);
     const res = await fetch(`/api/v1/tiktok/messenger/conversations/${conversationId}/mark-read`, {
       method: "POST",
@@ -86,7 +89,7 @@ export const tiktokMessengerService = {
     return result.data;
   },
 
-  async resumeAI(conversationId: string): Promise<any> {
+  async resumeAI(conversationId: string): Promise<TikTokMessengerRecord | null> {
     console.log(`[FE TikTok Service] Bat dau goi API resumeAI cho conversation ${conversationId}...`);
     const res = await fetch(`/api/v1/tiktok/messenger/conversations/${conversationId}/resume-ai`, {
       method: "POST",
@@ -105,7 +108,7 @@ export const tiktokMessengerService = {
     return result.data;
   },
 
-  async sendReply(conversationId: string, text: string): Promise<any> {
+  async sendReply(conversationId: string, text: string): Promise<TikTokMessengerRecord | null> {
     console.log(`[FE TikTok Service] Bat dau goi API sendReply toi conversation ${conversationId}. Noi dung: "${text}"`);
     const res = await fetch("/api/v1/tiktok/messenger/reply", {
       method: "POST",

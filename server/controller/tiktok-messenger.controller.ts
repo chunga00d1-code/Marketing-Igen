@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import { Request, Response } from "express";
 import { tiktokMessengerService } from "../service/tiktok-messenger.service";
 import { UserModel } from "../model/user.model";

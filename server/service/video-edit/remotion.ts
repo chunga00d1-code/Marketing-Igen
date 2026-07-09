@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-empty */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -6,7 +7,7 @@ import { cloudinaryService } from "../cloudinary.service";
 type RemotionRendererModule = typeof import("@remotion/renderer");
 type RemotionBundlerModule = typeof import("@remotion/bundler");
 
-// Bundle cache — reuse between renders to save 30-60s of bundling time per render
+// Bundle cache � reuse between renders to save 30-60s of bundling time per render
 let _bundleCache: { location: string; entryPoint: string; createdAt: number } | null = null;
 const BUNDLE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -45,7 +46,7 @@ async function loadRemotionDependencies(): Promise<{
     return { bundler, renderer };
   } catch (error: any) {
     const wrappedError: any = new Error(
-      "Tính năng tạo video Remotion chưa sẵn sàng trên máy này. Hãy cài đặt đầy đủ các gói Remotion trước khi sử dụng."
+      "Tính nĒng tạo video Remotion chưa sẵn sàng trên máy này. Hãy cài �ặt �ầy �ủ các gói Remotion trư�:c khi sử dụng."
     );
     wrappedError.statusCode = 503;
     wrappedError.cause = error;
@@ -54,9 +55,9 @@ async function loadRemotionDependencies(): Promise<{
 }
 
 /**
- * Chuyển đổi URL media không tương thích sang định dạng Chromium có thể phát.
- * - Cloudinary .mov/.mkv/.avi → thêm vc_h264,ac_aac + đổi extension .mp4
- * - Non-Cloudinary: chỉ đổi đuôi container không hỗ trợ sang .mp4
+ * ChuyỒn ��"i URL media không tương thích sang ��9nh dạng Chromium có thỒ phát.
+ * - Cloudinary .mov/.mkv/.avi �  thêm vc_h264,ac_aac + ��"i extension .mp4
+ * - Non-Cloudinary: ch�0 ��"i �uôi container không h� trợ sang .mp4
  */
 export function normalizeMediaUrl(url: string): string {
   if (!url || !url.startsWith("http")) return url;
@@ -72,7 +73,7 @@ export function normalizeMediaUrl(url: string): string {
     const uploadIdx = pathPart.indexOf(uploadMarker);
     if (uploadIdx !== -1) {
       const afterUpload = pathPart.slice(uploadIdx + uploadMarker.length);
-      // Only transcode non-mp4 files — mp4 is already H264, applying vc_h264 causes
+      // Only transcode non-mp4 files � mp4 is already H264, applying vc_h264 causes
       // Cloudinary on-the-fly streaming which triggers ERR_HTTP2_PROTOCOL_ERROR in Chromium
       const isAlreadyMp4 = /\.mp4(\?|$)/i.test(afterUpload);
       const hasTransform = !afterUpload.match(/^v\d+\//i);
@@ -90,7 +91,7 @@ export function normalizeMediaUrl(url: string): string {
     const normalized = pathPart + queryPart;
     if (normalized !== url) {
       console.log(`[Remotion] URL normalize (Cloudinary H264): ${url}`);
-      console.log(`[Remotion]                           → ${normalized}`);
+      console.log(`[Remotion]                           �  ${normalized}`);
     }
     return normalized;
   }
@@ -99,7 +100,7 @@ export function normalizeMediaUrl(url: string): string {
   const match = url.match(unsupportedExts);
   if (match) {
     const normalized = url.replace(unsupportedExts, `.mp4${match[2] || ""}`);
-    console.log(`[Remotion] URL normalize (non-Cloudinary): ${url} → ${normalized}`);
+    console.log(`[Remotion] URL normalize (non-Cloudinary): ${url} �  ${normalized}`);
     return normalized;
   }
 
@@ -130,8 +131,8 @@ export const remotionService = {
     const is1080p = resolution === "1080p";
 
     console.log(`\n${"=".repeat(60)}`);
-    console.log(`[Remotion] ▶ BẤT ĐẦU RENDER | Job: ${renderJobId}`);
-    console.log(`[Remotion] EntryPoint : ${entryPoint} | Tồn tại: ${fs.existsSync(entryPoint)}`);
+    console.log(`[Remotion] �� BẤT ĐẦU RENDER | Job: ${renderJobId}`);
+    console.log(`[Remotion] EntryPoint : ${entryPoint} | T�n tại: ${fs.existsSync(entryPoint)}`);
     console.log(`[Remotion] OutputPath : ${outputPath}`);
     console.log(`[Remotion] Options    : aspect=${aspectRatio}, res=${resolution}`);
 
@@ -154,17 +155,17 @@ export const remotionService = {
         const startPrewarm = Date.now();
         const res = await fetch(mediaUrl, { method: "GET", signal: AbortSignal.timeout(90000) });
         if (!res.ok) {
-          console.error(`  [❌ HTTP ${res.status}] ${mediaUrl}`);
+          console.error(`  [�R HTTP ${res.status}] ${mediaUrl}`);
         } else {
           const buffer = await res.arrayBuffer();
-          console.log(`  [✅ READY] ${mediaUrl} | ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB | ${Date.now() - startPrewarm}ms`);
+          console.log(`  [�S& READY] ${mediaUrl} | ${(buffer.byteLength / 1024 / 1024).toFixed(2)} MB | ${Date.now() - startPrewarm}ms`);
         }
       } catch (fetchErr: any) {
-        console.error(`  [❌ FETCH_ERROR] ${mediaUrl} → ${fetchErr.message}`);
+        console.error(`  [�R FETCH_ERROR] ${mediaUrl} �  ${fetchErr.message}`);
       }
     }
 
-    if (onProgress) onProgress(45, "[Remotion Engine] Đang đóng gói mã React...");
+    if (onProgress) onProgress(45, "[Remotion Engine] Đang �óng gói mã React...");
 
     try {
       const { bundler, renderer } = await loadRemotionDependencies();
@@ -173,21 +174,21 @@ export const remotionService = {
       const bundleStart = Date.now();
       const { location: bundleLocation, fromCache } = await getOrCreateBundle(entryPoint, bundler);
       if (fromCache) {
-        console.log(`[Remotion] ✅ Bundle từ cache (${Math.round((Date.now() - _bundleCache!.createdAt) / 1000)}s tuổi)`);
+        console.log(`[Remotion] �S& Bundle từ cache (${Math.round((Date.now() - _bundleCache!.createdAt) / 1000)}s tu�"i)`);
       } else {
-        console.log(`[Remotion] ✅ Bundle hoàn tất trong ${Date.now() - bundleStart}ms`);
+        console.log(`[Remotion] �S& Bundle hoàn tất trong ${Date.now() - bundleStart}ms`);
       }
 
-      if (onProgress) onProgress(55, `[Remotion Engine] Khởi chạy Chromium headless${fromCache ? " (bundle cached)" : ""}...`);
+      if (onProgress) onProgress(55, `[Remotion Engine] Kh�xi chạy Chromium headless${fromCache ? " (bundle cached)" : ""}...`);
 
       const inputProps = {
         blueprint: { ...normalizedBlueprint, aspectRatio, resolution },
       };
 
       const composition = await selectComposition({ serveUrl: bundleLocation, id: "video-edit", inputProps });
-      console.log(`[Remotion] ✅ Composition: ${composition.durationInFrames} frames @ ${composition.fps}fps | ${composition.width}x${composition.height}`);
+      console.log(`[Remotion] �S& Composition: ${composition.durationInFrames} frames @ ${composition.fps}fps | ${composition.width}x${composition.height}`);
 
-      if (onProgress) onProgress(65, "[Remotion Engine] Bắt đầu kết xuất...");
+      if (onProgress) onProgress(65, "[Remotion Engine] Bắt �ầu kết xuất...");
 
       const renderStart = Date.now();
       await renderMedia({
@@ -198,7 +199,7 @@ export const remotionService = {
         audioBitrate: "320k",
         outputLocation: outputPath,
         inputProps,
-        timeoutInMilliseconds: 600_000, // 10 phút — đủ cho 1080p dài
+        timeoutInMilliseconds: 600_000, // 10 phút � �ủ cho 1080p dài
         crf: is1080p ? 18 : 22,        // chất lượng cao hơn cho 1080p
         chromiumOptions: {
           enableMultiProcessOnLinux: true,
@@ -216,7 +217,7 @@ export const remotionService = {
           if (onProgress) onProgress(percent, `[Remotion Engine] ${percent}% (frame ${progressData.renderedFrames}/${composition.durationInFrames})`);
         },
       });
-      console.log(`[Remotion] ✅ renderMedia hoàn tất trong ${((Date.now() - renderStart) / 1000).toFixed(1)}s`);
+      console.log(`[Remotion] �S& renderMedia hoàn tất trong ${((Date.now() - renderStart) / 1000).toFixed(1)}s`);
 
       if (onProgress) onProgress(85, "[Remotion Engine] Đang tải lên Cloudinary...");
 
@@ -224,11 +225,11 @@ export const remotionService = {
       const secureUrl = await cloudinaryService.uploadMediaBuffer(outputBuffer, "igen_erp/marketing/video");
       try { fs.unlinkSync(outputPath); } catch {}
 
-      console.log(`[Remotion] ✅ RENDER HOÀN TẤT | Job: ${renderJobId} | URL: ${secureUrl}`);
+      console.log(`[Remotion] �S& RENDER HOìN TẤT | Job: ${renderJobId} | URL: ${secureUrl}`);
       console.log(`${"=".repeat(60)}\n`);
       return secureUrl;
     } catch (error: any) {
-      console.error(`[Remotion] ❌ LỖI | Job: ${renderJobId} | ${error?.message}`);
+      console.error(`[Remotion] �R L�I | Job: ${renderJobId} | ${error?.message}`);
       if (error?.cause) console.error(`[Remotion] Caused by: ${error.cause?.message || error.cause}`);
       console.error(`[Remotion] Stack:\n${error?.stack}`);
       throw error;

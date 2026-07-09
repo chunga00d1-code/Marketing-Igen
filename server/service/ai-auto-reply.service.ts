@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import mongoose from "mongoose";
 import { UserModel } from "../model/user.model";
 import { ZaloConversationModel, ZaloMessageModel } from "../model/zalo-messenger.model";

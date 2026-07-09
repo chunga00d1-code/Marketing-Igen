@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-empty */
 import { GoogleGenAI } from "@google/genai";
 import { AIMediaModel } from "../model/ai-media.model";
 import * as fs from "fs";

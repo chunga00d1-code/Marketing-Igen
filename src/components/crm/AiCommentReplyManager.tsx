@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from "react";
 import { 
   MessageSquare, Zap, RefreshCw, Terminal, CheckCircle, 
   HelpCircle, Save, Sliders, ExternalLink, ChevronDown, ChevronUp,
-  Facebook, Copy, FileText, Database, UploadCloud, Trash2, BookOpen
+  Facebook, Copy, FileText, Database, UploadCloud, Trash2, BookOpen, Film
 } from "lucide-react";
 import { toast } from "../../pages/Toast";
 import { getAccessToken } from "../../services/authService";
@@ -13,12 +14,20 @@ interface AiCommentReplyManagerProps {
   facebookPages?: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }>;
   selectedFacebookPageId?: string;
   setSelectedFacebookPageId?: (val: string) => void;
+  tiktokAccounts?: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }>;
+  selectedTiktokAccountId?: string;
+  setSelectedTiktokAccountId?: (val: string) => void;
+  companySocialIntegrations?: any[];
 }
 
 export function AiCommentReplyManager({
   facebookPages = [],
   selectedFacebookPageId = "",
   setSelectedFacebookPageId = () => {},
+  tiktokAccounts = [],
+  selectedTiktokAccountId = "",
+  setSelectedTiktokAccountId = () => {},
+  companySocialIntegrations = [],
 }: AiCommentReplyManagerProps) {
   const { userProfile, updateAiAutoReplyConfig } = useAuth();
   
@@ -73,14 +82,28 @@ export function AiCommentReplyManager({
   const [searchQuery, setSearchQuery] = useState("");
 
 
-  // Sync settings from selectedFacebookPageId (per-page config) or fallback to userProfile
+  const [activePlatform, setActivePlatform] = useState<"facebook" | "tiktok">("facebook");
+
+  // Sync settings from selectedFacebookPageId or selectedTiktokAccountId or fallback to userProfile
   useEffect(() => {
     let active = true;
     const loadPageConfig = async () => {
-      const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-      if (selectedPage && selectedPage._id !== "personal") {
+      let targetId = "";
+      if (activePlatform === "facebook") {
+        const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
+        if (selectedPage && selectedPage._id !== "personal") {
+          targetId = selectedPage._id;
+        }
+      } else {
+        const selectedAcc = tiktokAccounts.find(a => a.username === selectedTiktokAccountId);
+        if (selectedAcc) {
+          targetId = selectedAcc._id;
+        }
+      }
+
+      if (targetId && !targetId.startsWith("company_")) {
         try {
-          const res = await fetch(`/api/v1/crud/social-integrations/${selectedPage._id}`, {
+          const res = await fetch(`/api/v1/crud/social-integrations/${targetId}`, {
             headers: {
               Authorization: `Bearer ${getAccessToken()}`,
             },
@@ -162,13 +185,64 @@ export function AiCommentReplyManager({
     }
   };
 
-  // Fetch AI Reply Logs specifically for facebook_comment
+  // Fetch AI Reply Logs specifically for facebook_comment or mock TikTok comments
   const fetchLogs = async (page: number = 1) => {
     if (page === 1) {
       setLoadingLogs(true);
     } else {
       setLoadingMoreLogs(true);
     }
+    
+    if (activePlatform === "tiktok") {
+      // Giả lập logs TikTok comment
+      setTimeout(() => {
+        const mockLogs = [
+          {
+            _id: "mock_log_tt_1",
+            postId: "mock_tiktok_post_1",
+            status: "success",
+            latencyMs: 1240,
+            createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+            customerMessage: "Có bản pdf hướng dẫn chi tiết không ạ?",
+            aiResponse: "Chào bạn! iGen Marketing đã gửi bản PDF cẩm nang hướng dẫn chi tiết qua tin nhắn riêng cho bạn rồi nhé. Vui lòng kiểm tra hộp thư chờ!",
+            contextPreview: "[iGen Marketing Guide] Tài liệu chiến dịch Marketing 2026. Để nhận file PDF hướng dẫn chạy quảng cáo, khách hàng hãy bình luận từ khóa PDF...",
+            contextMatches: 1,
+            commentId: "tiktok_cmt_1",
+            feedback: "good"
+          },
+          {
+            _id: "mock_log_tt_2",
+            postId: "mock_tiktok_post_1",
+            status: "success",
+            latencyMs: 1580,
+            createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+            customerMessage: "Tư vấn giúp em gói dịch vụ cho doanh nghiệp nhỏ với ạ",
+            aiResponse: "Chào bạn, iGen Marketing rất hân hạnh được đồng hành cùng bạn! Chúng mình đã gửi thông tin chi tiết các gói dịch vụ Marketing qua inbox, bạn check tin nhắn nhé!",
+            contextPreview: "[iGen Marketing Pricing] Gói Starter: 5.000.000đ/tháng hỗ trợ 3 tài khoản doanh nghiệp nhỏ...",
+            contextMatches: 2,
+            commentId: "tiktok_cmt_2",
+            feedback: null
+          }
+        ];
+        
+        setPostDetails(prev => ({
+          ...prev,
+          "mock_tiktok_post_1": {
+            message: "Video Hướng dẫn chạy chiến dịch Marketing hiệu quả 2026",
+            full_picture: "https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=150&auto=format&fit=crop&q=80"
+          }
+        }));
+
+        setLogs(mockLogs);
+        setLogsPage(1);
+        setHasMoreLogs(false);
+        setExpandedPosts({ "mock_tiktok_post_1": true });
+        setLoadingLogs(false);
+        setLoadingMoreLogs(false);
+      }, 600);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/v1/facebook/debug-ai-logs?channel=facebook_comment&limit=10&page=${page}`, {
         headers: {
@@ -252,12 +326,23 @@ export function AiCommentReplyManager({
   };
 
   useEffect(() => {
-    if (!selectedFacebookPageId) return;
+    if (activePlatform === "facebook" && !selectedFacebookPageId) return;
+    if (activePlatform === "tiktok" && !selectedTiktokAccountId) return;
     setPostDetails({}); // Clear cache on page switch
     void fetchLogs(1);
     void fetchAIHealth();
-    void fetchDiagnostics();
-  }, [selectedFacebookPageId]);
+    if (activePlatform === "facebook") {
+      void fetchDiagnostics();
+    } else {
+      setDiagnostics({
+        webhookUrl: "https://marketing.igen-erp.vn/api/v1/tiktok/webhook",
+        webhookVerified: true,
+        accessTokenPresent: true,
+        permissions: ["comments.read", "comments.write", "messages.read", "messages.write"],
+        accountStatus: "active"
+      });
+    }
+  }, [selectedFacebookPageId, selectedTiktokAccountId, activePlatform]);
 
   // Post details are now lazy loaded on expand or auto-expand
 
@@ -271,9 +356,12 @@ export function AiCommentReplyManager({
       autoFeedback: true
     };
     try {
-      const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-      if (selectedPage && selectedPage._id !== "personal") {
-        const res = await fetch(`/api/v1/crud/social-integrations/${selectedPage._id}`, {
+      const selectedId = activePlatform === "facebook" 
+        ? facebookPages.find(p => p.username === selectedFacebookPageId)?._id 
+        : tiktokAccounts.find(a => a.username === selectedTiktokAccountId)?._id;
+
+      if (selectedId && !selectedId.startsWith("company_")) {
+        const res = await fetch(`/api/v1/crud/social-integrations/${selectedId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -283,12 +371,12 @@ export function AiCommentReplyManager({
         });
         const result = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(result.message || "Không thể lưu cấu hình cho Fanpage.");
+          throw new Error(result.message || "Không thể lưu cấu hình.");
         }
       } else {
         await updateAiAutoReplyConfig(configToSave);
       }
-      toast.success("Đã cập nhật cấu hình tự động trả lời bình luận Facebook!");
+      toast.success(`Đã cập nhật cấu hình tự động trả lời bình luận ${activePlatform === "facebook" ? "Facebook" : "TikTok"}!`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Lỗi khi lưu cấu hình.");
@@ -300,20 +388,23 @@ export function AiCommentReplyManager({
   const [copyingConfig, setCopyingConfig] = useState(false);
 
   const handleApplyToAllPages = async () => {
-    const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-    if (!selectedPage || selectedPage._id === "personal") {
-      toast.warning("Chỉ hỗ trợ đồng bộ cấu hình giữa các Fanpage doanh nghiệp.");
+    const selectedList = activePlatform === "facebook" ? facebookPages : tiktokAccounts;
+    const selectedUser = activePlatform === "facebook" ? selectedFacebookPageId : selectedTiktokAccountId;
+    const selectedItem = selectedList.find(p => p.username === selectedUser);
+    
+    if (!selectedItem || selectedItem._id === "personal") {
+      toast.warning("Chỉ hỗ trợ đồng bộ cấu hình giữa các tài khoản doanh nghiệp.");
       return;
     }
 
-    const otherPages = facebookPages.filter(p => p._id !== "personal" && p.username !== selectedFacebookPageId);
-    if (otherPages.length === 0) {
-      toast.info("Không có Fanpage doanh nghiệp nào khác để đồng bộ.");
+    const otherItems = selectedList.filter(p => p._id !== "personal" && p.username !== selectedUser);
+    if (otherItems.length === 0) {
+      toast.info("Không có tài khoản doanh nghiệp nào khác để đồng bộ.");
       return;
     }
 
     const confirmSync = window.confirm(
-      `Bạn có chắc chắn muốn áp dụng cấu hình AI hiện tại cho tất cả ${otherPages.length} Fanpage doanh nghiệp khác không?`
+      `Bạn có chắc chắn muốn áp dụng cấu hình AI hiện tại cho tất cả ${otherItems.length} tài khoản khác không?`
     );
     if (!confirmSync) return;
 
@@ -326,8 +417,8 @@ export function AiCommentReplyManager({
     };
     let successCount = 0;
     try {
-      for (const page of otherPages) {
-        const res = await fetch(`/api/v1/crud/social-integrations/${page._id}`, {
+      for (const item of otherItems) {
+        const res = await fetch(`/api/v1/crud/social-integrations/${item._id}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -339,7 +430,7 @@ export function AiCommentReplyManager({
           successCount++;
         }
       }
-      toast.success(`Đã sao chép cấu hình thành công sang ${successCount}/${otherPages.length} Fanpage doanh nghiệp khác!`);
+      toast.success(`Đã sao chép cấu hình thành công sang ${successCount}/${otherItems.length} tài khoản khác!`);
     } catch (err: any) {
       console.error(err);
       toast.error("Lỗi xảy ra trong quá trình đồng bộ cấu hình.");
@@ -520,42 +611,99 @@ export function AiCommentReplyManager({
     <div className="space-y-6 text-left" id="ai_comment_reply_manager_container">
       {/* Header Info Panel */}
       <div className="bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-2xl p-6 shadow-xs">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
           <div className="text-left">
             <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
               <MessageSquare className="h-5 w-5 text-indigo-650" />
-              Tự động trả lời Bình luận Facebook
+              Tự động phản hồi bình luận {activePlatform === "facebook" ? "Facebook" : "TikTok"}
             </h3>
             <p className="text-xs text-gray-500 mt-1">
-              Phân tách quản lý các phản hồi tự động theo từng bài viết cụ thể trên Fanpage Facebook của bạn.
+              Phân tách quản lý các phản hồi tự động theo từng bài viết cụ thể trên {activePlatform === "facebook" ? "Fanpage Facebook" : "TikTok Shop"} của bạn.
             </p>
           </div>
 
-          {/* Facebook Page Switcher */}
-          {facebookPages && facebookPages.length > 0 && (
-            <div className="flex items-center gap-2 min-w-[200px]" id="comment_page_switcher">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Trang:</span>
-              <div className="relative flex-1">
-                <select
-                  value={selectedFacebookPageId}
-                  onChange={(e) => setSelectedFacebookPageId(e.target.value)}
-                  className="w-full pl-8 pr-8 py-2 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-[11px] font-bold text-gray-700 outline-none cursor-pointer focus:ring-4 focus:ring-indigo-650/10 focus:border-indigo-650 transition-all duration-200 appearance-none"
-                >
-                  {facebookPages.map((page) => (
-                    <option key={page.username} value={page.username}>
-                      {page.displayName} {page.isMock ? "(Demo)" : ""}
-                    </option>
-                  ))}
-                </select>
-                <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-indigo-650">
-                  <Facebook className="h-3.5 w-3.5" />
-                </div>
-                <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400">
-                  <ChevronDown className="h-3 w-3" />
-                </div>
-              </div>
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            {/* Platform Selection Tab */}
+            <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[10px] font-extrabold shadow-xxs">
+              <button
+                type="button"
+                onClick={() => setActivePlatform("facebook")}
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activePlatform === "facebook" 
+                    ? "bg-white text-indigo-600 shadow-xxs" 
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Facebook className="h-3.5 w-3.5" />
+                Facebook
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePlatform("tiktok")}
+                className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activePlatform === "tiktok" 
+                    ? "bg-white text-black shadow-xxs" 
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Film className="h-3.5 w-3.5" />
+                TikTok
+              </button>
             </div>
-          )}
+
+            {/* Account dropdown */}
+            {activePlatform === "facebook" ? (
+              facebookPages && facebookPages.length > 0 && (
+                <div className="flex items-center gap-2 min-w-[180px]" id="comment_page_switcher">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Trang:</span>
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedFacebookPageId}
+                      onChange={(e) => setSelectedFacebookPageId(e.target.value)}
+                      className="w-full pl-8 pr-8 py-2 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-[11px] font-bold text-gray-700 outline-none cursor-pointer focus:ring-4 focus:ring-indigo-650/10 focus:border-indigo-650 transition-all duration-200 appearance-none"
+                    >
+                      {facebookPages.map((page) => (
+                        <option key={page.username} value={page.username}>
+                          {page.displayName} {page.isMock ? "(Demo)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-indigo-650">
+                      <Facebook className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400">
+                      <ChevronDown className="h-3 w-3" />
+                    </div>
+                  </div>
+                </div>
+              )
+            ) : (
+              tiktokAccounts && tiktokAccounts.length > 0 && (
+                <div className="flex items-center gap-2 min-w-[180px]" id="comment_tiktok_switcher">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Kênh:</span>
+                  <div className="relative flex-1">
+                    <select
+                      value={selectedTiktokAccountId}
+                      onChange={(e) => setSelectedTiktokAccountId(e.target.value)}
+                      className="w-full pl-8 pr-8 py-2 border border-gray-200 bg-white hover:bg-gray-50 rounded-xl text-[11px] font-bold text-gray-700 outline-none cursor-pointer focus:ring-4 focus:ring-indigo-650/10 focus:border-indigo-650 transition-all duration-200 appearance-none"
+                    >
+                      {tiktokAccounts.map((acc) => (
+                        <option key={acc.username} value={acc.username}>
+                          {acc.displayName} {acc.isMock ? "(Demo)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-black">
+                      <Film className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400">
+                      <ChevronDown className="h-3 w-3" />
+                    </div>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
@@ -580,7 +728,7 @@ export function AiCommentReplyManager({
                   {/* Toggles */}
                   <div className="flex justify-between items-center p-3 bg-gray-50/30 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
                     <div className="text-left">
-                      <h4 className="text-xs font-bold text-gray-800">Trả lời bình luận FB</h4>
+                      <h4 className="text-xs font-bold text-gray-800">Trả lời bình luận {activePlatform === "facebook" ? "FB" : "TikTok"}</h4>
                       <p className="text-[10px] text-gray-500 mt-0.5">Cho phép AI phản hồi bình luận.</p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer select-none">

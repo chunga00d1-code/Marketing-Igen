@@ -1,21 +1,22 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { PermissionModel } from "../model/permission.model";
 import { IPermission } from "../interface/permission.interface";
 
 export const permissionService = {
   /**
-   * Tạo mới một mã quyền
+   * Tạo m�:i m�"t mã quyền
    */
   async createPermission(data: any): Promise<IPermission> {
     const existing = await PermissionModel.findOne({ code: data.code });
     if (existing) {
-      throw new Error(`Mã quyền "${data.code}" đã tồn tại trên hệ thống.`);
+      throw new Error(`Mã quyền "${data.code}" �ã t�n tại trên h�! th�ng.`);
     }
     const permission = new PermissionModel(data);
     return await permission.save();
   },
 
   /**
-   * Lấy danh sách mã quyền có hỗ trợ bộ lọc và phân trang
+   * Lấy danh sách mã quyền có h� trợ b�" lọc và phân trang
    */
   async getPermissions(
     filter: any = {},
@@ -53,12 +54,12 @@ export const permissionService = {
   },
 
   /**
-   * Xóa một mã quyền khỏi hệ thống
+   * Xóa m�"t mã quyền khỏi h�! th�ng
    */
   async deletePermission(code: string): Promise<void> {
     const result = await PermissionModel.deleteOne({ code });
     if (result.deletedCount === 0) {
-      throw new Error("Không tìm thấy mã quyền để xóa.");
+      throw new Error("Không tìm thấy mã quyền �Ồ xóa.");
     }
   }
 };

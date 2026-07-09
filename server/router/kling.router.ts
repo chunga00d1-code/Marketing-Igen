@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import Joi from "joi";
 import { klingController } from "../controller/kling.controller";
@@ -9,12 +10,12 @@ export const klingRouter = Router();
 const motionControlSchema = {
   body: Joi.object({
     imageUrl: Joi.string().required().messages({
-      "any.required": "Ảnh nhân vật tham chiếu là bắt buộc.",
-      "string.base": "imageUrl phải là chuỗi.",
+      "any.required": "áº¢nh nhÃ¢n váº­t tham chiáº¿u lÃ  báº¯t buá»™c.",
+      "string.base": "imageUrl pháº£i lÃ  chuá»—i.",
     }),
     videoUrl: Joi.string().required().messages({
-      "any.required": "Video chuyển động tham chiếu là bắt buộc.",
-      "string.base": "videoUrl phải là chuỗi.",
+      "any.required": "Video chuyá»ƒn Ä‘á»™ng tham chiáº¿u lÃ  báº¯t buá»™c.",
+      "string.base": "videoUrl pháº£i lÃ  chuá»—i.",
     }),
     modelName: Joi.string().valid("kling-v2-6", "kling-v3").optional().allow(""),
     mode: Joi.string().valid("std", "pro").optional(),

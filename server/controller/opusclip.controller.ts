@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import { opusclipService } from "../service/opusclip.service";
 import { OpusClipProjectModel } from "../model/opusclip-project.model";

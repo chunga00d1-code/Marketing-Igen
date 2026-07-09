@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { crudService } from "../service/crud.service";

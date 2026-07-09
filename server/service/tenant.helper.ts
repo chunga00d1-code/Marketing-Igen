@@ -1,9 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Helper tự động đính kèm companyCode vào bộ lọc truy vấn dữ liệu (Mongoose filter)
- * giúp cô lập tài nguyên giữa các công ty một cách an toàn.
+ * Helper tự ��"ng �ính kèm companyCode vào b�" lọc truy vấn dữ li�!u (Mongoose filter)
+ * giúp cô lập tài nguyên giữa các công ty m�"t cách an toàn.
  *
- * @param filter Bộ lọc truy vấn ban đầu
- * @param user Thông tin người dùng hiện tại từ token
+ * @param filter B�" lọc truy vấn ban �ầu
+ * @param user Thông tin người dùng hi�!n tại từ token
  */
 export function applyCompanyFilter(
   filter: any = {},
@@ -13,12 +14,12 @@ export function applyCompanyFilter(
     return filter;
   }
 
-  // Superadmin có quyền xem toàn bộ hệ thống hoặc lọc theo chỉ định
+  // Superadmin có quyền xem toàn b�" h�! th�ng hoặc lọc theo ch�0 ��9nh
   if (user.role === "superadmin") {
     return filter;
   }
 
-  // Các vai trò khác bắt buộc phải lọc theo mã công ty của mình
+  // Các vai trò khác bắt bu�"c phải lọc theo mã công ty của mình
   return {
     ...filter,
     companyCode: user.companyCode,

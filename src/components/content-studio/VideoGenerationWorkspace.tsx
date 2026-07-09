@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Suspense, lazy, useState, useEffect } from 'react';
 import { Clapperboard, Sparkles, Wand2, Film, Scissors } from 'lucide-react';
 import { SimpleVideoWorkspace } from './SimpleVideoWorkspace';

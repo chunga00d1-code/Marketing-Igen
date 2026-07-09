@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-empty */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -13,7 +14,7 @@ export interface FFmpegRenderOptions {
 
 /**
  * FFmpeg fallback renderer.
- * Trả về URL video đã render (Cloudinary, Cloudinary transform, hoặc URL gốc nếu không có FFmpeg).
+ * Trả về URL video �ã render (Cloudinary, Cloudinary transform, hoặc URL g�c nếu không có FFmpeg).
  */
 export async function runFFmpegFallback(
   recordId: string,
@@ -31,13 +32,13 @@ export async function runFFmpegFallback(
 
   let finalVideoUrl = videoUrl; // default: return original video if all fails
 
-  await updateLogs(40, "[Render Engine Fallback] Đang kiểm tra môi trường FFMPEG...");
+  await updateLogs(40, "[Render Engine Fallback] Đang kiỒm tra môi trường FFMPEG...");
 
   const hasFfmpeg = await new Promise<boolean>((resolve) => {
     exec("ffmpeg -version", (error) => resolve(!error));
   });
 
-  await updateLogs(45, `[Render Engine Fallback] FFMPEG: ${hasFfmpeg ? "Đã cài đặt" : "Chưa cài đặt"}`);
+  await updateLogs(45, `[Render Engine Fallback] FFMPEG: ${hasFfmpeg ? "Đã cài �ặt" : "Chưa cài �ặt"}`);
 
   if (hasFfmpeg) {
     const cacheDir = path.join(process.cwd(), "server/cache/videos");
@@ -61,13 +62,13 @@ export async function runFFmpegFallback(
       const filename = urlParts[urlParts.length - 1];
       const localCachePath = path.join(cacheDir, filename);
 
-      console.log(`[FFMPEG Fallback] Xử lý video nguồn ${i + 1}/${uniqueVideoUrls.length}: ${url}`);
+      console.log(`[FFMPEG Fallback] Xử lý video ngu�n ${i + 1}/${uniqueVideoUrls.length}: ${url}`);
 
       if (filename && filename.match(/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/) && fs.existsSync(localCachePath)) {
-        await updateLogs(50, `[Render Engine Cache] Video nguồn ${i + 1} tìm thấy trong cache. Sao chép...`);
+        await updateLogs(50, `[Render Engine Cache] Video ngu�n ${i + 1} tìm thấy trong cache. Sao chép...`);
         fs.copyFileSync(localCachePath, tempInput);
       } else {
-        await updateLogs(50, `[Render Engine Fallback] Đang tải video gốc ${i + 1}/${uniqueVideoUrls.length}...`);
+        await updateLogs(50, `[Render Engine Fallback] Đang tải video g�c ${i + 1}/${uniqueVideoUrls.length}...`);
         let response: Response;
         try {
           response = await fetch(url);
@@ -75,24 +76,24 @@ export async function runFFmpegFallback(
           const is403 = fetchErr?.message?.includes("403");
           const isExpired = url.includes("Expires=") || url.includes("Signature=");
           if (is403 && isExpired) {
-            throw new Error(`URL video nguồn đã hết hạn (403 Forbidden). Vui lòng tạo lại video hoặc upload lên Cloudinary trước khi render.`);
+            throw new Error(`URL video ngu�n �ã hết hạn (403 Forbidden). Vui lòng tạo lại video hoặc upload lên Cloudinary trư�:c khi render.`);
           }
           throw fetchErr;
         }
         if (!response.ok) {
-          const errBody = await response.text().catch(() => "(không đọc được body)");
-          throw new Error(`Tải video gốc ${i + 1} thất bại: HTTP ${response.status} - ${errBody.slice(0, 200)}`);
+          const errBody = await response.text().catch(() => "(không �ọc �ược body)");
+          throw new Error(`Tải video g�c ${i + 1} thất bại: HTTP ${response.status} - ${errBody.slice(0, 200)}`);
         }
         const buffer = Buffer.from(await response.arrayBuffer());
         fs.writeFileSync(tempInput, buffer);
-        console.log(`[FFMPEG Fallback] ✅ Video ${i + 1} → ${tempInput} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
+        console.log(`[FFMPEG Fallback] �S& Video ${i + 1} �  ${tempInput} (${(buffer.length / 1024 / 1024).toFixed(2)} MB)`);
       }
       videoTempPaths.push(tempInput);
       urlToInputIdx[url] = i;
     }
 
     // Detect audio streams
-    await updateLogs(55, "[Render Engine Fallback] Đang phát hiện luồng âm thanh...");
+    await updateLogs(55, "[Render Engine Fallback] Đang phát hi�!n lu�ng âm thanh...");
     const hasAudioMap: { [idx: number]: boolean } = {};
     for (let i = 0; i < videoTempPaths.length; i++) {
       hasAudioMap[i] = await new Promise<boolean>((resolve) => {
@@ -101,7 +102,7 @@ export async function runFFmpegFallback(
         });
       });
     }
-    await updateLogs(60, `[Render Engine Fallback] Âm thanh: ${videoTempPaths.map((_, i) => `Video ${i + 1}: ${hasAudioMap[i] ? "Có" : "Không"}`).join(", ")}`);
+    await updateLogs(60, `[Render Engine Fallback] �m thanh: ${videoTempPaths.map((_, i) => `Video ${i + 1}: ${hasAudioMap[i] ? "Có" : "Không"}`).join(", ")}`);
     await updateLogs(65, "[Render Engine Fallback] Đang xử lý các tài nguyên overlay...");
 
     // Download image overlays
@@ -313,7 +314,7 @@ export async function runFFmpegFallback(
           : alpha;
         return r + g + b + a;
       }
-      // Named colors FFmpeg understands — pass through directly (no 0x prefix needed)
+      // Named colors FFmpeg understands � pass through directly (no 0x prefix needed)
       const namedColors: Record<string, string> = {
         white: "ffffff" + alpha, black: "000000" + alpha, red: "ff0000" + alpha,
         green: "00ff00" + alpha, blue: "0000ff" + alpha, yellow: "ffff00" + alpha,
@@ -400,18 +401,18 @@ export async function runFFmpegFallback(
     const inputsStr = `${videoInputsStr} ` + inputArgs.join(" ");
     const tempOutput = path.join(os.tmpdir(), `output_${recordId}.mp4`);
 
-    // Tính tổng thời lượng video để báo progress chính xác
+    // Tính t�"ng thời lượng video �Ồ báo progress chính xác
     const totalDuration = videoClips.reduce((sum: number, clip: any) => {
       return sum + ((clip.end ?? 5) - (clip.start ?? 0)) / (clip.playbackRate ?? 1);
     }, 0);
 
-    // Preset fast để encode nhanh hơn mà không mất chất lượng đáng kể
+    // Preset fast �Ồ encode nhanh hơn mà không mất chất lượng �áng kỒ
     const ffmpegCmd = `ffmpeg -y ${inputsStr} -filter_complex "${filterComplex}" -map "${currentVideoOut}" -map "${currentAudioOut}" -c:v libx264 -preset fast -c:a aac -b:a 192k -pix_fmt yuv420p -r 30 -vsync cfr "${tempOutput}"`;
 
-    await updateLogs(70, "[Render Engine Fallback] Đang thực thi lệnh FFMPEG...");
+    await updateLogs(70, "[Render Engine Fallback] Đang thực thi l�!nh FFMPEG...");
 
     await new Promise<void>((resolve, reject) => {
-      // Dùng spawn thay exec để đọc stderr real-time và báo progress
+      // Dùng spawn thay exec �Ồ �ọc stderr real-time và báo progress
       const args = ffmpegCmd.split(" ").slice(1);
       const child = spawnProc("ffmpeg", args, { shell: true });
       let stderrBuf = "";
@@ -434,7 +435,7 @@ export async function runFFmpegFallback(
             parseInt(timeMatch[4]) / 100;
           const pct = Math.min(0.98, currentSec / totalDuration);
           const reportProgress = Math.round(70 + pct * 12); // 70-82%
-          void updateLogs(reportProgress, `[FFmpeg] ${currentSec.toFixed(1)}s / ${totalDuration.toFixed(1)}s đã xử lý...`);
+          void updateLogs(reportProgress, `[FFmpeg] ${currentSec.toFixed(1)}s / ${totalDuration.toFixed(1)}s �ã xử lý...`);
         }
       });
 
@@ -493,7 +494,7 @@ export async function runFFmpegFallback(
     await updateLogs(80, `[Render Engine Fallback] Cloudinary URL transform: ${finalVideoUrl}`);
 
   } else {
-    await updateLogs(70, "[Render Engine Fallback] Không phát hiện FFMPEG và không phải Cloudinary. Trả về video gốc.");
+    await updateLogs(70, "[Render Engine Fallback] Không phát hi�!n FFMPEG và không phải Cloudinary. Trả về video g�c.");
   }
 
   return finalVideoUrl;

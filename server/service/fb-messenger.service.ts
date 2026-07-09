@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
 import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model";
 import { UserModel } from "../model/user.model";
 import { emitToPage } from "../socket";

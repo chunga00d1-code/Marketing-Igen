@@ -13,7 +13,6 @@ import {
   ExternalLink,
   ShieldCheck,
   QrCode,
-  DollarSign,
   AlertTriangle
 } from "lucide-react";
 import { walletService, TransactionInfo } from "../services/walletService";
@@ -46,7 +45,7 @@ export default function WalletTab() {
 
   useEffect(() => {
     setUrlParams(new URLSearchParams(window.location.search));
-  }, [window.location.search]);
+  }, []);
 
   // Tải dữ liệu ban đầu
   const loadData = async (silent = false) => {
@@ -70,8 +69,9 @@ export default function WalletTab() {
         });
 
       await Promise.all([balPromise, txsPromise]);
-    } catch (err: any) {
-      toast.error(err.message || "Không thể tải thông tin ví.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể tải thông tin ví.";
+      toast.error(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -133,8 +133,9 @@ export default function WalletTab() {
       
       // Chuyển hướng tới link thanh toán của PayOS (hoặc trang mock)
       window.location.href = result.checkoutUrl;
-    } catch (err: any) {
-      toast.error(err.message || "Không thể khởi tạo liên kết nạp tiền.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Không thể khởi tạo liên kết nạp tiền.";
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -150,8 +151,9 @@ export default function WalletTab() {
       await walletService.confirmMockPayment(orderCode);
       // Chuyển hướng về trang ví kèm trạng thái thành công
       window.location.href = `${window.location.pathname}?status=success&orderCode=${orderCode}`;
-    } catch (err: any) {
-      toast.error(err.message || "Xác nhận giả lập thanh toán thất bại.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Xác nhận giả lập thanh toán thất bại.";
+      toast.error(msg);
       setSubmitting(false);
     }
   };
@@ -329,7 +331,7 @@ export default function WalletTab() {
                 
                 <div className="flex justify-between items-center text-[10px] text-white/75 font-mono">
                   <span>ACTIVE WALLET</span>
-                  <span>iGEN ERP</span>
+                  <span>iGEN MARKETING</span>
                 </div>
               </div>
             </div>

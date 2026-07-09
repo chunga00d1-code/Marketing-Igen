@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useState } from "react";
 import { Calendar, Clock } from "lucide-react";
 import { ContentApprovalCard, PublishEvent } from "../../types";

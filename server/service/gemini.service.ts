@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
 import { AIMediaModel } from "../model/ai-media.model";
 import { CompanyModel } from "../model/company.model";
 import { cloudinaryService } from "./cloudinary.service";

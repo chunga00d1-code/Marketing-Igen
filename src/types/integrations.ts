@@ -5,7 +5,7 @@ export interface FacebookIntegration {
   pageAccessToken: string;
   appSecret?: string;
   verifyToken?: string;
-  connectedAt: any;
+  connectedAt: string | Date;
   isMock?: boolean;
 }
 
@@ -20,12 +20,12 @@ export interface TikTokIntegration {
   /** Access Token kết nối API thật */
   accessToken?: string;
   refreshToken?: string;
-  tokenExpiredAt?: any;
+  tokenExpiredAt?: string | Date;
   clientKey?: string;
   clientSecret?: string;
   scopes?: string[];
   /** Thời điểm kết nối */
-  connectedAt: any;
+  connectedAt: string | Date;
   /** Mộc quyền riêng tư mặc định khi đăng (PUBLIC_TO_EVERYONE / SELF_ONLY) */
   privacyLevel?: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'SELF_ONLY';
   /** Chế độ giả lập — không cần API thật */
@@ -38,6 +38,6 @@ export interface ZaloIntegration {
   oaName: string;
   accessToken: string;
   refreshToken: string;
-  connectedAt: any;
+  connectedAt: string | Date;
   isMock?: boolean;
 }

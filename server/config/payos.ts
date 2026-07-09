@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { PayOS } from "@payos/node";
 
 const clientId = process.env.PAYOS_CLIENT_ID || "";

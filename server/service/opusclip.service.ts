@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import crypto from "crypto";
 import dotenv from "dotenv";
 
@@ -16,7 +17,7 @@ function getHeaders() {
   };
 }
 
-// Bộ lưu trữ salt để chống replay attack (trong production thực tế nên dùng Redis TTL)
+// B�" lưu trữ salt �Ồ ch�ng replay attack (trong production thực tế nên dùng Redis TTL)
 const seenSalts = new Set<string>();
 
 export const opusclipService = {
@@ -36,7 +37,7 @@ export const opusclipService = {
 
     const { videoUrl, name, lengthOption = "auto", sourceLang = "auto", brandTemplateId } = params;
 
-    // Phân tách thời lượng clip mong muốn
+    // Phân tách thời lượng clip mong mu�n
     let clipDurations: number[][] = [];
     if (lengthOption === "<30s") {
       clipDurations = [[0, 30]];
@@ -134,7 +135,7 @@ export const opusclipService = {
   },
 
   /**
-   * Lấy danh sách Brand Templates hiện có trong tổ chức
+   * Lấy danh sách Brand Templates hi�!n có trong t�" chức
    */
   async getBrandTemplates(): Promise<any> {
     if (!OPUSCLIP_API_KEY) {
@@ -155,7 +156,7 @@ export const opusclipService = {
 
   /**
    * Xác thực chữ ký webhook từ OpusClip
-   * Đảm bảo tính toàn vẹn (integrity) và nguồn gốc (authenticity)
+   * Đảm bảo tính toàn vẹn (integrity) và ngu�n g�c (authenticity)
    */
   verifyWebhookSignature(rawBody: string, headers: Record<string, string | undefined>): boolean {
     const salt = headers["x-opus-salt"];
@@ -173,14 +174,14 @@ export const opusclipService = {
       return false;
     }
 
-    // 1. Kiểm tra tính tươi mới của request (Timestamp freshness check - tối đa 5 phút)
+    // 1. KiỒm tra tính tươi m�:i của request (Timestamp freshness check - t�i �a 5 phút)
     const currentUnix = Math.floor(Date.now() / 1000);
     if (Math.abs(currentUnix - timestamp) > 300) {
       console.warn(`[OpusClipService] Webhook rejected: Stale request. Latency: ${currentUnix - timestamp}s`);
       return false;
     }
 
-    // 2. Chống Replay attack bằng cách lưu giữ các muối (salt) đã xử lý
+    // 2. Ch�ng Replay attack bằng cách lưu giữ các mu�i (salt) �ã xử lý
     if (seenSalts.has(salt)) {
       console.warn(`[OpusClipService] Webhook rejected: Replay attack detected with salt: ${salt}`);
       return false;
@@ -192,7 +193,7 @@ export const opusclipService = {
       .update(rawBody + salt)
       .digest("hex");
 
-    // 4. So sánh chữ ký ở chế độ Constant-time để tránh Timing attack
+    // 4. So sánh chữ ký �x chế ��" Constant-time �Ồ tránh Timing attack
     try {
       const receivedBuffer = Buffer.from(signature, "hex");
       const expectedBuffer = Buffer.from(expectedSignature, "hex");
@@ -201,9 +202,9 @@ export const opusclipService = {
         crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
 
       if (isValid) {
-        // Lưu trữ salt lại để chống replay (clear bớt nếu bộ nhớ quá tải, ở đây đơn giản dùng Set)
+        // Lưu trữ salt lại �Ồ ch�ng replay (clear b�:t nếu b�" nh�: quá tải, �x �ây �ơn giản dùng Set)
         seenSalts.add(salt);
-        // Tự động giải phóng bớt bộ nhớ nếu kích thước lưu trữ quá lớn
+        // Tự ��"ng giải phóng b�:t b�" nh�: nếu kích thư�:c lưu trữ quá l�:n
         if (seenSalts.size > 5000) {
           const firstElement = seenSalts.values().next().value;
           if (firstElement !== undefined) {

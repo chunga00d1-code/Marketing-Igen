@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 
 export function useProgress(isLoading: boolean, estimatedDurationSeconds: number = 10) {
   const [progress, setProgress] = useState(0);
-  const intervalRef = useRef<any>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (isLoading) {

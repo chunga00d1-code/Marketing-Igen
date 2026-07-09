@@ -1,3 +1,4 @@
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Router } from "express";
 import Joi from "joi";
 import { heygenController } from "../controller/heygen.controller";

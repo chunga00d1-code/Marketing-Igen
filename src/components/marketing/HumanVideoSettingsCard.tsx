@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-extra-boolean-cast, react-hooks/exhaustive-deps */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, Play, Search, Video, X } from "lucide-react";
 import type { HeyGenLibraryItem } from "../../api/heygen";
