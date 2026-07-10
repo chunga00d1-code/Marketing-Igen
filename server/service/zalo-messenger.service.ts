@@ -194,12 +194,12 @@ export const zaloMessengerService = {
 
       // Náº¿u token Ä‘Ã£ háº¿t háº¡n hoáº·c cÃ²n Ã­t hÆ¡n 10 phÃºt thÃ¬ tiáº¿n hÃ nh refresh token
       if (companyIntegration.refreshToken && (expiryTime <= now || expiryTime - now < 10 * 60 * 1000)) {
-        console.log(`[Zalo Service Token] Company Zalo Token cá»§a OA ID ${oaId} sáº¯p háº¿t háº¡n. Äang tiáº¿n hÃ nh lÃ m má»›i tá»± Ä‘á»™ng...`);
+        console.log(`[Zalo Service Token] Company Zalo Token của OA ID ${oaId} sắp hết hạn. Đang tiến hành làm mới tự động...`);
         try {
           const newAccessToken = await this.refreshCompanyZaloToken(companyIntegration._id.toString(), companyIntegration);
           return newAccessToken;
         } catch (err: any) {
-          console.error(`[Zalo Service Token] Tá»± Ä‘á»™ng lÃ m má»›i Company Zalo token tháº¥t báº¡i:`, err);
+          console.error(`[Zalo Service Token] Tự động làm mới Company Zalo token thất bại:`, err);
           await SocialIntegrationModel.findByIdAndUpdate(companyIntegration._id, {
             isConnected: false,
             accessToken: "",
@@ -214,8 +214,8 @@ export const zaloMessengerService = {
             companyIntegration.displayName || "Zalo OA",
             oaId,
             companyIntegration.companyCode || "SYSTEM",
-            `KhÃ´ng thá»ƒ tá»± Ä‘á»™ng lÃ m má»›i Refresh Token Zalo. Chi tiáº¿t: ${err.message || err}`
-          ).catch((e: any) => console.error("[Zalo Service] KhÃ´ng thá»ƒ gá»­i cáº£nh bÃ¡o lá»—i Token vá» Telegram:", e));
+            `Không thể tự động làm mới Zalo OA Token. Chi tiết: ${err.message || err}`
+          ).catch((e: any) => console.error("[Zalo Service] Không thể gửi cảnh báo lỗi Token về Telegram:", e));
 
           return null;
         }
@@ -240,14 +240,14 @@ export const zaloMessengerService = {
 
       const now = Date.now();
       const expiryTime = new Date(integration.tokenExpiredAt).getTime();
-      
+
       if (expiryTime - now < 10 * 60 * 1000) {
-        console.log(`[Zalo Service Token] Token cá»§a OA ID ${oaId} sáº¯p háº¿t háº¡n. Äang tiáº¿n hÃ nh lÃ m má»›i tá»± Ä‘á»™ng...`);
+        console.log(`[Zalo Service Token] Token của OA ID ${oaId} sắp hết hạn. Đang tiến hành làm mới tự động...`);
         try {
           const refreshedToken = await this.refreshToken(user._id.toString(), integration);
           return refreshedToken;
         } catch (err: any) {
-          console.error(`[Zalo Service Token] Tá»± Ä‘á»™ng lÃ m má»›i token tháº¥t báº¡i:`, err);
+          console.error(`[Zalo Service Token] Tự động làm mới token thất bại:`, err);
           await UserModel.findByIdAndUpdate(user._id, {
             "zaloIntegration.isConnected": false,
             "zaloIntegration.accessToken": "",
@@ -262,8 +262,8 @@ export const zaloMessengerService = {
             `Zalo OA (User: ${user.email})`,
             oaId,
             user.companyCode || "SYSTEM",
-            `KhÃ´ng thá»ƒ tá»± Ä‘á»™ng lÃ m má»›i Refresh Token Zalo cÃ¡ nhÃ¢n. Chi tiáº¿t: ${err.message || err}`
-          ).catch((e: any) => console.error("[Zalo Service] KhÃ´ng thá»ƒ gá»­i cáº£nh bÃ¡o lá»—i Token vá» Telegram:", e));
+            `Không thể tự động làm mới Zalo OA Token. Chi tiết: ${err.message || err}`
+          ).catch((e: any) => console.error("[Zalo Service] Không thể gửi cảnh báo lỗi Token về Telegram:", e));
 
           return null;
         }
@@ -287,7 +287,7 @@ export const zaloMessengerService = {
     const appSecret = process.env.ZALO_APP_SECRET || "";
 
     if (!appId || !appSecret) {
-      throw new Error("KhÃ´ng thá»ƒ lÃ m má»›i token: Thiáº¿u cáº¥u hÃ¬nh ZALO_APP_ID hoáº·c ZALO_APP_SECRET trong file .env");
+      throw new Error("Không thể làm mới token: Thiếu cấu hình ZALO_APP_ID hoặc ZALO_APP_SECRET trong file .env");
     }
 
     bodyParams.set("app_id", appId);
@@ -303,12 +303,12 @@ export const zaloMessengerService = {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Refresh Company Zalo Token tháº¥t báº¡i: ${response.status} - ${errText}`);
+      throw new Error(`Refresh Company Zalo Token thất bại: ${response.status} - ${errText}`);
     }
 
     const data = await response.json();
     if (data.error) {
-      throw new Error(`Refresh Company Zalo Token lá»—i: ${data.error_name || data.error}`);
+      throw new Error(`Refresh Company Zalo Token lỗi: ${data.error_name || data.error}`);
     }
 
     const newAccessToken = data.access_token;
@@ -323,12 +323,12 @@ export const zaloMessengerService = {
       tokenExpiredAt,
     });
 
-    console.log(`[Zalo Service Token] ÄÃ£ lÃ m má»›i company-level token thÃ nh cÃ´ng cho ID: ${integrationId}`);
+    console.log(`[Zalo Service Token] Đã làm mới company-level token thành công cho ID: ${integrationId}`);
     return newAccessToken;
   },
 
   /**
-   * Gá»i API lÃ m má»›i Zalo Access Token tá»« Zalo OAuth
+   * Gá» i API lÃ m má»›i Zalo Access Token tá»« Zalo OAuth
    */
   async refreshToken(userId: string, integration: any): Promise<string> {
     const url = "https://oauth.zaloapp.com/v4/oa/access_token";
@@ -336,12 +336,12 @@ export const zaloMessengerService = {
     bodyParams.set("refresh_token", integration.refreshToken);
     bodyParams.set("grant_type", "refresh_token");
 
-    // Láº¥y App ID/Secret tá»« cáº¥u hÃ¬nh hoáº·c biáº¿n mÃ´i trÆ°á»ng
+    // Láº¥y App ID/Secret tá»« cáº¥u hÃ¬nh hoáº·c biáº¿n mÃ´i trÆ°á» ng
     const appId = process.env.ZALO_APP_ID || "";
     const appSecret = process.env.ZALO_APP_SECRET || "";
 
     if (!appId || !appSecret) {
-      throw new Error("KhÃ´ng thá»ƒ lÃ m má»›i token: Thiáº¿u cáº¥u hÃ¬nh ZALO_APP_ID hoáº·c ZALO_APP_SECRET trong file .env");
+      throw new Error("Không thể làm mới token: Thiếu cấu hình ZALO_APP_ID hoặc ZALO_APP_SECRET trong file .env");
     }
 
     bodyParams.set("app_id", appId);
@@ -357,12 +357,12 @@ export const zaloMessengerService = {
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`Refresh Zalo Token tháº¥t báº¡i: ${response.status} - ${errText}`);
+      throw new Error(`Refresh Zalo Token thất bại: ${response.status} - ${errText}`);
     }
 
     const data = await response.json();
     if (data.error) {
-      throw new Error(`Refresh Zalo Token lá»—i: ${data.error_name || data.error}`);
+      throw new Error(`Refresh Zalo Token lỗi: ${data.error_name || data.error}`);
     }
 
     const newAccessToken = data.access_token;
@@ -376,7 +376,7 @@ export const zaloMessengerService = {
       "zaloIntegration.tokenExpiredAt": tokenExpiredAt,
     });
 
-    console.log(`[Zalo Service Token] ÄÃ£ lÃ m má»›i token thÃ nh cÃ´ng cho User ID: ${userId}`);
+    console.log(`[Zalo Service Token] Đã làm mới token thành công cho User ID: ${userId}`);
     return newAccessToken;
   },
 
@@ -384,8 +384,8 @@ export const zaloMessengerService = {
    * Táº¡o dá»¯ liá»‡u giáº£ láº­p cho cháº¿ Ä‘á»™ Demo (Mock Mode)
    */
   async seedMockData(oaId: string) {
-    console.log(`[Zalo Service Mock] Táº¡o dá»¯ liá»‡u giáº£ láº­p cho OA ID: ${oaId}`);
-    
+    console.log(`[Zalo Service Mock] Tạo dữ liệu giả lập cho OA ID: ${oaId}`);
+
     // XÃ³a dá»¯ liá»‡u mock cÅ©
     const existingConvs = await ZaloConversationModel.find({ oaId });
     for (const c of existingConvs) {
@@ -393,17 +393,17 @@ export const zaloMessengerService = {
     }
     await ZaloConversationModel.deleteMany({ oaId });
 
-    // Táº¡o khÃ¡ch hÃ ng 1: Nguyá»…n VÄƒn HÃ¹ng
+    // Táº¡o khÃ¡ch hÃ ng 1: Nguyễn Hùng
     const conv1 = await ZaloConversationModel.create({
       recipientId: "zalo_user_hung_01",
-      senderName: "Nguyá»…n VÄƒn HÃ¹ng",
+      senderName: "Nguyễn Hùng",
       avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80",
       oaId,
-      lastMessageText: "TÆ° váº¥n cho tÃ´i dá»‹ch vá»¥ bÃªn báº¡n vá»›i",
-      lastMessageAt: new Date(Date.now() - 30 * 60 * 1000), // 30 phÃºt trÆ°á»›c
+      lastMessageText: "Tư vấn cho tôi dịch vụ bên bạn với",
+      lastMessageAt: new Date(Date.now() - 30 * 60 * 1000), // 30 phút trước
       unreadCount: 1,
       status: "open",
-      tags: ["KhÃ¡ch áº¤m", "Há»i GiÃ¡"],
+      tags: ["Khách Ẩm", "Hỏi Giá"],
       isVip: false,
     });
 
@@ -412,7 +412,7 @@ export const zaloMessengerService = {
       senderId: "zalo_user_hung_01",
       recipientId: oaId,
       direction: "inbound",
-      text: "Xin chÃ o iGen Marketing, tÃ´i Ä‘ang muá»‘n tÃ¬m hiá»ƒu vá» pháº§n má»m CRM quáº£n lÃ½ khÃ¡ch hÃ ng.",
+      text: "Xin chào iGen Marketing, tôi đang muốn tìm hiểu về phần mềm CRM quản lý khách hàng.",
       messageId: `msg_mock_z1_${Date.now()}`,
       timestamp: new Date(Date.now() - 35 * 60 * 1000),
       status: "read",
@@ -423,7 +423,7 @@ export const zaloMessengerService = {
       senderId: oaId,
       recipientId: "zalo_user_hung_01",
       direction: "outbound",
-      text: "Dáº¡ em chÃ o anh HÃ¹ng áº¡. iGen Marketing cung cáº¥p giáº£i phÃ¡p CRM tÃ­ch há»£p Ä‘a kÃªnh bao gá»“m Facebook, Zalo OA giÃºp quáº£n lÃ½ tin nháº¯n táº­p trung. Anh cáº§n quáº£n lÃ½ cho Ä‘á»™i ngÅ© bao nhiÃªu nhÃ¢n sá»± áº¡?",
+      text: "Dạ em chào anh Hùng ạ. iGen Marketing cung cấp giải pháp CRM tích hợp đa kênh bao gồm Facebook, Zalo OA giúp quản lý tin nhắn tập trung. Anh cần quản lý cho đội ngũ bao nhiêu nhân sự ạ?",
       messageId: `msg_mock_z2_${Date.now()}`,
       timestamp: new Date(Date.now() - 32 * 60 * 1000),
       status: "read",
@@ -434,23 +434,23 @@ export const zaloMessengerService = {
       senderId: "zalo_user_hung_01",
       recipientId: oaId,
       direction: "inbound",
-      text: "TÆ° váº¥n cho tÃ´i dá»‹ch vá»¥ bÃªn báº¡n vá»›i. BÃªn tÃ´i cÃ³ khoáº£ng 15 nhÃ¢n viÃªn sales.",
+      text: "Tư vấn cho tôi dịch vụ bên bạn với. Bên tôi có khoảng 15 nhân viên sales.",
       messageId: `msg_mock_z3_${Date.now()}`,
       timestamp: new Date(Date.now() - 30 * 60 * 1000),
       status: "delivered",
     });
 
-    // Táº¡o khÃ¡ch hÃ ng 2: Tráº§n Thá»‹ Mai (KhÃ¡ch VIP)
+    // Tạo khách hàng 2: Trần Thị Mai (Khách VIP)
     const conv2 = await ZaloConversationModel.create({
       recipientId: "zalo_user_mai_02",
-      senderName: "Tráº§n Thá»‹ Mai",
+      senderName: "Trần Thị Mai",
       avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80",
       oaId,
-      lastMessageText: "Cáº£m Æ¡n báº¡n nhiá»u nhÃ©, há»— trá»£ ráº¥t nhiá»‡t tÃ¬nh",
-      lastMessageAt: new Date(Date.now() - 10 * 60 * 1000), // 10 phÃºt trÆ°á»›c
+      lastMessageText: "Cảm ơn bạn nhiều nhé, hỗ trợ rất nhiệt tình",
+      lastMessageAt: new Date(Date.now() - 10 * 60 * 1000), // 10 phút trước
       unreadCount: 0,
       status: "open",
-      tags: ["KhÃ¡ch VIP", "Má»›i tiáº¿p cáº­n"],
+      tags: ["Khách VIP", "Mới tiếp cận"],
       isVip: true,
     });
 
@@ -459,7 +459,7 @@ export const zaloMessengerService = {
       senderId: "zalo_user_mai_02",
       recipientId: oaId,
       direction: "inbound",
-      text: "Há»£p Ä‘á»“ng gÃ³i CRM Enterprise 12 thÃ¡ng bÃªn mÃ¬nh Ä‘Ã£ chuyá»ƒn khoáº£n xong rá»“i nhÃ©.",
+      text: "Hợp đồng gói CRM Enterprise 12 tháng bên mình đã chuyển khoản xong rồi nhé.",
       messageId: `msg_mock_z4_${Date.now()}`,
       timestamp: new Date(Date.now() - 15 * 60 * 1000),
       status: "read",
@@ -470,7 +470,7 @@ export const zaloMessengerService = {
       senderId: oaId,
       recipientId: "zalo_user_mai_02",
       direction: "outbound",
-      text: "Dáº¡ iGen Marketing Ä‘Ã£ nháº­n Ä‘Æ°á»£c thÃ´ng tin chuyá»ƒn khoáº£n cá»§a chá»‹ Mai rá»“i áº¡. Há»‡ thá»‘ng ERP cá»§a bÃªn mÃ¬nh Ä‘ang Ä‘Æ°á»£c khá»Ÿi táº¡o vÃ  phÃ¢n quyá»n, báº¡n ká»¹ thuáº­t viÃªn sáº½ liÃªn há»‡ chá»‹ trong 5 phÃºt ná»¯a nhÃ©.",
+      text: "Dạ iGen Marketing đã nhận được thông tin chuyển khoản của chị Mai rồi ạ. Hệ thống ERP của bên mình đang được khởi tạo và phân quyền, bạn kỹ thuật viên sẽ liên hệ chị trong 5 phút nữa nhé.",
       messageId: `msg_mock_z5_${Date.now()}`,
       timestamp: new Date(Date.now() - 12 * 60 * 1000),
       status: "read",
@@ -481,7 +481,7 @@ export const zaloMessengerService = {
       senderId: "zalo_user_mai_02",
       recipientId: oaId,
       direction: "inbound",
-      text: "Cáº£m Æ¡n báº¡n nhiá»u nhÃ©, há»— trá»£ ráº¥t nhiá»‡t tÃ¬nh",
+      text: "Cảm ơn bạn nhiều nhé, hỗ trợ rất nhiệt tình",
       messageId: `msg_mock_z6_${Date.now()}`,
       timestamp: new Date(Date.now() - 10 * 60 * 1000),
       status: "read",
@@ -489,7 +489,7 @@ export const zaloMessengerService = {
   },
 
   async getConversations(oaId: string, options?: { limit?: number; skip?: number }) {
-    console.log(`[Zalo Service] Láº¥y danh sÃ¡ch há»™i thoáº¡i cho OA ID: ${oaId}, limit: ${options?.limit || 20}, skip: ${options?.skip || 0}`);
+    console.log(`[Zalo Service] Lấy danh sách hội thoại cho OA ID: ${oaId}, limit: ${options?.limit || 20}, skip: ${options?.skip || 0}`);
     const limit = options?.limit || 20;
     const skip = options?.skip || 0;
     return ZaloConversationModel.find({ oaId })
@@ -519,7 +519,7 @@ export const zaloMessengerService = {
     const limit = Math.min(Math.max(Number(options?.limit || 20), 1), 100);
     const beforeDate = options?.before ? new Date(options.before) : null;
     const filter: any = { conversationId: conversation._id };
-    
+
     if (beforeDate && !Number.isNaN(beforeDate.getTime())) {
       filter.timestamp = { $lt: beforeDate };
     }
@@ -544,7 +544,7 @@ export const zaloMessengerService = {
   async markConversationRead(oaId: string, conversationId: string) {
     const conversation = await ZaloConversationModel.findOne({ _id: conversationId, oaId });
     if (!conversation) {
-      throw new Error("KhÃ´ng tÃ¬m tháº¥y há»™i thoáº¡i Zalo.");
+      throw new Error("Không tìm thấy hội thoại Zalo.");
     }
 
     if (conversation.unreadCount !== 0) {
@@ -559,7 +559,7 @@ export const zaloMessengerService = {
   async resumeAIAutoReply(oaId: string, conversationId: string) {
     const conversation = await ZaloConversationModel.findOne({ _id: conversationId, oaId });
     if (!conversation) {
-      throw new Error("KhÃ´ng tÃ¬m tháº¥y há»™i thoáº¡i Zalo.");
+      throw new Error("Không tìm thấy hội thoại Zalo.");
     }
     conversation.aiPausedUntil = undefined;
     await conversation.save();
@@ -568,15 +568,15 @@ export const zaloMessengerService = {
   },
 
   /**
-   * Gá»­i pháº£n há»“i tin nháº¯n cho khÃ¡ch hÃ ng qua Zalo OA
+   * Gửi phản hồi tin nhắn cho khách hàng qua Zalo OA
    */
   async sendReply(oaId: string, conversationId: string, text: string, senderType: "human" | "ai" = "human") {
     const conversation = await ZaloConversationModel.findOne({ _id: conversationId, oaId });
     if (!conversation) {
-      throw new Error("KhÃ´ng tÃ¬m tháº¥y cuá»™c há»™i thoáº¡i Zalo Ä‘á»ƒ tráº£ lá»i.");
+      throw new Error("Không tìm thấy cuộc hội thoại Zalo để trả lời.");
     }
 
-    // Há»§y cÃ¡c pháº£n há»“i AI Ä‘ang lÃªn lá»‹ch do nhÃ¢n viÃªn Ä‘Ã£ can thiá»‡p
+    // Hủy các phản hồi AI đang lên lịch do nhân viên đã can thiệp
     if (senderType === "human") {
       aiAutoReplyService.cancelPendingReply(conversationId, "human_reply");
     }
@@ -620,28 +620,28 @@ export const zaloMessengerService = {
       emitToPage(oaId, "conversation_updated", conversation);
     };
 
-    // PhÃ¡t socket realtime
+    // Phát socket realtime
 
-    // Xá»­ lÃ½ gá»­i tin tháº­t hoáº·c giáº£ láº­p
+    // Xử lý gửi tin thật hoặc giả lập
     if (isMock) {
-      console.log(`[Zalo Service Mock] Giáº£ láº­p gá»­i tin tá»›i Zalo User: ${recipientId}`);
+      console.log(`[Zalo Service Mock] Giả lập gửi tin tới Zalo User: ${recipientId}`);
       conversation.lastMessageText = text;
       conversation.lastMessageAt = sentAt;
       conversation.unreadCount = 0;
       if (senderType === "human") {
-        conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000); // Táº¡m dá»«ng AI cho cuá»™c há»™i thoáº¡i nÃ y 30 phÃºt
+        conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000); // Tạm dừng AI cho cuộc hội thoại này 30 phút
       }
       await conversation.save();
       newMsg.status = "delivered";
       await newMsg.save();
       emitRealtimeUpdate();
 
-      // LÃªn lá»‹ch pháº£n há»“i tá»± Ä‘á»™ng tá»« Bot/KhÃ¡ch hÃ ng giáº£ láº­p sau 2.5 giÃ¢y Ä‘á»ƒ tÄƒng tÃ­nh tÆ°Æ¡ng tÃ¡c
+      // Lên lịch phản hồi tự động từ Bot/Khách hàng giả lập sau 2.5 giây để tăng tính tương tác
       setTimeout(async () => {
         try {
-          const autoReplyText = `[Zalo Demo Bot] Cáº£m Æ¡n báº¡n Ä‘Ã£ pháº£n há»“i: "${text}". Há»‡ thá»‘ng ERP Ä‘ang thá»­ nghiá»‡m hoáº¡t Ä‘á»™ng tá»‘t!`;
+          const autoReplyText = `[Zalo Demo Bot] Cảm ơn bạn đã phản hồi: "${text}". Hệ thống ERP đang thử nghiệm hoạt động tốt!`;
           const botMessageId = `zalo_in_mock_${Date.now()}`;
-          
+
           const incomingMsg = new ZaloMessageModel({
             conversationId: conversation._id,
             senderId: recipientId,
@@ -667,16 +667,16 @@ export const zaloMessengerService = {
           });
           emitToPage(oaId, "conversation_updated", conversation);
         } catch (err) {
-          console.error("Lá»—i giáº£ láº­p pháº£n há»“i Zalo:", err);
+          console.error("Lỗi giả lập phản hồi Zalo:", err);
         }
       }, 2500);
 
     } else {
-      // Gá»­i tháº­t qua Zalo OpenAPI
+      // Gửi thật qua Zalo OpenAPI
       const token = await this.getAccessTokenByOAId(oaId);
       console.log(`[Zalo SendReply] Resolved token for oaId=${oaId}: ${token ? `FOUND(...${token.slice(-8)})` : "NOT_FOUND"}`);
       if (!token) {
-        throw new Error("Zalo token Ä‘Ã£ háº¿t háº¡n hoáº·c khÃ´ng cÃ²n há»£p lá»‡. Vui lÃ²ng káº¿t ná»‘i láº¡i Zalo OA Ä‘á»ƒ gá»­i tin.");
+        throw new Error("Zalo token đã hết hạn hoặc không còn hợp lệ. Vui lòng kết nối lại Zalo OA để gửi tin.");
       }
 
       const url = "https://openapi.zalo.me/v3.0/oa/message/cs";
@@ -700,21 +700,21 @@ export const zaloMessengerService = {
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[Zalo Service OpenAPI] Gá»­i tin tháº¥t báº¡i: ${response.status} - ${errText}`);
-        throw new Error(`Zalo API pháº£n há»“i lá»—i: ${response.status} - ${errText}`);
+        console.error(`[Zalo Service OpenAPI] Gửi tin thất bại: ${response.status} - ${errText}`);
+        throw new Error(`Zalo API phản hồi lỗi: ${response.status} - ${errText}`);
       }
 
       const resData = await response.json();
       if (resData.error) {
         throw new Error(`Zalo API Error: ${resData.message} (Code: ${resData.error})`);
       }
-      
-      console.log(`[Zalo Service OpenAPI] ÄÃ£ gá»­i tin nháº¯n tháº­t thÃ nh cÃ´ng:`, resData);
+
+      console.log(`[Zalo Service OpenAPI] Đã gửi tin nhắn thật thành công:`, resData);
       conversation.lastMessageText = text;
       conversation.lastMessageAt = sentAt;
       conversation.unreadCount = 0;
       if (senderType === "human") {
-        conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000); // Táº¡m dá»«ng AI cho cuá»™c há»™i thoáº¡i nÃ y 30 phÃºt
+        conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000); // Tạm dừng AI cho cuộc hội thoại này 30 phút
       }
       await conversation.save();
       newMsg.messageId = resData.data?.message_id || messageId;
@@ -825,14 +825,14 @@ export const zaloMessengerService = {
       companyCode: user?.companyCode || null,
       personalIntegration: user?.zaloIntegration
         ? {
-            isConnected: !!user.zaloIntegration.isConnected,
-            oaId: user.zaloIntegration.oaId || null,
-            oaName: user.zaloIntegration.oaName || null,
-            hasToken: !!user.zaloIntegration.accessToken,
-            accessTokenTail: user.zaloIntegration.accessToken ? user.zaloIntegration.accessToken.slice(-8) : null,
-            hasRefreshToken: !!user.zaloIntegration.refreshToken,
-            tokenExpiredAt: user.zaloIntegration.tokenExpiredAt || null,
-          }
+          isConnected: !!user.zaloIntegration.isConnected,
+          oaId: user.zaloIntegration.oaId || null,
+          oaName: user.zaloIntegration.oaName || null,
+          hasToken: !!user.zaloIntegration.accessToken,
+          accessTokenTail: user.zaloIntegration.accessToken ? user.zaloIntegration.accessToken.slice(-8) : null,
+          hasRefreshToken: !!user.zaloIntegration.refreshToken,
+          tokenExpiredAt: user.zaloIntegration.tokenExpiredAt || null,
+        }
         : null,
       companyIntegrations: companyIntegrations.map((item: any) => ({
         displayName: item.displayName,
@@ -851,16 +851,16 @@ export const zaloMessengerService = {
   },
 
   /**
-   * Xá»­ lÃ½ sá»± kiá»‡n Webhook tá»« Zalo OA gá»­i sang
+   * Xử lý sự kiện Webhook từ Zalo OA gửi sang
    */
   async handleWebhookEvent(body: any) {
-    console.log("[Zalo Service Webhook] Nháº­n sá»± kiá»‡n tá»« Zalo OA:", JSON.stringify(body));
+    console.log("[Zalo Service Webhook] Nhận sự kiện từ Zalo OA:", JSON.stringify(body));
 
     let oaId = body.oa_id || body.recipient?.id;
-    
+
     // Zalo's official developer console test webhook sends a hardcoded recipient.id of "579745863508352884"
     if (oaId === "579745863508352884") {
-      console.log("[Zalo Service Webhook] PhÃ¡t hiá»‡n payload test tá»« Zalo Webhooks UI. Tá»± Ä‘á»™ng chuyá»ƒn Ä‘á»•i sang Zalo OA ID active.");
+      console.log("[Zalo Service Webhook] Phát hiện payload test từ Zalo Webhooks UI. Tự động chuyển đổi sang Zalo OA ID active.");
       const activeUser = await UserModel.findOne({ "zaloIntegration.isConnected": true });
       let foundOaId = activeUser?.zaloIntegration?.oaId;
       if (!foundOaId) {
@@ -878,23 +878,23 @@ export const zaloMessengerService = {
 
     const eventName = body.event_name;
     if (!oaId || !eventName) {
-      console.warn("[Zalo Service Webhook] Thiáº¿u oa_id hoáº·c event_name. Bá» qua.");
+      console.warn("[Zalo Service Webhook] Thiếu oa_id hoặc event_name. Bỏ qua.");
       return;
     }
 
-    // CÃ¡c sá»± kiá»‡n tin nháº¯n tá»« ngÆ°á»i dÃ¹ng
+    // Các sự kiện tin nhắn từ người dùng
     const messageEvents = ["user_send_text", "user_send_image", "user_send_link", "user_send_sticker"];
     if (!messageEvents.includes(eventName)) {
-      console.log(`[Zalo Service Webhook] Sá»± kiá»‡n ${eventName} khÃ´ng náº±m trong danh sÃ¡ch xá»­ lÃ½ tin nháº¯n chat. Bá» qua.`);
+      console.log(`[Zalo Service Webhook] Sự kiện ${eventName} không nằm trong danh sách xử lý tin nhắn chat. Bỏ qua.`);
       return;
     }
 
-    const senderId = body.sender?.id; // User ID OA-Scoped cá»§a khÃ¡ch hÃ ng
+    const senderId = body.sender?.id; // User ID OA-Scoped của khách hàng
     const messageId = body.message?.msg_id || `zalo_in_${Date.now()}`;
     const timestamp = body.timestamp ? new Date(Number(body.timestamp)) : new Date();
     const duplicateMsg = await ZaloMessageModel.findOne({ messageId });
     if (duplicateMsg) {
-      console.info(`[Zalo Service Webhook] Bo qua webhook trung cho messageId=${messageId}.`);
+      console.info(`[Zalo Service Webhook] Bỏ qua webhook trùng cho messageId=${messageId}.`);
       return;
     }
 
@@ -908,7 +908,7 @@ export const zaloMessengerService = {
           url: att.payload?.url || "",
         });
       });
-      if (!text) text = "[HÃ¬nh áº£nh]";
+      if (!text) text = "[Hình ảnh]";
     } else if (eventName === "user_send_sticker") {
       attachments.push({
         type: "sticker",
@@ -942,17 +942,17 @@ export const zaloMessengerService = {
     }
 
     if (!isConnected) {
-      console.warn(`[Zalo Service Webhook] KhÃ´ng tÃ¬m tháº¥y liÃªn káº¿t Zalo OA hoáº¡t Ä‘á»™ng nÃ o cho OA ID: ${oaId}`);
+      console.warn(`[Zalo Service Webhook] Không tìm thấy liên kết Zalo OA hoạt động nào cho OA ID: ${oaId}`);
       return;
     }
 
-    // TÃ¬m hoáº·c táº¡o cuá»™c há»™i thoáº¡i
+    // Tìm hoặc tạo cuộc hội thoại
     let conversation = await ZaloConversationModel.findOne({ recipientId: senderId, oaId });
-    let senderName = conversation?.senderName || "KhÃ¡ch hÃ ng Zalo";
+    let senderName = conversation?.senderName || "Khách hàng Zalo";
     let avatarUrl = conversation?.avatarUrl || "";
 
-    // Thá»­ láº¥y profile tá»« Zalo API náº¿u cÃ³ Access Token há»£p lá»‡, khÃ´ng pháº£i Mock vÃ  thÃ´ng tin hiá»‡n táº¡i Ä‘ang lÃ  máº·c Ä‘á»‹nh
-    if (!isMock && (senderName === "KhÃ¡ch hÃ ng Zalo" || !avatarUrl)) {
+    // Thử lấy profile từ Zalo API nếu có Access Token hợp lệ, không phải Mock và thông tin hiện tại đang là mặc định
+    if (!isMock && (senderName === "Khách hàng Zalo" || !avatarUrl)) {
       try {
         const token = await this.getAccessTokenByOAId(oaId);
         if (token) {
@@ -969,7 +969,7 @@ export const zaloMessengerService = {
           }
         }
       } catch (err) {
-        console.error("[Zalo Service Webhook] KhÃ´ng láº¥y Ä‘Æ°á»£c thÃ´ng tin profile tá»« Zalo API:", err);
+        console.error("[Zalo Service Webhook] Không lấy được thông tin profile từ Zalo API:", err);
       }
     }
 
@@ -1017,9 +1017,9 @@ export const zaloMessengerService = {
         conversation: conversation
       });
       emitToPage(oaId, "conversation_updated", conversation);
-      console.log(`[Zalo Service Webhook] ÄÃ£ lÆ°u tin nháº¯n má»›i thÃ nh cÃ´ng tá»« Zalo User: ${senderId}`);
+      console.log(`[Zalo Service Webhook] Đã lưu tin nhắn mới thành công từ Zalo User: ${senderId}`);
 
-      // KÃ­ch hoáº¡t AI Auto-Reply Bot báº¥t Ä‘á»“ng bá»™
+      // Kích hoạt AI Auto-Reply Bot bất đồng bộ
       aiAutoReplyService.triggerAutoReply("zalo", oaId, conversation._id.toString(), text, messageId);
     }
   }
