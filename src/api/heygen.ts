@@ -93,6 +93,7 @@ export const heygenApi = {
     avatarBackground?: "customize" | "remove" | "color";
     backgroundColor?: string;
     avatarLayout?: "original" | "circle";
+    cardId?: string;
   }): Promise<any> {
     const response = await fetch("/api/v1/heygen/videos", {
       method: "POST",

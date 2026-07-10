@@ -55,6 +55,7 @@ export default function MarketingTab() {
     title?: string;
     description?: string;
     engineType?: string;
+    usePersonalVoice?: boolean;
   } | null>(null);
 
   // Lightbox Preview States
@@ -403,12 +404,24 @@ export default function MarketingTab() {
     }
   };
 
-  const handleMediaSaved = (cardId: string, mediaUrl: string, type: 'image' | 'video') => {
-    setApprovalCards(prev => prev.map(c => c.id === cardId ? {
-      ...c,
-      imageUrl: type === 'image' ? mediaUrl : c.imageUrl,
-      videoUrl: type === 'video' ? mediaUrl : c.videoUrl
-    } : c));
+  const handleMediaSaved = async (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => {
+    if (!cardId || !mediaUrl || type === 'audio') return;
+
+    const updateData = type === 'video'
+      ? { videoUrl: mediaUrl, mediaType: 'video' as const }
+      : { imageUrl: mediaUrl, mediaType: 'image' as const };
+
+    // Persist first so the live subscription cannot overwrite the optimistic card update.
+    try {
+      await marketingService.updateCard(cardId, updateData);
+      setApprovalCards(prev => prev.map(c => c.id === cardId ? {
+        ...c,
+        ...updateData,
+      } : c));
+    } catch (error) {
+      console.error("Không thể lưu media vào card marketing:", error);
+      toast.error("Video đã tạo xong nhưng chưa thể gắn vào card. Vui lòng thử lại.");
+    }
   };
 
   const handleOpenLightbox = (card: ContentApprovalCard, type: 'image' | 'video', url: string) => {

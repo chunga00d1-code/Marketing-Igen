@@ -25,6 +25,7 @@ const createAvatarVideoSchema = {
     avatarBackground: Joi.string().valid("customize", "remove", "color").optional(),
     backgroundColor: Joi.string().allow("").optional(),
     avatarLayout: Joi.string().valid("original", "circle").optional(),
+    cardId: Joi.string().allow("").optional(),
   }).custom((value, helpers) => {
     if (value.engineType === "avatar_iii") {
       if (!String(value.inputText || "").trim()) {
