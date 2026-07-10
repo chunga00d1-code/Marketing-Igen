@@ -56,7 +56,7 @@ export default function CRMTab() {
   const [newLeadName, setNewLeadName] = useState("");
   const [newLeadValue, setNewLeadValue] = useState("");
   const [newLeadStatus, setNewLeadStatus] = useState<"cold" | "warm" | "hot">("cold");
-  const [newLeadTouchpoint, setNewLeadTouchpoint] = useState("Má»›i tiáº¿p cáº­n");
+  const [newLeadTouchpoint, setNewLeadTouchpoint] = useState("Mới tiếp cận");
   const [newLeadCompany, setNewLeadCompany] = useState("");
 
   const [searchPipeline, setSearchPipeline] = useState("");
@@ -103,7 +103,7 @@ export default function CRMTab() {
     if (userProfile?.facebookIntegration?.isConnected && userProfile.facebookIntegration.pageId) {
       list.push({
         _id: "personal",
-        displayName: userProfile.facebookIntegration.pageName || "Fanpage cÃ¡ nhÃ¢n",
+        displayName: userProfile.facebookIntegration.pageName || "Fanpage cá nhân",
         username: userProfile.facebookIntegration.pageId,
         isMock: !!userProfile.facebookIntegration.isMock,
       });
@@ -144,7 +144,7 @@ export default function CRMTab() {
     if (userProfile?.zaloIntegration?.isConnected && userProfile.zaloIntegration.oaId) {
       list.push({
         _id: "personal",
-        displayName: userProfile.zaloIntegration.oaName || "Zalo OA cÃ¡ nhÃ¢n",
+        displayName: userProfile.zaloIntegration.oaName || "Zalo OA cá nhân",
         username: userProfile.zaloIntegration.oaId,
         isMock: !!userProfile.zaloIntegration.isMock,
       });
@@ -314,7 +314,7 @@ export default function CRMTab() {
     autoCloseDeal: true,
     autoFeedback: true,
     replyDelay: 15,
-    advancedInstructions: "LuÃ´n Æ°u tiÃªn xÆ°ng hÃ´ lá»‹ch thiá»‡p. Há»i thÄƒm nhu cáº§u chÄƒm sÃ³c sá»©c khá»e cá»§a doanh nghiá»‡p.",
+    advancedInstructions: "Luôn ưu tiên xưng hô lịch thiệp. Hỏi thăm nhu cầu chăm sóc sức khỏe của doanh nghiệp.",
     trainingKnowledge: "",
     model: localStorage.getItem("selected_ai_model") || "gemini-3.5-flash"
   });
@@ -378,7 +378,7 @@ export default function CRMTab() {
       autoFeedback: true,
       disabledAt: newConfig.enabled === false ? new Date().toISOString() : null,
     };
-    
+
     setAIConfig(configWithTimestamp);
     try {
       let targetIntegrationId: string | null = null;
@@ -406,7 +406,7 @@ export default function CRMTab() {
         });
         const result = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(result.message || "KhÃ´ng thá»ƒ lÆ°u cáº¥u hÃ¬nh AI cho tÃ i khoáº£n liÃªn káº¿t.");
+          throw new Error(result.message || "Không thể lưu cấu hình AI cho tài khoản liên kết.");
         }
         // Update local state in memory
         setCompanySocialIntegrations(prev =>
@@ -416,8 +416,8 @@ export default function CRMTab() {
         await updateAiAutoReplyConfig(configWithTimestamp);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Lá»—i lÆ°u cáº¥u hÃ¬nh AI";
-      console.error("[CRMTab] Lá»—i lÆ°u cáº¥u hÃ¬nh AI:", err);
+      const msg = err instanceof Error ? err.message : "Lỗi lưu cấu hình AI";
+      console.error("[CRMTab] Lỗi lưu cấu hình AI:", err);
       toast.error(msg);
     }
   };
@@ -440,18 +440,18 @@ export default function CRMTab() {
     }
 
     if (!activeId) {
-      toast.warning("Chá»‰ há»— trá»£ Ä‘á»“ng bá»™ cáº¥u hÃ¬nh giá»¯a cÃ¡c tÃ i khoáº£n liÃªn káº¿t doanh nghiá»‡p.");
+      toast.warning("Chỉ hỗ trợ đồng bộ cấu hình giữa các tài khoản liên kết doanh nghiệp.");
       return;
     }
 
     const otherIntegrations = companySocialIntegrations.filter(item => item.isConnected && item._id !== activeId);
     if (otherIntegrations.length === 0) {
-      toast.info("KhÃ´ng cÃ³ tÃ i khoáº£n doanh nghiá»‡p liÃªn káº¿t nÃ o khÃ¡c Ä‘á»ƒ Ä‘á»“ng bá»™.");
+      toast.info("Không có tài khoản doanh nghiệp liên kết nào khác để đồng bộ.");
       return;
     }
 
     const confirmSync = window.confirm(
-      `Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n Ã¡p dá»¥ng cáº¥u hÃ¬nh AI hiá»‡n táº¡i cho táº¥t cáº£ ${otherIntegrations.length} tÃ i khoáº£n doanh nghiá»‡p liÃªn káº¿t khÃ¡c khÃ´ng?`
+      `Bạn có chắc chắn muốn áp dụng cấu hình AI hiện tại cho tất cả ${otherIntegrations.length} tài khoản doanh nghiệp liên kết khác không?`
     );
     if (!confirmSync) return;
 
@@ -474,10 +474,10 @@ export default function CRMTab() {
           );
         }
       }
-      toast.success(`ÄÃ£ sao chÃ©p cáº¥u hÃ¬nh thÃ nh cÃ´ng sang ${successCount}/${otherIntegrations.length} tÃ i khoáº£n khÃ¡c!`);
+      toast.success(`Đã sao chép cấu hình thành công sang ${successCount}/${otherIntegrations.length} tài khoản khác!`);
     } catch (err: unknown) {
       console.error(err);
-      toast.error("Lá»—i xáº£y ra trong quÃ¡ trÃ¬nh Ä‘á»“ng bá»™ cáº¥u hÃ¬nh.");
+      toast.error("Lỗi xảy ra trong quá trình đồng bộ cấu hình.");
     } finally {
       setCopyingConfig(false);
     }
@@ -511,10 +511,10 @@ export default function CRMTab() {
   const normalizeMessageAttachments = (attachments?: unknown[]): ChatMessage["attachments"] =>
     Array.isArray(attachments)
       ? attachments.filter((item): item is { type: string; url: string } => {
-          if (!item || typeof item !== "object") return false;
-          const candidate = item as { type?: unknown; url?: unknown };
-          return typeof candidate.type === "string" && typeof candidate.url === "string";
-        })
+        if (!item || typeof item !== "object") return false;
+        const candidate = item as { type?: unknown; url?: unknown };
+        return typeof candidate.type === "string" && typeof candidate.url === "string";
+      })
       : [];
 
   const normalizeConversationId = (value?: string | Record<string, string>): string =>
@@ -554,21 +554,21 @@ export default function CRMTab() {
               {
                 _id: "msg_fb_1",
                 direction: "inbound",
-                text: "ChÃ o shop, bÃªn mÃ¬nh Ä‘ang cung cáº¥p giáº£i phÃ¡p Marketing tá»± Ä‘á»™ng Ä‘Ãºng khÃ´ng?",
+                text: "Chào shop, bên mình đang cung cấp giải pháp Marketing tự động đúng không?",
                 timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_fb_2",
                 direction: "outbound",
-                text: "Dáº¡ Ä‘Ãºng rá»“i áº¡. iGen Marketing cung cáº¥p bá»™ giáº£i phÃ¡p thu hÃºt khÃ¡ch hÃ ng Ä‘a kÃªnh tá»± Ä‘á»™ng, bao gá»“m tráº£ lá»i comment, gá»­i tin nháº¯n inbox vÃ  lÃªn lá»‹ch Ä‘Äƒng bÃ i hÃ ng loáº¡t.",
+                text: "Dạ đúng rồi ạ. iGen cung cấp bộ giải pháp thu hút khách hàng đa kênh tự động, bao gồm trả lời comment, gửi tin nhắn inbox và lên lịch đăng bài hàng loạt.",
                 timestamp: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_fb_3",
                 direction: "inbound",
-                text: "TÆ° váº¥n giÃºp em gÃ³i pháº§n má»m Marketing tá»± Ä‘á»™ng vá»›i áº¡.",
+                text: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
                 timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
                 conversationId,
               }
@@ -581,21 +581,21 @@ export default function CRMTab() {
               {
                 _id: "msg_fb_4",
                 direction: "inbound",
-                text: "ChÃ o ad, mÃ¬nh muá»‘n xin tÃ i liá»‡u hÆ°á»›ng dáº«n tá»‘i Æ°u quáº£ng cÃ¡o Facebook.",
+                text: "Chào ad, mình muốn xin tài liệu hướng dẫn tối ưu quảng cáo Facebook.",
                 timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_fb_5",
                 direction: "outbound",
-                text: "ChÃ o báº¡n, cáº©m nang tá»‘i Æ°u quáº£ng cÃ¡o Facebook 2026 Ä‘Ã£ Ä‘Æ°á»£c gá»­i Ä‘Ã­nh kÃ¨m. Báº¡n cÃ³ thá»ƒ download trá»±c tiáº¿p nhÃ©!",
+                text: "Chào bạn, cẩm nang tối ưu quảng cáo Facebook 2026 đã được gửi đính kèm. Bạn có thể download trực tiếp nhé!",
                 timestamp: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_fb_6",
                 direction: "inbound",
-                text: "Cáº£m Æ¡n ad, tÃ i liá»‡u hÆ°á»›ng dáº«n ráº¥t chi tiáº¿t!",
+                text: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
                 timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
                 conversationId,
               }
@@ -608,21 +608,21 @@ export default function CRMTab() {
               {
                 _id: "msg_zalo_1",
                 direction: "inbound",
-                text: "Xin chÃ o, tÃ´i muá»‘n há»i vá» chÃ­nh sÃ¡ch há»£p tÃ¡c Ä‘áº¡i lÃ½ dá»‹ch vá»¥ ERP.",
+                text: "Xin chào, tôi muốn hỏi về chính sách hợp tác đại lý dịch vụ ERP.",
                 timestamp: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_zalo_2",
                 direction: "outbound",
-                text: "ChÃ o anh/chá»‹, iGen há»— trá»£ chÃ­nh sÃ¡ch chiáº¿t kháº¥u lÃªn Ä‘áº¿n 35% cho Ä‘áº¡i lÃ½ ERP cáº¥p 1. Há»— trá»£ Ä‘Ã o táº¡o nhÃ¢n sá»± vÃ  ká»¹ thuáº­t miá»…n phÃ­.",
+                text: "Chào anh/chị, iGen hỗ trợ chính sách chiết khấu lên đến 35% cho đại lý ERP cấp 1. Hỗ trợ đào tạo nhân sự và kỹ thuật miễn phí.",
                 timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_zalo_3",
                 direction: "inbound",
-                text: "BÃªn mÃ¬nh cÃ³ xuáº¥t hÃ³a Ä‘Æ¡n Ä‘á» cho doanh nghiá»‡p khÃ´ng?",
+                text: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
                 timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
                 conversationId,
               }
@@ -635,21 +635,21 @@ export default function CRMTab() {
               {
                 _id: "msg_zalo_4",
                 direction: "inbound",
-                text: "ChÃ o báº¡n, bÃ¡o giÃ¡ dá»‹ch vá»¥ gá»­i hÃ´m trÆ°á»›c mÃ¬nh Ä‘Ã£ nháº­n Ä‘Æ°á»£c.",
+                text: "Chào bạn, báo giá dịch vụ gửi hôm trước mình đã nhận được.",
                 timestamp: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_zalo_5",
                 direction: "outbound",
-                text: "Dáº¡ vÃ¢ng áº¡, khÃ´ng biáº¿t sáº¿p bÃªn mÃ¬nh cÃ³ pháº£n há»“i hay cáº§n Ä‘iá»u chá»‰nh gÃ¬ thÃªm trong bÃ¡o giÃ¡ khÃ´ng anh?",
+                text: "Dạ vâng ạ, không biết sếp bên mình có phản hồi hay cần điều chỉnh gì thêm trong báo giá không anh?",
                 timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_zalo_6",
                 direction: "inbound",
-                text: "VÃ¢ng, Ä‘á»ƒ em bÃ n báº¡c thÃªm vá»›i sáº¿p rá»“i pháº£n há»“i shop.",
+                text: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
                 timestamp: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
                 conversationId,
               }
@@ -662,21 +662,21 @@ export default function CRMTab() {
               {
                 _id: "msg_tt_1",
                 direction: "inbound",
-                text: "Xin chÃ o iGen Marketing!",
+                text: "Xin chào iGen Marketing!",
                 timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_tt_2",
                 direction: "outbound",
-                text: "ChÃ o anh HÃ¹ng, iGen Marketing xin chÃ o anh. ChÃºng em cÃ³ thá»ƒ há»— trá»£ gÃ¬ cho anh áº¡?",
+                text: "Chào anh Hùng, iGen Marketing xin chào anh. Chúng em có thể hỗ trợ gì cho anh ạ?",
                 timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
                 conversationId,
               },
               {
                 _id: "msg_tt_3",
                 direction: "inbound",
-                text: "Sáº£n pháº©m nÃ y bÃªn mÃ¬nh cÃ²n hÃ ng khÃ´ng áº¡?",
+                text: "Sản phẩm này bên mình còn hàng không ạ?",
                 timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
                 conversationId,
               }
@@ -689,7 +689,7 @@ export default function CRMTab() {
               {
                 _id: "msg_tt_4",
                 direction: "inbound",
-                text: "Shop Æ¡i, hÆ°á»›ng dáº«n em cÃ¡ch Ä‘áº·t hÃ ng vá»›i áº¡.",
+                text: "Shop ơi, hướng dẫn em cách đặt hàng với ạ.",
                 timestamp: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
                 conversationId,
               }
@@ -705,10 +705,10 @@ export default function CRMTab() {
             : await fbMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, pageId: selectedFacebookPageId });
       }
 
-      // NgÄƒn cháº·n race-condition khi ngÆ°á»i dÃ¹ng chuyá»ƒn Ä‘á»•i khÃ¡ch hÃ ng nhanh
+      // NgÄƒn cháº·n race-condition khi ngÆ°á» i dÃ¹ng chuyá»ƒn Ä‘á»•i khÃ¡ch hÃ ng nhanh
       // conversationId o day la Mongo _id cua conversation trong DB, khong phai PSID/UID cua khach.
       if (activeCustomerRef.current?.id !== conversationId) {
-        console.log(`[FE CRMTab] Race-condition detected: Bá» qua káº¿t quáº£ load tin nháº¯n cá»§a khÃ¡ch hÃ ng cÅ© (${conversationId}).`);
+        console.log(`[FE CRMTab] Race-condition detected: Bỏ qua kết quả load tin nhắn của khách hàng cũ (${conversationId}).`);
         return;
       }
 
@@ -732,19 +732,19 @@ export default function CRMTab() {
               prev.some(m => mappedMsgs.some(nm => nm.id === m.id)));
 
           if (isSameConversation) {
-            // Gá»™p tin nháº¯n má»›i/cáº­p nháº­t mÃ  khÃ´ng lÃ m máº¥t lá»‹ch sá»­ cÅ© Ä‘Ã£ cuá»™n Ä‘á»ƒ táº£i lÃªn
+            // Gộp tin nhắn mới/cập nhật mà không làm mất lịch sử cũ đã cuộn để tải lên
             const merged = [...prev];
             mappedMsgs.forEach((newMsg) => {
               const idx = merged.findIndex((m) => m.id === newMsg.id || (m.id.startsWith("user_") && m.text === newMsg.text && m.sender === newMsg.sender));
               if (idx !== -1) {
-                merged[idx] = newMsg; // Cáº­p nháº­t tin nháº¯n sáºµn cÃ³ (tráº¡ng thÃ¡i/id tháº­t)
+                merged[idx] = newMsg; // Cập nhật tin nhắn sẵn có (trạng thái/id thật)
               } else {
-                merged.push(newMsg); // ThÃªm tin nháº¯n má»›i
+                merged.push(newMsg); // Thêm tin nhắn mới
               }
             });
             return merged.sort((x, y) => new Date(x.timestamp).getTime() - new Date(y.timestamp).getTime());
           } else {
-            // Cuá»™c há»™i thoáº¡i khÃ¡c (chuyá»ƒn user), thay tháº¿ toÃ n bá»™ báº±ng tin nháº¯n má»›i
+            // Cuộc hội thoại khác (chuyển user), thay thế toàn bộ bằng tin nhắn mới
             return mappedMsgs;
           }
         });
@@ -763,10 +763,10 @@ export default function CRMTab() {
   };
 
   const fetchOmniConversations = async (
-    forceSelectFirst = false, 
+    forceSelectFirst = false,
     options?: { syncFacebook?: boolean; loadMore?: boolean; reset?: boolean }
   ) => {
-    console.log(`[FE CRMTab] fetchOmniConversations: Äang láº¥y dá»¯ liá»‡u há»™i thoáº¡i. loadMore=${!!options?.loadMore}, reset=${!!options?.reset}`);
+    console.log(`[FE CRMTab] fetchOmniConversations: Đang lấy dữ liệu hội thoại. loadMore=${!!options?.loadMore}, reset=${!!options?.reset}`);
     try {
       const isLoadMore = !!options?.loadMore;
       const isReset = !!options?.reset;
@@ -783,10 +783,10 @@ export default function CRMTab() {
       }
 
 
-      const currentSkip = isReset 
-        ? 0 
+      const currentSkip = isReset
+        ? 0
         : (isLoadMore ? convsPaginationRef.current.skip + convsPaginationRef.current.limit : 0);
-      
+
       const limit = isReset
         ? 20
         : (isLoadMore ? convsPaginationRef.current.limit : (convsPaginationRef.current.skip + convsPaginationRef.current.limit || 20));
@@ -801,29 +801,29 @@ export default function CRMTab() {
             {
               _id: "mock_fb_conv_1",
               recipientId: "mock_fb_user_1",
-              senderName: "Pháº¡m Minh HoÃ ng (Facebook)",
+              senderName: "Phạm Minh Hoàng (Facebook)",
               avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "TÆ° váº¥n giÃºp em gÃ³i pháº§n má»m Marketing tá»± Ä‘á»™ng vá»›i áº¡.",
+              lastMessageText: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
               lastMessageAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
               unreadCount: 1,
-              tags: ["KhÃ¡ch NÃ³ng", "Cáº§n tÆ° váº¥n"],
+              tags: ["Khách Nóng", "Cần tư vấn"],
               isVip: true,
             },
             {
               _id: "mock_fb_conv_2",
               recipientId: "mock_fb_user_2",
-              senderName: "HoÃ ng Thanh Mai (Facebook)",
+              senderName: "Hoàng Thanh Mai (Facebook)",
               avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Cáº£m Æ¡n ad, tÃ i liá»‡u hÆ°á»›ng dáº«n ráº¥t chi tiáº¿t!",
+              lastMessageText: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
               lastMessageAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
               unreadCount: 0,
-              tags: ["KhÃ¡ch Láº¡nh", "TÆ°Æ¡ng tÃ¡c tá»‘t"],
+              tags: ["Khách Lạnh", "Tương tác tốt"],
             }
           ];
         } else {
           try {
-            fbConvs = await fbMessengerService.getConversations({ 
-              sync: !!options?.syncFacebook, 
+            fbConvs = await fbMessengerService.getConversations({
+              sync: !!options?.syncFacebook,
               pageId: selectedFacebookPageId,
               limit,
               skip: currentSkip
@@ -833,49 +833,49 @@ export default function CRMTab() {
                 {
                   _id: "mock_fb_conv_1",
                   recipientId: "mock_fb_user_1",
-                  senderName: "Pháº¡m Minh HoÃ ng (Facebook)",
+                  senderName: "Phạm Minh Hoàng (Facebook)",
                   avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "TÆ° váº¥n giÃºp em gÃ³i pháº§n má»m Marketing tá»± Ä‘á»™ng vá»›i áº¡.",
+                  lastMessageText: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
                   lastMessageAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
                   unreadCount: 1,
-                  tags: ["KhÃ¡ch NÃ³ng", "Cáº§n tÆ° váº¥n"],
+                  tags: ["Khách Nóng", "Cần tư vấn"],
                   isVip: true,
                 },
                 {
                   _id: "mock_fb_conv_2",
                   recipientId: "mock_fb_user_2",
-                  senderName: "HoÃ ng Thanh Mai (Facebook)",
+                  senderName: "Hoàng Thanh Mai (Facebook)",
                   avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Cáº£m Æ¡n ad, tÃ i liá»‡u hÆ°á»›ng dáº«n ráº¥t chi tiáº¿t!",
+                  lastMessageText: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
                   lastMessageAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
                   unreadCount: 0,
-                  tags: ["KhÃ¡ch Láº¡nh", "TÆ°Æ¡ng tÃ¡c tá»‘t"],
+                  tags: ["Khách Lạnh", "Tương tác tốt"],
                 }
               ];
             }
           } catch (err) {
-            console.error("Lá»—i láº¥y há»™i thoáº¡i Facebook, fallback sang mock:", err);
+            console.error("Lỗi lấy hội thoại Facebook, fallback sang mock:", err);
             fbConvs = [
               {
                 _id: "mock_fb_conv_1",
                 recipientId: "mock_fb_user_1",
-                senderName: "Pháº¡m Minh HoÃ ng (Facebook)",
+                senderName: "Phạm Minh Hoàng (Facebook)",
                 avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "TÆ° váº¥n giÃºp em gÃ³i pháº§n má»m Marketing tá»± Ä‘á»™ng vá»›i áº¡.",
+                lastMessageText: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
                 lastMessageAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
                 unreadCount: 1,
-                tags: ["KhÃ¡ch NÃ³ng", "Cáº§n tÆ° váº¥n"],
+                tags: ["Khách Nóng", "Cần tư vấn"],
                 isVip: true,
               },
               {
                 _id: "mock_fb_conv_2",
                 recipientId: "mock_fb_user_2",
-                senderName: "HoÃ ng Thanh Mai (Facebook)",
+                senderName: "Hoàng Thanh Mai (Facebook)",
                 avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Cáº£m Æ¡n ad, tÃ i liá»‡u hÆ°á»›ng dáº«n ráº¥t chi tiáº¿t!",
+                lastMessageText: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
                 lastMessageAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
                 unreadCount: 0,
-                tags: ["KhÃ¡ch Láº¡nh", "TÆ°Æ¡ng tÃ¡c tá»‘t"],
+                tags: ["Khách Lạnh", "Tương tác tốt"],
               }
             ];
           }
@@ -889,22 +889,22 @@ export default function CRMTab() {
             {
               _id: "mock_zalo_conv_1",
               recipientId: "mock_zalo_user_1",
-              senderName: "LÃª Nguyá»…n Anh ThÆ° (Zalo)",
+              senderName: "Lê Nguyễn Anh Thư (Zalo)",
               avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "BÃªn mÃ¬nh cÃ³ xuáº¥t hÃ³a Ä‘Æ¡n Ä‘á» cho doanh nghiá»‡p khÃ´ng?",
+              lastMessageText: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
               lastMessageAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
               unreadCount: 2,
-              tags: ["Há»i dá»‹ch vá»¥", "KhÃ¡ch áº¤m"],
+              tags: ["Hỏi dịch vụ", "Khách ẩn"],
             },
             {
               _id: "mock_zalo_conv_2",
               recipientId: "mock_zalo_user_2",
-              senderName: "Nguyá»…n Tuáº¥n Kiá»‡t (Zalo)",
+              senderName: "Nguyễn Tuấn Kiệt (Zalo)",
               avatarUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "VÃ¢ng, Ä‘á»ƒ em bÃ n báº¡c thÃªm vá»›i sáº¿p rá»“i pháº£n há»“i shop.",
+              lastMessageText: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
               lastMessageAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
               unreadCount: 0,
-              tags: ["KhÃ¡ch áº¤m"],
+              tags: ["Khách ẩn"],
             }
           ];
         } else {
@@ -918,47 +918,47 @@ export default function CRMTab() {
                 {
                   _id: "mock_zalo_conv_1",
                   recipientId: "mock_zalo_user_1",
-                  senderName: "LÃª Nguyá»…n Anh ThÆ° (Zalo)",
+                  senderName: "Lê Nguyễn Anh Thư (Zalo)",
                   avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "BÃªn mÃ¬nh cÃ³ xuáº¥t hÃ³a Ä‘Æ¡n Ä‘á» cho doanh nghiá»‡p khÃ´ng?",
+                  lastMessageText: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
                   lastMessageAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
                   unreadCount: 2,
-                  tags: ["Há»i dá»‹ch vá»¥", "KhÃ¡ch áº¤m"],
+                  tags: ["Hỏi dịch vụ", "Khách ẩn"],
                 },
                 {
                   _id: "mock_zalo_conv_2",
                   recipientId: "mock_zalo_user_2",
-                  senderName: "Nguyá»…n Tuáº¥n Kiá»‡t (Zalo)",
+                  senderName: "Nguyễn Tuấn Kiệt (Zalo)",
                   avatarUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "VÃ¢ng, Ä‘á»ƒ em bÃ n báº¡c thÃªm vá»›i sáº¿p rá»“i pháº£n há»“i shop.",
+                  lastMessageText: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
                   lastMessageAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
                   unreadCount: 0,
-                  tags: ["KhÃ¡ch áº¤m"],
+                  tags: ["Khách ẩn"],
                 }
               ];
             }
           } catch (err) {
-            console.error("Lá»—i láº¥y há»™i thoáº¡i Zalo, fallback sang mock:", err);
+            console.error("Lỗi lấy hội thoại Zalo, fallback sang mock:", err);
             zaloConvs = [
               {
                 _id: "mock_zalo_conv_1",
                 recipientId: "mock_zalo_user_1",
-                senderName: "LÃª Nguyá»…n Anh ThÆ° (Zalo)",
+                senderName: "Lê Nguyễn Anh Thư (Zalo)",
                 avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "BÃªn mÃ¬nh cÃ³ xuáº¥t hÃ³a Ä‘Æ¡n Ä‘á» cho doanh nghiá»‡p khÃ´ng?",
+                lastMessageText: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
                 lastMessageAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
                 unreadCount: 2,
-                tags: ["Há»i dá»‹ch vá»¥", "KhÃ¡ch áº¤m"],
+                tags: ["Hỏi dịch vụ", "Khách ẩn"],
               },
               {
                 _id: "mock_zalo_conv_2",
                 recipientId: "mock_zalo_user_2",
-                senderName: "Nguyá»…n Tuáº¥n Kiá»‡t (Zalo)",
+                senderName: "Nguyễn Tuấn Kiệt (Zalo)",
                 avatarUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "VÃ¢ng, Ä‘á»ƒ em bÃ n báº¡c thÃªm vá»›i sáº¿p rá»“i pháº£n há»“i shop.",
+                lastMessageText: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
                 lastMessageAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
                 unreadCount: 0,
-                tags: ["KhÃ¡ch áº¤m"],
+                tags: ["Khách ẩn"],
               }
             ];
           }
@@ -976,22 +976,22 @@ export default function CRMTab() {
             {
               _id: "mock_tiktok_conv_1",
               openId: "mock_tiktok_user_1",
-              senderName: "Nguyá»…n VÄƒn HÃ¹ng (TikTok)",
+              senderName: "Nguyễn Văn Hùng (TikTok)",
               avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Sáº£n pháº©m nÃ y bÃªn mÃ¬nh cÃ²n hÃ ng khÃ´ng áº¡?",
+              lastMessageText: "Sản phẩm này bên mình còn hàng không ạ?",
               lastMessageAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
               unreadCount: 1,
-              tags: ["Há»i hÃ ng", "Tiá»m nÄƒng"],
+              tags: ["Hỏi hàng", "Tiềm năng"],
             },
             {
               _id: "mock_tiktok_conv_2",
               openId: "mock_tiktok_user_2",
-              senderName: "Tráº§n Thá»‹ Lan (TikTok)",
+              senderName: "Trần Thị Lan (TikTok)",
               avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Shop Æ¡i, hÆ°á»›ng dáº«n em cÃ¡ch Ä‘áº·t hÃ ng vá»›i áº¡.",
+              lastMessageText: "Shop ơi, hướng dẫn em cách đặt hàng với ạ.",
               lastMessageAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
               unreadCount: 0,
-              tags: ["Cáº§n tÆ° váº¥n"],
+              tags: ["Cần tư vấn"],
             }
           ];
         } else {
@@ -1005,47 +1005,47 @@ export default function CRMTab() {
                 {
                   _id: "mock_tiktok_conv_1",
                   openId: "mock_tiktok_user_1",
-                  senderName: "Nguyá»…n VÄƒn HÃ¹ng (TikTok)",
+                  senderName: "Nguyễn Văn Hùng (TikTok)",
                   avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Sáº£n pháº©m nÃ y bÃªn mÃ¬nh cÃ²n hÃ ng khÃ´ng áº¡?",
+                  lastMessageText: "Sản phẩm này bên mình còn hàng không ạ?",
                   lastMessageAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
                   unreadCount: 1,
-                  tags: ["Há»i hÃ ng", "Tiá»m nÄƒng"],
+                  tags: ["Hỏi hàng", "Tiềm năng"],
                 },
                 {
                   _id: "mock_tiktok_conv_2",
                   openId: "mock_tiktok_user_2",
-                  senderName: "Tráº§n Thá»‹ Lan (TikTok)",
+                  senderName: "Trần Thị Lan (TikTok)",
                   avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Shop Æ¡i, hÆ°á»›ng dáº«n em cÃ¡ch Ä‘áº·t hÃ ng vá»›i áº¡.",
+                  lastMessageText: "Shop ơi, hướng dẫn em cách đặt hàng với ạ.",
                   lastMessageAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
                   unreadCount: 0,
-                  tags: ["Cáº§n tÆ° váº¥n"],
+                  tags: ["Cần tư vấn"],
                 }
               ];
             }
           } catch (err) {
-            console.error("Lá»—i láº¥y há»™i thoáº¡i TikTok, fallback sang mock:", err);
+            console.error("Lỗi lấy hội thoại TikTok, fallback sang mock:", err);
             tiktokConvs = [
               {
                 _id: "mock_tiktok_conv_1",
                 openId: "mock_tiktok_user_1",
-                senderName: "Nguyá»…n VÄƒn HÃ¹ng (TikTok)",
+                senderName: "Nguyễn Văn Hùng (TikTok)",
                 avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Sáº£n pháº©m nÃ y bÃªn mÃ¬nh cÃ²n hÃ ng khÃ´ng áº¡?",
+                lastMessageText: "Sản phẩm này bên mình còn hàng không ạ?",
                 lastMessageAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
                 unreadCount: 1,
-                tags: ["Há»i hÃ ng", "Tiá»m nÄƒng"],
+                tags: ["Hỏi hàng", "Tiềm năng"],
               },
               {
                 _id: "mock_tiktok_conv_2",
                 openId: "mock_tiktok_user_2",
-                senderName: "Tráº§n Thá»‹ Lan (TikTok)",
+                senderName: "Trần Thị Lan (TikTok)",
                 avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Shop Æ¡i, hÆ°á»›ng dáº«n em cÃ¡ch Ä‘áº·t hÃ ng vá»›i áº¡.",
+                lastMessageText: "Shop ơi, hướng dẫn em cách đặt hàng với ạ.",
                 lastMessageAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
                 unreadCount: 0,
-                tags: ["Cáº§n tÆ° váº¥n"],
+                tags: ["Cần tư vấn"],
               }
             ];
           }
@@ -1055,10 +1055,10 @@ export default function CRMTab() {
       const mappedFb: CustomerInbox[] = fbConvs.map((c) => ({
         id: c._id || c.recipientId || "",
         recipientId: c.recipientId || "",
-        name: c.senderName || "KhÃ¡ch hÃ ng Facebook",
+        name: c.senderName || "Khách hàng Facebook",
         avatar: c.avatarUrl || "ðŸ‘¤",
         avatarUrl: c.avatarUrl || "",
-        lastMessage: c.lastMessageText || "[ÄÃ­nh kÃ¨m]",
+        lastMessage: c.lastMessageText || "[Đính kèm]",
         time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         unreadCount: c.unreadCount || 0,
         isVip: c.isVip || false,
@@ -1072,10 +1072,10 @@ export default function CRMTab() {
       const mappedZalo: CustomerInbox[] = zaloConvs.map((c) => ({
         id: c._id || c.recipientId || "",
         recipientId: c.recipientId || "",
-        name: c.senderName || "KhÃ¡ch hÃ ng Zalo",
+        name: c.senderName || "Khách hàng Zalo",
         avatar: c.avatarUrl || "ðŸ‘¤",
         avatarUrl: c.avatarUrl || "",
-        lastMessage: c.lastMessageText || "[ÄÃ­nh kÃ¨m]",
+        lastMessage: c.lastMessageText || "[Đính kèm]",
         time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         unreadCount: c.unreadCount || 0,
         isVip: c.isVip || false,
@@ -1089,10 +1089,10 @@ export default function CRMTab() {
       const mappedTiktok: CustomerInbox[] = tiktokConvs.map((c) => ({
         id: c._id || c.openId || "",
         recipientId: c.openId || "",
-        name: c.senderName || "KhÃ¡ch hÃ ng TikTok",
+        name: c.senderName || "Khách hàng TikTok",
         avatar: c.avatarUrl || "ðŸ‘¤",
         avatarUrl: c.avatarUrl || "",
-        lastMessage: c.lastMessageText || "[ÄÃ­nh kÃ¨m]",
+        lastMessage: c.lastMessageText || "[Đính kèm]",
         time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         unreadCount: c.unreadCount || 0,
         isVip: c.isVip || false,
@@ -1104,7 +1104,7 @@ export default function CRMTab() {
       }));
 
       const fetchedList = [...mappedFb, ...mappedZalo, ...mappedTiktok];
-      
+
 
 
       const hasMoreFetched = fetchedList.length >= limit;
@@ -1113,7 +1113,7 @@ export default function CRMTab() {
         const baseList = (isLoadMore && !isReset) ? prev : [];
         const existingIds = new Set(baseList.map((x) => x.id));
         const filteredNew = fetchedList.filter((x) => !existingIds.has(x.id));
-        
+
         const combined = [...baseList, ...filteredNew].map((c) => {
           if (activeCustomerRef.current && c.id === activeCustomerRef.current.id) {
             return { ...c, unreadCount: 0 };
@@ -1145,7 +1145,7 @@ export default function CRMTab() {
         isLoadingMore: false,
       });
     } catch (err) {
-      console.error("[FE CRMTab] Lá»—i khi táº£i danh sÃ¡ch há»™i thoáº¡i:", err);
+      console.error("[FE CRMTab] Lỗi khi tải danh sách hội thoại:", err);
       setConvsPagination(prev => ({ ...prev, isLoadingMore: false }));
     } finally {
       setIsInboxLoading(false);
@@ -1194,14 +1194,14 @@ export default function CRMTab() {
           prev.map((c) =>
             c.id === conversation._id
               ? {
-                  ...c,
-                  aiPausedUntil: conversation.aiPausedUntil || null,
-                  lastMessage: conversation.lastMessageText || c.lastMessage,
-                  time: new Date(conversation.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                }
+                ...c,
+                aiPausedUntil: conversation.aiPausedUntil || null,
+                lastMessage: conversation.lastMessageText || c.lastMessage,
+                time: new Date(conversation.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              }
               : c
           )
         );
@@ -1210,9 +1210,9 @@ export default function CRMTab() {
           setActiveCustomer((prev) =>
             prev
               ? {
-                  ...prev,
-                  aiPausedUntil: conversation.aiPausedUntil || null,
-                }
+                ...prev,
+                aiPausedUntil: conversation.aiPausedUntil || null,
+              }
               : null
           );
         }
@@ -1248,13 +1248,13 @@ export default function CRMTab() {
 
           const mapped = mapFbMessages([message])[0];
           setChatHistory((prev) => {
-            // Khá»­ trÃ¹ng láº·p vÃ  thay tháº¿ tin nháº¯n táº¡m thá»i (optimistic update)
+            // Khá»­ trÃ¹ng láº·p vÃ  thay tháº¿ tin nhắn tạm thời (optimistic update)
             const optimisticIndex = prev.findIndex(
               (m) => m.id.startsWith("user_") && m.text === mapped.text && m.sender === mapped.sender
             );
             if (optimisticIndex !== -1) {
               const nextHistory = [...prev];
-              nextHistory[optimisticIndex] = mapped; // Thay tháº¿ báº±ng tin nháº¯n chÃ­nh thá»©c tá»« DB
+              nextHistory[optimisticIndex] = mapped; // Thay thế bằng tin nhắn chính thức từ DB
               return nextHistory;
             }
 
@@ -1284,14 +1284,14 @@ export default function CRMTab() {
           prev.map((c) =>
             c.id === conversation._id
               ? {
-                  ...c,
-                  aiPausedUntil: conversation.aiPausedUntil || null,
-                  lastMessage: conversation.lastMessageText || c.lastMessage,
-                  time: new Date(conversation.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
-                }
+                ...c,
+                aiPausedUntil: conversation.aiPausedUntil || null,
+                lastMessage: conversation.lastMessageText || c.lastMessage,
+                time: new Date(conversation.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              }
               : c
           )
         );
@@ -1301,9 +1301,9 @@ export default function CRMTab() {
           setActiveCustomer((prev) =>
             prev
               ? {
-                  ...prev,
-                  aiPausedUntil: conversation.aiPausedUntil || null,
-                }
+                ...prev,
+                aiPausedUntil: conversation.aiPausedUntil || null,
+              }
               : null
           );
         }
@@ -1329,11 +1329,11 @@ export default function CRMTab() {
     };
   }, []);
 
-  // 1. Polling danh sÃ¡ch há»™i thoáº¡i (FB, Zalo & TikTok) - Tá»‘i Æ°u hiá»‡u nÄƒng Visibility
+  // 1. Polling danh sách hội thoại (FB, Zalo & TikTok) - Tối ưu hiệu năng Visibility
   useEffect(() => {
     if (subTab !== "OMNI-INBOX CHAT" || (!isFbConnected && !isZaloConnected && !isTiktokConnected)) return;
 
-    // Táº£i vÃ  tá»± Ä‘á»™ng chá»n cuá»™c há»™i thoáº¡i Ä‘áº§u tiÃªn khi mount, Ä‘á»•i page FB, hoáº·c Ä‘á»•i káº¿t ná»‘i
+    // Tải và tự động chọn cuộc hội thoại đầu tiên khi mount, đổi page FB, hoặc đổi kết nối
     fetchOmniConversations(true, { syncFacebook: true, reset: true });
 
     const runFetch = () => {
@@ -1356,30 +1356,30 @@ export default function CRMTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, isFbConnected, isZaloConnected, isTiktokConnected, selectedFacebookPageId, selectedZaloAccountId, selectedTiktokAccountId, socketConnected]);
 
-  // 2. Polling lá»‹ch sá»­ tin nháº¯n cá»§a há»™i thoáº¡i Ä‘ang chá»n - Tá»‘i Æ°u hiá»‡u nÄƒng Visibility
+  // 2. Polling lịch sử tin nhắn của hội thoại đang chọn - Tối ưu hiệu năng Visibility
   useEffect(() => {
     if (subTab !== "OMNI-INBOX CHAT" || !activeCustomer) return;
 
     const fetchMessages = async () => {
       if (document.hidden) return;
       if (socketConnected) return;
-      console.log(`[FE CRMTab] Fallback polling lá»‹ch sá»­ tin nháº¯n cho conversation ID: ${activeCustomer.id}...`);
+      console.log(`[FE CRMTab] Fallback polling lịch sử tin nhắn cho conversation ID: ${activeCustomer.id}...`);
       try {
         await loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true });
       } catch (err) {
-        console.error("[FE CRMTab] Lá»—i khi táº£i tin nháº¯n:", err);
+        console.error("[FE CRMTab] Lỗi khi tải tin nhắn:", err);
       }
     };
 
     loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: !socketConnected }).catch((err) => {
-      console.error("[FE CRMTab] Lá»—i khi táº£i lá»‹ch sá»­ tin nháº¯n ban Ä‘áº§u:", err);
+      console.error("[FE CRMTab] Lỗi khi tải lịch sử tin nhắn ban đầu:", err);
     });
     const interval = setInterval(fetchMessages, 60000);
 
     const handleVisibility = () => {
       if (!document.hidden) {
         loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true }).catch((err) => {
-          console.error("[FE CRMTab] Lá»—i khi Ä‘á»“ng bá»™ tin nháº¯n sau khi quay láº¡i tab:", err);
+          console.error("[FE CRMTab] Lỗi khi đồng bộ tin nhắn sau khi quay lại tab:", err);
         });
       }
     };
@@ -1399,14 +1399,14 @@ export default function CRMTab() {
 
   const handleSelectCustomer = (cust: CustomerInbox) => {
     if (activeCustomerRef.current?.id === cust.id) {
-      console.log("[FE CRMTab] KhÃ¡ch hÃ ng Ä‘Ã£ Ä‘Æ°á»£c chá»n sáºµn, bá» qua.");
+      console.log("[FE CRMTab] Khách hàng đã được chọn sẵn, bỏ qua.");
       return;
     }
-    console.log("[FE CRMTab] NhÃ¢n viÃªn chá»n khÃ¡ch hÃ ng tá»« danh sÃ¡ch:", cust);
+    console.log("[FE CRMTab] Nhân viên chọn khách hàng từ danh sách:", cust);
     setActiveCustomer(cust);
-    setChatHistory([]); // XÃ³a sáº¡ch lá»‹ch sá»­ chat cÅ© ngay láº­p tá»©c Ä‘á»ƒ trÃ¡nh hiá»ƒn thá»‹ nháº§m láº«n
+    setChatHistory([]); // Xóa sạch lịch sử chat cũ ngay lập tức để tránh hiển thị nhầm lẫn
 
-    // Äáº·t unreadCount cá»§a khÃ¡ch hÃ ng nÃ y vá» 0 ngay láº­p tá»©c trong local state
+    // Đặt unreadCount của khách hàng này về 0 ngay lập tức trong local state
     setInboxCustomers((prev) =>
       prev.map((c) => (c.id === cust.id ? { ...c, unreadCount: 0 } : c))
     );
@@ -1425,8 +1425,8 @@ export default function CRMTab() {
     try {
       await loadConversationMessages(activeCustomer.id, "prepend", activeCustomer.channel);
     } catch (err) {
-      console.error("[FE CRMTab] Lá»—i khi táº£i thÃªm tin nháº¯n cÅ©:", err);
-      toast.error("KhÃ´ng thá»ƒ táº£i thÃªm tin nháº¯n cÅ©.");
+      console.error("[FE CRMTab] Lỗi khi tải thêm tin nhắn cũ:", err);
+      toast.error("Không thể tải thêm tin nhắn cũ.");
     }
   };
 
@@ -1440,12 +1440,12 @@ export default function CRMTab() {
           return cust;
         }
 
-        const cleanTags = cust.tags.filter(t => !["KhÃ¡ch Láº¡nh", "KhÃ¡ch áº¤m", "KhÃ¡ch NÃ³ng", "ÄÃ£ Chá»‘t ÄÆ¡n", "KhÃ¡ch Up-sell", "Sáº¯p chá»‘t HD", "ÄÃ£ gá»­i bÃ¡o giÃ¡", "Má»›i tiáº¿p cáº­n"].includes(t));
+        const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Đã Chốt Đơn", "Khách Up-sell", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
         const newTempTag =
-          status === "cold" ? "KhÃ¡ch Láº¡nh" :
-            status === "warm" ? "KhÃ¡ch áº¤m" :
-              status === "hot" ? "KhÃ¡ch NÃ³ng" :
-                status === "won" ? "ÄÃ£ Chá»‘t ÄÆ¡n" :
+          status === "cold" ? "Khách Lạnh" :
+            status === "warm" ? "Khách Ấm" :
+              status === "hot" ? "Khách Nóng" :
+                status === "won" ? "Đã Chốt Đơn" :
                   "KhÃ¡ch Up-sell";
         const newTags = [...cleanTags, newTempTag];
         if (touchpoint) {
@@ -1477,10 +1477,10 @@ export default function CRMTab() {
       paymentLink: mockPayment
     });
 
-    const systemMsgText = `âœ¦ [AI AUTOMATION] ÄÃ£ gá»­i tá»± Ä‘á»™ng:
-- Há»£p Ä‘á»“ng Ä‘iá»‡n tá»­: ${mockContract}
-- Link thanh toÃ¡n: ${mockPayment}
-(Tráº¡ng thÃ¡i: Sáº¯p chá»‘t HD - KhÃ¡ch NÃ³ng)`;
+    const systemMsgText = `✅ [AI AUTOMATION] Đã gửi tự động:
+- Hợp đồng điện tử: ${mockContract}
+- Link thanh toán: ${mockPayment}
+(Trạng thái: Sắp chốt HD - Khách Nóng)`;
 
     if (activeCustomer && activeCustomer.name.toLowerCase() === lead.customerName.toLowerCase()) {
       setChatHistory(prev => [
@@ -1493,7 +1493,7 @@ export default function CRMTab() {
         }
       ]);
     }
-    toast.success("Ká»‹ch báº£n chá»‘t Sales tá»± Ä‘á»™ng: ÄÃ£ gá»­i há»£p Ä‘á»“ng Ä‘iá»‡n tá»­!");
+    toast.success("Kịch bản chốt Sales tự động: Đã gửi hợp đồng điện tử!");
   };
 
   const handleCreateLead = async (e: React.FormEvent) => {
@@ -1504,19 +1504,19 @@ export default function CRMTab() {
     const selectedCust = inboxCustomers.find(c => c.id === selectedInboxCustId);
     const avatarIcon = selectedCust
       ? (selectedCust.name.split(" ").filter(Boolean).slice(0, 1).map(part => part[0]?.toUpperCase() || "").join("") || "ðŸ‘¤")
-      : ["ðŸ‘¤", "ðŸ‘¨â€ðŸ’¼", "ðŸ‘©â€ðŸ’¼", "ðŸ‘¨â€ðŸ’»", "ðŸ‘©â€ðŸ’»", "ðŸ§˜"][Math.floor(Math.random() * 6)];
+      : ["ðŸ‘¤", "ðŸ‘¨â€ðŸ’¼", "ðŸ‘©â€ðŸ’¼", "ðŸ‘¨â€ðŸ’»", "ðŸ‘©â€ðŸ’»", "ðŸ§˜"][Math.floor(Math.random() * 6)];
 
     const newLead: Omit<ExtendedLeadCard, "id"> = {
       customerName: newLeadName.trim(),
-      company: newLeadCompany.trim() || "LiÃªn há»‡ cÃ¡ nhÃ¢n má»›i",
+      company: newLeadCompany.trim() || "Liên hệ cá nhân mới",
       value: val,
-      phone: "ChÆ°a bá»• sung",
+      phone: "Chưa bổ sung",
       avatar: avatarIcon,
       email: "chua.co@igen.vn",
       productOfChoice: "",
       status: newLeadStatus,
       lastInteraction: newLeadTouchpoint,
-      lastInteractionTime: "Vá»«a xong"
+      lastInteractionTime: "Vừa xong"
     };
 
     setNewLeadName("");
@@ -1534,13 +1534,13 @@ export default function CRMTab() {
         syncLeadTagToInbox(newLead.customerName, newLeadStatus, newLeadTouchpoint);
       }
 
-      if (newLeadStatus === "hot" && newLeadTouchpoint === "Sáº¯p chá»‘t HD") {
+      if (newLeadStatus === "hot" && newLeadTouchpoint === "Sắp chốt HD") {
         triggerAutoCloseWorkflow(fullLead);
       }
 
-      toast.success("ÄÃ£ thÃªm khÃ¡ch hÃ ng tiá»m nÄƒng thÃ nh cÃ´ng!");
+      toast.success("Đã thêm khách hàng tiềm năng thành công!");
     } catch {
-      toast.error("KhÃ´ng thá»ƒ táº¡o khÃ¡ch hÃ ng trÃªn há»‡ thá»‘ng.");
+      toast.error("Không thể tạo khách hàng trên hệ thống.");
     }
   };
 
@@ -1552,45 +1552,45 @@ export default function CRMTab() {
       await crmService.updateLead(id, { status: newStatus });
       const updatedLead = { ...lead, status: newStatus };
 
-      if (newStatus === "hot" && lead.lastInteraction === "Sáº¯p chá»‘t HD") {
+      if (newStatus === "hot" && lead.lastInteraction === "Sắp chốt HD") {
         triggerAutoCloseWorkflow(updatedLead);
       }
 
       if (newStatus === "won") {
-        toast.success(`ðŸŽ‰ Chá»‘t Ä‘Æ¡n thÃ nh cÃ´ng cho khÃ¡ch hÃ ng ${lead.customerName}!`);
+        toast.success(`Chúc mừng! Chốt đơn thành công cho khách hàng ${lead.customerName}!`);
       }
 
       syncLeadTagToInbox(lead.customerName, newStatus, lead.lastInteraction);
     } catch {
-      toast.error("KhÃ´ng thá»ƒ cáº­p nháº­t tráº¡ng thÃ¡i khÃ¡ch hÃ ng.");
+      toast.error("Không thể cập nhật trạng thái khách hàng.");
     }
   };
 
   const deleteLead = async (id: string) => {
     try {
       await crmService.deleteLead(id);
-      toast.info("ÄÃ£ xÃ³a tháº» cÆ¡ há»™i bÃ¡n hÃ ng.");
+      toast.info("Đã xóa thẻ cơ hội bán hàng.");
     } catch {
-      toast.error("KhÃ´ng thá»ƒ xÃ³a khÃ¡ch hÃ ng trÃªn há»‡ thá»‘ng.");
+      toast.error("Không thể xóa khách hàng trên hệ thống.");
     }
   };
 
   const triggerUpsellCampaignOptimized = async () => {
     const coldLeads = leads.filter(l => l.status === "cold");
     if (coldLeads.length === 0) {
-      toast.error("KhÃ´ng cÃ³ khÃ¡ch hÃ ng nÃ o á»Ÿ cá»™t KhÃ¡ch Láº¡nh Ä‘á»ƒ gá»­i chiáº¿n dá»‹ch.");
+      toast.error("Không có khách hàng nào ở cột Khách Lạnh để gửi chiến dịch.");
       return;
     }
 
-    toast.success(`ÄÃ£ kÃ­ch hoáº¡t chiáº¿n dá»‹ch Up-sell! Gá»­i tá»± Ä‘á»™ng SMS & Voucher giáº£m giÃ¡ 10% cho ${coldLeads.length} KhÃ¡ch Láº¡nh.`);
+    toast.success(`Đã kích hoạt chiến dịch Up-sell! Gửi tự động SMS & Voucher giảm giá 10% cho ${coldLeads.length} Khách Lạnh.`);
 
     try {
       await crmService.bulkUpdateLeads(
         coldLeads.map((lead) => ({
           id: lead.id,
           lead: {
-            lastInteraction: "Gá»­i Campaign Up-sell",
-            lastInteractionTime: "Vá»«a xong"
+            lastInteraction: "Gửi Campaign Up-sell",
+            lastInteractionTime: "Vừa xong"
           }
         }))
       );
@@ -1603,8 +1603,8 @@ export default function CRMTab() {
             return cust;
           }
 
-          const cleanTags = cust.tags.filter(t => !["KhÃ¡ch Láº¡nh", "KhÃ¡ch áº¤m", "KhÃ¡ch NÃ³ng", "Sáº¯p chá»‘t HD", "ÄÃ£ gá»­i bÃ¡o giÃ¡", "Má»›i tiáº¿p cáº­n"].includes(t));
-          const nextTags = [...cleanTags, "KhÃ¡ch Láº¡nh", "Gá»­i Campaign Up-sell"];
+          const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
+          const nextTags = [...cleanTags, "Khách Lạnh", "Gửi Campaign Up-sell"];
 
           if (nextTags.length === cust.tags.length && nextTags.every((tag, index) => tag === cust.tags[index])) {
             return cust;
@@ -1636,10 +1636,10 @@ export default function CRMTab() {
         prev.map((c) => (c.id === conversationId ? { ...c, aiPausedUntil: null } : c))
       );
 
-      toast.success("ðŸ¤– ÄÃ£ kÃ­ch hoáº¡t láº¡i AI pháº£n há»“i cuá»™c há»™i thoáº¡i nÃ y thÃ nh cÃ´ng!");
+      toast.success("Đã kích hoạt lại AI phản hồi cuộc hội thoại này thành công!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "KhÃ´ng thá»ƒ kÃ­ch hoáº¡t láº¡i AI.";
-      console.error("[CRMTab] Lá»—i kÃ­ch hoáº¡t láº¡i AI:", err);
+      const msg = err instanceof Error ? err.message : "Không thể kích hoạt lại AI.";
+      console.error("[CRMTab] Lỗi kích hoạt lại AI:", err);
       toast.error(msg);
     }
   };
@@ -1675,28 +1675,28 @@ export default function CRMTab() {
           prev.map((c) =>
             c.id === activeCustomer.id
               ? {
-                  ...c,
-                  lastMessage: msgText,
-                  time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-                }
+                ...c,
+                lastMessage: msgText,
+                time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+              }
               : c
           )
         );
 
-        // Sau 1.5 giÃ¢y, giáº£ láº­p khÃ¡ch hÃ ng tá»± Ä‘á»™ng pháº£n há»“i láº¡i tin nháº¯n
+        // Sau 1.5 giây, giả lập khách hàng tự động phản hồi lại tin nhắn
         setTimeout(() => {
-          let customerReply = "Cáº£m Æ¡n shop Ä‘Ã£ tÆ° váº¥n áº¡!";
+          let customerReply = "Cảm ơn shop đã tư vấn ạ!";
           const textLower = msgText.toLowerCase();
-          if (textLower.includes("giÃ¡") || textLower.includes("bao nhiÃªu") || textLower.includes("Ä‘áº¯t") || textLower.includes("ráº»") || textLower.includes("phÃ­") || textLower.includes("bao nhiu")) {
-            customerReply = "Dáº¡ vÃ¢ng giÃ¡ há»£p lÃ½ quÃ¡ áº¡, shop lÃªn Ä‘Æ¡n gá»­i giÃºp em nhÃ©!";
-          } else if (textLower.includes("hÃ ng") || textLower.includes("cÃ²n") || textLower.includes("háº¿t") || textLower.includes("sáºµn")) {
-            customerReply = "Dáº¡ em cáº£m Æ¡n shop nha, Ä‘á»ƒ em chá»n size rá»“i bÃ¡o shop.";
-          } else if (textLower.includes("ship") || textLower.includes("gá»­i") || textLower.includes("Ä‘á»‹a chá»‰") || textLower.includes("giao")) {
-            customerReply = "Dáº¡ Ä‘á»‹a chá»‰ cá»§a em lÃ  123 Nguyá»…n TrÃ£i, Thanh XuÃ¢n, HÃ  Ná»™i áº¡.";
-          } else if (textLower.includes("há»£p Ä‘á»“ng") || textLower.includes("thanh toÃ¡n") || textLower.includes("link") || textLower.includes("kÃ½")) {
-            customerReply = "Dáº¡ em Ä‘Ã£ nháº­n Ä‘Æ°á»£c há»£p Ä‘á»“ng vÃ  link thanh toÃ¡n. Äá»ƒ em thanh toÃ¡n luÃ´n áº¡!";
+          if (textLower.includes("giá") || textLower.includes("bao nhiêu") || textLower.includes("đắt") || textLower.includes("rẻ") || textLower.includes("phí") || textLower.includes("bao nhiu")) {
+            customerReply = "Dạ vâng giá hợp lý quá ạ, shop lên đơn gửi giúp em nhé!";
+          } else if (textLower.includes("hàng") || textLower.includes("còn") || textLower.includes("hết") || textLower.includes("sẵn")) {
+            customerReply = "Dạ em cảm ơn shop nha, để em chọn size rồi báo shop.";
+          } else if (textLower.includes("ship") || textLower.includes("gửi") || textLower.includes("địa chỉ") || textLower.includes("giao")) {
+            customerReply = "Dạ địa chỉ của em là 123 Nguyễn Trãi, Thanh Xuân, Hà Nội ạ.";
+          } else if (textLower.includes("hợp đồng") || textLower.includes("thanh toán") || textLower.includes("link") || textLower.includes("ký")) {
+            customerReply = "Dạ em đã nhận được hợp đồng và link thanh toán. Để em thanh toán luôn ạ!";
           }
-          
+
           const newInboundMsg: ChatMessage = {
             id: "mock_inbound_" + Date.now(),
             sender: "user", // KhÃ¡ch hÃ ng tráº£ lá»i
@@ -1705,16 +1705,16 @@ export default function CRMTab() {
           };
 
           setChatHistory((prev) => [...prev, newInboundMsg]);
-          
+
           // Cáº­p nháº­t tin nháº¯n cuá»‘i cÃ¹ng trong danh sÃ¡ch chat
           setInboxCustomers((prev) =>
             prev.map((c) =>
               c.id === activeCustomer.id
                 ? {
-                    ...c,
-                    lastMessage: customerReply,
-                    time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
-                  }
+                  ...c,
+                  lastMessage: customerReply,
+                  time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+                }
                 : c
             )
           );
@@ -1728,7 +1728,7 @@ export default function CRMTab() {
         await fbMessengerService.sendReply(activeCustomer.id, msgText, selectedFacebookPageId);
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "KhÃ´ng thá»ƒ gá»­i tin nháº¯n pháº£n há»“i.";
+      const msg = err instanceof Error ? err.message : "Không thể gửi tin nhắn phản hồi.";
       console.error(err);
       toast.error(msg);
       // Revert optimistic updates
@@ -1738,7 +1738,7 @@ export default function CRMTab() {
         prev.map((c) => (c.id === activeCustomer.id ? { ...c, aiPausedUntil: activeCustomer.aiPausedUntil } : c))
       );
       loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true }).catch((reloadErr) => {
-        console.error("[FE CRMTab] Lá»—i Ä‘á»“ng bá»™ láº¡i lá»‹ch sá»­ sau khi gá»­i tháº¥t báº¡i:", reloadErr);
+        console.error("[FE CRMTab] Lỗi đồng bộ lại lịch sử sau khi gửi thất bại:", reloadErr);
       });
     }
   };
@@ -1749,30 +1749,30 @@ export default function CRMTab() {
       setActiveCustomer(cust);
       handleSelectCustomer(cust);
       setSubTab("OMNI-INBOX CHAT");
-      toast.info(`ÄÃ£ má»Ÿ cuá»™c trÃ² chuyá»‡n vá»›i ${customerName}`);
+      toast.info(`Đã mở cuộc trò chuyện với ${customerName}`);
     } else {
-      toast.warning("KhÃ¡ch hÃ ng nÃ y chÆ°a tá»«ng tÆ°Æ¡ng tÃ¡c/nháº¯n tin tá»›i Fanpage, khÃ´ng thá»ƒ tá»± khá»Ÿi táº¡o chat.");
+      toast.warning("Khách hàng này chưa từng tương tác/nhắn tin tới Fanpage, không thể tự khởi tạo chat.");
     }
   };
 
   const handleCreateLeadFromChat = async (customer: CustomerInbox, status: "cold" | "warm" | "hot") => {
     const newLead: Omit<ExtendedLeadCard, "id"> = {
       customerName: customer.name,
-      company: customer.channel === "zalo" ? "KhÃ¡ch hÃ ng tá»« Zalo" : customer.channel === "tiktok" ? "KhÃ¡ch hÃ ng tá»« TikTok" : "KhÃ¡ch hÃ ng tá»« Facebook",
+      company: customer.channel === "zalo" ? "Khách hàng từ Zalo" : customer.channel === "tiktok" ? "Khách hàng từ TikTok" : "Khách hàng từ Facebook",
       value: 0,
-      phone: "ChÆ°a bá»• sung",
+      phone: "Chưa bổ sung",
       avatar: customer.name.split(" ").filter(Boolean).slice(0, 1).map(part => part[0]?.toUpperCase() || "").join("") || "ðŸ‘¤",
       email: "chua.co@igen.vn",
       productOfChoice: "",
       status: status,
-      lastInteraction: "Má»›i tiáº¿p cáº­n",
-      lastInteractionTime: "Vá»«a xong"
+      lastInteraction: "Mới tiếp cận",
+      lastInteractionTime: "Vừa xong"
     };
     try {
       await crmService.createLead(newLead);
-      toast.success(`ÄÃ£ tá»± Ä‘á»™ng thÃªm ${customer.name} vÃ o PHỄU KHÁCH HÀNG!`);
+      toast.success(`Đã tự động thêm ${customer.name} vào PHỄU KHÁCH HÀNG!`);
     } catch {
-      toast.error("KhÃ´ng thá»ƒ táº¡o khÃ¡ch hÃ ng trÃªn há»‡ thá»‘ng.");
+      toast.error("Không thể tạo khách hàng trên hệ thống.");
     }
   };
 
@@ -1786,17 +1786,17 @@ export default function CRMTab() {
   }, [activeCustomer, inboxCustomers]);
 
   const activeFbPage = facebookPages.find((p) => p.username === selectedFacebookPageId);
-  const activeFbPageName = activeFbPage?.displayName || "Chá»n trang FB";
+  const activeFbPageName = activeFbPage?.displayName || "Chọn trang FB";
 
   const activeZaloAccount = zaloAccounts.find((a) => a.username === selectedZaloAccountId);
-  const activeZaloAccountName = activeZaloAccount?.displayName || "Chá»n Zalo";
+  const activeZaloAccountName = activeZaloAccount?.displayName || "Chọn Zalo";
 
   const activeTiktokAccount = tiktokAccounts.find((a) => a.username === selectedTiktokAccountId);
-  const activeTiktokAccountName = activeTiktokAccount?.displayName || "Chá»n TikTok";
+  const activeTiktokAccountName = activeTiktokAccount?.displayName || "Chọn TikTok";
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/50" id="crm_tab_wrapper">
-      <h1 className="sr-only">Há»‡ thá»‘ng Sales CRM - {subTab}</h1>
+      <h1 className="sr-only">Hệ thống Sales CRM - {subTab}</h1>
 
       {/* Sub tabs selector bar */}
       <div className="border-b border-slate-100 bg-[#f8fafc] p-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
@@ -1832,7 +1832,7 @@ export default function CRMTab() {
                   <span className="w-3.5 h-3.5 bg-black text-white text-[7px] font-extrabold rounded-full flex items-center justify-center leading-none ring-1.5 ring-white font-sans shrink-0 shadow-xxs">T</span>
                 </span>
                 <span className="text-[10px] text-slate-800 font-bold max-w-[150px] truncate">
-                  {activeChannel === "all" && "Táº¥t cáº£ kÃªnh"}
+                  {activeChannel === "all" && "Tất cả kênh"}
                   {activeChannel === "facebook" && `FB: ${activeFbPageName}`}
                   {activeChannel === "zalo" && `Zalo: ${activeZaloAccountName}`}
                   {activeChannel === "tiktok" && `TikTok: ${activeTiktokAccountName}`}
@@ -1847,19 +1847,19 @@ export default function CRMTab() {
                 <>
                   <div className="fixed inset-0 z-40 cursor-default" onClick={() => setShowUnifiedDropdown(false)} />
                   <div className="absolute right-0 mt-1.5 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl z-50 p-3.5 animate-in fade-in slide-in-from-top-1 duration-150 text-left">
-                    
+
                     <div className="flex justify-between items-center pb-2 border-b border-slate-100 mb-3">
                       <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
-                        Chá»n tÃ i khoáº£n hiá»ƒn thá»‹
+                        Chọn tài khoản hiển thị
                       </div>
-                      <button 
+                      <button
                         onClick={() => {
                           setActiveChannel("all");
                           setShowUnifiedDropdown(false);
                         }}
                         className="text-[9px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
                       >
-                        Hiá»‡n táº¥t cáº£
+                        Hiện tất cả
                       </button>
                     </div>
 
@@ -1943,7 +1943,7 @@ export default function CRMTab() {
       </div>
 
       <div className="flex-grow flex-1 overflow-hidden" id="crm_tab_main_content">
-        <Suspense fallback={<TabLoader label="Äang táº£i dá»¯ liá»‡u CRM..." />}>
+        <Suspense fallback={<TabLoader label="Đang tải dữ liệu CRM..." />}>
           {subTab === "PHỄU KHÁCH HÀNG" && (
             <PipelineTab
               leads={leads}
@@ -2016,7 +2016,7 @@ export default function CRMTab() {
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 flex flex-col gap-5 text-left animate-fade-in-up">
 
             <div className="flex justify-between items-center pb-2 border-b border-slate-100 shrink-0">
-              <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wide">ThÃªm CÆ¡ Há»™i BÃ¡n HÃ ng Má»›i</h4>
+              <h4 className="font-extrabold text-slate-800 text-sm uppercase tracking-wide">Thêm Cơ Hội Bán Hàng Mới</h4>
               <button
                 onClick={() => {
                   setShowCreateLeadModal(false);
@@ -2026,14 +2026,14 @@ export default function CRMTab() {
                 }}
                 className="text-slate-400 hover:text-slate-700 font-extrabold text-lg focus:outline-none cursor-pointer"
               >
-                Ã—
+                —
               </button>
             </div>
 
             <form onSubmit={handleCreateLead} className="space-y-4">
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">LiÃªn káº¿t vá»›i khÃ¡ch hÃ ng tá»« Inbox (TÃ¹y chá»n)</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Liên kết với khách hàng từ Inbox (Tùy chọn)</label>
                 <select
                   className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 cursor-pointer transition-all duration-200"
                   value={selectedInboxCustId}
@@ -2043,14 +2043,14 @@ export default function CRMTab() {
                     const found = inboxCustomers.find(c => c.id === val);
                     if (found) {
                       setNewLeadName(found.name);
-                      setNewLeadCompany(found.channel === "zalo" ? "KhÃ¡ch hÃ ng tá»« Zalo" : "KhÃ¡ch hÃ ng tá»« Facebook");
+                      setNewLeadCompany(found.channel === "zalo" ? "Khách hàng từ Zalo" : "Khách hàng từ Facebook");
                     } else {
                       setNewLeadName("");
                       setNewLeadCompany("");
                     }
                   }}
                 >
-                  <option value="">-- Chá»n khÃ¡ch hÃ ng tá»« há»™i thoáº¡i chat --</option>
+                  <option value="">-- Chọn khách hàng từ hội thoại chat --</option>
                   {inboxCustomers.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.name} ({c.channel === "zalo" ? "Zalo" : "Facebook"})
@@ -2060,10 +2060,10 @@ export default function CRMTab() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">TÃªn khÃ¡ch hÃ ng tiá»m nÄƒng *</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tên khách hàng tiềm năng *</label>
                 <input
                   type="text"
-                  placeholder="VÃ­ dá»¥: LÃª Thá»‹ B..."
+                  placeholder="Ví dụ: Lê Thị B..."
                   required
                   className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs focus:bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
                   value={newLeadName}
@@ -2072,10 +2072,10 @@ export default function CRMTab() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">TÃªn doanh nghiá»‡p / CÃ´ng ty</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Tên doanh nghiệp / Công ty</label>
                 <input
                   type="text"
-                  placeholder="VÃ­ dá»¥: CÃ´ng ty TNHH ABC..."
+                  placeholder="Ví dụ: Công ty TNHH ABC..."
                   className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs focus:bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
                   value={newLeadCompany}
                   onChange={(e) => setNewLeadCompany(e.target.value)}
@@ -2083,10 +2083,10 @@ export default function CRMTab() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Dá»± toÃ¡n giÃ¡ trá»‹ (Ä‘)</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Dự toán giá trị (đ)</label>
                 <input
                   type="number"
-                  placeholder="VÃ­ dá»¥: 15000000"
+                  placeholder="Ví dụ: 15000000"
                   className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs font-mono focus:bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
                   value={newLeadValue}
                   onChange={(e) => setNewLeadValue(e.target.value)}
@@ -2095,28 +2095,28 @@ export default function CRMTab() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Má»©c Ä‘á»™ nhiá»‡t Ä‘á»™</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Mức độ nhiệt độ</label>
                   <select
                     className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 cursor-pointer transition-all duration-200"
                     value={newLeadStatus}
                     onChange={(e) => setNewLeadStatus(e.target.value as "cold" | "warm" | "hot")}
                   >
-                    <option value="cold">KhÃ¡ch Láº¡nh (Cold)</option>
-                    <option value="warm">KhÃ¡ch áº¤m (Warm)</option>
-                    <option value="hot">KhÃ¡ch NÃ³ng (Hot)</option>
+                    <option value="cold">Khách Lạnh (Cold)</option>
+                    <option value="warm">Khách Ấm (Warm)</option>
+                    <option value="hot">Khách Nóng (Hot)</option>
                   </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">BÆ°á»›c xá»­ lÃ½ (Tiáº¿n Ä‘á»™)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Bước xử lý (Tiến độ)</label>
                   <select
                     className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 cursor-pointer transition-all duration-200"
                     value={newLeadTouchpoint}
                     onChange={(e) => setNewLeadTouchpoint(e.target.value)}
                   >
-                    <option value="Má»›i tiáº¿p cáº­n">Má»›i tiáº¿p cáº­n</option>
-                    <option value="ÄÃ£ gá»­i bÃ¡o giÃ¡">ÄÃ£ gá»­i bÃ¡o giÃ¡</option>
-                    <option value="Sáº¯p chá»‘t HD">Sáº¯p chá»‘t HD</option>
+                    <option value="Mới tiếp cận">Mới tiếp cận</option>
+                    <option value="Đã gửi báo giá">Đã gửi báo giá</option>
+                    <option value="Sắp chốt HD">Sắp chốt HD</option>
                   </select>
                 </div>
               </div>
@@ -2126,14 +2126,14 @@ export default function CRMTab() {
                   type="submit"
                   className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  LÆ°u cÆ¡ há»™i
+                  Lưu cơ hội
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowCreateLeadModal(false)}
                   className="px-5 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
-                  Há»§y
+                  Hủy
                 </button>
               </div>
             </form>
@@ -2150,14 +2150,14 @@ export default function CRMTab() {
                 <Zap className="h-6 w-6" />
               </div>
               <div className="text-left">
-                <h4 className="font-extrabold text-slate-800 text-sm">KÃ­ch hoáº¡t chá»‘t sales tá»± Ä‘á»™ng</h4>
-                <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider mt-0.5">ÄÃ£ táº¡o vÃ  gá»­i há»£p Ä‘á»“ng</p>
+                <h4 className="font-extrabold text-slate-800 text-sm">Kích hoạt chốt sales tự động</h4>
+                <p className="text-[9px] text-emerald-600 font-bold uppercase tracking-wider mt-0.5">Đã tạo và gửi hợp đồng</p>
               </div>
             </div>
 
             <div className="space-y-2.5 bg-slate-50 p-4 rounded-2xl border border-slate-200/50 text-xs">
               <div>
-                <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">KhÃ¡ch hÃ ng</span>
+                <span className="text-slate-400 block text-[9px] uppercase font-bold tracking-wider">Khách hàng</span>
                 <strong className="text-slate-700 text-xs mt-0.5 block">{automationModal.leadName}</strong>
                 <span className="text-slate-400 block text-[9px] mt-0.5">{automationModal.company}</span>
               </div>
@@ -2165,14 +2165,14 @@ export default function CRMTab() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-slate-400 shrink-0" />
-                  <span className="text-[10px] text-slate-500 truncate">Há»£p Ä‘á»“ng Ä‘iá»‡n tá»­:</span>
+                  <span className="text-[10px] text-slate-500 truncate">Hợp đồng điện tử:</span>
                   <a href={automationModal.contractLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 font-bold hover:underline truncate ml-auto">
                     {automationModal.contractLink.substring(automationModal.contractLink.lastIndexOf("/") + 1)}
                   </a>
                 </div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-slate-400 shrink-0" />
-                  <span className="text-[10px] text-slate-500 truncate">Link thanh toÃ¡n:</span>
+                  <span className="text-[10px] text-slate-500 truncate">Link thanh toán:</span>
                   <a href={automationModal.paymentLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 font-bold hover:underline truncate ml-auto">
                     pay.igen-erp.vn/invoice...
                   </a>
@@ -2181,7 +2181,7 @@ export default function CRMTab() {
             </div>
 
             <p className="text-[10px] text-slate-400 leading-relaxed">
-              âœ¦ Trá»£ lÃ½ iGen AI Ä‘Ã£ tá»± Ä‘á»™ng Ä‘Ã³ng gÃ³i há»£p Ä‘á»“ng, táº¡o mÃ£ thanh toÃ¡n, vÃ  gá»­i trá»±c tiáº¿p qua Omni-Inbox chat cho khÃ¡ch hÃ ng Ä‘á»ƒ tá»‘i Æ°u hÃ³a tá»· lá»‡ chá»‘t sales.
+              ✓ Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Omni-Inbox chat cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
             </p>
 
             <div className="flex gap-2.5 mt-2">
@@ -2199,7 +2199,7 @@ export default function CRMTab() {
                 onClick={() => setAutomationModal(null)}
                 className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
-                ÄÃ³ng
+                Đóng
               </button>
             </div>
           </div>

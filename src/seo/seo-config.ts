@@ -173,7 +173,10 @@ export function getSeoForTab(tab: TabType): SeoMeta {
 }
 
 export function getSeoForPath(requestPath: string): SeoMeta {
-  const normalized = requestPath.startsWith("/") ? requestPath.toLowerCase() : `/${requestPath.toLowerCase()}`;
+  let normalized = requestPath.startsWith("/") ? requestPath.toLowerCase() : `/${requestPath.toLowerCase()}`;
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
   if (normalized === AUTH_SEO.path.toLowerCase()) {
     return AUTH_SEO;
   }
@@ -199,7 +202,10 @@ export function tabToPath(tab: TabType): string {
 }
 
 export function pathToTab(pathname: string): TabType | null {
-  const normalized = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  let normalized = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
   const matched = (Object.entries(TAB_SEO_MAP) as Array<[TabType, SeoMeta | undefined]>).find(
     ([, meta]) => meta?.path.toLowerCase() === normalized.toLowerCase()
   );

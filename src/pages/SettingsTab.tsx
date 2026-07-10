@@ -18,7 +18,7 @@ const CompanyIntegrationsTab = lazy(() => import("../components/settings/Company
 export default function SettingsTab() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const { userProfile, uploadAvatar } = useAuth();
-  
+
   const [photoURL, setPhotoURL] = useState(userProfile?.photoURL || "");
   const [displayName, setDisplayName] = useState(userProfile?.displayName || "");
   const [uploading, setUploading] = useState(false);
@@ -52,12 +52,12 @@ export default function SettingsTab() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      toast.error("Vui lÃ²ng chá»n tá»‡p tin hÃ¬nh áº£nh há»£p lá»‡!");
+      toast.error("Vui lòng chọn tệp tin hình ảnh hợp lệ!");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("KÃ­ch thÆ°á»›c hÃ¬nh áº£nh khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 5MB!");
+      toast.error("Kích thước hình ảnh không được vượt quá 5MB!");
       return;
     }
 
@@ -73,7 +73,7 @@ export default function SettingsTab() {
   };
 
   const getFormattedDate = () => {
-    if (!userProfile?.createdAt) return "ChÆ°a cáº­p nháº­t";
+    if (!userProfile?.createdAt) return "Chưa cập nhật";
 
     let date: Date;
     if (typeof userProfile.createdAt.toDate === "function") {
@@ -85,7 +85,7 @@ export default function SettingsTab() {
     }
 
     if (isNaN(date.getTime())) {
-      return "ChÆ°a cáº­p nháº­t";
+      return "Chưa cập nhật";
     }
 
     return date.toLocaleDateString("vi-VN", {
@@ -105,9 +105,9 @@ export default function SettingsTab() {
         <div>
           <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
             <Sliders className="h-5 w-5 text-indigo-650" />
-            CÃ i Ä‘áº·t Há»‡ thá»‘ng & CÃ¡ nhÃ¢n
+            Cài Đặt Hệ Thống & Cá Nhân
           </h1>
-          <p className="text-xs text-gray-500 mt-1">Cáº¥u hÃ¬nh thÃ´ng tin há»“ sÆ¡ cá»§a báº¡n vÃ  tÃ¹y chá»‰nh tham sá»‘ váº­n hÃ nh cá»§a iGen Marketing.</p>
+          <p className="text-xs text-gray-500 mt-1">Cấu hình thông tin hồ sơ của bạn và tùy chỉnh tham số vận hành của iGen Marketing.</p>
         </div>
         <div className="flex gap-2 bg-gray-150/70 p-1 rounded-xl border border-gray-200 max-w-fit">
           <button
@@ -117,7 +117,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            Há»“ sÆ¡ cÃ¡ nhÃ¢n
+            Hồ sơ của bạn
           </button>
           <button
             onClick={() => setActiveSubTab("security")}
@@ -126,7 +126,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            Báº£o máº­t
+            Bảo mật
           </button>
           <button
             onClick={() => setActiveSubTab("erp")}
@@ -135,7 +135,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            Cáº¥u hÃ¬nh há»‡ thá»‘ng
+            Cấu hình hệ thống
           </button>
           <button
             onClick={() => setActiveSubTab("personal-integrations")}
@@ -144,7 +144,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            MXH CÃ¡ nhÃ¢n
+            MXH Cá nhân
           </button>
           <button
             onClick={() => setActiveSubTab("company-integrations")}
@@ -153,7 +153,7 @@ export default function SettingsTab() {
               : "text-gray-500 hover:text-gray-700"
               }`}
           >
-            ðŸ¢ MXH Doanh nghiá»‡p
+            MXH Doanh nghiệp
           </button>
         </div>
       </div>
@@ -203,7 +203,7 @@ export default function SettingsTab() {
                   ? "bg-amber-50 border-amber-200 text-amber-600"
                   : "bg-slate-50 border-slate-200 text-slate-600"
                 }`}>
-                Quyá»n háº¡n: {userProfile?.role === "superadmin" ? "SiÃªu Admin" : userProfile?.role === "admin" ? "Admin" : "ThÃ nh viÃªn"}
+                Quyền hạn: {userProfile?.role === "superadmin" ? "SiÃªu Admin" : userProfile?.role === "admin" ? "Admin" : "ThÃ nh viÃªn"}
               </span>
             </div>
           </div>
@@ -212,7 +212,7 @@ export default function SettingsTab() {
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-gray-400">
                 <Calendar className="h-4 w-4" />
-                NgÃ y tham gia
+                Ngày tham gia
               </span>
               <span className="font-semibold text-gray-700">{formattedDate}</span>
             </div>
@@ -221,7 +221,7 @@ export default function SettingsTab() {
 
         {/* Right Columns: Settings Forms */}
         <div className="lg:col-span-2 space-y-6">
-          <Suspense fallback={<TabLoader label="Äang táº£i cáº¥u hÃ¬nh..." />}>
+          <Suspense fallback={<TabLoader label="Đang tải cấu hình..." />}>
             {activeSubTab === "profile" && <ProfileTab />}
             {activeSubTab === "security" && <SecurityTab />}
             {activeSubTab === "erp" && <ErpConfigTab />}

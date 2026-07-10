@@ -44,6 +44,16 @@ function AppContent() {
     }
   }, [user]);
 
+  React.useEffect(() => {
+    if (!loading && (!user || !userProfile)) {
+      const path = window.location.pathname;
+      const isLoginPath = path === "/dang-nhap" || path === "/dang-nhap.html";
+      if (!isPublicPage && !isLoginPath) {
+        window.history.replaceState(null, "", "/dang-nhap");
+      }
+    }
+  }, [user, userProfile, loading, isPublicPage]);
+
   if (isTiktokSandboxOauth) {
     return (
       <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center text-slate-500">Đang tải...</div>}>

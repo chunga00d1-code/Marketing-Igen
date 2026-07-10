@@ -1118,7 +1118,7 @@ export function EditVideoWorkspace({
               initialDuration={videoInputs[0]?.duration || undefined}
               onRenderStarted={(record) => {
                 if (record?._id) setCurrentRecordId(record._id);
-                toast.success('Video �ang �ược kết xuất từ k�9ch bản...');
+                toast.success('Video đang được kết xuất từ kịch bản...');
               }}
             />
           </div>
