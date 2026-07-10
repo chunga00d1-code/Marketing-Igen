@@ -1,8 +1,29 @@
 import { io, Socket } from "socket.io-client";
 
 type SocketConversation = Record<string, unknown>;
-type SocketMessage = Record<string, unknown>;
-type SocketVideoUpdate = Record<string, unknown>;
+type SocketMessage = {
+  _id?: string;
+  messageId?: string;
+  direction?: "inbound" | "outbound";
+  text?: string;
+  timestamp?: string | Date;
+  attachments?: unknown[];
+  conversationId?: string | Record<string, string>;
+  senderId?: string;
+  recipientId?: string;
+} & Record<string, unknown>;
+type SocketVideoUpdate = {
+  _id?: string;
+  id?: string;
+  url?: string;
+  metadata?: {
+    status?: string;
+    progress?: number;
+    renderLogs?: string[];
+    error?: string;
+    title?: string;
+  } & Record<string, unknown>;
+} & Record<string, unknown>;
 type NewMessagePayload = { message: SocketMessage; conversation: SocketConversation };
 type VideoStatusPayload = { videoId: string; status: string; updates: SocketVideoUpdate[] };
 

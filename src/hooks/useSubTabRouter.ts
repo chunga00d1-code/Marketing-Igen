@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-export type SubTabRouteMap<T extends string> = Array<{
+export type SubTabRouteMap<T extends string> = ReadonlyArray<{
   slug: string;
   value: T;
 }>;
