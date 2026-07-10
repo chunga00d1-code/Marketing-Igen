@@ -1484,7 +1484,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
               {/* Quick suggestions chips bubble list */}
               <div className="space-y-1.5 font-sans">
-                <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider block">Gá»£i Ã½ chá»§ Ä‘á» nhanh:</span>
+                <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider block">Gợi ý chủ đề nhanh:</span>
                 <div className="flex flex-wrap gap-2">
                   {loadingSuggestions ? (
                     <>
@@ -1620,7 +1620,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
                         {/* Scheduled Date */}
                         <div className="space-y-1.5">
-                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">NgÃ y Ä‘Äƒng bÃ i *</label>
+                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Ngày đăng bài *</label>
                           <input
                             type="date"
                             required
@@ -1632,7 +1632,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
 
                         {/* Scheduled Time */}
                         <div className="space-y-1.5">
-                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Giá» Ä‘Äƒng bÃ i *</label>
+                          <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Giờ đăng bài *</label>
                           <input
                             type="time"
                             required
@@ -1771,7 +1771,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                         : "border-slate-200 bg-white text-gray-500 hover:bg-slate-50 hover:border-slate-350"
                         }`}
                     >
-                      KhÃ¡c
+                      Khác
                     </button>
 
                     {mediaType === "video" && !["8", "16", "24", "32"].includes(videoDuration) && (
@@ -2006,7 +2006,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           <div className="mt-6 pt-4 border-t border-gray-200 flex items-center justify-between gap-4">
             {isAutoPilot && (
               <div className="flex-1 text-left text-[11px] text-purple-750 bg-purple-50 border border-purple-100 p-2 px-3 rounded-xl flex items-center gap-1.5 font-medium animate-fadeIn">
-                <span>ðŸ’¡ <b>Quy trình 1-Click:</b> AI sẽ tự động phân tích Pillar, viết nội dung, tạo ảnh/video và tự động xuất bản lên các kênh đã cấu hình.</span>
+                <span><b>Quy trình 1-Click:</b> AI sẽ tự động phân tích Pillar, viết nội dung, tạo ảnh/video và tự động xuất bản lên các kênh đã cấu hình.</span>
               </div>
             )}
             <button
@@ -2075,7 +2075,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                     {isSwapping && (
                       <div className="absolute inset-0 bg-white/70 backdrop-blur-3xs flex flex-col items-center justify-center text-center p-2 z-10 rounded-xl">
                         <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin" />
-                        <span className="text-[9px] text-indigo-850 font-bold mt-1 font-mono uppercase tracking-wide">ÄANG Äá»”I...</span>
+                        <span className="text-[9px] text-indigo-850 font-bold mt-1 font-mono uppercase tracking-wide">ĐANG ĐỔI...</span>
                       </div>
                     )}
                     <div className="flex justify-between items-start gap-2 font-bold">
