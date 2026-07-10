@@ -182,7 +182,7 @@ function extractSourceBrief(rawText: string): {
     };
   }
 
-  const docMarker = "TÃ€I LIá»†U ÄÃNH KÃˆM:";
+  const docMarker = "TÀI LIỆU ĐỊNH KÈM:";
   const docMarkerIndex = text.indexOf(docMarker);
   const userRequest = (docMarkerIndex >= 0 ? text.slice(0, docMarkerIndex) : text).trim();
   const attachedBlock = docMarkerIndex >= 0 ? text.slice(docMarkerIndex + docMarker.length).trim() : "";
@@ -191,10 +191,10 @@ function extractSourceBrief(rawText: string): {
   let attachedDocumentExcerpt = "";
 
   if (attachedBlock) {
-    const nameMatch = attachedBlock.match(/TÃªn tÃ i liá»‡u:\s*(.+)/i);
+    const nameMatch = attachedBlock.match(/Tên tài liệu:\s*(.+)/i);
     attachedDocumentName = String(nameMatch?.[1] || "").trim();
 
-    const contentMatch = attachedBlock.match(/Ná»™i dung tÃ i liá»‡u:\s*([\s\S]+)/i);
+    const contentMatch = attachedBlock.match(/Nội dung tài liệu:\s*([\s\S]+)/i);
     attachedDocumentExcerpt = String(contentMatch?.[1] || attachedBlock)
       .replace(/\s+/g, " ")
       .trim()
@@ -286,7 +286,7 @@ function formatHumanLikeChatReply(rawText: string) {
     .trim();
 
   if (!cleaned) {
-    return "MÃ¬nh kiá»ƒm tra láº¡i rá»“i nháº¯n báº¡n ngay nhÃ©.";
+    return "Mình kiểm tra lại rồi nhận bạn ngay nhé.";
   }
 
   const normalized = cleaned
@@ -322,7 +322,7 @@ function formatHumanLikeChatReply(rawText: string) {
     .filter((line, index) => {
       if (index !== 0) return true;
 
-      return !/^Dáº¡,?\s*(?:em\s+chÃ o|[\p{L}\p{N}\s]+ xin chÃ o)\s+anh\/chá»‹[^\n]*$/iu.test(line);
+      return !/^Da,?\s*(?:em\s+chao|[\p{L}\p{N}\s]+ xin chao)\s+anh\/chá»‹[^\n]*$/iu.test(line);
     });
 
   const finalResult = finalLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -333,8 +333,8 @@ function formatHumanLikeChatReply(rawText: string) {
   let result = trimmedLines.join("\n");
 
   result = result
-    .replace(/\b(Dáº¡,?\s*em chÃ o anh\/chá»‹.*?[\n]?)/i, "")
-    .replace(/\b(Dáº¡,?\s*[\p{L}\p{N}\s]+ xin chÃ o anh\/chá»‹.*?[\n]?)/iu, "")
+    .replace(/\b(Dáº¡,?\s*em chao anh\/chá»‹.*?[\n]?)/i, "")
+    .replace(/\b(Dáº¡,?\s*[\p{L}\p{N}\s]+ xin chao anh\/chá»‹.*?[\n]?)/iu, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
@@ -1439,7 +1439,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
       return { concepts: groundedConcepts, isMock: false };
     } catch (error: any) {
       console.error("[geminiService.generateMarketingIdeas] Failed to generate grounded concepts:", error);
-      throw new Error(error?.message || "Khong the phat sinh y tuong marketing tu AI.");
+      throw new Error(error?.message || "Không thể phát sinh ý tưởng marketing từ AI.");
     }
   },
 
@@ -1471,7 +1471,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
       if (!chan) return "Facebook";
       const c = chan.toLowerCase().trim();
       if (c.includes("facebook") || c.includes("fb")) return "Facebook";
-      if (c.includes("tiktok") || c.includes("tik tok") || c.includes("reels") || c.includes("video ngáº¯n")) return "TikTok";
+      if (c.includes("tiktok") || c.includes("tik tok") || c.includes("reels") || c.includes("video ngắn")) return "TikTok";
       if (c.includes("linkedin") || c.includes("linked in") || c.includes("link")) return "LinkedIn";
       if (c.includes("instagram") || c.includes("insta") || c.includes("ig")) return "Instagram";
       if (c.includes("zalo")) return "Zalo";
@@ -1541,9 +1541,9 @@ Kính gửi quý đối tác và cộng đồng doanh nghiệp,
 Trong quản trị hiện đại, sự hài lòng và sức khỏe thể chất của nhân viên chính là đòn bẩy hiệu suất lớn nhất. Với chiến dịch "${title}" cùng định hướng: ${summary}.
 
 Dựa trên gợi ý đề xuất: "${suggestedContent}", iGen Marketing mang tới góc nhìn mới giúp doanh nghiệp:
-âœ… Giảm thiểu chấn thương cổ tay (RSI) ở bộ phận kỹ thuật.
-âœ… Gia tăng sự tập trung và gắn kết công việc.
-âœ… Xây dựng môi trường làm việc thông minh và hiện đại.
+Giảm thiểu chấn thương cổ tay (RSI) ở bộ phận kỹ thuật.
+Gia tăng sự tập trung và gắn kết công việc.
+Xây dựng môi trường làm việc thông minh và hiện đại.
 
 Hãy thảo luận cùng chúng tôi để thiết kế giải pháp chuyển đổi số toàn diện cho doanh nghiệp của bạn.
 
@@ -1561,7 +1561,7 @@ Hãy thảo luận cùng chúng tôi để thiết kế giải pháp chuyển đ
 Nội dung chi tiết gợi ý: ${suggestedContent}`;
           mockMediaPrompt = `A creative, appealing social media visual representing ${title}.`;
         }
-        const voiceScript = `Xin chao, day la noi dung gioi thieu ngan gon cho chien dich ${title}. ${summary}. Hay lien he ngay de nhan tu van chi tiet va uu dai phu hop.`;
+        const voiceScript = `Xin chào, đây là nội dung giới thiệu ngắn gọn cho chiến dịch ${title}. ${summary}. Hãy liên hệ ngay để nhận tư vấn chi tiết và ưu đãi phù hợp.`;
         const motionText = `Confident presenter, natural hand gestures, clear eye contact, upbeat delivery, topic-focused marketing explainer.`;
         return { channel: chan, contentType, outline, bodyText, mediaPrompt: mockMediaPrompt, voiceScript, motionText };
       });
@@ -1596,7 +1596,7 @@ Hãy lập Dàn Ý (Outline) và viết Bản Nháp nội dung (Draft Content) c
 QUY TẮC PHÂN TÍCH DỮ LIỆU BẮT BUỘC CHO TỪNG KÊNH:
 1. Đối với kênh TikTok:
    - Trường "outline" (Dàn Ý): PHẢI chứa toàn bộ kịch bản quay chi tiết (Shooting Script / Storyboard), bao gồm phân đoạn visual (hình ảnh/hành động), audio (lời thoại/âm thanh/voiceover) và mốc thời gian (Timeline dạng [0:00 - 0:03], [0:03 - 0:08]...) cho từng cảnh. Tổng thời lượng kịch bản không được vượt quá ${videoDurationSeconds} giây.
-   - Trường "bodyText" (Nội dung chính): PHẢI là Caption/Description giới thiệu video sạch, cuốn hút kèm hashtag để đăng tải trực tiếp lên TikTok (ví dụ: "ðŸ”¥ Cứu tinh deadline của bạn đây... #iGenMarketing..."). TUYỆT ĐỐI không chứa bất kỳ mốc thời gian timeline, phân cảnh, Visual hay Audio nào ở trường này.
+   - Trường "bodyText" (Nội dung chính): PHẢI là Caption/Description giới thiệu video sạch, cuốn hút kèm hashtag để đăng tải trực tiếp lên TikTok (ví dụ: "Cứu tinh deadline của bạn đây... #iGenMarketing..."). TUYỆT ĐỐI không chứa bất kỳ mốc thời gian timeline, phân cảnh, Visual hay Audio nào ở trường này.
 2. Đối với các kênh khác (Facebook, LinkedIn, Instagram...):
    - Trường "outline": Lập dàn ý chi tiết, cụ thể và tối ưu của bài viết.
    - Trường "bodyText": Lưu bản nháp nội dung bài viết sạch hoàn chỉnh để đăng tải trực tiếp (không chứa dàn ý hay tiêu đề nháp).

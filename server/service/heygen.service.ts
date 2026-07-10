@@ -175,11 +175,11 @@ export async function requestHeyGenJson(path: string, init?: RequestInit, overri
       },
     });
     clearTimeout(timeoutId);
-    return await parseHeyGenResponse(response, `KhÃ´ng thá»ƒ gá»i HeyGen API: ${path}`);
+    return await parseHeyGenResponse(response, `Không thể gọi HeyGen API: ${path}`);
   } catch (error: any) {
     clearTimeout(timeoutId);
     if (error.name === "AbortError") {
-      throw new Error(`YÃªu cáº§u HeyGen API (${path}) Ä‘Ã£ háº¿t thá»i gian pháº£n há»“i (timeout).`);
+      throw new Error(`Yêu cầu HeyGen API (${path}) đã hết thời gian phản hồi (timeout).`);
     }
     throw error;
   }
@@ -314,7 +314,7 @@ export async function getHeyGenAccessContext(userId: string): Promise<HeyGenAcce
     .lean();
 
   if (!user) {
-    throw new Error("KhÃ´ng tÃ¬m tháº¥y ngÆ°á»i dÃ¹ng");
+    throw new Error("Không tìm thấy người dùng");
   }
 
   let rawAvatarIds = Array.isArray(user.heygenAccess?.avatarIds)
@@ -362,11 +362,11 @@ export async function getHeyGenAccessContext(userId: string): Promise<HeyGenAcce
   const allowFullLibrary = true;
 
   if (!avatarId) {
-    warnings.push("TÃ i khoáº£n nÃ y chÆ°a Ä‘Æ°á»£c gÃ¡n avatar HeyGen máº·c Ä‘á»‹nh.");
+    warnings.push("Tài khoản này chưa được gán avatar HeyGen mặc định.");
   }
 
   if (!finalVoiceId) {
-    warnings.push("TÃ i khoáº£n nÃ y chÆ°a Ä‘Æ°á»£c gÃ¡n voice HeyGen máº·c Ä‘á»‹nh.");
+    warnings.push("Tài khoản này chưa được gán voice HeyGen mặc định.");
   }
 
   console.log("[getHeyGenAccessContext] Resolved HeyGen access:", {
@@ -495,7 +495,7 @@ async function fetchLibraryWithCandidates(type: "avatar" | "voice", overrideApiK
     }
   }
 
-  throw lastError || new Error(`KhÃ´ng láº¥y Ä‘Æ°á»£c thÆ° viá»‡n HeyGen cho ${type}`);
+  throw lastError || new Error(`Không lấy được thư viện HeyGen cho ${type}`);
 }
 
 async function fetchPersonalVoiceCandidates(overrideApiKey?: string) {
@@ -541,7 +541,7 @@ async function fetchPersonalVoiceCandidates(overrideApiKey?: string) {
   }
 
   if (lastError) {
-    console.warn("[fetchPersonalVoiceCandidates] KhÃ´ng láº¥y Ä‘Æ°á»£c My Voice riÃªng tá»« HeyGen, sáº½ tráº£ máº£ng rá»—ng.");
+    console.warn("[fetchPersonalVoiceCandidates] Không lấy được My Voice riêng từ HeyGen, sẽ trả về mảng rỗng.");
   }
 
   return { items: [] as HeyGenLibraryItem[], source: "no_personal_voice_source" };
@@ -923,11 +923,11 @@ export const heygenService = {
     const hasAudioSource = Boolean(audioUrl);
 
     if (!avatarId?.trim()) {
-      throw new HeyGenApiError("Vui lÃ²ng chá»n avatar HeyGen trÆ°á»›c khi táº¡o video.", 400);
+      throw new HeyGenApiError("Vui lòng chọn avatar HeyGen trước khi tạo video.", 400);
     }
 
     if (!useTextToSpeech && !hasAudioSource) {
-      throw new HeyGenApiError("Cáº§n cung cáº¥p audio ElevenLabs Ä‘á»ƒ táº¡o video.", 400);
+      throw new HeyGenApiError("Cần cung cấp audio ElevenLabs để tạo video.", 400);
     }
 
     const allowedAvatarIds = accessContext.avatarIds.length > 0
@@ -935,11 +935,11 @@ export const heygenService = {
       : (accessContext.avatarId ? [accessContext.avatarId] : []);
 
     if (!accessContext.allowFullLibrary && !allowedAvatarIds.includes(avatarId)) {
-      throw new HeyGenApiError("Avatar nÃ y khÃ´ng Ä‘Æ°á»£c cáº¥p cho tÃ i khoáº£n hiá»‡n táº¡i.", 403);
+      throw new HeyGenApiError("Avatar này không được cấp cho tài khoản hiện tại.", 403);
     }
 
     if (normalizedVoiceId && !accessContext.allowFullLibrary && !input.usePersonalVoice && accessContext.voiceId !== normalizedVoiceId) {
-      throw new HeyGenApiError("Giá»ng Ä‘á»c nÃ y khÃ´ng Ä‘Æ°á»£c cáº¥p cho tÃ i khoáº£n hiá»‡n táº¡i.", 403);
+      throw new HeyGenApiError("Giọng đọc này không được cấp cho tài khoản hiện tại.", 403);
     }
 
     let finalBgColor = "#161d27";
@@ -1011,11 +1011,11 @@ export const heygenService = {
       body: JSON.stringify(requestBody),
     });
 
-    const data = await parseHeyGenResponse(response, "KhÃ´ng thá»ƒ táº¡o video ");
+    const data = await parseHeyGenResponse(response, "Không thể tạo video ");
     const videoId = data?.data?.video_id || data?.video_id || data?.id;
 
     if (!videoId) {
-      throw new Error("HeyGen khÃ´ng tráº£ vá» video_id");
+      throw new Error("HeyGen không trả về video_id");
     }
 
     const record = await upsertVideoRecord(userId, {
@@ -1075,7 +1075,7 @@ export const heygenService = {
       captionedVideoUrl: normalized.captionedVideoUrl || undefined,
       subtitleUrl: normalized.subtitleUrl || undefined,
       thumbnailUrl: normalized.thumbnailUrl || undefined,
-      script: context?.title || "Video ngÆ°á»i tháº­t",
+      script: context?.title || "Video người thật",
       motionText: context?.motionText,
       avatarId: context?.avatarId,
       voiceId: context?.voiceId,
@@ -1144,7 +1144,7 @@ export const heygenService = {
                   captionedVideoUrl: normalized.captionedVideoUrl || undefined,
                   subtitleUrl: normalized.subtitleUrl || undefined,
                   thumbnailUrl: normalized.thumbnailUrl || undefined,
-                  script: record.prompt || "Video ngÆ°á»i tháº­t",
+                  script: record.prompt || "Video người thật",
                   status: normalized.jobStatus,
                   aspectRatio: record.metadata?.aspectRatio,
                   title: record.metadata?.title,
@@ -1190,7 +1190,7 @@ export const heygenService = {
     });
 
     if (!normalized.videoId) {
-      throw new HeyGenApiError("Webhook HeyGen khÃ´ng cÃ³ video_id.", 400, payload);
+      throw new HeyGenApiError("Webhook HeyGen không có video_id.", 400, payload);
     }
 
     let resolvedNormalized = normalized;
