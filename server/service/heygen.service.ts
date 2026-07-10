@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 import mongoose from "mongoose";
 import { AIMediaModel } from "../model/ai-media.model";
+import { MarketingContentModel } from "../model/marketing-content.model";
 import { UserModel } from "../model/user.model";
 import { broadcastEvent } from "../socket";
 import { heygenLegacyService } from "./heygen-legacy.service";
@@ -69,6 +70,7 @@ export type CreateAvatarVideoInput = {
   backgroundColor?: string;
   avatarLayout?: "original" | "circle";
   usePersonalVoice?: boolean;
+  cardId?: string;
 };
 
 type HeyGenWebhookPayload = {
@@ -561,6 +563,7 @@ export async function upsertVideoRecord(userId: string, payload: {
   captionedVideoUrl?: string;
   subtitleUrl?: string;
   thumbnailUrl?: string;
+  cardId?: string;
 }) {
   console.log("[heygenService.upsertVideoRecord] Upserting:", {
     userId,
@@ -586,6 +589,7 @@ export async function upsertVideoRecord(userId: string, payload: {
     captionedVideoUrl: payload.captionedVideoUrl,
     subtitleUrl: payload.subtitleUrl,
     thumbnailUrl: payload.thumbnailUrl,
+    activeCardId: payload.cardId,
     provider: "heygen",
     status: payload.status || "processing",
     title: payload.title,
@@ -908,6 +912,7 @@ export const heygenService = {
       backgroundColor,
       avatarLayout,
       inputText,
+      cardId,
     } = input;
     const normalizedVoiceId = String(voiceId || "").trim();
     const normalizedInputText = String(inputText || "").trim();
@@ -1025,6 +1030,7 @@ export const heygenService = {
       status: data?.data?.status || data?.status || "processing",
       title,
       description,
+      cardId,
     });
 
     return {
@@ -1079,6 +1085,7 @@ export const heygenService = {
       status: normalized.jobStatus,
       title: context?.title,
       description: context?.description,
+      cardId: context?.cardId,
     });
 
     return {
@@ -1255,6 +1262,15 @@ export const heygenService = {
         heygenWebhookUpdatedAt: new Date().toISOString(),
       };
       await record.save();
+      if (resolvedNormalized.videoUrl && record.metadata?.activeCardId) {
+        await MarketingContentModel.findByIdAndUpdate(record.metadata.activeCardId, {
+          $set: {
+            videoUrl: resolvedNormalized.videoUrl,
+            mediaType: "video",
+            videoProvider: "heygen",
+          },
+        });
+      }
       return record.toObject();
     }));
 

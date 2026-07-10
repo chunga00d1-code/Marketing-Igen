@@ -498,6 +498,7 @@ export function HeyGenWorkspace({
         avatarBackground,
         backgroundColor,
         avatarLayout,
+        cardId,
       };
 
       if (selectedModel.engineType === "avatar_iii" || usePersonalVoiceMode) {
