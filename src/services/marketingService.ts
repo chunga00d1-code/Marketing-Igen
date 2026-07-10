@@ -88,16 +88,17 @@ function normalizeMarketingCard(item: Record<string, unknown>): ContentApprovalC
     ...item,
     id: String(item._id || item.id || ""),
     videoUrl: stripDemoVideoUrl(typeof item.videoUrl === "string" ? item.videoUrl : null),
-  };
+  } as unknown as ContentApprovalCard;
 }
 
-function sanitizeMarketingPayload<T extends Record<string, unknown>>(payload: T): T {
-  if (!Object.prototype.hasOwnProperty.call(payload, "videoUrl")) {
+function sanitizeMarketingPayload<T extends object>(payload: T): T {
+  const payloadRecord = payload as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(payloadRecord, "videoUrl")) {
     return payload;
   }
   return {
     ...payload,
-    videoUrl: stripDemoVideoUrl(payload.videoUrl),
+    videoUrl: stripDemoVideoUrl(typeof payloadRecord.videoUrl === "string" ? payloadRecord.videoUrl : null),
   };
 }
 
@@ -116,7 +117,7 @@ export const marketingService = {
       throw new Error("KhÃ´ng thá»ƒ táº£i danh sÃ¡ch bÃ i viáº¿t duyá»‡t.");
     }
     const json = await res.json();
-    return (json.data || []).map(normalizeMarketingCard);
+    return ((json.data || []) as Record<string, unknown>[]).map(normalizeMarketingCard);
   },
 
   subscribeToContents(

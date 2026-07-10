@@ -30,13 +30,13 @@ const AiCommentReplyManager = lazy(() =>
 );
 
 const CRM_SUB_TAB_ROUTES = [
-  { slug: "pipeline", value: "PHá»„U KHÃCH HÃ€NG" as CRMSubTabType },
+  { slug: "pipeline", value: "PHỄU KHÁCH HÀNG" as CRMSubTabType },
   { slug: "omni-chat", value: "OMNI-INBOX CHAT" as CRMSubTabType },
   { slug: "comment-reply", value: "AI COMMENT AUTO-REPLY" as CRMSubTabType },
 ] as const;
 
 export default function CRMTab() {
-  const [subTab, setSubTab] = useSubTabRouter<CRMSubTabType>(CRM_SUB_TAB_ROUTES as unknown as readonly { readonly slug: string; readonly value: CRMSubTabType }[], "PHá»„U KHÃCH HÃ€NG");
+  const [subTab, setSubTab] = useSubTabRouter<CRMSubTabType>(CRM_SUB_TAB_ROUTES, "PHỄU KHÁCH HÀNG");
   const [activeChannel, setActiveChannel] = useState<"all" | "facebook" | "zalo" | "tiktok">("all");
 
   // 1. Leads Kanban Pipeline States loaded from Firebase
@@ -482,24 +482,52 @@ export default function CRMTab() {
       setCopyingConfig(false);
     }
   };
-  const mapFbMessages = (
-    msgs: Array<{
-      _id?: string;
-      messageId?: string;
-      direction: "inbound" | "outbound";
-      text?: string;
-      timestamp: string | Date;
-      attachments?: unknown[];
-      conversationId?: string;
-    }>
-  ): ChatMessage[] =>
+  type RawInboxMessage = {
+    _id?: string;
+    messageId?: string;
+    direction?: "inbound" | "outbound";
+    text?: string;
+    timestamp?: string | Date;
+    attachments?: unknown[];
+    conversationId?: string | Record<string, string>;
+    senderId?: string;
+    recipientId?: string;
+  };
+
+  type RawInboxConversation = {
+    _id?: string;
+    recipientId?: string;
+    openId?: string;
+    senderName?: string;
+    avatarUrl?: string;
+    lastMessageText?: string;
+    lastMessageAt?: string;
+    unreadCount?: number;
+    isVip?: boolean;
+    tags?: string[];
+    aiPausedUntil?: string | null;
+  };
+
+  const normalizeMessageAttachments = (attachments?: unknown[]): ChatMessage["attachments"] =>
+    Array.isArray(attachments)
+      ? attachments.filter((item): item is { type: string; url: string } => {
+          if (!item || typeof item !== "object") return false;
+          const candidate = item as { type?: unknown; url?: unknown };
+          return typeof candidate.type === "string" && typeof candidate.url === "string";
+        })
+      : [];
+
+  const normalizeConversationId = (value?: string | Record<string, string>): string =>
+    typeof value === "string" ? value : value?._id || "";
+
+  const mapFbMessages = (msgs: RawInboxMessage[]): ChatMessage[] =>
     msgs.map((m) => ({
       id: m._id || m.messageId || "",
       sender: m.direction === "inbound" ? "user" : "agent",
       text: m.text || "",
-      timestamp: new Date(m.timestamp),
-      attachments: Array.isArray(m.attachments) ? m.attachments : [],
-      conversationId: m.conversationId || "",
+      timestamp: new Date(m.timestamp || Date.now()),
+      attachments: normalizeMessageAttachments(m.attachments),
+      conversationId: normalizeConversationId(m.conversationId),
     }));
 
   const loadConversationMessages = async (
@@ -763,30 +791,8 @@ export default function CRMTab() {
         ? 20
         : (isLoadMore ? convsPaginationRef.current.limit : (convsPaginationRef.current.skip + convsPaginationRef.current.limit || 20));
 
-      let fbConvs: Array<{
-        _id: string;
-        recipientId?: string;
-        senderName?: string;
-        avatarUrl?: string;
-        lastMessageText?: string;
-        lastMessageAt: string;
-        unreadCount?: number;
-        isVip?: boolean;
-        tags?: string[];
-        aiPausedUntil?: string | null;
-      }> = [];
-      let zaloConvs: Array<{
-        _id: string;
-        recipientId?: string;
-        senderName?: string;
-        avatarUrl?: string;
-        lastMessageText?: string;
-        lastMessageAt: string;
-        unreadCount?: number;
-        isVip?: boolean;
-        tags?: string[];
-        aiPausedUntil?: string | null;
-      }> = [];
+      let fbConvs: RawInboxConversation[] = [];
+      let zaloConvs: RawInboxConversation[] = [];
 
       if (isFbConnected) {
         const isMockFb = selectedFacebookPageId === "igen_marketing_demo" || selectedFacebookPageId?.includes("mock");
@@ -959,18 +965,7 @@ export default function CRMTab() {
         }
       }
 
-      let tiktokConvs: Array<{
-        _id: string;
-        openId?: string;
-        senderName?: string;
-        avatarUrl?: string;
-        lastMessageText?: string;
-        lastMessageAt: string;
-        unreadCount?: number;
-        isVip?: boolean;
-        tags?: string[];
-        aiPausedUntil?: string | null;
-      }> = [];
+      let tiktokConvs: RawInboxConversation[] = [];
       if (isTiktokConnected) {
         const isMockTiktok = selectedTiktokAccountId === "igen_tiktok_demo" || selectedTiktokAccountId?.includes("mock") ||
           companySocialIntegrations.some(item => item.platform === "TikTok" && item.isConnected && item.isMock)
@@ -1058,53 +1053,53 @@ export default function CRMTab() {
       }
 
       const mappedFb: CustomerInbox[] = fbConvs.map((c) => ({
-        id: c._id,
+        id: c._id || c.recipientId || "",
         recipientId: c.recipientId || "",
         name: c.senderName || "KhÃ¡ch hÃ ng Facebook",
         avatar: c.avatarUrl || "ðŸ‘¤",
         avatarUrl: c.avatarUrl || "",
         lastMessage: c.lastMessageText || "[ÄÃ­nh kÃ¨m]",
-        time: new Date(c.lastMessageAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         unreadCount: c.unreadCount || 0,
         isVip: c.isVip || false,
         status: "offline",
         tags: c.tags || [],
         channel: "facebook",
-        lastMessageAt: new Date(c.lastMessageAt),
+        lastMessageAt: new Date(c.lastMessageAt || Date.now()),
         aiPausedUntil: c.aiPausedUntil || null
       }));
 
       const mappedZalo: CustomerInbox[] = zaloConvs.map((c) => ({
-        id: c._id,
+        id: c._id || c.recipientId || "",
         recipientId: c.recipientId || "",
         name: c.senderName || "KhÃ¡ch hÃ ng Zalo",
         avatar: c.avatarUrl || "ðŸ‘¤",
         avatarUrl: c.avatarUrl || "",
         lastMessage: c.lastMessageText || "[ÄÃ­nh kÃ¨m]",
-        time: new Date(c.lastMessageAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         unreadCount: c.unreadCount || 0,
         isVip: c.isVip || false,
         status: "offline",
         tags: c.tags || [],
         channel: "zalo",
-        lastMessageAt: new Date(c.lastMessageAt),
+        lastMessageAt: new Date(c.lastMessageAt || Date.now()),
         aiPausedUntil: c.aiPausedUntil || null
       }));
 
       const mappedTiktok: CustomerInbox[] = tiktokConvs.map((c) => ({
-        id: c._id,
+        id: c._id || c.openId || "",
         recipientId: c.openId || "",
         name: c.senderName || "KhÃ¡ch hÃ ng TikTok",
         avatar: c.avatarUrl || "ðŸ‘¤",
         avatarUrl: c.avatarUrl || "",
         lastMessage: c.lastMessageText || "[ÄÃ­nh kÃ¨m]",
-        time: new Date(c.lastMessageAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
         unreadCount: c.unreadCount || 0,
         isVip: c.isVip || false,
         status: "offline",
         tags: c.tags || [],
         channel: "tiktok",
-        lastMessageAt: new Date(c.lastMessageAt),
+        lastMessageAt: new Date(c.lastMessageAt || Date.now()),
         aiPausedUntil: c.aiPausedUntil || null
       }));
 
@@ -1182,19 +1177,9 @@ export default function CRMTab() {
     if (subTab !== "OMNI-INBOX CHAT" || (!isFbConnected && !isZaloConnected && !isTiktokConnected)) return;
 
     const handleNewMessage = async (data: {
-      message: {
-        _id?: string;
-        messageId?: string;
-        direction: "inbound" | "outbound";
-        text?: string;
-        timestamp: string | Date;
-        attachments?: unknown[];
-        conversationId?: string | Record<string, string>;
-        senderId?: string;
-        recipientId?: string;
-      };
+      message: RawInboxMessage;
       conversation?: {
-        _id: string;
+        _id?: string;
         aiPausedUntil?: string | null;
         lastMessageText?: string;
         lastMessageAt?: string;
@@ -1288,13 +1273,13 @@ export default function CRMTab() {
     };
 
     const handleConversationUpdated = async (conversation: {
-      _id: string;
+      _id?: string;
       aiPausedUntil?: string | null;
       lastMessageText?: string;
       lastMessageAt?: string;
     }) => {
       console.log("[FE CRMTab] socket conversation_updated event received:", conversation);
-      if (conversation) {
+      if (conversation?._id) {
         setInboxCustomers((prev) =>
           prev.map((c) =>
             c.id === conversation._id
@@ -1785,7 +1770,7 @@ export default function CRMTab() {
     };
     try {
       await crmService.createLead(newLead);
-      toast.success(`ÄÃ£ tá»± Ä‘á»™ng thÃªm ${customer.name} vÃ o phá»…u khÃ¡ch hÃ ng!`);
+      toast.success(`ÄÃ£ tá»± Ä‘á»™ng thÃªm ${customer.name} vÃ o PHỄU KHÁCH HÀNG!`);
     } catch {
       toast.error("KhÃ´ng thá»ƒ táº¡o khÃ¡ch hÃ ng trÃªn há»‡ thá»‘ng.");
     }
@@ -1816,7 +1801,7 @@ export default function CRMTab() {
       {/* Sub tabs selector bar */}
       <div className="border-b border-slate-100 bg-[#f8fafc] p-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
         <div className="flex gap-2">
-          {["PHá»„U KHÃCH HÃ€NG", "OMNI-INBOX CHAT", "AI COMMENT AUTO-REPLY"].map((tab) => (
+          {["PHỄU KHÁCH HÀNG", "OMNI-INBOX CHAT", "AI COMMENT AUTO-REPLY"].map((tab) => (
             <button
               key={tab}
               onClick={() => setSubTab(tab as CRMSubTabType)}
@@ -1959,7 +1944,7 @@ export default function CRMTab() {
 
       <div className="flex-grow flex-1 overflow-hidden" id="crm_tab_main_content">
         <Suspense fallback={<TabLoader label="Äang táº£i dá»¯ liá»‡u CRM..." />}>
-          {subTab === "PHá»„U KHÃCH HÃ€NG" && (
+          {subTab === "PHỄU KHÁCH HÀNG" && (
             <PipelineTab
               leads={leads}
               searchPipeline={searchPipeline}
@@ -2233,5 +2218,6 @@ function TabLoader({ label }: { label: string }) {
     </div>
   );
 }
+
 
 

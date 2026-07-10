@@ -1,4 +1,4 @@
-import { BRAND_LOGO_URL, BRAND_NAME } from "../config/brand";
+import { BRAND_LOGO_URL, BRAND_NAME, SERVICE_WEBSITE_URL } from "../config/brand";
 import type { TabType } from "../types";
 
 export type SeoMeta = {
@@ -13,7 +13,7 @@ export type SeoMeta = {
   changeFrequency?: "daily" | "weekly" | "monthly";
 };
 
-export const SEO_BASE_URL = "https://marketing.igentechsolutions.com";
+export const SEO_BASE_URL = SERVICE_WEBSITE_URL;
 export const SEO_DEFAULT_IMAGE = BRAND_LOGO_URL;
 export const SEO_DEFAULT_LOCALE = "vi_VN";
 
@@ -25,9 +25,9 @@ export function buildDocumentTitle(title: string) {
 export const DEFAULT_SEO: SeoMeta = {
   title: BRAND_NAME,
   description:
-    "Workspace tách riêng cho Marketing và Sales CRM của iGen, hỗ trợ sáng tạo nội dung, quản lý chiến dịch và omni-inbox bán hàng.",
+    "iGen Marketing là workspace Marketing & Sales tích hợp AI, hỗ trợ sáng tạo nội dung, sản xuất video, quản lý chiến dịch và chăm sóc khách hàng đa kênh.",
   keywords:
-    "marketing AI, sales crm, omni inbox, tạo nội dung AI, quản lý chiến dịch, iGen workspace",
+    "iGen Marketing, marketing AI, sales CRM, omni inbox, tạo nội dung AI, tạo video AI, quản lý chiến dịch, đăng video TikTok",
   path: "/",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -37,10 +37,10 @@ export const DEFAULT_SEO: SeoMeta = {
 };
 
 export const AUTH_SEO: SeoMeta = {
-  title: "Đăng nhập - Marketing & Sales Workspace",
+  title: "Đăng nhập Marketing & Sales Workspace",
   description:
-    "Đăng nhập vào workspace Marketing và Sales CRM để quản lý chiến dịch, nội dung và hội thoại khách hàng.",
-  keywords: "đăng nhập marketing workspace, sales crm, omni inbox, iGen",
+    "Đăng nhập iGen Marketing để quản lý chiến dịch, nội dung, kênh đăng tải và hội thoại khách hàng trong Sales CRM.",
+  keywords: "đăng nhập iGen Marketing, marketing workspace, sales CRM, omni inbox",
   path: "/dang-nhap",
   image: SEO_DEFAULT_IMAGE,
   robots: "noindex, nofollow",
@@ -50,9 +50,10 @@ export const AUTH_SEO: SeoMeta = {
 };
 
 export const PRIVACY_SEO: SeoMeta = {
-  title: "Chính sách bảo mật",
-  description: "Chính sách bảo mật thông tin người dùng và dữ liệu của workspace Marketing iGen.",
-  keywords: "chính sách bảo mật, bảo mật dữ liệu, iGen marketing",
+  title: `${BRAND_NAME} Privacy Policy`,
+  description:
+    "Chính sách bảo mật của iGen Marketing cho dữ liệu tài khoản, tích hợp nền tảng, nội dung marketing và quyền xóa dữ liệu.",
+  keywords: "iGen Marketing privacy policy, chính sách bảo mật, bảo mật dữ liệu, TikTok video publishing",
   path: "/privacy-policy",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -62,9 +63,10 @@ export const PRIVACY_SEO: SeoMeta = {
 };
 
 export const TERMS_SEO: SeoMeta = {
-  title: "Điều khoản dịch vụ",
-  description: "Điều khoản dịch vụ và thỏa thuận sử dụng workspace Marketing & Sales iGen.",
-  keywords: "điều khoản dịch vụ, thỏa thuận sử dụng, iGen marketing",
+  title: `${BRAND_NAME} Terms of Service`,
+  description:
+    "Điều khoản dịch vụ iGen Marketing cho workspace Marketing & Sales, tính năng AI và các tích hợp nền tảng được người dùng cấp quyền.",
+  keywords: "iGen Marketing terms of service, điều khoản dịch vụ, marketing AI, sales CRM",
   path: "/terms-of-service",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -74,9 +76,10 @@ export const TERMS_SEO: SeoMeta = {
 };
 
 export const DELETION_SEO: SeoMeta = {
-  title: "Yêu cầu xóa dữ liệu người dùng",
-  description: "Hướng dẫn xóa dữ liệu người dùng và tra cứu trạng thái yêu cầu trên workspace Marketing iGen.",
-  keywords: "xóa dữ liệu người dùng, bảo mật dữ liệu, user data deletion, iGen marketing",
+  title: `${BRAND_NAME} User Data Deletion`,
+  description:
+    "Hướng dẫn ngắt kết nối nền tảng và yêu cầu xóa dữ liệu người dùng khỏi iGen Marketing.",
+  keywords: "iGen Marketing user data deletion, xóa dữ liệu người dùng, ngắt kết nối TikTok, bảo mật dữ liệu",
   path: "/user-data-deletion",
   image: SEO_DEFAULT_IMAGE,
   robots: "index, follow",
@@ -87,57 +90,57 @@ export const DELETION_SEO: SeoMeta = {
 
 export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
   "TONG QUAN": {
-    title: "Dashboard Sales & Marketing",
+    title: "Dashboard Marketing & Sales",
     description:
-      "Tổng quan vận hành cho sales và marketing: theo dõi content, publishing, lead CRM và trạng thái kênh bán hàng trên một màn hình.",
-    keywords: "dashboard sales marketing, tổng quan crm, tổng quan content, dashboard omni inbox, igen workspace",
+      "Tổng quan hiệu suất Marketing & Sales: nội dung, lịch đăng, kênh social, lead CRM và hội thoại khách hàng trên một màn hình.",
+    keywords: "dashboard marketing sales, tổng quan CRM, tổng quan content, omni inbox, iGen Marketing",
     path: "/tong-quan",
     priority: "0.9",
     changeFrequency: "daily",
   },
   MARKETING: {
-    title: "Marketing AI - Sáng tạo nội dung, sản xuất video AI",
+    title: "Marketing AI - Nội dung, video và lịch đăng",
     description:
-      "Tăng tốc chiến dịch tiếp thị số với bộ công cụ Marketing AI tự động tạo ý tưởng bài viết, lên kế hoạch nội dung và sản xuất video quảng cáo AI.",
-    keywords: "marketing AI, tạo nội dung AI, tạo video AI, lập kế hoạch marketing, chiến dịch số, heygen video",
+      "Tăng tốc chiến dịch với Marketing AI: tạo ý tưởng, viết nội dung, sản xuất hình ảnh/video, duyệt nội dung và lên lịch đăng đa kênh.",
+    keywords: "marketing AI, tạo nội dung AI, tạo video AI, lịch đăng nội dung, chiến dịch marketing, TikTok video",
     path: "/marketing",
     priority: "0.9",
     changeFrequency: "daily",
   },
   "SALES CRM": {
-    title: "Sales CRM - Quản lý khách hàng, hội thoại Omni-Inbox",
+    title: "Sales CRM - Lead, hội thoại và chăm sóc khách hàng",
     description:
-      "Chăm sóc khách hàng tập trung với tính năng chat đa kênh Omni-Inbox, AI tự động phản hồi và quản lý phễu bán hàng CRM hiệu quả.",
-    keywords: "sales crm, quản lý khách hàng, omni channel crm, chăm sóc khách hàng, crm doanh nghiệp, omni inbox",
+      "Quản lý khách hàng tập trung với Sales CRM, omni-inbox Facebook/Zalo/TikTok, AI gợi ý phản hồi và pipeline bán hàng.",
+    keywords: "sales CRM, quản lý khách hàng, omni inbox, chăm sóc khách hàng, pipeline bán hàng, AI trả lời",
     path: "/sales-crm",
     priority: "0.8",
     changeFrequency: "weekly",
   },
   "QUAN TRI USER": {
-    title: "Quản trị user - Tài khoản, vai trò và phân quyền",
+    title: "Quản trị tài khoản",
     description:
-      "Quản lý tài khoản người dùng, doanh nghiệp, số dư ví và cấu hình phân quyền cho workspace Marketing và Sales CRM.",
-    keywords: "quản trị user, phân quyền, role permission, quản lý tài khoản, doanh nghiệp, ví người dùng",
+      "Quản lý người dùng, công ty, quyền truy cập và cấu hình vận hành cho workspace iGen Marketing.",
+    keywords: "quản trị tài khoản, phân quyền, iGen Marketing admin",
     path: "/quan-tri-user",
     robots: "noindex, nofollow",
     priority: "0.3",
     changeFrequency: "monthly",
   },
   "CAI DAT": {
-    title: "Cài đặt hệ thống - Hồ sơ, tích hợp và cấu hình nền tảng",
+    title: "Cài đặt Marketing & Sales Workspace",
     description:
-      "Thiết lập thông tin hồ sơ doanh nghiệp, cấu hình tùy chỉnh hiển thị, kết nối mạng xã hội và tích hợp phục vụ Marketing, Sales.",
-    keywords: "cài đặt marketing, cấu hình hệ thống, tích hợp AI, settings workspace",
+      "Thiết lập hồ sơ, bảo mật, tài khoản mạng xã hội và tích hợp phục vụ Marketing & Sales.",
+    keywords: "cài đặt iGen Marketing, tích hợp mạng xã hội, cấu hình TikTok, cấu hình Facebook, cấu hình Zalo",
     path: "/cai-dat",
     robots: "noindex, nofollow",
     priority: "0.2",
     changeFrequency: "monthly",
   },
   "VI & NAP TIEN": {
-    title: "Ví & Nạp tiền - Nạp tiền tài khoản qua PayOS",
+    title: "Ví & Nạp tiền",
     description:
-      "Quản lý ví tài khoản cá nhân, xem số dư và nạp tiền nhanh chóng bằng QR Code qua cổng thanh toán PayOS.",
-    keywords: "ví tài khoản, nạp tiền workspace, payos nạp tiền, vietqr, số dư ví",
+      "Quản lý số dư ví và nạp tiền cho các tác vụ AI, tạo nội dung và sản xuất media trong iGen Marketing.",
+    keywords: "ví tài khoản, nạp tiền iGen Marketing, PayOS, VietQR",
     path: "/vi-nap-tien",
     robots: "noindex, nofollow",
     priority: "0.5",
@@ -150,6 +153,9 @@ export const PUBLIC_SEO_PAGES: SeoMeta[] = [
   TAB_SEO_MAP["TONG QUAN"],
   TAB_SEO_MAP.MARKETING,
   TAB_SEO_MAP["SALES CRM"],
+  PRIVACY_SEO,
+  TERMS_SEO,
+  DELETION_SEO,
 ].filter(Boolean) as SeoMeta[];
 
 export function getSeoForTab(tab: TabType): SeoMeta {

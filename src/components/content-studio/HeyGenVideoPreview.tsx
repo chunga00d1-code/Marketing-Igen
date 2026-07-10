@@ -230,14 +230,14 @@ export function HeyGenVideoPreview({
       : "aspect-[16/9] max-w-[920px]";
 
   const scriptInputTitle = selectedAvatarModel === "Avatar III"
-    ? "Ká»ŠCH Báº¢N PHÃT THANH (AVATAR III)"
+    ? "KỊCH BẢN PHÁT THANH (AVATAR III)"
     : usePersonalVoiceMode
-      ? `Ká»ŠCH Báº¢N TEXT-TO-VOICE (${selectedAvatarModel || "HEYGEN"})`
-      : "Ká»ŠCH Báº¢N PHÃT THANH";
+      ? `KỊCH BẢN TEXT-TO-VOICE (${selectedAvatarModel || "HEYGEN"})`
+      : "KỊCH BẢN PHÁT THANH";
 
   const scriptInputPlaceholder = usePersonalVoiceMode
-    ? "Nháº­p ná»™i dung vÄƒn báº£n Ä‘á»ƒ HeyGen My Voice Ä‘á»c trá»±c tiáº¿p..."
-    : "Nháº­p ná»™i dung vÄƒn báº£n Ä‘á»ƒ avatar phÃ¡t biá»ƒu...";
+    ? "Nhập nội dung văn bản để HeyGen My Voice đọc trực tiếp..."
+    : "Nhập nội dung văn bản để avatar phát biểu...";
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${HEYGEN_THEME.surface} text-slate-900`}>
@@ -265,7 +265,7 @@ export function HeyGenVideoPreview({
                   <img src={avatarImage} alt={avatarName} loading="eager" decoding="async" className={`h-full w-full ${mediaFitClass} bg-transparent`} style={{ objectPosition: "center top" }} />
                 </div>
               ) : (
-                <div className="text-xs font-semibold text-slate-400">Chá»n Avatar Ä‘á»ƒ báº¯t Ä‘áº§u xem trÆ°á»›c</div>
+                <div className="text-xs font-semibold text-slate-400">Chọn Avatar để bắt đầu xem trước</div>
               )}
             </div>
           )}
@@ -280,7 +280,7 @@ export function HeyGenVideoPreview({
               onPointerCancel={handleCaptionPointerUp}
               className="absolute z-20 w-[82%] -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none text-center active:cursor-grabbing"
               style={{ left: `${captionOffset.x}%`, top: `${captionOffset.y}%` }}
-              title="KÃ©o tháº£ caption"
+              title="Kéo thả caption"
             >
               <div className="rounded-xl border border-cyan-300/70 bg-cyan-50/30 px-3 py-2 shadow-sm backdrop-blur-[1px]">
                 {renderCaption(currentCaption)}
@@ -301,7 +301,7 @@ export function HeyGenVideoPreview({
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tá»‘c Ä‘á»™</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tốc độ</span>
             <select value={playbackSpeed} onChange={(e) => setPlaybackSpeed(parseFloat(e.target.value))} className={`rounded-lg border ${HEYGEN_THEME.border} bg-white px-2 py-1 text-xs font-semibold text-slate-700 focus:outline-none`}>
               <option value="1">1x</option>
               <option value="1.25">1.25x</option>
@@ -326,19 +326,19 @@ export function HeyGenVideoPreview({
       ) : null}
 
       <div className={`space-y-2 border-t ${HEYGEN_THEME.border} ${HEYGEN_THEME.surfaceMuted} p-3`}>
-        <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">CÃ¡c phÃ¢n cáº£nh</h4>
+        <h4 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Các phân cảnh</h4>
         <div className="flex items-center gap-3 overflow-x-auto py-1">
           <div className={`relative flex h-20 w-36 shrink-0 flex-col overflow-hidden rounded-xl border-2 border-cyan-400 ${HEYGEN_THEME.surface} shadow-sm`}>
             {avatarImage ? <img src={avatarImage} alt="Scene thumbnail" loading="lazy" decoding="async" className="h-13 w-full object-contain bg-white" style={{ objectPosition: "center top" }} /> : <div className="flex h-13 w-full items-center justify-center bg-slate-100 text-[10px] text-slate-400">No avatar</div>}
             <div className={`flex flex-1 items-center justify-between px-2.5 text-[9px] font-bold text-slate-500 ${HEYGEN_THEME.surfaceMuted}`}>
-              <span>Cáº£nh 1</span>
+              <span>Phân cảnh 1</span>
               <span>{MOCK_DURATION}s</span>
             </div>
           </div>
 
           <button type="button" className={`flex h-20 w-20 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed ${HEYGEN_THEME.border} ${HEYGEN_THEME.surfaceMuted} text-slate-400 transition-all duration-200 hover:border-cyan-400 hover:text-cyan-700 hover:bg-white`}>
             <Plus className="h-4 w-4" />
-            <span className="text-[9px] font-bold">ThÃªm cáº£nh</span>
+            <span className="text-[9px] font-bold">Thêm phân cảnh</span>
           </button>
         </div>
       </div>

@@ -194,7 +194,7 @@ export default function MarketingTab() {
           setCompanySocialIntegrations(list.filter((item) => item.isConnected));
         }
       } catch (error) {
-        console.error("Khong the tai kenh doanh nghiep cho marketing publish:", error);
+        console.error("Không thể tải kênh doanh nghiệp cho marketing publish:", error);
       }
     };
 
@@ -515,7 +515,7 @@ export default function MarketingTab() {
               : item
           )
         );
-        toast.success("Da gui video sang TikTok. He thong dang cho TikTok xu ly.");
+        toast.success("Đã gửi video sang TikTok. Hệ thống đang chờ TikTok xử lý.");
         return;
       }
 

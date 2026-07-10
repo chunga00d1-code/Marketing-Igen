@@ -3,12 +3,9 @@ import {
   ArrowRight, 
   CheckCircle2, 
   MessageSquare, 
-  ShoppingBag, 
-  Users, 
   ShieldCheck, 
   Globe, 
   Sparkles, 
-  Layers, 
   Database,
   Lock,
   ChevronRight,
@@ -37,7 +34,7 @@ export default function LandingPage() {
 
   const meta = {
     title: BRAND_NAME,
-    description: "Giải pháp Marketing & Sales thế hệ mới tích hợp AI giúp tối ưu hóa chiến dịch marketing, sản xuất video AI, CRM đa kênh Facebook, Zalo, TikTok.",
+    description: "iGen Marketing là workspace Marketing & Sales tích hợp AI giúp tối ưu chiến dịch, sản xuất nội dung/video, quản lý lead CRM và đăng video TikTok có kiểm soát.",
     keywords: "igen marketing, marketing tich hop ai, sales crm, omni channel crm, facebook inbox, tiktok video publish",
     path: "/",
   };
@@ -46,22 +43,22 @@ export default function LandingPage() {
     {
       icon: <MessageSquare className="h-6 w-6 text-blue-600" />,
       title: "Omni-Channel CRM",
-      desc: "Quản lý hội thoại tập trung từ Facebook, Zalo và TikTok. Tự động phân chia khách hàng cho nhân viên sale."
+      desc: "Quản lý hội thoại tập trung từ Facebook, Zalo và TikTok. Theo dõi lead, phân chia khách hàng và hỗ trợ sale chăm sóc nhanh hơn."
     },
     {
-      icon: <ShoppingBag className="h-6 w-6 text-emerald-600" />,
-      title: "Quản lý Kho & Sản phẩm",
-      desc: "Theo dõi tồn kho theo SKU thực tế, tự động cập nhật số lượng khi có đơn hàng mới từ các kênh thương mại điện tử."
+      icon: <Sparkles className="h-6 w-6 text-emerald-600" />,
+      title: "Marketing AI",
+      desc: "Tạo ý tưởng, viết nội dung, tối ưu prompt hình ảnh và chuẩn bị caption cho từng chiến dịch marketing."
     },
     {
-      icon: <Users className="h-6 w-6 text-purple-600" />,
-      title: "Quản trị Nhân sự HRM",
-      desc: "Xây dựng sơ đồ tổ chức, quản lý KPI và chấm công, tự động hóa quy trình đào tạo và đánh giá nhân sự."
+      icon: <CheckCircle2 className="h-6 w-6 text-purple-600" />,
+      title: "Duyệt & Lên lịch",
+      desc: "Quản lý lịch đăng, trạng thái duyệt nội dung và quy trình xuất bản trên các kênh social."
     },
     {
-      icon: <Sparkles className="h-6 w-6 text-amber-500" />,
-      title: "Trợ lý AI Doanh nghiệp",
-      desc: "Tạo nội dung marketing, kịch bản video AI và tự động trả lời bình luận, tin nhắn của khách hàng 24/7."
+      icon: <Globe className="h-6 w-6 text-amber-500" />,
+      title: "Đăng video TikTok",
+      desc: "Kết nối TikTok OAuth, kiểm duyệt nội dung và đăng video sau khi người dùng chủ động xác nhận."
     }
   ];
 
@@ -103,16 +100,16 @@ export default function LandingPage() {
               {solutionsOpen && (
                 <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 bg-white border border-slate-100 rounded-2xl p-4 shadow-xl animate-scale-in text-left space-y-3 z-50">
                   <div>
-                    <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-blue-600" /> Hệ thống ERP Core</h5>
-                    <p className="text-[10px] text-slate-400 pl-5">Vận hành doanh nghiệp tổng thể</p>
+                    <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-blue-600" /> Marketing AI</h5>
+                    <p className="text-[10px] text-slate-400 pl-5">Ý tưởng, nội dung, hình ảnh và video AI</p>
                   </div>
                   <div>
                     <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5 text-teal-600" /> Sales CRM & OmniChat</h5>
                     <p className="text-[10px] text-slate-400 pl-5">Inbox tập trung Facebook, Zalo, TikTok</p>
                   </div>
                   <div>
-                    <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-purple-600" /> Quản trị Nhân sự HRM</h5>
-                    <p className="text-[10px] text-slate-400 pl-5">Sơ đồ tổ chức, KPI, chấm công</p>
+                    <h5 className="font-bold text-slate-900 text-xs flex items-center gap-1.5"><CheckCircle2 className="h-3.5 w-3.5 text-purple-600" /> Duyệt & Lên lịch</h5>
+                    <p className="text-[10px] text-slate-400 pl-5">Quy trình duyệt, lịch đăng và trạng thái xuất bản</p>
                   </div>
                 </div>
               )}
@@ -211,11 +208,11 @@ export default function LandingPage() {
               </div>
               
               <h1 className="text-4xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                Tối ưu hóa Vận hành Doanh nghiệp của Bạn
+                Tăng trưởng Marketing & Sales bằng AI
               </h1>
               
               <p className="text-sm sm:text-base text-slate-500 leading-relaxed">
-                {BRAND_NAME} mang đến giải pháp Marketing và Sales CRM toàn diện. Tự động hóa chiến dịch marketing, sản xuất video AI, quản lý nội dung và đăng video TikTok có kiểm soát trên một nền tảng trực quan, hiện đại.
+                {BRAND_NAME} giúp đội ngũ marketing và sale tạo nội dung nhanh hơn, quản lý chiến dịch rõ ràng hơn, chăm sóc lead tập trung hơn và đăng video TikTok có kiểm soát trên một workspace thống nhất.
               </p>
 
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 pt-2">
@@ -272,22 +269,22 @@ export default function LandingPage() {
                 {/* Simulated Dashboard UI */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-blue-50/50 border border-blue-100 p-3 rounded-2xl text-left">
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Doanh thu tháng</span>
-                    <span className="block text-lg font-extrabold text-blue-600 mt-1">428,50M đ</span>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lead mới</span>
+                    <span className="block text-lg font-extrabold text-blue-600 mt-1">1,248</span>
                   </div>
                   <div className="bg-emerald-50/50 border border-emerald-100 p-3 rounded-2xl text-left">
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đơn hàng mới</span>
-                    <span className="block text-lg font-extrabold text-emerald-600 mt-1">1,248</span>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nội dung duyệt</span>
+                    <span className="block text-lg font-extrabold text-emerald-600 mt-1">86</span>
                   </div>
                   <div className="bg-purple-50/50 border border-purple-100 p-3 rounded-2xl text-left">
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Khách kết nối</span>
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hội thoại</span>
                     <span className="block text-lg font-extrabold text-purple-600 mt-1">8,940</span>
                   </div>
                 </div>
 
                 <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/30 text-left space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700">OmniChat Inbox & Khách hàng TikTok</span>
+                    <span className="text-xs font-bold text-slate-700">OmniChat Inbox & Lead TikTok</span>
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-md uppercase">Đang chạy</span>
                   </div>
                   <div className="space-y-2">
@@ -296,7 +293,7 @@ export default function LandingPage() {
                         <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">T</div>
                         <div>
                           <span className="font-semibold text-slate-700 block">Nguyễn Văn A (TikTok)</span>
-                          <span className="text-[9px] text-slate-400">"Sản phẩm này còn size M màu xanh không shop?"</span>
+                          <span className="text-[9px] text-slate-400">"Mình muốn nhận tư vấn gói marketing cho cửa hàng."</span>
                         </div>
                       </div>
                       <span className="text-slate-400 text-[9px]">Vừa xong</span>
@@ -306,7 +303,7 @@ export default function LandingPage() {
                         <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">AI</div>
                         <div>
                           <span className="font-semibold text-blue-600 block">iGen AI Assistant (Auto)</span>
-                          <span className="text-[9px] text-slate-500">"Dạ sản phẩm này bên em còn hàng ạ. Bạn có thể..."</span>
+                          <span className="text-[9px] text-slate-500">"Dạ em đã ghi nhận nhu cầu và gửi thông tin tư vấn..."</span>
                         </div>
                       </div>
                       <span className="text-slate-400 text-[9px]">1 giây trước</span>
@@ -325,7 +322,7 @@ export default function LandingPage() {
           <div className="max-w-2xl mx-auto space-y-4">
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Tính năng Nổi bật của iGen Marketing</h2>
             <p className="text-sm text-slate-500 leading-relaxed">
-              Giải pháp all-in-one giúp vận hành mọi phòng ban trơn tru, đồng bộ dữ liệu theo thời gian thực và tự động hóa tác vụ bằng trí tuệ nhân tạo.
+              Bộ công cụ tập trung cho Marketing & Sales: tạo nội dung, duyệt chiến dịch, lên lịch đăng và chăm sóc khách hàng đa kênh.
             </p>
           </div>
 
@@ -351,12 +348,12 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-12">
           <div className="max-w-2xl mx-auto space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-bold uppercase tracking-wider">
-              <Layers className="h-3.5 w-3.5" />
+              <Sparkles className="h-3.5 w-3.5" />
               <span>Giao diện Trải nghiệm thực tế</span>
             </div>
-            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Vận hành đa kênh trên một màn hình duy nhất</h2>
+            <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Marketing & Sales đa kênh trên một màn hình</h2>
             <p className="text-sm text-slate-500 leading-relaxed">
-              Trực quan hóa hoạt động bán hàng, quản lý đơn hàng, tồn kho và chăm sóc khách hàng tự động với trợ lý ảo iGen AI.
+              Theo dõi lead, hội thoại, nội dung đã duyệt và trạng thái xuất bản bằng trợ lý AI trên cùng một workspace.
             </p>
           </div>
 
@@ -395,14 +392,14 @@ export default function LandingPage() {
                     <div className="flex items-start gap-2 max-w-[85%]">
                       <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-purple-700">KH</div>
                       <div className="bg-slate-100 p-2.5 rounded-2xl rounded-tl-none text-slate-750">
-                        Sản phẩm này bên mình còn size L màu đen ở kho Hà Nội không shop để em đặt mua qua TikTok?
+                        Mình muốn nhận tư vấn gói marketing cho cửa hàng, bên bạn có hỗ trợ TikTok không?
                       </div>
                     </div>
                     {/* AI auto reply */}
                     <div className="flex items-start gap-2 max-w-[85%] self-end flex-row-reverse ml-auto">
                       <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 text-[9px] font-bold">AI</div>
                       <div className="bg-blue-600 text-white p-2.5 rounded-2xl rounded-tr-none">
-                        Chào bạn, iGen AI đã kiểm tra tồn kho hệ thống: Sản phẩm Áo khoác Blazer đen size L hiện còn 12 chiếc tại kho Nguyễn Thị Định, Hà Nội. Bạn có thể lên đơn trực tiếp ạ!
+                        Chào bạn, iGen AI đã ghi nhận nhu cầu. Bên mình hỗ trợ nội dung, lịch đăng, video AI và chăm sóc lead đa kênh ạ!
                       </div>
                     </div>
                   </div>
@@ -416,7 +413,7 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Mockup 2: Order sync & Inventory table */}
+            {/* Mockup 2: Content & lead pipeline */}
             <div className="border border-slate-200/80 rounded-3xl bg-white shadow-lg overflow-hidden flex flex-col h-[380px]">
               <div className="bg-slate-900 px-4 py-3 flex items-center justify-between text-white">
                 <div className="flex items-center gap-2">
@@ -424,53 +421,53 @@ export default function LandingPage() {
                   <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
                 </div>
-                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">ĐỒNG BỘ ĐƠN HÀNG & KHO VẬN ĐA KÊNH</span>
+                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">PIPELINE LEAD & NỘI DUNG MARKETING</span>
                 <span className="text-[10px] bg-teal-600 px-2 py-0.5 rounded font-bold">LIVE DATA</span>
               </div>
               <div className="flex-1 p-4 space-y-4 flex flex-col justify-start">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Danh sách đơn hàng mới nhất</span>
+                  <span className="text-xs font-bold text-slate-800">Lead và nội dung cần xử lý</span>
                   <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1"><Database className="h-3 w-3 text-slate-400" /> Cập nhật: 1 giây trước</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-[11px] border-collapse">
                     <thead>
                       <tr className="border-b border-slate-100 text-slate-400 font-bold">
-                        <th className="pb-2">MÃ ĐƠN</th>
-                        <th className="pb-2">KHÁCH HÀNG</th>
-                        <th className="pb-2">KÊNH BÁN</th>
-                        <th className="pb-2">TỔNG TIỀN</th>
+                        <th className="pb-2">MÃ</th>
+                        <th className="pb-2">ĐỐI TƯỢNG</th>
+                        <th className="pb-2">KÊNH</th>
+                        <th className="pb-2">LOẠI</th>
                         <th className="pb-2 text-right">TRẠNG THÁI</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-[10.5px]">
                       <tr className="text-slate-705">
-                        <td className="py-2.5 font-bold">#TT-8941</td>
+                        <td className="py-2.5 font-bold">#LD-8941</td>
                         <td className="py-2.5">Trần Khánh Ly</td>
                         <td className="py-2.5"><span className="px-1.5 py-0.5 bg-black text-white text-[8px] font-bold rounded">TikTok</span></td>
-                        <td className="py-2.5 font-semibold">280,000 đ</td>
-                        <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded">Đã đồng bộ</span></td>
+                        <td className="py-2.5 font-semibold">Lead</td>
+                        <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[8px] font-bold rounded">Đã phân loại</span></td>
                       </tr>
                       <tr className="text-slate-705">
-                        <td className="py-2.5 font-bold">#ZL-3829</td>
+                        <td className="py-2.5 font-bold">#CT-3829</td>
                         <td className="py-2.5">Lê Minh Quang</td>
                         <td className="py-2.5"><span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[8px] font-bold rounded">Zalo OA</span></td>
-                        <td className="py-2.5 font-semibold">1,250,000 đ</td>
-                        <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 text-[8px] font-bold rounded">Đang xử lý</span></td>
+                        <td className="py-2.5 font-semibold">Inbox</td>
+                        <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 text-[8px] font-bold rounded">Đang chăm sóc</span></td>
                       </tr>
                       <tr className="text-slate-705">
-                        <td className="py-2.5 font-bold">#FB-4712</td>
+                        <td className="py-2.5 font-bold">#POST-4712</td>
                         <td className="py-2.5">Nguyễn Thị Mai</td>
                         <td className="py-2.5"><span className="px-1.5 py-0.5 bg-blue-500 text-white text-[8px] font-bold rounded">Facebook</span></td>
-                        <td className="py-2.5 font-semibold">450,000 đ</td>
-                        <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-250 text-[8px] font-bold rounded">Chờ xác nhận</span></td>
+                        <td className="py-2.5 font-semibold">Bài đăng</td>
+                        <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-250 text-[8px] font-bold rounded">Chờ duyệt</span></td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
                 <div className="bg-emerald-50/50 border border-emerald-150 p-2.5 rounded-2xl flex items-center justify-between text-[10px]">
-                  <span className="text-emerald-800 font-semibold">Tự động trừ tồn kho (Real-time Stock Update):</span>
-                  <span className="font-bold text-emerald-800">Đã cập nhật - 3 kho hàng đồng bộ</span>
+                  <span className="text-emerald-800 font-semibold">Tự động nhắc việc:</span>
+                  <span className="font-bold text-emerald-800">3 nội dung sẵn sàng lên lịch</span>
                 </div>
               </div>
             </div>
@@ -738,9 +735,9 @@ export default function LandingPage() {
       <section id="cta_section" className="py-16 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 text-white relative overflow-hidden">
         <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] rounded-full bg-blue-500/10 blur-[100px] pointer-events-none" />
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-8 relative z-10">
-          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Sẵn sàng nâng tầm chuyển đổi số doanh nghiệp?</h2>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Sẵn sàng tăng tốc Marketing & Sales?</h2>
           <p className="text-xs sm:text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
-            Đăng ký trải nghiệm iGen Marketing tích hợp AI ngay hôm nay để nhận 14 ngày dùng thử miễn phí và kết nối không giới hạn Facebook, Zalo, TikTok.
+            Trải nghiệm workspace Marketing & Sales tích hợp AI để tạo nội dung, lên lịch đăng, quản lý lead và chăm sóc khách hàng đa kênh.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a 
@@ -774,7 +771,7 @@ export default function LandingPage() {
                 <img src={BRAND_LOGO_PATH} alt={BRAND_NAME} className="h-9 w-9 rounded-xl object-cover shadow-md" />
                 <div>
                   <span className="font-extrabold text-white text-lg tracking-tight block">{BRAND_NAME}</span>
-                  <span className="text-[9px] uppercase font-bold tracking-widest text-slate-500">Enterprise Solutions</span>
+                  <span className="text-[9px] uppercase font-bold tracking-widest text-slate-500">Marketing & Sales Workspace</span>
                 </div>
               </div>
               <p className="text-slate-500 leading-relaxed text-[11px]">
@@ -796,15 +793,15 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Column 2: ERP Solutions */}
+            {/* Column 2: Product Solutions */}
             <div className="lg:col-span-3 lg:col-start-6 text-left space-y-4">
               <h4 className="font-bold text-white uppercase tracking-wider text-[10px] border-b border-slate-900 pb-2">Giải pháp sản phẩm</h4>
               <ul className="space-y-2.5">
-                <li><span className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Hệ thống ERP quản trị lõi</span></li>
+                <li><a href="#tinh-nang" className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Marketing AI & Content Studio</a></li>
                 <li><a href="#tinh-nang" className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Sales CRM & OmniChat</a></li>
-                <li><span className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Quản trị nhân sự HRM</span></li>
-                <li><span className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Quản lý Kho & Tồn kho SKU</span></li>
-                <li><span className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Marketing AI (HeyGen Videos)</span></li>
+                <li><a href="#tich-hop-tiktok" className="hover:text-white transition-colors flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> TikTok Video Publishing</a></li>
+                <li><span className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> Lịch đăng & Duyệt nội dung</span></li>
+                <li><span className="hover:text-white transition-colors cursor-pointer flex items-center gap-1.5"><ChevronRight className="h-3 w-3 text-slate-600" /> AI hỗ trợ phản hồi khách hàng</span></li>
               </ul>
             </div>
 
