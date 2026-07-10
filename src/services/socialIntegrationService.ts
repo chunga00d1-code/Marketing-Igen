@@ -23,8 +23,10 @@ export interface SocialIntegration {
 type ValidationResult = {
   message?: string;
   details?: string;
+  displayName?: string;
   data?: {
     authUrl?: string;
+    displayName?: string;
   };
 };
 

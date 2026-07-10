@@ -1,4 +1,4 @@
-export type CRMSubTabType = "PHỄU KHÁCH HÀNG" | "OMNI-INBOX CHAT" | "AI COMMENT AUTO-REPLY";
+﻿export type CRMSubTabType = "PHỄU KHÁCH HÀNG" | "OMNI-INBOX CHAT" | "AI COMMENT AUTO-REPLY";
 
 export interface ChatMessage {
   id: string;
@@ -62,3 +62,4 @@ export interface LeadCard {
   status: "cold" | "warm" | "hot" | "won" | "upsell";
   lastInteraction?: string;
 }
+

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Mail, Lock, RefreshCw, ArrowRight, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
@@ -98,8 +98,8 @@ export default function AuthPage() {
             />
           </div>
           <div className="space-y-1">
-            <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">Hệ thống Quản trị {BRAND_NAME}</h2>
-            <p className="text-xs text-slate-400">Đăng nhập tài khoản doanh nghiệp để bắt đầu</p>
+            <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">{BRAND_NAME}</h2>
+            <p className="text-xs text-slate-400">Đăng nhập workspace Marketing & Sales để bắt đầu</p>
           </div>
         </div>
 
@@ -229,3 +229,4 @@ export default function AuthPage() {
     </div>
   );
 }
+
