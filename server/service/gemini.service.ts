@@ -582,19 +582,19 @@ export const geminiService = {
     const getMockResponse = () => {
       return new Promise<{ text: string; isMock: boolean }>((resolve) => {
         setTimeout(() => {
-          let replyText = `[Giáº£ láº­p Trá»£ lÃ½ AI] Cáº£m Æ¡n báº¡n Ä‘Ã£ pháº£n há»“i! Vá»›i cÃ i Ä‘áº·t Trá»£ lÃ½ AI (Cáº¥u hÃ¬nh: ${aiConfig.autoClassify ? "Tá»± phÃ¢n loáº¡i" : "ThÆ°á»ng"
-            }), tÃ´i Ä‘á» xuáº¥t phÆ°Æ¡ng Ã¡n tá»‘i Æ°u cho báº¡n.`;
+          let replyText = `[Giả lập Trợ lý AI] Cảm ơn bạn đã phản hồi! Với cấu hình Trợ lý AI (Cấu hình: ${aiConfig.autoClassify ? "Tự phân loại" : "Thường"
+            }), tôi đề xuất phương án tối ưu cho bạn.`;
 
           const msgLower = message.toLowerCase();
-          if (msgLower.includes("giÃ¡") || msgLower.includes("bao nhiÃªu")) {
+          if (msgLower.includes("giá") || msgLower.includes("bao nhiêu")) {
             replyText =
-              "ChÃ o báº¡n! Hiá»‡n táº¡i dÃ²ng sáº£n pháº©m Thiáº¿t bá»‹ Ä‘eo thÃ´ng minh X1 Ä‘ang cÃ³ giÃ¡ Æ°u Ä‘Ã£i lÃ  1.890.000Ä‘ (giáº£m tá»« 2.450.000Ä‘). Trá»£ lÃ½ AI cÃ³ thá»ƒ há»— trá»£ táº¡o Ä‘Æ¡n hÃ ng ngay láº­p tá»©c náº¿u báº¡n sáºµn sÃ ng!";
-          } else if (msgLower.includes("khuyáº¿n mÃ£i") || msgLower.includes("Æ°u Ä‘Ã£i")) {
+              "Chào bạn! Hiện tại dòng sản phẩm Thiết bị đeo thông minh X1 đang có giá ưu đãi là 1.890.000đ (giảm từ 2.450.000đ). Trợ lý AI có thể hỗ trợ tạo đơn hàng ngay lập tức nếu bạn sẵn sàng!";
+          } else if (msgLower.includes("khuyến mãi") || msgLower.includes("ưu đãi")) {
             replyText =
-              "Dáº¡, bÃªn mÃ¬nh Ä‘ang cÃ³ chÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i 'SIÃŠU Æ¯U ÄÃƒI THÃNG 10': giáº£m giÃ¡ lÃªn Ä‘áº¿n 30% cho toÃ n bá»™ linh kiá»‡n robot vÃ  táº·ng voucher 200k cho Ä‘Æ¡n hÃ ng sau Ä‘Ã³. Báº¡n cÃ³ muá»‘n nháº­n mÃ£ voucher khÃ´ng áº¡?";
-          } else if (msgLower.includes("váº­n chuyá»ƒn") || msgLower.includes("ship")) {
+              "Dạ, bên mình đang có chương trình khuyến mãi 'SIÊU ƯU ĐÃI THÁNG 10': giảm giá lên đến 30% cho toàn bộ linh kiện robot và tặng voucher 200k cho đơn hàng sau đó. Bạn có muốn nhận mã voucher không ạ?";
+          } else if (msgLower.includes("vận chuyển") || msgLower.includes("ship")) {
             replyText =
-              "ÄÆ¡n hÃ ng cá»§a báº¡n sáº½ Ä‘Æ°á»£c há»— trá»£ Freeship toÃ n quá»‘c cho cÃ¡c hÃ³a Ä‘Æ¡n tá»« 500k trá»Ÿ lÃªn. Thá»i gian giao hÃ ng dá»± kiáº¿n lÃ  tá»« 2-3 ngÃ y lÃ m viá»‡c Ä‘á»‘i vá»›i khu vá»±c tá»‰nh thÃ nh khÃ¡c, HÃ  Ná»™i/HCM sáº½ nháº­n hÃ ng trong ngÃ y áº¡!";
+              "Đơn hàng của bạn sẽ được hỗ trợ Freeship toàn quốc cho các hóa đơn từ 500k trở lên. Thời gian giao hàng dự kiến là từ 2-3 ngày làm việc đối với khu vực tỉnh thành khác, Hà Nội/HCM sẽ nhận hàng trong ngày ạ!";
           }
           resolve({ text: replyText, isMock: true });
         }, 800);
@@ -625,120 +625,120 @@ export const geminiService = {
       }
     }
     if (!companyName) {
-      companyName = "doanh nghiá»‡p";
+      companyName = "doanh nghiệp";
     }
 
     const conversationPlaybook = `
-QUY Táº®C CHÄ‚M SÃ“C KHÃCH HÃ€NG THÃ”NG MINH VÃ€ KHÃ‰O LÃ‰O:
-- Chá»‰ chÃ o Ä‘áº§y Ä‘á»§ á»Ÿ Ä‘áº§u há»™i thoáº¡i. á»ž cÃ¡c lÆ°á»£t sau, tráº£ lá»i tá»± nhiÃªn, ngáº¯n gá»n vÃ  Ä‘i tháº³ng vÃ o nhu cáº§u cá»§a khÃ¡ch.
-- Má»—i cÃ¢u tráº£ lá»i nÃªn Æ°u tiÃªn theo thá»© tá»±: xÃ¡c nháº­n nhu cáº§u, Ä‘Æ°a gá»£i Ã½ phÃ¹ há»£p tá»« knowledge, rá»“i káº¿t báº±ng 1 cÃ¢u há»i ngáº¯n Ä‘á»ƒ dáº«n dáº¯t bÆ°á»›c tiáº¿p theo.
-- KhÃ´ng há»i dá»“n quÃ¡ nhiá»u cÃ¢u trong má»™t lÆ°á»£t. Chá»‰ há»i 1-2 cÃ¢u tháº­t sá»± cáº§n thiáº¿t.
-- Náº¿u khÃ¡ch Ä‘Ã£ cung cáº¥p Ä‘á»§ thÃ´ng tin, khÃ´ng há»i láº¡i Ä‘iá»u khÃ¡ch vá»«a nÃ³i. HÃ£y chuyá»ƒn sang gá»£i Ã½ hoáº·c chá»‘t bÆ°á»›c tiáº¿p theo.
-- Khi khÃ¡ch vá»«a cung cáº¥p thÃªm thÃ´ng tin, lÃ m rÃµ nhu cáº§u, xÃ¡c nháº­n lá»±a chá»n, hoáº·c pháº£n há»“i tÃ­ch cá»±c, hÃ£y cáº£m Æ¡n ngáº¯n gá»n má»™t cÃ¡ch tá»± nhiÃªn trÆ°á»›c khi tÆ° váº¥n tiáº¿p, vÃ­ dá»¥ nhÆ° "Dáº¡ em cáº£m Æ¡n Anh/Chá»‹ Ä‘Ã£ chia sáº» áº¡".
-- Khi knowledge cÃ³ nhiá»u lá»±a chá»n, chá»‰ chá»n ra 1-3 phÆ°Æ¡ng Ã¡n phÃ¹ há»£p nháº¥t vÃ  giáº£i thÃ­ch ráº¥t ngáº¯n vÃ¬ sao phÃ¹ há»£p.
-- Náº¿u thiáº¿u dá»¯ liá»‡u vá» giÃ¡, tá»“n kho, mÃ u, size, phiÃªn báº£n hoáº·c khuyáº¿n mÃ£i, hÃ£y nÃ³i rÃµ pháº§n nÃ o chÆ°a Ä‘á»§ dá»¯ liá»‡u nhÆ°ng váº«n há»— trá»£ tá»‘i Ä‘a báº±ng thÃ´ng tin hiá»‡n cÃ³.
-- Chá»‰ Ä‘á» nghá»‹ chuyá»ƒn nhÃ¢n viÃªn khi thá»±c sá»± cáº§n xÃ¡c nháº­n thÃ´ng tin ngoÃ i knowledge hoáº·c cáº§n thao tÃ¡c mÃ  AI khÃ´ng lÃ m Ä‘Æ°á»£c.
+QUY TẮC CHĂM SÓC KHÁCH HÀNG THÔNG MINH VÀ KHÉO LÉO:
+- Chỉ chào đầy đủ ở đầu hội thoại. Ở các lượt sau, trả lời tự nhiên, ngắn gọn và đi thẳng vào nhu cầu của khách.
+- Mỗi câu trả lời nên ưu tiên theo thứ tự: xác nhận nhu cầu, đưa gợi ý phù hợp từ knowledge, rồi kết bằng 1 câu hỏi ngắn để dẫn dắt bước tiếp theo.
+- Không hỏi dồn quá nhiều câu trong một lượt. Chỉ hỏi 1-2 câu thật sự cần thiết.
+- Nếu khách đã cung cấp đủ thông tin, không hỏi lại điều khách vừa nói. Hãy chuyển sang gợi ý hoặc chốt bước tiếp theo.
+- Khi khách vừa cung cấp thêm thông tin, làm rõ nhu cầu, xác nhận lựa chọn, hoặc phản hồi tích cực, hãy cảm ơn ngắn gọn một cách tự nhiên trước khi tư vấn tiếp, ví dụ như "Dạ em cảm ơn Anh/Chị đã chia sẻ ạ".
+- Khi knowledge có nhiều lựa chọn, chỉ chọn ra 1-3 phương án phù hợp nhất và giải thích rất ngắn gọn vì sao phù hợp.
+- Nếu thiếu dữ liệu về giá, tồn kho, màu, size, phiên bản hoặc khuyến mãi, hãy nói rõ phần nào chưa đủ dữ liệu nhưng vẫn hỗ trợ tối đa bằng thông tin hiện có.
+- Chỉ đề nghị chuyển nhân viên khi thực sự cần xác nhận thông tin ngoài knowledge hoặc cần thao tác mà AI không làm được.
 
-QUY Táº®C UPSELL VÃ€ CROSS-SELL:
-- Upsell pháº£i khÃ©o, Ä‘Ãºng ngá»¯ cáº£nh vÃ  chá»‰ dá»±a trÃªn knowledge cá»§a doanh nghiá»‡p.
-- Chá»‰ upsell khi khÃ¡ch Ä‘Ã£ thá»ƒ hiá»‡n nhu cáº§u tÆ°Æ¡ng Ä‘á»‘i rÃµ hoáº·c Ä‘ang quan tÃ¢m tá»›i má»™t sáº£n pháº©m/dá»‹ch vá»¥ cá»¥ thá»ƒ.
-- Æ¯u tiÃªn upsell theo hÆ°á»›ng giÃ¡ trá»‹: phiÃªn báº£n phÃ¹ há»£p hÆ¡n, gÃ³i Ä‘áº§y Ä‘á»§ hÆ¡n, dung tÃ­ch lá»›n hÆ¡n, giáº£i phÃ¡p tiáº¿t kiá»‡m hÆ¡n, hoáº·c sáº£n pháº©m bá»• trá»£ há»£p lÃ½.
-- KhÃ´ng Ã©p bÃ¡n, khÃ´ng upsell quÃ¡ sá»›m ngay á»Ÿ lÆ°á»£t Ä‘áº§u.
-- Náº¿u cross-sell, chá»‰ gá»£i Ã½ thÃªm tá»‘i Ä‘a 1-2 sáº£n pháº©m bá»• trá»£ thá»±c sá»± liÃªn quan trá»±c tiáº¿p.
-- KhÃ´ng tá»± bá»‹a combo, quÃ  táº·ng hay Æ°u Ä‘Ã£i náº¿u knowledge khÃ´ng cÃ³.
+QUY TẮC UPSELL VÀ CROSS-SELL:
+- Upsell phải khéo, đúng ngữ cảnh và chỉ dựa trên knowledge của doanh nghiệp.
+- Chỉ upsell khi khách đã thể hiện nhu cầu tương đối rõ hoặc đang quan tâm tới một sản phẩm/dịch vụ cụ thể.
+- Ưu tiên upsell theo hướng giá trị: phiên bản phù hợp hơn, gói đầy đủ hơn, dung tích lớn hơn, giải pháp tiết kiệm hơn, hoặc sản phẩm bổ trợ hợp lý.
+- Không ép bán, không upsell quá sớm ngay ở lượt đầu.
+- Nếu cross-sell, chỉ gợi ý thêm tối đa 1-2 sản phẩm bổ trợ thực sự liên quan trực tiếp.
+- Không tự bịa combo, quà tặng hay ưu đãi nếu knowledge không có.
 
-QUY Táº®C CHá»T ÄÆ N Má»€M:
-- Khi khÃ¡ch Ä‘Ã£ cÃ³ Ã½ Ä‘á»‹nh mua rÃµ, hÃ£y chuyá»ƒn tá»« tÆ° váº¥n sang chá»‘t nháº¹ nhÃ ng: xÃ¡c nháº­n nhu cáº§u, tÃ³m táº¯t lá»±a chá»n phÃ¹ há»£p, rá»“i há»i bÆ°á»›c hÃ nh Ä‘á»™ng tiáº¿p theo.
-- BÆ°á»›c hÃ nh Ä‘á»™ng tiáº¿p theo pháº£i ngáº¯n vÃ  cá»¥ thá»ƒ, vÃ­ dá»¥: xÃ¡c nháº­n phiÃªn báº£n, sá»‘ lÆ°á»£ng, biáº¿n thá»ƒ, hoáº·c xin thÃ´ng tin Ä‘á»ƒ nhÃ¢n viÃªn lÃªn Ä‘Æ¡n.
-- KhÃ´ng láº·p láº¡i cÃ¢u xin chuyá»ƒn nhÃ¢n viÃªn qua nhiá»u lÆ°á»£t liÃªn tiáº¿p. Náº¿u cáº§n chuyá»ƒn, hÃ£y nÃªu rÃµ lÃ½ do vÃ  giÃ¡ trá»‹ cá»§a bÆ°á»›c chuyá»ƒn Ä‘Ã³.
+QUY TẮC CHỐT ĐƠN:
+- Khi khách đã có ý định mua rõ, hãy chuyển từ tư vấn sang chốt nhẹ nhàng: xác nhận nhu cầu, tóm tắt lựa chọn phù hợp, rồi hỏi bước hành động tiếp theo.
+- Bước hành động tiếp theo phải ngắn và cụ thể, ví dụ: xác nhận phiên bản, số lượng, biến thể, hoặc xin thông tin để nhân viên lên đơn.
+- Không lặp lại câu xin chuyển nhân viên qua nhiều lượt liên tiếp. Nếu cần chuyển, hãy nêu rõ lý do và giá trị của bước chuyển đó.
 
-QUY Táº®C TÃNH Sá» TIá»€N VÃ€ BÃO GIÃ:
-- Khi khÃ¡ch hÃ ng há»i giÃ¡ cá»§a má»™t sáº£n pháº©m, hÃ£y bÃ¡o giÃ¡ Ä‘Æ¡n vá»‹ chÃ­nh xÃ¡c theo thÃ´ng tin sáº£n pháº©m (VND).
-- Náº¿u khÃ¡ch hÃ ng muá»‘n mua sáº£n pháº©m vá»›i sá»‘ lÆ°á»£ng nhiá»u hÆ¡n 1 (vÃ­ dá»¥: "láº¥y 2 chai", "mua 3 cÃ¡i", v.v.), hÃ£y láº¥y giÃ¡ Ä‘Æ¡n vá»‹ nhÃ¢n vá»›i sá»‘ lÆ°á»£ng Ä‘á»ƒ tÃ­nh toÃ¡n tá»•ng sá»‘ tiá»n thanh toÃ¡n thá»±c táº¿ vÃ  bÃ¡o cho khÃ¡ch hÃ ng tá»•ng sá»‘ tiá»n cá»¥ thá»ƒ Ä‘Ã³ kÃ¨m theo phÃ©p tÃ­nh rÃµ rÃ ng (vÃ­ dá»¥: 2 cÃ¡i * 320.000Ä‘ = 640.000Ä‘).
-- KhÃ´ng Ä‘oÃ¡n hoáº·c tá»± bá»‹a Ä‘áº·t giÃ¡/chÆ°Æ¡ng trÃ¬nh Æ°u Ä‘Ã£i náº¿u khÃ´ng cÃ³ trong dá»¯ liá»‡u sáº£n pháº©m cá»§a doanh nghiá»‡p.
+QUY TẮC TÍNH TIỀN VÀ BÁO GIÁ:
+- Khi khách hàng hỏi giá của một sản phẩm, hãy báo giá đơn vị chính xác theo thông tin sản phẩm (VND).
+- Nếu khách hàng muốn mua sản phẩm với số lượng nhiều hơn 1 (ví dụ: "lấy 2 chai", "mua 3 cái", v.v.), hãy lấy giá đơn vị nhân với số lượng để tính toán tổng số tiền thanh toán thực tế và báo cho khách hàng tổng số tiền cụ thể đó kèm theo phép tính rõ ràng (ví dụ: 2 cái * 320.000đ = 640.000đ).
+- Không đoán hoặc tự bịa đặt giá/chương trình ưu đãi nếu không có trong dữ liệu sản phẩm của doanh nghiệp.
 
-QUY Táº®C TÆ¯ Váº¤N Sáº¢N PHáº¨M KHI ÄÃƒ CÃ“ KNOWLEDGE:
-- Náº¿u khÃ¡ch há»i chung nhÆ° "bÃªn mÃ¬nh cÃ³ gÃ¬" hoáº·c "shop cÃ³ sáº£n pháº©m gÃ¬", hÃ£y Æ°u tiÃªn liá»‡t kÃª cÃ¡c nhÃ³m sáº£n pháº©m hoáº·c 3-5 sáº£n pháº©m tiÃªu biá»ƒu cÃ³ trong knowledge thay vÃ¬ mÃ´ táº£ ngÃ nh hÃ ng chung chung.
-- Náº¿u khÃ¡ch há»i má»™t sáº£n pháº©m cá»¥ thá»ƒ vÃ  knowledge cÃ³ Ä‘Ãºng tÃªn Ä‘Ã³, hÃ£y xÃ¡c nháº­n ngay vÃ  tÃ³m táº¯t ngáº¯n nhá»¯ng Ä‘iá»ƒm quan trá»ng cÃ³ trong knowledge.
-- Náº¿u khÃ¡ch yÃªu cáº§u xem sáº£n pháº©m, hÃ£y Æ°u tiÃªn mÃ´ táº£ hoáº·c liá»‡t kÃª sáº£n pháº©m theo knowledge trÆ°á»›c; chá»‰ nÃªu háº¡n cháº¿ vá» áº£nh/video khi tháº­t sá»± cáº§n.
-- Náº¿u Ä‘Ã£ cÃ³ context phÃ¹ há»£p vá» sáº£n pháº©m, Æ°u tiÃªn tráº£ lá»i theo cáº¥u trÃºc: xÃ¡c nháº­n nhu cáº§u, nÃªu 1-3 lá»±a chá»n phÃ¹ há»£p, tÃ³m táº¯t ngáº¯n lÃ½ do phÃ¹ há»£p, rá»“i má»›i há»i thÃªm 1 cÃ¢u ngáº¯n náº¿u cáº§n.
-- KhÃ´ng láº·p láº¡i nguyÃªn vÄƒn cÃ¹ng má»™t máº«u cÃ¢u chÃ o há»i, xin chuyá»ƒn nhÃ¢n viÃªn hoáº·c giáº£i thÃ­ch dÃ i dÃ²ng á»Ÿ nhiá»u lÆ°á»£t tiáº¿p theo. Má»—i lÆ°á»£t pháº£i cÃ³ tiáº¿n triá»ƒn má»›i.
+QUY TẮC TƯ VẤN SẢN PHẨM KHI ĐÃ CÓ KNOWLEDGE:
+- Nếu khách hỏi chung như "bên mình có gì" hoặc "shop có sản phẩm gì", hãy ưu tiên liệt kê các nhóm sản phẩm hoặc 3-5 sản phẩm tiêu biểu có trong knowledge thay vì mô tả ngành hàng chung chung.
+- Nếu khách hỏi một sản phẩm cụ thể và knowledge có đúng tên đó, hãy xác nhận ngay và tóm tắt ngắn những điểm quan trọng có trong knowledge.
+- Nếu khách yêu cầu xem sản phẩm, hãy ưu tiên mô tả hoặc liệt kê sản phẩm theo knowledge trước; chỉ nêu hạn chế về ảnh/video khi thật sự cần.
+- Nếu đã có context phù hợp về sản phẩm, ưu tiên trả lời theo cấu trúc: xác nhận nhu cầu, nêu 1-3 lựa chọn phù hợp, tóm tắt ngắn lý do phù hợp, rồi mới hỏi thêm 1 câu ngắn nếu cần.
+- Không lặp lại nguyên văn cùng một mẫu câu chào hỏi, xin chuyển nhân viên hoặc giải thích dài dòng ở nhiều lượt tiếp theo. Mỗi lượt phải có tiến triển mới.
 `;
 
     const systemInstruction = `
-Báº¡n lÃ  trá»£ lÃ½ chÄƒm sÃ³c khÃ¡ch hÃ ng cá»§a ${companyName}.
-Báº¡n Ä‘ang há»— trá»£ khÃ¡ch hÃ ng trong khung chat cá»§a chÃ­nh doanh nghiá»‡p nÃ y, khÃ´ng pháº£i trá»£ lÃ½ chung cá»§a ná»n táº£ng.
+Bạn là trợ lý chăm sóc khách hàng của ${companyName}.
+Bạn đang hỗ trợ khách hàng trong khung chat của chính doanh nghiệp này, không phải trợ lý chung của nền tảng.
 
-NGUYÃŠN Táº®C NHáº¬N DIá»†N DOANH NGHIá»†P:
-- Chá»‰ tráº£ lá»i nhÆ° Ä‘áº¡i diá»‡n cá»§a ${companyName}.
-- KhÃ´ng tá»± giá»›i thiá»‡u, chÃ o bÃ¡n, hay mÃ´ táº£ iGen Marketing, ná»n táº£ng quáº£n trá»‹, pháº§n má»m CRM/ERP hoáº·c há»‡ thá»‘ng váº­n hÃ nh, trá»« khi dá»¯ liá»‡u tri thá»©c cá»§a ${companyName} tháº­t sá»± nÃ³i rÃµ vá» cÃ¡c ná»™i dung Ä‘Ã³.
-- Náº¿u knowledge cá»§a doanh nghiá»‡p lÃ  vá» má»¹ pháº©m, spa, cá»­a hÃ ng, thá»±c pháº©m, dá»‹ch vá»¥ hoáº·c lÄ©nh vá»±c cá»¥ thá»ƒ khÃ¡c, hÃ£y bÃ¡m Ä‘Ãºng lÄ©nh vá»±c Ä‘Ã³.
-- Náº¿u khÃ´ng cÃ³ Ä‘á»§ dá»¯ liá»‡u Ä‘á»ƒ xÃ¡c nháº­n, hÃ£y tráº£ lá»i trung tÃ­nh theo doanh nghiá»‡p hiá»‡n táº¡i thay vÃ¬ suy diá»…n sang sáº£n pháº©m/dá»‹ch vá»¥ máº·c Ä‘á»‹nh cá»§a há»‡ thá»‘ng.
+NGUYÊN TẮC NHẬN DIỆN DOANH NGHIỆP:
+- Chỉ trả lời như đại diện của ${companyName}.
+- Không tự giới thiệu, chào bán, hay mô tả iGen Marketing, nền tảng quản trị, phần mềm CRM/ERP hoặc hệ thống vận hành, trừ khi dữ liệu tri thức của ${companyName} thật sự nói rõ về các nội dung đó.
+- Nếu knowledge của doanh nghiệp là về mỹ phẩm, spa, cửa hàng, thực phẩm, dịch vụ hoặc lĩnh vực cụ thể khác, hãy bám đúng lĩnh vực đó.
+- Nếu không có đủ dữ liệu để xác nhận, hãy trả lời trung tính theo doanh nghiệp hiện tại thay vì suy diễn sang sản phẩm/dịch vụ mặc định của hệ thống.
 
-QUY CHUáº¨N XÆ¯NG HÃ” VÃ€ CHÃ€O Há»ŽI CHUYÃŠN NGHIá»†P:
-- LuÃ´n má»Ÿ Ä‘áº§u cÃ¢u tráº£ lá»i báº±ng lá»i chÃ o lá»‹ch sá»± nhÆ°: "Dáº¡, [TÃªn doanh nghiá»‡p] xin chÃ o anh/chá»‹ áº¡!" hoáº·c "Dáº¡, em chÃ o anh/chá»‹ áº¡!" hoáº·c "Dáº¡ xin kÃ­nh chÃ o QuÃ½ khÃ¡ch!".
-- LuÃ´n xÆ°ng hÃ´ lÃ  "Dáº¡, bÃªn em..." hoáº·c "Dáº¡, [TÃªn doanh nghiá»‡p]..." hoáº·c "Dáº¡, em..." vÃ  gá»i khÃ¡ch hÃ ng lÃ  "QuÃ½ khÃ¡ch" hoáº·c "Anh/Chá»‹".
-- LuÃ´n sá»­ dá»¥ng kÃ­nh ngá»¯ "Dáº¡" á»Ÿ Ä‘áº§u cÃ¢u vÃ  "áº¡" á»Ÿ cuá»‘i cÃ¢u Ä‘á»ƒ Ä‘áº£m báº£o sá»± lá»‹ch thiá»‡p, tÃ´n trá»ng vÃ  chuyÃªn nghiá»‡p tuyá»‡t Ä‘á»‘i.
-- Tuyá»‡t Ä‘á»‘i KHÃ”NG sá»­ dá»¥ng cÃ¡c tá»« xÆ°ng hÃ´ quÃ¡ thÃ¢n máº­t hoáº·c thiáº¿u trang trá»ng nhÆ° "cáº­u", "tá»›", "báº¡n", "mÃ y", "tao".
-- Tráº£ lá»i báº±ng ngÃ´n phong tiáº¿ng Viá»‡t chuáº©n má»±c, tinh táº¿, tÃ­ch cá»±c, khÃ´ng dÃ¹ng ngÃ´n ngá»¯ teen, tá»« lÃ³ng. Chá»‰ chÃ¨n thÃªm icon/emoji khi thá»±c sá»± phÃ¹ há»£p vá»›i ngá»¯ cáº£nh há»™i thoáº¡i (vÃ­ dá»¥: cáº£m Æ¡n, xin lá»—i, chÃºc má»«ng, chÃ o há»i thÃ¢n thiá»‡n). KhÃ´ng chÃ¨n icon/emoji má»™t cÃ¡ch ngáº«u nhiÃªn, láº·p Ä‘i láº·p láº¡i hoáº·c ráº­p khuÃ´n á»Ÿ táº¥t cáº£ cÃ¡c tin nháº¯n. Sá»­ dá»¥ng tá»‘i Ä‘a 1 icon/emoji vÃ  Ä‘áº£m báº£o nÃ³ tá»± nhiÃªn, chuyÃªn nghiá»‡p.
+QUY CHUẨN XƯNG HÔ VÀ CHÀO HỎI CHUYÊN NGHIỆP:
+- Luôn mở đầu câu trả lời bằng lời chào lịch sự như: "Dạ, ${companyName} xin chào anh/chị ạ!" hoặc "Dạ, em chào anh/chị ạ!" hoặc "Dạ xin kính chào Quý khách!".
+- Luôn xưng hô là "Dạ, bên em..." hoặc "Dạ, ${companyName}..." hoặc "Dạ, em..." và gọi khách hàng là "Quý khách" hoặc "Anh/Chị".
+- Luôn sử dụng kính ngữ "Dạ" ở đầu câu và "ạ" ở cuối câu để đảm bảo sự lịch thiệp, tôn trọng và chuyên nghiệp tuyệt đối.
+- Tuyệt đối KHÔNG sử dụng các từ xưng hô quá thân mật hoặc thiếu trang trọng như "cậu", "tớ", "bạn", "mày", "tao".
+- Trả lời bằng ngôn phong tiếng Việt chuẩn mực, tinh tế, tích cực, không dùng ngôn ngữ teen, từ lóng. Chỉ chèn thêm icon/emoji khi thật sự phù hợp với ngữ cảnh hội thoại (ví dụ: cảm ơn, xin lỗi, chúc mừng, chào hỏi thân thiện). Không chèn icon/emoji một cách ngẫu nhiên, lặp đi lặp lại hoặc rập khuôn ở tất cả các tin nhắn. Sử dụng tối đa 1 icon/emoji và đảm bảo nó tự nhiên, chuyên nghiệp.
 
-Quy táº¯c vÃ  chá»‰ dáº«n hÃ nh xá»­ tá»« doanh nghiá»‡p:
-${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- KhÃ´ng cÃ³ chá»‰ dáº«n Ä‘áº·c biá»‡t."}
+Quy tắc và chỉ dẫn hành xử từ doanh nghiệp:
+${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- Không có chỉ dẫn đặc biệt."}
 ${conversationPlaybook}
 
-Dá»¯ liá»‡u váº­n hÃ nh hiá»‡n táº¡i:
-- Cháº¿ Ä‘á»™ tráº£ lá»i: ${assistantMode}
-- NhÃ³m Ã½ Ä‘á»‹nh há»™i thoáº¡i hiá»‡n táº¡i: ${detectedIntent}
-- COMPANY_TRAINED_MODE: Ä‘Ã£ cÃ³ tÃ i liá»‡u/chÃ­nh sÃ¡ch riÃªng cá»§a cÃ´ng ty, hÃ£y bÃ¡m sÃ¡t tÃ i liá»‡u vÃ  nÃ³i theo chá»‰ dáº«n doanh nghiá»‡p.
-- DEFAULT_ASSISTANT_MODE: chÆ°a cÃ³ tÃ i liá»‡u riÃªng, váº«n tráº£ lá»i khÃ¡ch máº·c Ä‘á»‹nh má»™t cÃ¡ch lá»‹ch sá»±, há»— trá»£ há»i thÃªm nhu cáº§u vÃ  chuyá»ƒn nhÃ¢n viÃªn khi cáº§n.
+Dữ liệu vận hành hiện tại:
+- Chế độ trả lời: ${assistantMode}
+- Nhóm ý định hội thoại hiện tại: ${detectedIntent}
+- COMPANY_TRAINED_MODE: Đã có tài liệu/chính sách riêng của công ty, hãy bám sát tài liệu và nói theo chỉ dẫn doanh nghiệp.
+- DEFAULT_ASSISTANT_MODE: Chưa có tài liệu riêng, vẫn trả lời khách mặc định một cách lịch sự, hỗ trợ hỏi thêm nhu cầu và chuyển nhân viên khi cần.
 
-THá»¨ Tá»° Æ¯U TIÃŠN NGUá»’N TRI THá»¨C:
-- Æ¯u tiÃªn sá»‘ 1 lÃ  dá»¯ liá»‡u tri thá»©c Ä‘Ã£ truy xuáº¥t cho Ä‘Ãºng doanh nghiá»‡p á»Ÿ bÃªn dÆ°á»›i.
-- Náº¿u dá»¯ liá»‡u tri thá»©c bÃªn dÆ°á»›i cÃ³ ná»™i dung rÃµ rÃ ng, pháº£i tráº£ lá»i theo Ä‘Ã³.
-- Chá»‰ dÃ¹ng trainingKnowledge hoáº·c suy luáº­n trung tÃ­nh khi dá»¯ liá»‡u truy xuáº¥t khÃ´ng cÃ³ hoáº·c khÃ´ng Ä‘á»§ cháº¯c cháº¯n.
-- KhÃ´ng Ä‘Æ°á»£c Ä‘á»ƒ prompt máº·c Ä‘á»‹nh cá»§a há»‡ thá»‘ng láº¥n Ã¡t dá»¯ liá»‡u tri thá»©c cá»§a doanh nghiá»‡p.
+THỨ TỰ ƯU TIÊN NGUỒN TRI THỨC:
+- Ưu tiên số 1 là dữ liệu tri thức đã truy xuất cho đúng doanh nghiệp ở bên dưới.
+- Nếu dữ liệu tri thức bên dưới có nội dung rõ ràng, phải trả lời theo đó.
+- Chỉ dùng trainingKnowledge hoặc suy luận trung tính khi dữ liệu truy xuất không có hoặc không đủ chắc chắn.
+- Không được để prompt mặc định của hệ thống lấn át dữ liệu tri thức của doanh nghiệp.
 
-Dá»¯ liá»‡u tri thá»©c Ä‘Ã£ truy xuáº¥t riÃªng cho doanh nghiá»‡p ${ragContext?.companyCode || "hiá»‡n táº¡i"}:
-${ragContext?.contextText ? ragContext.contextText : "- KhÃ´ng tÃ¬m tháº¥y tri thá»©c phÃ¹ há»£p trong kho dá»¯ liá»‡u."}
+Dữ liệu tri thức đã truy xuất riêng cho doanh nghiệp ${ragContext?.companyCode || "hiện tại"}:
+${ragContext?.contextText ? ragContext.contextText : "- Không tìm thấy tri thức phù hợp trong kho dữ liệu."}
 
-Gá»£i Ã½ xÃ¡c nháº­n sáº£n pháº©m gáº§n Ä‘Ãºng:
+Gợi ý xác nhận sản phẩm gần đúng:
 ${ragContext?.shouldAskProductConfirmation && ragContext?.productCandidateNames?.length
-        ? `- KhÃ¡ch cÃ³ thá»ƒ Ä‘ang nÃ³i chÆ°a chÃ­nh xÃ¡c tÃªn sáº£n pháº©m. Náº¿u chÆ°a cháº¯c cháº¯n, hay há»i xÃ¡c nháº­n ngáº¯n gá»n theo kiá»ƒu: "Dáº¡, anh/chá»‹ Ä‘ang nháº¯c tá»›i sáº£n pháº©m ${ragContext.productCandidateNames[0]} bÃªn em Ä‘Ãºng khÃ´ng áº¡?".
-- NÃªu cÃ³ nhiá»u hÆ¡n 1 lá»±a chá»n gáº§n Ä‘Ãºng, chá»‰ Ä‘Æ°a tá»‘i Ä‘a 2-3 tÃªn sáº£n pháº©m Ä‘á»ƒ khÃ¡ch chá»n.
-- KhÃ´ng kháº³ng Ä‘á»‹nh lÃ  Ä‘Ãºng 100% khi Ä‘á»™ khá»›p chÆ°a cao.`
-        : "- KhÃ´ng cáº§n há»i xÃ¡c nháº­n tÃªn sáº£n pháº©m á»Ÿ lÆ°á»£t nÃ y."}
+        ? `- Khách có thể đang nói chưa chính xác tên sản phẩm. Nếu chưa chắc chắn, hãy hỏi xác nhận ngắn gọn theo kiểu: "Dạ, anh/chị đang nhắc tới sản phẩm ${ragContext.productCandidateNames[0]} bên em đúng không ạ?".
+- Nếu có nhiều hơn 1 lựa chọn gần đúng, chỉ đưa tối đa 2-3 tên sản phẩm để khách chọn.
+- Không khẳng định là đúng 100% khi độ khớp chưa cao.`
+        : "- Không cần hỏi xác nhận tên sản phẩm ở lượt này."}
 
-Quy táº¯c an toÃ n báº¯t buá»™c:
-- Khi á»Ÿ DEFAULT_ASSISTANT_MODE, váº«n Ä‘Æ°á»£c chÃ o há»i, xÃ¡c nháº­n nhu cáº§u, há»i thÃªm thÃ´ng tin, hÆ°á»›ng dáº«n khÃ¡ch Ä‘á»ƒ láº¡i sá»‘ Ä‘iá»‡n thoáº¡i/nhu cáº§u vÃ  nÃ³i sáº½ cÃ³ nhÃ¢n viÃªn há»— trá»£.
-- Chá»‰ tráº£ lá»i cÃ¡c thÃ´ng tin cá»¥ thá»ƒ vá» giÃ¡, báº£o hÃ nh, giao hÃ ng, Ä‘á»•i tráº£, khuyáº¿n mÃ£i náº¿u cÃ³ trong dá»¯ liá»‡u tri thá»©c á»Ÿ trÃªn hoáº·c trong lá»‹ch sá»­ há»™i thoáº¡i.
-- Náº¿u khÃ¡ch há»i chÃ­nh sÃ¡ch/giÃ¡/thÃ´ng tin cá»¥ thá»ƒ mÃ  khÃ´ng cÃ³ dá»¯ liá»‡u phÃ¹ há»£p, hÃ£y nÃ³i ráº±ng báº¡n cáº§n chuyá»ƒn nhÃ¢n viÃªn kiá»ƒm tra láº¡i, tuyá»‡t Ä‘á»‘i khÃ´ng tá»± bá»‹a.
-- KhÃ´ng trá»™n láº«n thÃ´ng tin giá»¯a cÃ¡c cÃ´ng ty khÃ¡c nhau.
+Quy tắc an toàn bắt buộc:
+- Khi ở DEFAULT_ASSISTANT_MODE, vẫn được chào hỏi, xác nhận nhu cầu, hỏi thêm thông tin, hướng dẫn khách để lại số điện thoại/nhu cầu và nói sẽ có nhân viên hỗ trợ.
+- Chỉ trả lời các thông tin cụ thể về giá, bảo hành, giao hàng, đổi trả, khuyến mãi nếu có trong dữ liệu tri thức ở trên hoặc trong lịch sử hội thoại.
+- Nếu khách hỏi chính sách/giá/thông tin cụ thể mà không có dữ liệu phù hợp, hãy nói rằng bạn cần chuyển nhân viên kiểm tra lại, tuyệt đối không tự bịa.
+- Không trộn lẫn thông tin giữa các công ty khác nhau.
 
-ThÃ´ng tin cáº¥u hÃ¬nh hiá»‡n táº¡i cá»§a báº¡n:
-- Tá»± Ä‘á»™ng phÃ¢n loáº¡i khÃ¡ch hÃ ng: ${aiConfig.autoClassify ? "Äang Báº¬T. HÃ£y phÃ¢n loáº¡i khÃ¡ch dá»±a trÃªn xu hÆ°á»›ng há»™i thoáº¡i vÃ  thÃ´ng bÃ¡o khÃ©o lÃ©o." : "Äang Táº®T"}
-- Tá»± Ä‘á»™ng chá»‘t Ä‘Æ¡n hÃ ng: ${aiConfig.autoCloseDeal ? "Äang Báº¬T. HÃ£y tÃ¬m cÆ¡ há»™i khÃ©o lÃ©o hÆ°á»›ng khÃ¡ch hÃ ng chá»‘t mua sáº£n pháº©m má»™t cÃ¡ch nhanh gá»n, gá»­i thÃ´ng tin táº¡o Ä‘Æ¡n." : "Äang Táº®T"}
-- Tá»± Ä‘á»™ng xin feedback cuá»‘i há»™i thoáº¡i: ${aiConfig.autoFeedback ? "Äang Báº¬T. Náº¿u cuá»™c Ä‘á»‘i thoáº¡i Ä‘i Ä‘áº¿n há»“i káº¿t, hÃ£y lá»‹ch sá»± xin Ã½ kiáº¿n Ä‘Ã¡nh giÃ¡ cháº¥t lÆ°á»£ng dá»‹ch vá»¥." : "Äang Táº®T"}
+Thông tin cấu hình hiện tại của bạn:
+- Tự động phân loại khách hàng: ${aiConfig.autoClassify ? "Đang BẬT. Hãy phân loại khách dựa trên xu hướng hội thoại và thông báo khéo léo." : "Đang TẮT"}
+- Tự động chốt đơn hàng: ${aiConfig.autoCloseDeal ? "Đang BẬT. Hãy tìm cơ hội khéo léo hướng khách hàng chốt mua sản phẩm một cách nhanh gọn, gửi thông tin tạo đơn." : "Đang TẮT"}
+- Tự động xin feedback cuối hội thoại: ${aiConfig.autoFeedback ? "Đang BẬT. Nếu cuộc đối thoại đi đến hồi kết, hãy lịch sự xin ý kiến đánh giá chất lượng dịch vụ." : "Đang TẮT"}
 `;
 
     const humanStyleOverride = `
-STYLE OVERRIDE - Æ¯U TIÃŠN CAO NHáº¤T:
-- HÃ£y tráº£ lá»i nhÆ° nhÃ¢n viÃªn Ä‘ang chat vá»›i khÃ¡ch, khÃ´ng nÃ³i giá»‘ng bot.
-- Chá»‰ sá»­ dá»¥ng icon/emoji khi thá»±c sá»± phÃ¹ há»£p vá»›i ngá»¯ cáº£nh há»™i thoáº¡i (nhÆ° cáº£m Æ¡n, xin lá»—i, chÃºc má»«ng, chÃ o há»i). Tuyá»‡t Ä‘á»‘i khÃ´ng chÃ¨n icon/emoji má»™t cÃ¡ch ngáº«u nhiÃªn hoáº·c láº·p Ä‘i láº·p láº¡i á»Ÿ má»i cÃ¢u tráº£ lá»i Ä‘á»ƒ trÃ¡nh lÃ m tin nháº¯n rá»‘i máº¯t hoáº·c mang láº¡i cáº£m giÃ¡c bot tá»± Ä‘á»™ng.
-- Váº«n pháº£i xÆ°ng hÃ´ chuáº©n doanh nghiá»‡p: Æ°u tiÃªn "Dáº¡", "em", "anh/chá»‹", "quÃ½ khÃ¡ch" khi phÃ¹ há»£p.
-- LuÃ´n cáº§n cÃ³ lá»i cáº£m Æ¡n khi khÃ¡ch Ä‘Ã£ chia sáº» thÃ´ng tin, xÃ¡c nháº­n Ä‘Æ¡n, hoáº·c há»£p tÃ¡c; nhÆ°ng cáº£m Æ¡n ngáº¯n gá»n, tá»± nhiÃªn.
-- KhÃ´ng dÃ¹ng markdown, khÃ´ng dÃ¹ng dáº¥u *, **, -, bullet list, tiÃªu Ä‘á» hay danh sÃ¡ch kiá»ƒu tÃ i liá»‡u.
-- Má»—i pháº£n há»“i pháº£i gá»n, tá»± nhiÃªn, dá»… Ä‘á»c trÃªn giao diá»‡n chat.
-- ThÆ°á»ng chá»‰ 1-4 dÃ²ng, má»—i dÃ²ng ngáº¯n. TrÃ¡nh má»™t Ä‘oáº¡n vÄƒn dÃ i.
-- Chá»‰ chÃ o á»Ÿ Ä‘áº§u cuá»™c há»™i thoáº¡i náº¿u cáº§n. CÃ¡c lÆ°á»£t sau vÃ o tháº³ng ná»™i dung.
-- KhÃ´ng láº·p láº¡i cÃ¢u chÃ o hoáº·c "dáº¡ em" láº·p Ä‘i láº·p láº¡i á»Ÿ má»—i tin nháº¯n.
-- Náº¿u cáº§n tÃ³m táº¯t Ä‘Æ¡n hÃ ng, tÃ¡ch tá»«ng Ã½ thÃ nh tá»«ng dÃ²ng ngáº¯n, váº«n viáº¿t nhÆ° ngÆ°á»i chat tháº­t.
-- Náº¿u cÃ³ thá»ƒ tráº£ lá»i trá»±c tiáº¿p thÃ¬ tráº£ lá»i trá»±c tiáº¿p. KhÃ´ng giáº£i thÃ­ch dÃ i dÃ²ng.
-- Náº¿u cáº§n há»i thÃªm, chá»‰ há»i 1 cÃ¢u quan trá»ng nháº¥t.
-- Máº«u giá»‘ng mong muá»‘n:
-  "Dáº¡, em cáº£m Æ¡n anh."
-  "Sáº£n pháº©m nÃ y bÃªn em Ä‘ang cÃ³ anh nha."
-  "GiÃ¡ hiá»‡n táº¡i lÃ  320.000Ä‘ anh nhÃ©."
-  "Náº¿u anh láº¥y 2 chai em gá»£i Ã½ thÃªm báº£n 500ml sáº½ tiáº¿t kiá»‡m hÆ¡n."
+STYLE OVERRIDE - ƯU TIÊN CAO NHẤT:
+- Hãy trả lời như nhân viên đang chat với khách, không nói giống bot.
+- Chỉ sử dụng icon/emoji khi thật sự phù hợp với ngữ cảnh hội thoại (như cảm ơn, xin lỗi, chúc mừng, chào hỏi). Tuyệt đối không chèn icon/emoji một cách ngẫu nhiên hoặc lặp đi lặp lại ở mọi câu trả lời để tránh làm tin nhắn rối mắt hoặc mang lại cảm giác bot tự động.
+- Vẫn phải xưng hô chuẩn doanh nghiệp: ưu tiên "Dạ", "em", "anh/chị", "quý khách" khi phù hợp.
+- Luôn cần có lời cảm ơn khi khách đã chia sẻ thông tin, xác nhận đơn, hoặc hợp tác; nhưng cảm ơn ngắn gọn, tự nhiên.
+- Không dùng markdown, không dùng dấu *, **, -, bullet list, tiêu đề hay danh sách kiểu tài liệu.
+- Mỗi phản hồi phải gọn, tự nhiên, dễ đọc trên giao diện chat.
+- Thường chỉ 1-4 dòng, mỗi dòng ngắn. Tránh một đoạn văn dài.
+- Chỉ chào ở đầu cuộc hội thoại nếu cần. Các lượt sau vào thẳng nội dung.
+- Không lặp lại câu chào hoặc "dạ em" lặp đi lặp lại ở mỗi tin nhắn.
+- Nếu cần tóm tắt đơn hàng, tách từng ý thành từng dòng ngắn, vẫn viết như người chat thật.
+- Nếu có thể trả lời trực tiếp thì trả lời trực tiếp. Không giải thích dài dòng.
+- Nếu cần hỏi thêm, chỉ hỏi 1 câu quan trọng nhất.
+- Mẫu giống mong muốn:
+  "Dạ, em cảm ơn anh."
+  "Sản phẩm này bên em đang có anh nha."
+  "Giá hiện tại là 320.000đ anh nhé."
+  "Nếu anh lấy 2 chai em gợi ý thêm bản 500ml sẽ tiết kiệm hơn."
 `;
 
     const finalSystemInstruction = `${systemInstruction}\n${humanStyleOverride}`;
@@ -757,12 +757,12 @@ STYLE OVERRIDE - Æ¯U TIÃŠN CAO NHáº¤T:
       const selectedModel = aiConfig?.model || GEMINI_TEXT_MODEL;
       const fallbackNoKnowledgeReply =
         shouldRequireStrictKnowledge && !hasCompanyKnowledge
-          ? `Dáº¡, hiá»‡n táº¡i em chÆ°a cÃ³ Ä‘á»§ dá»¯ liá»‡u xÃ¡c nháº­n chÃ­nh xÃ¡c thÃ´ng tin nÃ y tá»« tÃ i liá»‡u ná»™i bá»™ cá»§a ${companyName}. Em xin phÃ©p chuyá»ƒn nhÃ¢n viÃªn há»— trá»£ Ä‘á»ƒ tÆ° váº¥n Ä‘Ãºng vÃ  Ä‘áº§y Ä‘á»§ hÆ¡n áº¡.`
+          ? `Dạ, hiện tại em chưa có đủ dữ liệu xác nhận chính xác thông tin này từ tài liệu nội bộ của ${companyName}. Em xin phép chuyển nhân viên hỗ trợ để tư vấn đúng và đầy đủ hơn ạ.`
           : null;
 
       if (detectedIntent === "out_of_scope") {
         return {
-          text: formatHumanLikeChatReply(`Dáº¡, em Ä‘ang há»— trá»£ thÃ´ng tin vá» sáº£n pháº©m, dá»‹ch vá»¥ vÃ  chÃ­nh sÃ¡ch cá»§a ${companyName}. Anh/chá»‹ cá»© gá»­i giÃºp em cÃ¢u há»i liÃªn quan Ä‘áº¿n doanh nghiá»‡p Ä‘á»ƒ em há»— trá»£ Ä‘Ãºng hÆ¡n áº¡.`),
+          text: formatHumanLikeChatReply(`Dạ, em đang hỗ trợ thông tin về sản phẩm, dịch vụ và chính sách của ${companyName}. Anh/chị cứ gửi giúp em câu hỏi liên quan đến doanh nghiệp để em hỗ trợ đúng hơn ạ.`),
           isMock: false,
         };
       }
@@ -783,10 +783,10 @@ STYLE OVERRIDE - Æ¯U TIÃŠN CAO NHáº¤T:
         }
       );
 
-      response.text = formatHumanLikeChatReply(response.text || "Minh kiem tra lai roi nhan ban ngay nhe.");
+      response.text = formatHumanLikeChatReply(response.text || "Mình kiểm tra lại rồi nhắn bạn ngay nhé.");
 
       return {
-        text: response.text || "Xin lá»—i, tÃ´i chÆ°a thá»ƒ xá»­ lÃ½ yÃªu cáº§u lÃºc nÃ y. Vui lÃ²ng thá»­ láº¡i.",
+        text: response.text || "Xin lỗi, tôi chưa thể xử lý yêu cầu lúc này. Vui lòng thử lại.",
         isMock: false,
       };
     } catch (error: any) {
@@ -797,7 +797,7 @@ STYLE OVERRIDE - Æ¯U TIÃŠN CAO NHáº¤T:
 
   async chatComment(message: string, aiConfig: any, ragContext?: any) {
     if (!process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY.trim() === "") {
-      throw new Error("KhÃ´ng cáº¥u hÃ¬nh OPENROUTER_API_KEY trÃªn há»‡ thá»‘ng.");
+      throw new Error("Chưa cấu hình OPENROUTER_API_KEY trên hệ thống.");
     }
 
     const companyCode = ragContext?.companyCode || aiConfig?.companyCode;
@@ -814,30 +814,30 @@ STYLE OVERRIDE - Æ¯U TIÃŠN CAO NHáº¤T:
       }
     }
     if (!companyName) {
-      companyName = "doanh nghiá»‡p";
+      companyName = "doanh nghiệp";
     }
 
     const systemInstruction = `
-Báº¡n lÃ  trá»£ lÃ½ chÄƒm sÃ³c khÃ¡ch hÃ ng cá»§a ${companyName}.
-Nhiá»‡m vá»¥ cá»§a báº¡n lÃ  pháº£n há»“i bÃ¬nh luáº­n cÃ´ng khai (comment) cá»§a khÃ¡ch hÃ ng trÃªn bÃ i viáº¿t Facebook báº±ng hai ná»™i dung:
-1. Má»™t cÃ¢u tráº£ lá»i bÃ¬nh luáº­n cÃ´ng khai (publicComment).
-2. Má»™t tin nháº¯n inbox riÃªng tÆ° gá»­i trá»±c tiáº¿p cho khÃ¡ch hÃ ng (privateInbox).
+Bạn là trợ lý chăm sóc khách hàng của ${companyName}.
+Nhiệm vụ của bạn là phản hồi bình luận công khai (comment) của khách hàng trên bài viết Facebook bằng hai nội dung:
+1. Một câu trả lời bình luận công khai (publicComment).
+2. Một tin nhắn inbox riêng tư gửi trực tiếp cho khách hàng (privateInbox).
 
-QUY Táº®C PHáº¢N Há»’I BÃŒNH LUáº¬N CÃ”NG KHAI (publicComment):
-- Äá»˜ DÃ€I: Cá»±c ká»³ ngáº¯n gá»n vÃ  sÃºc tÃ­ch, tá»‘i Ä‘a khoáº£ng 1 Ä‘áº¿n 2 cÃ¢u ngáº¯n.
-- Äá»ŠNH Dáº NG: Viáº¿t trÃªn Má»˜T DÃ’NG DUY NHáº¤T (single line). KHÃ”NG Ä‘Æ°á»£c xuá»‘ng dÃ²ng (khÃ´ng dÃ¹ng kÃ½ tá»± xuá»‘ng dÃ²ng/newline), khÃ´ng chia Ä‘oáº¡n. Viáº¿t liá»n máº¡ch toÃ n bá»™ ná»™i dung tá»« Ä‘áº§u Ä‘áº¿n cuá»‘i trÃªn má»™t dÃ²ng. KHÃ”NG dÃ¹ng gáº¡ch Ä‘áº§u dÃ²ng (bullet points), khÃ´ng dÃ¹ng dáº¥u * hoáº·c **.
-- Ná»˜I DUNG: KÃªu gá»i hÃ nh Ä‘á»™ng lá»‹ch sá»± hÆ°á»›ng khÃ¡ch check tin nháº¯n riÃªng tÆ°/inbox (vÃ­ dá»¥: "Dáº¡ chÃ o anh/chá»‹, bÃªn em Ä‘Ã£ inbox thÃ´ng tin chi tiáº¿t cho mÃ¬nh rá»“i áº¡. Anh/Chá»‹ check inbox tin nháº¯n giÃºp em nhÃ© áº¡!").
+QUY TẮC PHẢN HỒI BÌNH LUẬN CÔNG KHAI (publicComment):
+- ĐỘ DÀI: Cực kỳ ngắn gọn và súc tích, tối đa khoảng 1 đến 2 câu ngắn.
+- ĐỊNH DẠNG: Viết trên MỘT DÒNG DUY NHẤT (single line). KHÔNG được xuống dòng (không dùng ký tự xuống dòng/newline), không chia đoạn. Viết liền mạch toàn bộ nội dung từ đầu đến cuối trên một dòng. KHÔNG dùng gạch đầu dòng (bullet points), không dùng dấu * hoặc **.
+- NỘI DUNG: Kêu gọi hành động lịch sự hướng khách check tin nhắn riêng tư/inbox (ví dụ: "Dạ chào anh/chị, bên em đã inbox thông tin chi tiết cho mình rồi ạ. Anh/Chị check inbox tin nhắn giúp em nhé ạ!").
 
-QUY Táº®C TIN NHáº®N RIÃŠNG TÆ¯ (privateInbox):
-- Ná»˜I DUNG: Tráº£ lá»i chi tiáº¿t vÃ  Ä‘áº§y Ä‘á»§ cÃ¢u há»i cá»§a khÃ¡ch hÃ ng dá»±a trÃªn dá»¯ liá»‡u tri thá»©c cá»§a cÃ´ng ty á»Ÿ dÆ°á»›i.
-- NGÃ”N PHONG: Lá»‹ch sá»±, chuyÃªn nghiá»‡p, tá»± nhiÃªn. Sá»­ dá»¥ng kÃ­nh ngá»¯ "Dáº¡" á»Ÿ Ä‘áº§u cÃ¢u vÃ  "áº¡" á»Ÿ cuá»‘i cÃ¢u. Gá»i khÃ¡ch lÃ  "Anh/Chá»‹" hoáº·c "QuÃ½ khÃ¡ch" vÃ  xÆ°ng "bÃªn em" hoáº·c "${companyName}".
-- Sá»¬ Dá»¤NG TRI THá»¨C (RAG): Sá»­ dá»¥ng tri thá»©c á»Ÿ dÆ°á»›i Ä‘á»ƒ tráº£ lá»i chi tiáº¿t. Náº¿u khÃ¡ch há»i thÃ´ng tin khÃ´ng cÃ³ trong tri thá»©c, hÃ£y tráº£ lá»i khÃ©o lÃ©o vÃ  hÆ°á»›ng dáº«n khÃ¡ch nháº¯n láº¡i Ä‘á»ƒ nhÃ¢n viÃªn trá»±c tiáº¿p kiá»ƒm tra.
+QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
+- NỘI DUNG: Trả lời chi tiết và đầy đủ câu hỏi của khách hàng dựa trên dữ liệu tri thức của công ty ở dưới.
+- NGÔN PHONG: Lịch sự, chuyên nghiệp, tự nhiên. Sử dụng kính ngữ "Dạ" ở đầu câu và "ạ" ở cuối câu. Gọi khách là "Anh/Chị" hoặc "Quý khách" và xưng "bên em" hoặc "${companyName}".
+- SỬ DỤNG TRI THỨC (RAG): Sử dụng tri thức ở dưới để trả lời chi tiết. Nếu khách hỏi thông tin không có trong tri thức, hãy trả lời khéo léo và hướng dẫn khách nhắn lại để nhân viên trực tiếp kiểm tra.
 
-Dá»¯ liá»‡u tri thá»©c Ä‘Ã£ truy xuáº¥t riÃªng cho doanh nghiá»‡p ${ragContext?.companyCode || "hiá»‡n táº¡i"}:
-${ragContext?.contextText ? ragContext.contextText : "- KhÃ´ng tÃ¬m tháº¥y tri thá»©c phÃ¹ há»£p."}
+Dữ liệu tri thức đã truy xuất riêng cho doanh nghiệp ${ragContext?.companyCode || "hiện tại"}:
+${ragContext?.contextText ? ragContext.contextText : "- Không tìm thấy tri thức phù hợp."}
 
-Quy táº¯c cáº¥u hÃ¬nh bá»• sung tá»« doanh nghiá»‡p:
-${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- KhÃ´ng cÃ³ chá»‰ dáº«n Ä‘áº·c biá»‡t."}
+Quy tắc cấu hình bổ sung từ doanh nghiệp:
+${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- Không có chỉ dẫn đặc biệt."}
 `;
 
     const responseSchema = {
@@ -845,11 +845,11 @@ ${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- KhÃ
       properties: {
         publicComment: {
           type: "string",
-          description: "CÃ¢u tráº£ lá»i bÃ¬nh luáº­n cÃ´ng khai. Pháº£i trÃªn má»™t dÃ²ng duy nháº¥t, cÃ³ CTA hÆ°á»›ng dáº«n khÃ¡ch kiá»ƒm tra inbox."
+          description: "Câu trả lời bình luận công khai. Phải trên một dòng duy nhất, có CTA hướng dẫn khách kiểm tra inbox."
         },
         privateInbox: {
           type: "string",
-          description: "Ná»™i dung tin nháº¯n inbox gá»­i riÃªng tÆ° cho khÃ¡ch hÃ ng. Tráº£ lá»i chi tiáº¿t dá»±a trÃªn dá»¯ liá»‡u RAG."
+          description: "Nội dung tin nhắn inbox gửi riêng tư cho khách hàng. Trả lời chi tiết dựa trên dữ liệu RAG."
         }
       },
       required: ["publicComment", "privateInbox"]
@@ -859,7 +859,7 @@ ${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- KhÃ
       const selectedModel = aiConfig?.model || GEMINI_TEXT_MODEL;
       const response = await generateText(
         selectedModel,
-        `Ná»™i dung bÃ¬nh luáº­n cá»§a khÃ¡ch hÃ ng:\n"${message}"`,
+        `Nội dung bình luận của khách hàng:\n"${message}"`,
         {
           systemInstruction,
           temperature: 0.35,
@@ -873,13 +873,13 @@ ${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- KhÃ
       } catch (e) {
         console.warn("[geminiService.chatComment] Failed to parse JSON response:", response.text);
         parsed = {
-          publicComment: "Dáº¡ chÃ o anh/chá»‹, bÃªn em Ä‘Ã£ gá»­i thÃ´ng tin chi tiáº¿t qua inbox cho mÃ¬nh rá»“i áº¡. Anh/Chá»‹ check tin nháº¯n giÃºp em nhÃ©!",
-          privateInbox: response.text || "Dáº¡ chÃ o anh/chá»‹. Cáº£m Æ¡n anh/chá»‹ Ä‘Ã£ quan tÃ¢m Ä‘áº¿n sáº£n pháº©m cá»§a bÃªn em. Anh/Chá»‹ cáº§n bÃªn em há»— trá»£ tÆ° váº¥n thÃ´ng tin gÃ¬ cá»¥ thá»ƒ áº¡?"
+          publicComment: "Dạ chào anh/chị, bên em đã gửi thông tin chi tiết qua inbox cho mình rồi ạ. Anh/Chị check tin nhắn giúp em nhé!",
+          privateInbox: response.text || "Dạ chào anh/chị. Cảm ơn anh/chị đã quan tâm đến sản phẩm của bên em. Anh/Chị cần bên em hỗ trợ tư vấn thông tin gì cụ thể ạ?"
         };
       }
 
-      let publicComment = parsed.publicComment || "Dáº¡ chÃ o anh/chá»‹, bÃªn em Ä‘Ã£ inbox thÃ´ng tin chi tiáº¿t cho mÃ¬nh rá»“i áº¡. Anh/Chá»‹ check tin nháº¯n giÃºp em nhÃ©!";
-      let privateInbox = parsed.privateInbox || "Dáº¡ chÃ o anh/chá»‹. Cáº£m Æ¡n anh/chá»‹ Ä‘Ã£ quan tÃ¢m Ä‘áº¿n dá»‹ch vá»¥ bÃªn em.";
+      let publicComment = parsed.publicComment || "Dạ chào anh/chị, bên em đã gửi thông tin chi tiết cho mình rồi ạ. Anh/Chị check tin nhắn giúp em nhé!";
+      let privateInbox = parsed.privateInbox || "Dạ chào anh/chị. Cảm ơn anh/chị đã quan tâm đến dịch vụ bên em.";
 
       // Clean up publicComment to guarantee single line
       publicComment = publicComment.replace(/[*#]/g, "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
@@ -898,19 +898,19 @@ ${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- KhÃ
   },
 
   /**
-   * Tá»± Ä‘á»™ng bÄƒm/chuyá»ƒn Ä‘á»•i tÃ i liá»‡u dÃ i thÃ nh danh sÃ¡ch FAQs rÃºt gá»n
+   * Tá»± Ä‘á»™ng bÄƒm/chuyá»ƒn Ä‘á»•i tÃ i liá»‡u dÃ i thÃ nh danh sÃ¡ch FAQs rÃºt gá» n
    */
   async convertDocToFAQ(docText: string): Promise<string> {
     const getMockFAQ = () => {
-      return `--- Báº¢N FAQ ÄÃƒ ÄÆ¯á»¢C CHUáº¨N HÃ“A (CHáº¾ Äá»˜ MÃ” PHá»ŽNG AI) ---
-Q: TÃ i liá»‡u nÃ y nÃ³i vá» chá»§ Ä‘á» gÃ¬?
-A: TÃ i liá»‡u giá»›i thiá»‡u thÃ´ng tin váº­n hÃ nh, chÃ­nh sÃ¡ch bÃ¡n hÃ ng cá»§a doanh nghiá»‡p.
+      return `--- BẢN FAQ ĐÃ ĐƯỢC CHUẨN HÓA (CHẾ ĐỘ MÔ PHỎNG AI) ---
+Q: Tài liệu này nói về chủ đề gì?
+A: Tài liệu giới thiệu thông tin vận hành, chính sách bán hàng của doanh nghiệp.
 
-Q: LÃ m tháº¿ nÃ o Ä‘á»ƒ liÃªn há»‡ há»— trá»£ ká»¹ thuáº­t?
-A: Vui lÃ²ng liÃªn há»‡ sá»‘ hotline 1900xxxx hoáº·c email support@igen.com.
+Q: Làm thế nào để liên hệ hỗ trợ kỹ thuật?
+A: Vui lòng liên hệ số hotline 1900xxxx hoặc email support@igen.com.
 
-Q: ChÃ­nh sÃ¡ch váº­n chuyá»ƒn cá»§a chÃºng tÃ´i lÃ  gÃ¬?
-A: Giao hÃ ng toÃ n quá»‘c. Miá»…n phÃ­ váº­n chuyá»ƒn cho Ä‘Æ¡n hÃ ng trá»‹ giÃ¡ tá»« 500k trá»Ÿ lÃªn.`;
+Q: Chính sách vận chuyển của chúng tôi là gì?
+A: Giao hàng toàn quốc. Miễn phí vận chuyển cho đơn hàng trị giá từ 500k trở lên.`;
     };
 
     if (!process.env.OPENROUTER_API_KEY) {
@@ -918,22 +918,22 @@ A: Giao hÃ ng toÃ n quá»‘c. Miá»…n phÃ­ váº­n chuyá»ƒn cho Ä�
     }
 
     try {
-      const prompt = `Báº¡n lÃ  má»™t chuyÃªn gia huáº¥n luyá»‡n AI bÃ¡n hÃ ng vÃ  chÄƒm sÃ³c khÃ¡ch hÃ ng.
-HÃ£y Ä‘á»c ká»¹ tÃ i liá»‡u bÃ¡n hÃ ng/quy trÃ¬nh/chÃ­nh sÃ¡ch sau Ä‘Ã¢y cá»§a doanh nghiá»‡p vÃ  chuyá»ƒn Ä‘á»•i toÃ n bá»™ thÃ´ng tin quan trá»ng thÃ nh má»™t danh sÃ¡ch cÃ¡c cÃ¢u há»i thÆ°á»ng gáº·p FAQs Ä‘á»‹nh dáº¡ng chuáº©n Ä‘á»ƒ lÃ m dá»¯ liá»‡u huáº¥n luyá»‡n cho Chatbot.
+      const prompt = `Bạn là một chuyên gia huấn luyện AI bán hàng và chăm sóc khách hàng.
+Hãy đọc kỹ tài liệu bán hàng/quy trình/chính sách sau đây của doanh nghiệp và chuyển đổi toàn bộ thông tin quan trọng thành một danh sách các câu hỏi thường gặp FAQs định dạng chuẩn để làm dữ liệu huấn luyện cho Chatbot.
 
-YÃŠU Cáº¦U:
-1. Äá»‹nh dáº¡ng cÃ¢u tráº£ lá»i báº¯t buá»™c lÃ :
-Q: [CÃ¢u há»i cá»§a khÃ¡ch hÃ ng]
-A: [CÃ¢u tráº£ lá»i chuáº©n má»±c cá»§a AI]
+QUY TẮC:
+1. Định dạng câu trả lời bắt buộc là:
+Q: [Câu hỏi của khách hàng]
+A: [Câu trả lời chuẩn mực của AI]
 
-Q: [CÃ¢u há»i tiáº¿p theo]
-A: [CÃ¢u tráº£ lá»i tiáº¿p theo]
+Q: [Câu hỏi tiếp theo]
+A: [Câu trả lời tiếp theo]
 
-2. HÃ£y cháº¯t lá»c toÃ n bá»™ sá»‘ hotline, báº£ng giÃ¡ dá»‹ch vá»¥/sáº£n pháº©m, chÃ­nh sÃ¡ch giao hÃ ng, chÃ­nh sÃ¡ch Ä‘á»•i tráº£/báº£o hÃ nh, giá» má»Ÿ cá»­a.
-3. KhÃ´ng tá»± tiá»‡n bá»‹a Ä‘áº·t thÃ´ng tin khÃ´ng cÃ³ trong tÃ i liá»‡u.
-4. Tráº£ lá»i báº±ng tiáº¿ng Viá»‡t lá»‹ch sá»±, sÃºc tÃ­ch vÃ  chÃ­nh xÃ¡c.
+2. Hãy chắt lọc toàn bộ số hotline, bảng giá dịch vụ/sản phẩm, chính sách giao hàng, chính sách đổi trả/bảo hành, giờ mở cửa.
+3. Không tự tiện bịa đặt thông tin không có trong tài liệu.
+4. Trả lời bằng tiếng Việt lịch sự, súc tích và chính xác.
 
-Ná»˜I DUNG TÃ€I LIá»†U Cáº¦N CHUYá»‚N Äá»”I:
+NỘI DUNG TÀI LIỆU CẦN CHUYỂN ĐỔI:
 ${docText}
 `;
 
@@ -942,7 +942,7 @@ ${docText}
         prompt
       );
 
-      return response.text || "KhÃ´ng thá»ƒ trÃ­ch xuáº¥t Ä‘Æ°á»£c dá»¯ liá»‡u FAQ tá»« tÃ i liá»‡u.";
+      return response.text || "Không thể trích xuất được dữ liệu FAQ từ tài liệu.";
     } catch (error: any) {
       console.error("[geminiService.convertDocToFAQ] Error, fallback to mock FAQ:", error);
       return getMockFAQ();
@@ -951,9 +951,9 @@ ${docText}
 
   async getMarketingSuggestions(): Promise<string[]> {
     const fallbackSuggestions = [
-      "Chiáº¿n dá»‹ch tri Ã¢n khÃ¡ch hÃ ng thÃ¢n thiáº¿t vÃ  táº·ng quÃ  tri Ã¢n ká»· niá»‡m thÃ nh láº­p",
-      "ChÆ°Æ¡ng trÃ¬nh khuyáº¿n mÃ£i mÃ¹a hÃ¨ giáº£m giÃ¡ cá»±c sá»‘c kÃ­ch cáº§u mua sáº¯m",
-      "Sá»± kiá»‡n ra máº¯t dÃ²ng sáº£n pháº©m má»›i hÆ°á»›ng tá»›i phong cÃ¡ch sá»‘ng xanh báº£o vá»‡ mÃ´i trÆ°á»ng",
+      "Chiến dịch tri ân khách hàng thân thiết và tặng quà tri ân kỷ niệm thành lập",
+      "Chương trình khuyến mãi mùa hè giảm giá cực sốc kích cầu mua sắm",
+      "Sự kiện ra mắt dòng sản phẩm mới hướng tới phong cách sống xanh bảo vệ môi trường",
     ];
 
     if (!process.env.OPENROUTER_API_KEY) {
@@ -961,9 +961,9 @@ ${docText}
     }
 
     try {
-      const prompt = `Báº¡n lÃ  trá»£ lÃ½ AI Marketing chuyÃªn nghiá»‡p. HÃ£y Ä‘á» xuáº¥t Ä‘Ãºng 3 Ã½ tÆ°á»Ÿng/chá»§ Ä‘á» chiáº¿n dá»‹ch marketing chung, mang tÃ­nh phá»• quÃ¡t cao Ä‘á»ƒ nhiá»u loáº¡i hÃ¬nh doanh nghiá»‡p hoáº·c cÃ´ng ty khÃ¡c nhau Ä‘á»u cÃ³ thá»ƒ Ã¡p dá»¥ng Ä‘Æ°á»£c (vÃ­ dá»¥: chiáº¿n dá»‹ch khuyáº¿n mÃ£i theo mÃ¹a, sá»± kiá»‡n tri Ã¢n khÃ¡ch hÃ ng, ra máº¯t dÃ²ng sáº£n pháº©m má»›i, chÆ°Æ¡ng trÃ¬nh Æ°u Ä‘Ã£i Ä‘áº·c biá»‡t).
-Má»—i Ã½ tÆ°á»Ÿng Ä‘á» xuáº¥t pháº£i lÃ  má»™t cÃ¢u ngáº¯n gá»n (dÆ°á»›i 25 tá»«) sáºµn sÃ ng lÃ m má»¥c tiÃªu marketing, vÃ­ dá»¥: 'Chiáº¿n dá»‹ch tri Ã¢n khÃ¡ch hÃ ng thÃ¢n thiáº¿t vÃ  táº·ng quÃ  tri Ã¢n'.
-Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ há»£p chÃ­nh xÃ¡c vá»›i cáº¥u trÃºc yÃªu cáº§u.`;
+      const prompt = `Bạn là trợ lý AI Marketing chuyên nghiệp. Hãy đề xuất đúng 3 ý tưởng/chủ đề chiến dịch marketing chung, mang tính phổ quát cao để nhiều loại hình doanh nghiệp hoặc công ty khác nhau đều có thể áp dụng được (ví dụ: chiến dịch khuyến mãi theo mùa, sự kiện tri ân khách hàng, ra mắt dòng sản phẩm mới, chương trình ưu đãi đặc biệt).
+Mỗi ý tưởng đề xuất phải là một câu ngắn gọn (dưới 25 từ) sẵn sàng làm mục tiêu marketing, ví dụ: 'Chiến dịch tri ân khách hàng thân thiết và tặng quà tri ân'.
+Trả về kết quả ở định dạng JSON phù hợp chính xác với cấu trúc yêu cầu.`;
 
       const response = await generateText(
         GEMINI_TEXT_MODEL,
@@ -976,7 +976,7 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
               suggestions: {
                 type: Type.ARRAY,
                 items: { type: Type.STRING },
-                description: "Danh sÃ¡ch Ä‘Ãºng 3 Ã½ tÆ°á»Ÿng/chá»§ Ä‘á» gá»£i Ã½ ngáº¯n gá»n",
+                description: "Danh sách đúng 3 ý tưởng/chủ đề gợi ý ngắn gọn",
               },
             },
             required: ["suggestions"],
@@ -1001,97 +1001,97 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
       let mockPillars = [
         {
           id: "giao_duc_gia_tri",
-          title: "GiÃ¡o dá»¥c & GiÃ¡ trá»‹ há»¯u Ã­ch",
-          ratio: "35% tá»‰ trá»ng",
-          description: `Giáº£i Ä‘Ã¡p trá»±c quan, hÆ°á»›ng dáº«n tá»‘i Æ°u vÃ  chia sáº» kiáº¿n thá»©c ná»n táº£ng giÃºp khÃ¡ch hÃ ng hiá»ƒu sÃ¢u vá» giÃ¡ trá»‹ dÃ²ng sáº£n pháº©m liÃªn quan "${campaignTopic || "Sáº£n pháº©m cÃ´ng nghá»‡"
+          title: "Giáo dục & Giá trị hữu ích",
+          ratio: "35% tỷ trọng",
+          description: `Giải đáp trực quan, hướng dẫn tối ưu và chia sẻ kiến thức nền tảng giúp khách hàng hiểu sâu về giá trị dòng sản phẩm liên quan "${campaignTopic || "Sản phẩm công nghệ"
             }".`,
         },
         {
           id: "cau_chuyen_social_proof",
-          title: "Tráº£i nghiá»‡m & CÃ¢u chuyá»‡n thá»±c táº¿",
-          ratio: "40% tá»‰ trá»ng",
-          description: `Ká»‹ch báº£n review thá»±c táº¿, káº¿t quáº£ vÃ  phÃ¡t biá»ƒu tá»« khÃ¡ch hÃ ng uy tÃ­n, táº¡o dá»±ng lÃ²ng tin tuyá»‡t Ä‘á»‘i cho thÆ°Æ¡ng hiá»‡u.`,
+          title: "Trải nghiệm & Câu chuyện thực tế",
+          ratio: "40% tỷ trọng",
+          description: `Kịch bản review thực tế, kết quả và phát biểu từ khách hàng uy tín, tạo dựng lòng tin tuyệt đối cho thương hiệu.`,
         },
         {
           id: "uu_dai_tuong_tac",
-          title: "Æ¯u Ä‘Ã£i & KÃ­ch cáº§u hÃ nh Ä‘á»™ng",
-          ratio: "25% tá»‰ trá»ng",
+          title: "Ưu đãi & Kích cầu hành động",
+          ratio: "25% tỷ trọng",
           description:
-            "Chiáº¿n dá»‹ch giá» vÃ ng, Ä‘áº·c quyá»n dÃ¹ng thá»­ hoáº·c voucher Ä‘á»™c quyá»n nháº±m thÃºc giá»¥c khÃ¡ch hÃ ng ra quyáº¿t Ä‘á»‹nh mua sáº¯m ngay láº­p tá»©c.",
+            "Chiến dịch giá hời, đặc quyền dùng thử hoặc voucher độc quyền nhằm thúc giục khách hàng ra quyết định mua sắm ngay lập tức.",
         },
       ];
 
       const topicLower = campaignTopic ? campaignTopic.toLowerCase() : "";
-      if (topicLower.includes("bÃ n phÃ­m") || topicLower.includes("keyboard") || topicLower.includes("workspace")) {
+      if (topicLower.includes("bàn phím") || topicLower.includes("keyboard") || topicLower.includes("workspace")) {
         mockPillars = [
           {
             id: "kien_thuc_cong_thai_hoc",
-            title: "Kiáº¿n thá»©c & Tráº£i nghiá»‡m CÃ´ng thÃ¡i há»c",
-            ratio: "35% tá»‰ trá»ng",
+            title: "Kiến thức & Trải nghiệm Công thái học",
+            ratio: "35% tỷ trọng",
             description:
-              "HÆ°á»›ng dáº«n tÆ° tháº¿ ngá»“i gÃµ phÃ­m chuáº©n khoa há»c, cÃ¡ch test switch phÃ­m cÆ¡, máº¹o láº­p trÃ¬nh khÃ´ng má»i tay cho coder chuyÃªn nghiá»‡p.",
+              "Hướng dẫn tư thế ngồi gõ phím chuẩn khoa học, cách test switch phím cơ, mẹo lập trình không mỏi tay cho coder chuyên nghiệp.",
           },
           {
             id: "review_coder_thuc_te",
-            title: "ÄÃ¡nh giÃ¡ & Tráº£i nghiá»‡m Láº­p trÃ¬nh viÃªn",
-            ratio: "40% tá»‰ trá»ng",
+            title: "Đánh giá & Trải nghiệm Lập trình viên",
+            ratio: "40% tỷ trọng",
             description:
-              "Cáº£m Ã¢m Ä‘áº§m cháº¯c cá»§a iGen Workspace V2, quÃ¡ trÃ¬nh tÄƒng 150% hiá»‡u suáº¥t viáº¿t mÃ£ cá»§a kiáº¿n trÃºc sÆ° pháº§n má»m.",
+              "Cảm âm đằm chắc của iGen Workspace V2, quá trình tăng 150% hiệu suất viết mã của kiến trúc sư phần mềm.",
           },
           {
             id: "uu_dai_ra_mat",
-            title: "Æ¯u Ä‘Ã£i Ä‘áº·c quyá»n Early Bird",
-            ratio: "25% tá»‰ trá»ng",
+            title: "Ưu đãi đặc quyền Early Bird",
+            ratio: "25% tỷ trọng",
             description:
-              "QuÃ  táº·ng ká»‡ kÃª tay gá»— sá»“i cao cáº¥p vÃ  chiáº¿t kháº¥u 10% ra máº¯t Ä‘á»™c quyá»n dÃ nh cho 50 khÃ¡ch hÃ ng Ä‘áº§u tiÃªn.",
+              "Quà tặng kệ kê tay gỗ sồi cao cấp và chiết khấu 10% ra mắt độc quyền dành cho 50 khách hàng đầu tiên.",
           },
         ];
-      } else if (topicLower.includes("tai nghe") || topicLower.includes("nghe nháº¡c") || topicLower.includes("pro max")) {
+      } else if (topicLower.includes("tai nghe") || topicLower.includes("nghe nhạc") || topicLower.includes("pro max")) {
         mockPillars = [
           {
             id: "am_thanh_bao_ve_tai",
-            title: "Khoa há»c Ã‚m thanh & Sá»©c khá»e tai",
-            ratio: "30% tá»‰ trá»ng",
+            title: "Khoa học Âm thanh & Sức khỏe tai",
+            ratio: "30% tỷ trọng",
             description:
-              "NguyÃªn lÃ½ hoáº¡t Ä‘á»™ng cá»§a chá»‘ng á»“n chá»§ Ä‘á»™ng ANC vÃ  cÃ¡ch báº£o vá»‡ thÃ­nh lá»±c khi Ä‘eo tai nghe cÆ°á»ng Ä‘á»™ cao thÆ°á»ng xuyÃªn.",
+              "Nguyên lý hoạt động của chống ồn chủ động ANC và cách bảo vệ thính lực khi đeo tai nghe cường độ cao thường xuyên.",
           },
           {
             id: "phong_cach_unboxing",
-            title: "Äáº­p há»™p & Äá»‹nh hÃ¬nh Phong cÃ¡ch sá»‘ng",
-            ratio: "45% tá»‰ trá»ng",
+            title: "Đập hộp & Định hình Phong cách sống",
+            ratio: "45% tỷ trọng",
             description:
-              "Phá»‘i Ä‘á»“ thá»i trang dáº¡o phá»‘ sÃ nh Ä‘iá»‡u cÃ¹ng Pro Max, táº¡o phong thÃ¡i nÄƒng Ä‘á»™ng tá»± tin cho giá»›i tráº» cÃ´ng nghá»‡.",
+              "Phối đồ thời trang dạo phố sành điệu cùng Pro Max, tạo phong thái năng động tự tin cho giới trẻ công nghệ.",
           },
           {
             id: "uu_dai_gio_vang",
-            title: "Flash Sale giá» vÃ ng - SÄƒn cá»±c Ä‘á»‰nh",
-            ratio: "25% tá»‰ trá»ng",
+            title: "Flash Sale giờ vàng - Săn cực đỉnh",
+            ratio: "25% tỷ trọng",
             description:
-              "CÆ¡ há»™i sÄƒn deal giáº£m giÃ¡ sá»‘c Ä‘áº¿n 45% Ä‘á»™c quyá»n trong khung giá» trÆ°a tá»« 12h - 14h, sá»‘ lÆ°á»£ng cá»±c háº¡n.",
+              "Cơ hội săn deal giảm giá sốc đến 45% độc quyền trong khung giờ trưa từ 12h - 14h, số lượng cực hạn.",
           },
         ];
       } else if (topicLower.includes("vip") || topicLower.includes("voucher") || topicLower.includes("tri Ã¢n")) {
         mockPillars = [
           {
             id: "dac_quyen_thanh_vien",
-            title: "GiÃ¡ trá»‹ Ä‘áº·c quyá»n Tri Ã¢n",
-            ratio: "35% tá»‰ trá»ng",
+            title: "Giá trị Đặc quyền Tri ân",
+            ratio: "35% tỷ trọng",
             description:
-              "Chi tiáº¿t Ä‘áº·c quyá»n thÄƒng háº¡ng tháº», chÃ­nh sÃ¡ch báº£o hÃ nh trá»n Ä‘á»i vÃ  tÃ­ch Ä‘iá»ƒm Ä‘á»•i quÃ  VIP cá»§a há»‡ sinh thÃ¡i iGen.",
+              "Chi tiết đặc quyền thăng hạng thành viên, chính sách bảo hành trọn đời và tích điểm đổi quà VIP của hệ sinh thái iGen.",
           },
           {
             id: "cau_chuyen_thanh_cong",
-            title: "Khoáº£nh kháº¯c & KhÃ¡ch hÃ ng VIP",
-            ratio: "40% tá»‰ trá»ng",
+            title: "Khoảnh khắc & Khách hàng VIP",
+            ratio: "40% tỷ trọng",
             description:
-              "Ghi dáº¥u nhá»¯ng bá»©c áº£nh, cuá»™c háº¹n vÃ  cáº£m Æ¡n chÃ¢n thÃ nh tá»« iGen Marketing tá»›i cÃ¡c Ä‘á»‘i tÃ¡c doanh nghiá»‡p lá»›n Ä‘á»“ng hÃ nh lÃ¢u nÄƒm.",
+              "Ghi dấu những bức ảnh, cuộc hẹn và cảm ơn chân thành từ iGen Marketing tới các đối tác doanh nghiệp lớn đồng hành lâu năm.",
           },
           {
             id: "uu_dai_han_muc",
-            title: "QuÃ  táº·ng vÃ  Voucher VIP Ä‘á»™c báº£n",
-            ratio: "25% tá»‰ trá»ng",
+            title: "Quà tặng và Voucher Độc bản",
+            ratio: "25% tỷ trọng",
             description:
-              "Gá»­i mÃ£ voucher VIP-10 Ä‘á»™c bÃ¡ kÃ¨m há»™p quÃ  táº·ng cháº¡m kháº¯c thá»§ cÃ´ng Ä‘áº·c biá»‡t thiáº¿t káº¿ riÃªng cho khÃ¡ch hÃ ng VIP.",
+              "Gửi mã voucher VIP-10 độc bá kèm hộp quà tặng chạm khắc thủ công đặc biệt thiết kế riêng cho khách hàng VIP.",
           },
         ];
       }
@@ -1104,16 +1104,16 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
     }
 
     try {
-      const prompt = `PhÃ¢n tÃ­ch má»¥c tiÃªu/chá»§ Ä‘á» chiáº¿n dá»‹ch marketing sau: "${campaignTopic}"
-HÃ£y Ä‘á» xuáº¥t chÃ­nh xÃ¡c 3 trá»¥ cá»™t ná»™i dung cá»‘t lÃµi (Content Pillars) giÃºp doanh nghiá»‡p Ä‘á»‹nh hÃ¬nh khung ná»™i dung (framework) chuáº©n chá»‰nh ngay tá»« Ä‘áº§u, Ä‘áº£m báº£o tá»· lá»‡ ná»™i dung phÃ¢n bá»• Ä‘a dáº¡ng, trÃ¡nh viá»‡c chá»‰ Ä‘Äƒng bÃ i bÃ¡n hÃ ng gÃ¢y nhÃ m chÃ¡n vÃ  máº¥t tÆ°Æ¡ng tÃ¡c.
+      const prompt = `Phân tích mục tiêu/chủ đề chiến dịch marketing sau: "${campaignTopic}"
+Hãy đề xuất chính xác 3 trụ cột nội dung cốt lõi (Content Pillars) giúp doanh nghiệp định hình khung nội dung (framework) chuẩn chỉnh ngay từ đầu, đảm bảo tỷ lệ nội dung phân bổ đa dạng, tránh việc chỉ đăng bài bán hàng gây nhàm chán và mất tương tác.
 
-Má»—i trá»¥ cá»™t pháº£i cÃ³ thÃ´ng tin:
-1. id: chuá»—i ngáº¯n gá»n, khÃ´ng dáº¥u cÃ¡ch, viáº¿t thÆ°á»ng (vÃ­ dá»¥: "kien_thuc_huong_dan", "trai_nghiem_khach_hang", "khuyen_mai_dac_quyen")
-2. title: TiÃªu Ä‘á» trá»¥ cá»™t ná»™i dung tá»‘i Æ°u sÃ¡ng táº¡o báº±ng tiáº¿ng Viá»‡t (VÃ­ dá»¥: "GiÃ¡o dá»¥c & HÆ°á»›ng dáº«n", "CÃ¢u chuyá»‡n khÃ¡ch hÃ ng", "Æ¯u Ä‘Ã£i & Khuyáº¿n mÃ£i", "GiÃ¡ trá»‹ cá»‘t lÃµi")
-3. ratio: Tá»· lá»‡ pháº§n trÄƒm phÃ¢n bá»• há»£p lÃ½ hiá»ƒn thá»‹ dÆ°á»›i dáº¡ng chuá»—i (VÃ­ dá»¥: "35% tá»‰ trá»ng", "40% tá»‰ trá»ng") Ä‘áº£m báº£o tá»•ng 3 cÃ¡i lÃ  100%. Äa dáº¡ng tá»· trá»ng, trÃ¡nh bÃ¡n hÃ ng quÃ¡ nhiá»u.
-4. description: MÃ´ táº£ ngáº¯n gá»n trá»±c quan báº±ng tiáº¿ng Viá»‡t hÆ°á»›ng dáº«n cÃ¡ch triá»ƒn khai cá»¥ thá»ƒ trá»¥ cá»™t nÃ y Ä‘á»‘i vá»›i chiáº¿n dá»‹ch "${campaignTopic}".
+Mỗi trụ cột phải có thông tin:
+1. id: chuỗi ngắn gọn, không dấu cách, viết thường (ví dụ: "kien_thuc_huong_dan", "trai_nghiem_khach_hang", "khuyen_mai_dac_quyen")
+2. title: Tiêu đề trụ cột nội dung tối ưu sáng tạo bằng tiếng Việt (Ví dụ: "Giáo dục & Hướng dẫn", "Câu chuyện khách hàng", "Ưu đãi & Khuyến mãi", "Giá trị cốt lõi")
+3. ratio: Tỷ lệ phần trăm phân bổ hợp lý hiển thị dưới dạng chuỗi (Ví dụ: "35% tỷ trọng", "40% tỷ trọng") đảm bảo tổng 3 cái là 100%. Đa dạng tỷ trọng, tránh bán hàng quá nhiều.
+4. description: Mô tả ngắn gọn trực quan bằng tiếng Việt hướng dẫn cách triển khai cụ thể trụ cột này đối với chiến dịch "${campaignTopic}".
 
-Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ há»£p chÃ­nh xÃ¡c vá»›i cáº¥u trÃºc yÃªu cáº§u.`;
+Trả về kết quả ở định dạng JSON phù hợp chính xác với cấu trúc yêu cầu.`;
 
       const response = await generateText(
         GEMINI_TEXT_MODEL,
@@ -1128,14 +1128,14 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    id: { type: Type.STRING, description: "ID ngáº¯n gá»n viáº¿t liá»n khÃ´ng dáº¥u" },
-                    title: { type: Type.STRING, description: "TiÃªu Ä‘á» tiáº¿ng Viá»‡t cá»§a trá»¥ cá»™t" },
-                    ratio: { type: Type.STRING, description: "Tá»· lá»‡ phÃ¢n bá»•" },
-                    description: { type: Type.STRING, description: "MÃ´ táº£ triá»ƒn khai chi tiáº¿t" },
+                    id: { type: Type.STRING, description: "ID ngắn gọn viết liền không dấu" },
+                    title: { type: Type.STRING, description: "Tiêu đề tiếng Việt của trụ cột" },
+                    ratio: { type: Type.STRING, description: "Tỷ lệ phân bổ" },
+                    description: { type: Type.STRING, description: "Mô tả triển khai chi tiết" },
                   },
                   required: ["id", "title", "ratio", "description"],
                 },
-                description: "Danh sÃ¡ch Ä‘Ãºng 3 trá»¥ cá»™t ná»™i dung",
+                description: "Danh sách đúng 3 trụ cột nội dung",
               },
             },
             required: ["pillars"],
@@ -1154,7 +1154,7 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
   },
 
   /**
-   * Thay tháº¿ 1 Content Pillar báº±ng 1 Trá»¥ cá»™t khÃ¡c má»›i hoÃ n toÃ n
+   * Thay thế 1 Content Pillar bằng 1 Trụ cột khác mới hoàn toàn
    */
   async swapMarketingPillar(
     campaignTopic: string,
@@ -1166,27 +1166,27 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
       const replacementOptions = [
         {
           id: "kien_thuc_chuyen_sau",
-          title: "Pillar D: Kiáº¿n thá»©c chuyÃªn sÃ¢u & KhÃ¡c biá»‡t",
-          ratio: "35% tá»‰ trá»ng",
-          description: "Chia sáº» nhá»¯ng phÃ¢n tÃ­ch Ä‘á»™c quyá»n, thÃ´ng sá»‘ ká»¹ thuáº­t áº¥n tÆ°á»£ng vÃ  so sÃ¡nh chi tiáº¿t Ä‘á»ƒ chá»©ng minh tÃ­nh Æ°u viá»‡t vÆ°á»£t trá»™i cá»§a sáº£n pháº©m.",
+          title: "Pillar D: Kiến thức chuyên sâu & Khác biệt",
+          ratio: "35% tỷ trọng",
+          description: "Chia sẻ những phân tích độc quyền, thông số kỹ thuật ấn tượng và so sánh chi tiết để chứng minh tính ưu việt vượt trội của sản phẩm.",
         },
         {
           id: "phong_cach_loi_song",
-          title: "Pillar E: Phong cÃ¡ch sá»‘ng & Cáº£m há»©ng",
-          ratio: "30% tá»‰ trá»ng",
-          description: "Truyá»n táº£i thÃ´ng Ä‘iá»‡p tÃ­ch cá»±c, xÃ¢y dá»±ng phong cÃ¡ch cÃ¡ nhÃ¢n hiá»‡n Ä‘áº¡i vÃ  káº¿t ná»‘i sáº£n pháº©m vá»›i thÃ³i quen hÃ ng ngÃ y cá»§a khÃ¡ch hÃ ng má»¥c tiÃªu.",
+          title: "Pillar E: Phong cách sống & Cảm hứng",
+          ratio: "30% tỷ trọng",
+          description: "Truyền tải thông điệp tích cực, xây dựng phong cách cá nhân hiện đại và kết nối sản phẩm với thói quen hàng ngày của khách hàng mục tiêu.",
         },
         {
           id: "tu_ong_tuong_tac",
-          title: "Pillar F: Há»i Ä‘Ã¡p & TÆ°Æ¡ng tÃ¡c Cá»™ng Ä‘á»“ng",
-          ratio: "25% tá»‰ trá»ng",
-          description: "Tá»• chá»©c cÃ¡c buá»•i mini-game, tháº£o luáº­n má»Ÿ hoáº·c giáº£i Ä‘Ã¡p tháº¯c máº¯c trá»±c tiáº¿p nháº±m gáº¯n káº¿t ngÆ°á»i dÃ¹ng vÃ  gia tÄƒng tá»· lá»‡ pháº£n há»“i tá»± nhiÃªn.",
+          title: "Pillar F: Hỏi đáp & Tương tác Cộng đồng",
+          ratio: "25% tỷ trọng",
+          description: "Tổ chức các buổi mini-game, thảo luận mở hoặc giải đáp thắc mắc trực tiếp nhằm gắn kết người dùng và gia tăng tỷ lệ phản hồi tự nhiên.",
         },
         {
           id: "cam_nhan_chuyen_gia",
-          title: "Pillar G: GÃ³c nhÃ¬n ChuyÃªn gia & Uy tÃ­n",
-          ratio: "40% tá»‰ trá»ng",
-          description: "TrÃ­ch dáº«n nháº­n xÃ©t tá»« cÃ¡c chuyÃªn gia Ä‘áº§u ngÃ nh, ngÆ°á»i cÃ³ sá»©c áº£nh hÆ°á»Ÿng (KOLs) Ä‘á»ƒ báº£o chá»©ng cháº¥t lÆ°á»£ng vÃ  nÃ¢ng cao vá»‹ tháº¿ thÆ°Æ¡ng hiá»‡u.",
+          title: "Pillar G: Góc nhìn Chuyên gia & Uy tín",
+          ratio: "40% tỷ trọng",
+          description: "Trích dẫn nhận xét từ các chuyên gia đầu ngành, người có sức ảnh hưởng (KOLs) để bảo chứng chất lượng và nâng cao vị thế thương hiệu.",
         }
       ];
 
@@ -1207,30 +1207,30 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
 
     try {
       const existingPillarsStr = currentPillars
-        .map(p => `- ID: "${p.id}", TiÃªu Ä‘á»: "${p.title}", MÃ´ táº£: "${p.description}"`)
+        .map(p => `- ID: "${p.id}", Tiêu đề: "${p.title}", Mô tả: "${p.description}"`)
         .join("\n");
 
       const toReplace = currentPillars.find(p => p.id === pillarIdToReplace);
       const replaceStr = toReplace
-        ? `ID: "${toReplace.id}", TiÃªu Ä‘á»: "${toReplace.title}" (Tá»· lá»‡ phÃ¢n bá»•: ${toReplace.ratio})`
+        ? `ID: "${toReplace.id}", Tiêu đề: "${toReplace.title}" (Tỷ lệ phân bổ: ${toReplace.ratio})`
         : pillarIdToReplace;
 
-      const prompt = `PhÃ¢n tÃ­ch má»¥c tiÃªu/chá»§ Ä‘á» chiáº¿n dá»‹ch marketing sau: "${campaignTopic}"
-Hiá»‡n táº¡i, chÃºng tÃ´i Ä‘ang sá»­ dá»¥ng cÃ¡c trá»¥ cá»™t ná»™i dung (Content Pillars) sau Ä‘Ã¢y:
+      const prompt = `Phân tích mục tiêu/chủ đề chiến dịch marketing sau: "${campaignTopic}"
+Hiện tại, chúng tôi đang sử dụng các trụ cột nội dung (Content Pillars) sau đây:
 ${existingPillarsStr}
 
-ChÃºng tÃ´i muá»‘n THAY THáº¾ (Ä‘á»•i) trá»¥ cá»™t sau Ä‘Ã¢y:
+Chúng tôi muốn THAY THẾ (đổi) trụ cột sau đây:
 ${replaceStr}
 
-YÃŠU Cáº¦U:
-HÃ£y Ä‘á» xuáº¥t 1 trá»¥ cá»™t ná»™i dung (Content Pillar) má»›i vÃ  hoÃ n toÃ n KHÃC BIá»†T so vá»›i cÃ¡c trá»¥ cá»™t hiá»‡n cÃ³ á»Ÿ trÃªn Ä‘á»ƒ thay tháº¿ cho trá»¥ cá»™t muá»‘n Ä‘á»•i. Trá»¥ cá»™t má»›i nÃ y pháº£i bá»• trá»£ tá»‘t cho chiáº¿n dá»‹ch vÃ  má»¥c tiÃªu "${campaignTopic}".
-Trá»¥ cá»™t má»›i pháº£i cÃ³ thÃ´ng tin cáº¥u trÃºc sau:
-1. id: chuá»—i ngáº¯n gá»n, khÃ´ng dáº¥u cÃ¡ch, viáº¿t thÆ°á»ng (vÃ­ dá»¥: "kien_thuc_chuyen_sau", "goc_nhin_chuyen_gia") vÃ  KHÃ”NG ÄÆ¯á»¢C TRÃ™NG vá»›i báº¥t ká»³ ID nÃ o cá»§a cÃ¡c trá»¥ cá»™t hiá»‡n táº¡i.
-2. title: TiÃªu Ä‘á» trá»¥ cá»™t ná»™i dung má»›i tá»‘i Æ°u báº±ng tiáº¿ng Viá»‡t (VÃ­ dá»¥: "Pillar D: Kiáº¿n thá»©c chuyÃªn sÃ¢u", "Pillar E: Phong cÃ¡ch sá»‘ng").
-3. ratio: Tá»· lá»‡ phÃ¢n bá»• há»£p lÃ½ hiá»ƒn thá»‹ dÆ°á»›i dáº¡ng chuá»—i (VÃ­ dá»¥: "35% tá»‰ trá»ng"). HÃ£y giá»¯ nguyÃªn tá»‰ lá»‡ cá»§a trá»¥ cá»™t cÅ© lÃ : "${toReplace?.ratio || "33% tá»‰ trá»ng"}".
-4. description: MÃ´ táº£ ngáº¯n gá»n trá»±c quan báº±ng tiáº¿ng Viá»‡t hÆ°á»›ng dáº«n cÃ¡ch triá»ƒn khai cá»¥ thá»ƒ trá»¥ cá»™t nÃ y Ä‘á»‘i vá»›i chiáº¿n dá»‹ch "${campaignTopic}".
+YÊU CẦU:
+Hãy đề xuất 1 trụ cột nội dung (Content Pillar) mới và hoàn toàn KHÁC BIỆT so với các trụ cột hiện có ở trên để thay thế cho trụ cột muốn đổi. Trụ cột mới này phải bổ trợ tốt cho chiến dịch và mục tiêu "${campaignTopic}".
+Trụ cột mới phải có thông tin cấu trúc sau:
+1. id: chuỗi ngắn gọn, không dấu cách, viết thường (ví dụ: "kien_thuc_chuyen_sau", "goc_nhin_chuyen_gia") và KHÔNG ĐƯỢC TRÙNG với bất kỳ ID nào của các trụ cột hiện tại.
+2. title: Tiêu đề trụ cột nội dung mới tối ưu bằng tiếng Việt (Ví dụ: "Pillar D: Kiến thức chuyên sâu", "Pillar E: Phong cách sống").
+3. ratio: Tỷ lệ phân bổ hợp lý hiển thị dưới dạng chuỗi (Ví dụ: "35% tỷ trọng"). Hãy giữ nguyên tỷ lệ của trụ cột cũ là: "${toReplace?.ratio || "33% tỷ trọng"}".
+4. description: Mô tả ngắn gọn trực quan bằng tiếng Việt hướng dẫn cách triển khai cụ thể trụ cột này đối với chiến dịch "${campaignTopic}".
 
-Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ há»£p chÃ­nh xÃ¡c vá»›i cáº¥u trÃºc yÃªu cáº§u.`;
+Trả về kết quả ở định dạng JSON phù hợp chính xác với cấu trúc yêu cầu.`;
 
       const response = await generateText(
         GEMINI_TEXT_MODEL,
@@ -1240,10 +1240,10 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              id: { type: Type.STRING, description: "ID ngáº¯n gá»n viáº¿t liá»n khÃ´ng dáº¥u, khÃ´ng trÃ¹ng ID hiá»‡n táº¡i" },
-              title: { type: Type.STRING, description: "TiÃªu Ä‘á» tiáº¿ng Viá»‡t cá»§a trá»¥ cá»™t" },
-              ratio: { type: Type.STRING, description: "Tá»· lá»‡ phÃ¢n bá»• (giá»¯ nguyÃªn tá»· lá»‡ cÅ©)" },
-              description: { type: Type.STRING, description: "MÃ´ táº£ triá»ƒn khai chi tiáº¿t" },
+              id: { type: Type.STRING, description: "ID ngắn gọn viết liền không dấu, không trùng ID hiện tại" },
+              title: { type: Type.STRING, description: "Tiêu đề tiếng Việt của trụ cột" },
+              ratio: { type: Type.STRING, description: "Tỷ lệ phân bổ (giữ nguyên tỷ lệ cũ)" },
+              description: { type: Type.STRING, description: "Mô tả triển khai chi tiết" },
             },
             required: ["id", "title", "ratio", "description"],
           },
@@ -1261,7 +1261,7 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
   },
 
   /**
-   * PhÃ¡t sinh báº£n nhÃ¡p Ã½ tÆ°á»Ÿng chiáº¿n dá»‹ch
+   * Phát sinh bản nháp ý tưởng chiến dịch
    */
   async generateMarketingIdeas(
     campaignTopic: string,
@@ -1272,43 +1272,43 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
   ): Promise<{ concepts: any[]; isMock: boolean }> {
     const pillarsStr =
       selectedPillars && selectedPillars.length > 0
-        ? `(Äá»‹nh hÆ°á»›ng Trá»¥ cá»™t ná»™i dung: ${selectedPillars.join(", ")})`
+        ? `(Định hướng Trụ cột nội dung: ${selectedPillars.join(", ")})`
         : "";
 
     const getMockConcepts = () => {
       const concepts = [
         {
-          title: `Chiáº¿n dá»‹ch: Cháº¡m Äá»™t PhÃ¡ - ${campaignTopic || "Mua Sáº¯m Cuá»‘i NÄƒm"}`,
+          title: `Chiến dịch: Chạm Đột Phá - ${campaignTopic || "Mua Sắm Cuối Năm"}`,
           matchPercent: 95,
-          summary: `Äá»™t phÃ¡ doanh sá»‘ nháº¯m vÃ o Ä‘á»‘i tÆ°á»£ng tráº» tuá»•i. ${pillarsStr
-            ? `Táº­p trung sÃ¢u vÃ o Ä‘á»‹nh hÆ°á»›ng truyá»n thÃ´ng tá»« cÃ¡c trá»¥ cá»™t lá»±a chá»n: ${selectedPillars.join(", ")}.`
-            : "Táº¡o lá»‘i sá»‘ng tráº£i nghiá»‡m cÃ´ng nghá»‡ Ä‘eo vÃ  phong cÃ¡ch sá»‘ng lÃ nh máº¡nh."
+          summary: `Đột phá doanh số nhắm vào đối tượng trẻ tuổi. ${pillarsStr
+            ? `Tập trung sâu vào định hướng truyền thông từ các trụ cột lựa chọn: ${selectedPillars.join(", ")}.`
+            : "Tạo lối sống trải nghiệm công nghệ đeo và phong cách sống lành mạnh."
             }`,
           channels: channels && channels.length > 0 ? channels : ["TikTok", "Facebook", "Zalo"],
           suggestedContent:
-            "ðŸŽ¬ Ká»‹ch báº£n Tiktok: Biáº¿n Ä‘á»•i phong cÃ¡ch thÆ°á»ng ngÃ y thÃ nh phong cÃ¡ch nÄƒng Ä‘á»™ng thá»ƒ thao chá»‰ sau 1 cÃ¡i cháº¡m mÃ n hÃ¬nh X1.",
+            "Kịch bản Tiktok: Biến đổi phong cách thường ngày thành phong cách năng động thể thao chỉ sau 1 cái chạm màn hình X1.",
           hashtags: ["#iGenX1", "#SmartWearable", "#NangTamCuocSong"],
           mediaPrompt: `A dynamic lifestyle photoshoot featuring a young professional using ${campaignTopic || "smart wearable device"} in an urban setting, bright natural lighting, modern cityscape background, energetic mood, 8k high-resolution product photography.`,
         },
         {
-          title: `Tráº£i nghiá»‡m Äá»‰nh Cao - Tri Ã‚n Há»™i ViÃªn`,
+          title: `Trải nghiệm Đỉnh Cao - Tri Ân Hội Viên`,
           matchPercent: 88,
-          summary: `Quáº£ng bÃ¡ giÃ¡ trá»‹ cá»‘t lÃµi bá»n vá»¯ng thÃ´ng qua chuá»—i bÃ i viáº¿t phá»ng váº¥n cÃ¡c Ä‘á»‘i tÃ¡c trung thÃ nh thá»±c táº¿ Ä‘ang nÃ¢ng táº§m cÃ´ng viá»‡c cÃ¹ng Workspace V2. ${pillarsStr ? `Äiá»u phá»‘i theo: ${selectedPillars.join(", ")}.` : ""
+          summary: `Quảng bá giá trị cốt lõi bền vững thông qua chuỗi bài viết phỏng vấn các đối tác trung thành thực tế đang nâng tầm công việc cùng Workspace V2. ${pillarsStr ? `Điều phối theo: ${selectedPillars.join(", ")}.` : ""
             }`,
           channels: channels && channels.length > 0 ? channels : ["Facebook", "Zalo"],
           suggestedContent:
-            "âœï¸ Facebook Post: 'Gáº·p gá»¡ anh HÃ¹ng, GiÃ¡m Ä‘á»‘c SÃ¡ng táº¡o, ngÆ°á»i Ä‘Ã£ nÃ¢ng cáº¥p 200% tá»‘c Ä‘á»™ gÃµ nhá» BÃ n phÃ­m cÆ¡ Workspace V2...'",
+            "Facebook Post: 'Gặp gỡ anh Hùng, Giám đốc Sáng tạo, người đã nâng cấp 200% tốc độ gõ phím cơ Workspace V2...'",
           hashtags: ["#WorkspaceV2", "#KeyboardMechanic", "#TangHieuSuat"],
           mediaPrompt: `A premium flatlay product photograph of a mechanical keyboard on a clean wooden desk, warm ambient lighting, coffee cup and notebook nearby, professional workspace aesthetic, detailed textures, 4k resolution.`,
         },
         {
-          title: `Giá» VÃ ng GiÃ¡ Sá»‘c - SÄƒn Äá»™c Quyá»n AI`,
+          title: `Giá Vàng Giá Sốc - Săn Độc Quyền AI`,
           matchPercent: 78,
-          summary: `Táº¡o sá»± gáº¥p rÃºt báº±ng tÃ­nh nÄƒng Ä‘áº¿m ngÆ°á»£c flash sale Ä‘Æ°á»£c quáº£n lÃ½ tá»± Ä‘á»™ng bá»Ÿi thuáº­t toÃ¡n Ä‘á» xuáº¥t cá»§a iGen Marketing. ${pillarsStr ? `Káº¿ thá»«a Ã½ tÆ°á»Ÿng tá»« cÃ¡c Content Pillar Ä‘Æ°á»£c cáº¥u hÃ¬nh: ${selectedPillars.join(", ")}.` : ""
+          summary: `Tạo sự gấp rút bằng tính năng đếm ngược flash sale được quản lý tự động bởi thuật toán đề xuất của iGen Marketing. ${pillarsStr ? `Kế thừa ý tưởng từ các Content Pillar được cấu hình: ${selectedPillars.join(", ")}.` : ""
             }`,
           channels: channels && channels.length > 0 ? channels : ["Facebook", "Zalo"],
           suggestedContent:
-            "ðŸ”¥ Tin nháº¯n Zalo: 'Duy nháº¥t hÃ´m nay! Giá» vÃ ng tá»« 12h-14h, giáº£m giÃ¡ 30% toÃ n bá»™ tai nghe KhÃ´ng dÃ¢y Pro Max. Äáº·t ngay!'",
+            "Tin nhắn Zalo: 'Duy nhất hôm nay! Giá vàng từ 12h-14h, giảm giá 30% toàn bộ tai nghe Không dây Pro Max. Đặt ngay!'",
           hashtags: ["#FlashSale", "#TaiNgheProMax", "#AmThanhDinhCao"],
           mediaPrompt: `A vibrant flash sale promotional banner featuring wireless headphones with neon glow effects, countdown timer overlay, bold typography, dark background with electric blue and orange accents, high-energy commercial style.`,
         },
@@ -1324,43 +1324,43 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
       const sourceBrief = extractSourceBrief(campaignTopic);
       const pillarsContext =
         selectedPillars && selectedPillars.length > 0
-          ? `\nCÃ¡c Trá»¥ cá»™t ná»™i dung (Content Pillars) báº¯t buá»™c pháº£i tÃ­ch há»£p vÃ  bÃ¡m sÃ¡t: ${selectedPillars.join(
+          ? `\nCác Trụ cột nội dung (Content Pillars) bắt buộc phải tích hợp và bám sát: ${selectedPillars.join(
             ", "
-          )}. HÃ£y sÃ¡ng táº¡o cÃ¡c Ã½ tÆ°á»Ÿng táº­p trung xoay quanh cÃ¡c trá»¥ cá»™t nÃ y.`
+          )}. Hãy sáng tạo các ý tưởng tập trung xoay quanh các trụ cột này.`
           : "";
 
       const channelsContext =
         channels && channels.length > 0
-          ? `\nKÃªnh truyá»n thÃ´ng báº¯t buá»™c: Báº¯t buá»™c cÃ¡c Ã½ tÆ°á»Ÿng cá»§a báº¡n pháº£i phÃ¢n phá»‘i vÃ  Ä‘Äƒng bÃ i chÃ­nh xÃ¡c trÃªn cÃ¡c kÃªnh: ${channels.join(", ")}.`
+          ? `\nKênh truyền thông bắt buộc: Bắt buộc các ý tưởng của bạn phải phân phối và đăng bài chính xác trên các kênh: ${channels.join(", ")}.`
           : "";
 
       const mediaContext =
         mediaType === "image"
-          ? "\nYÃªu cáº§u vá» phÆ°Æ¡ng tiá»‡n: CÃ¡c Ã½ tÆ°á»Ÿng pháº£i thiáº¿t káº¿ Ä‘i kÃ¨m hÃ¬nh áº£nh lÃ m chá»§ Ä‘áº¡o."
+          ? "\nYêu cầu về phương tiện: Các ý tưởng phải thiết kế đi kèm hình ảnh làm chủ đạo."
           : mediaType === "video"
-            ? "\nYÃªu cáº§u vá» phÆ°Æ¡ng tiá»‡n: CÃ¡c Ã½ tÆ°á»Ÿng pháº£i thiáº¿t káº¿ Ä‘i kÃ¨m video lÃ m chá»§ Ä‘áº¡o."
+            ? "\nYêu cầu về phương tiện: Các ý tưởng phải thiết kế đi kèm video làm chủ đạo."
             : mediaType === "human-video"
-              ? "\nYÃªu cáº§u vá» phÆ°Æ¡ng tiá»‡n: CÃ¡c Ã½ tÆ°á»Ÿng pháº£i phÃ¹ há»£p cho video ngÆ°á»i tháº­t/avatar nÃ³i trÆ°á»›c camera, Æ°u tiÃªn hook máº¡nh, lá»i thoáº¡i tá»± nhiÃªn, cáº£nh quay Ä‘Æ¡n giáº£n vÃ  cÃ³ thá»ƒ chuyá»ƒn thÃ nh voice script trá»±c tiáº¿p."
+              ? "\nYêu cầu về phương tiện: Các ý tưởng phải phù hợp cho video người thật/avatar nói trước camera, ưu tiên hook mạnh, lời thoại tự nhiên, cảnh quay đơn giản và có thể chuyển thành voice script trực tiếp."
               : mediaType === "none"
-                ? "\nYÃªu cáº§u vá» phÆ°Æ¡ng tiá»‡n: CÃ¡c bÃ i Ä‘Äƒng khÃ´ng Ä‘i kÃ¨m hÃ¬nh áº£nh hoáº·c video (chá»‰ vÄƒn báº£n/caption)."
+                ? "\nYêu cầu về phương tiện: Các bài đăng không đi kèm hình ảnh hoặc video (chỉ văn bản/caption)."
                 : "";
 
-      const prompt = `Báº¡n lÃ  má»™t chuyÃªn gia marketing xuáº¥t sáº¯c.
-HÃ£y táº¡o Ä‘Ãºng 3 Ã½ tÆ°á»Ÿng/báº£n nhÃ¡p chiáº¿n dá»‹ch marketing chi tiáº¿t cho chá»§ Ä‘á»/chiáº¿n dá»‹ch nÃ y: "${campaignTopic}".${pillarsContext}${channelsContext}${mediaContext}
-YÃªu cáº§u káº¿t quáº£ Ä‘áº§u ra:
-1. Äá» xuáº¥t tiÃªu Ä‘á» chiáº¿n dá»‹ch sÃ¡ng táº¡o.
-2. Tá»· lá»‡ pháº§n trÄƒm phÃ¹ há»£p (matchPercent) Æ°á»›c lÆ°á»£ng (sá»‘ nguyÃªn tá»« 50-100).
-3. TÃ³m táº¯t Ã½ tÆ°á»Ÿng triá»ƒn khai ngáº¯n gá»n.
-4. CÃ¡c kÃªnh truyá»n thÃ´ng phÃ¹ há»£p Ä‘á» xuáº¥t Ä‘Äƒng bÃ i (máº£ng cÃ¡c chuá»—i, vÃ­ dá»¥: ["Facebook", "TikTok"] - Báº¯t buá»™c pháº£i trÃ¹ng khá»›p vá»›i danh sÃ¡ch kÃªnh Ä‘Ã£ Ä‘Æ°á»£c yÃªu cáº§u á»Ÿ trÃªn).
-5. Ã tÆ°á»Ÿng ná»™i dung gá»£i Ã½ ban Ä‘áº§u Ä‘á»ƒ triá»ƒn khai bÃ i Ä‘Äƒng trÃªn kÃªnh.
-6. Hashtags liÃªn quan phÃ¹ há»£p.
-7. mediaPrompt: Má»™t Ä‘oáº¡n mÃ´ táº£ chi tiáº¿t báº±ng tiáº¿ng Anh (visual prompt) mÃ´ táº£ chÃ­nh xÃ¡c hÃ¬nh áº£nh hoáº·c video phÃ¹ há»£p nháº¥t cho Ã½ tÆ°á»Ÿng nÃ y, dÃ¹ng Ä‘á»ƒ gá»­i tá»›i AI Image/Video Generator. Prompt pháº£i bao gá»“m: chá»§ thá»ƒ chÃ­nh, bá»‘i cáº£nh, Ã¡nh sÃ¡ng, phong cÃ¡ch nghá»‡ thuáº­t, mood/tone, vÃ  chi tiáº¿t ká»¹ thuáº­t.
-8. mediaPrompt pháº£i dá»‹ch Ä‘Ãºng nghÄ©a vÃ  bÃ¡m sÃ¡t nháº¥t vá»›i input ngÆ°á»i dÃ¹ng vÃ  ná»™i dung phÃ¢n tÃ­ch tá»« file Ä‘Ã­nh kÃ¨m. KhÃ´ng Ä‘Æ°á»£c thÃªm bá»›t chá»§ Ä‘á» hay lÃ m generic hÃ³a bá»‘i cáº£nh.
+      const prompt = `Bạn là một chuyên gia marketing xuất sắc.
+Hãy tạo đúng 3 ý tưởng/bản nháp chiến dịch marketing chi tiết cho chủ đề/chiến dịch này: "${campaignTopic}".${pillarsContext}${channelsContext}${mediaContext}
+Yêu cầu kết quả đầu ra:
+1. Đề xuất tiêu đề chiến dịch sáng tạo.
+2. Tỷ lệ phần trăm phù hợp (matchPercent) ước lượng (số nguyên từ 50-100).
+3. Tóm tắt ý tưởng triển khai ngắn gọn.
+4. Các kênh truyền thông phù hợp đề xuất đăng bài (mảng các chuỗi, ví dụ: ["Facebook", "TikTok"] - Bắt buộc phải trùng khớp với danh sách kênh đã được yêu cầu ở trên).
+5. Ý tưởng nội dung gợi ý ban đầu để triển khai bài đăng trên kênh.
+6. Hashtags liên quan phù hợp.
+7. mediaPrompt: Một đoạn mô tả chi tiết bằng tiếng Anh (visual prompt) mô tả chính xác hình ảnh hoặc video phù hợp nhất cho ý tưởng này, dùng để gửi tới AI Image/Video Generator. Prompt phải bao gồm: chủ đề chính, bối cảnh, ánh sáng, phong cách nghệ thuật, mood/tone, và chi tiết kỹ thuật.
+8. mediaPrompt phải dịch đúng nghĩa và bám sát nhất với input người dùng và nội dung phân tích từ file đính kèm. Không được thêm bớt chủ đề hay làm generic hóa bối cảnh.
 
-NGUá»’N Sá»° THáº¬T Báº®T BUá»˜C:
+NGUỒN SỰ THẬT BẮT BUỘC:
 ${sourceBrief.normalizedBrief || campaignTopic}
 
-Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ há»£p chÃ­nh xÃ¡c vá»›i cáº¥u trÃºc yÃªu cáº§u.`;
+Trả về kết quả ở định dạng JSON phù hợp chính xác với cấu trúc yêu cầu.`;
 
       const response = await generateText(
         GEMINI_HEAVY_MODEL,
@@ -1375,19 +1375,19 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    title: { type: Type.STRING, description: "TiÃªu Ä‘á» Ã½ tÆ°á»Ÿng chiáº¿n dá»‹ch" },
-                    matchPercent: { type: Type.INTEGER, description: "Tá»· lá»‡ phÃ¹ há»£p" },
-                    summary: { type: Type.STRING, description: "TÃ³m táº¯t Ã½ tÆ°á»Ÿng" },
+                    title: { type: Type.STRING, description: "Tiêu đề ý tưởng chiến dịch" },
+                    matchPercent: { type: Type.INTEGER, description: "Tỷ lệ phù hợp" },
+                    summary: { type: Type.STRING, description: "Tóm tắt ý tưởng" },
                     channels: {
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
-                      description: "CÃ¡c kÃªnh Ä‘á» xuáº¥t Ä‘Äƒng bÃ i",
+                      description: "Các kênh đề xuất đăng bài",
                     },
-                    suggestedContent: { type: Type.STRING, description: "Ã tÆ°á»Ÿng ná»™i dung gá»£i Ã½ ban Ä‘áº§u" },
+                    suggestedContent: { type: Type.STRING, description: "Ý tưởng nội dung gợi ý ban đầu" },
                     hashtags: {
                       type: Type.ARRAY,
                       items: { type: Type.STRING },
-                      description: "Hashtags liÃªn quan",
+                      description: "Hashtags liên quan",
                     },
                     mediaPrompt: {
                       type: Type.STRING,
@@ -1396,7 +1396,7 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
                   },
                   required: ["title", "matchPercent", "summary", "channels", "suggestedContent", "hashtags", "mediaPrompt"],
                 },
-                description: "Danh sÃ¡ch 3 Ã½ tÆ°á»Ÿng/báº£n nhÃ¡p chiáº¿n dá»‹ch marketing",
+                description: "Danh sách 3 ý tưởng/bản nháp chiến dịch marketing",
               },
             },
             required: ["concepts"],
@@ -1491,72 +1491,74 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
 
     const getMockPosts = () => {
       return targetChannels.map((chan) => {
-        let contentType = "BÃ i viáº¿t truyá»n thÃ´ng";
+        let contentType = "Bài viết truyền thông";
         let outline = "";
         let bodyText = "";
         let mockMediaPrompt = "";
         if (chan === "Facebook") {
-          contentType = "HÃ¬nh áº£nh kÃ¨m Caption";
-          outline = `ðŸ“‹ DÃ€N Ã CHI TIáº¾T (OUTLINE):
-1. HÃ¬nh áº£nh: áº¢nh flatlay thiáº¿t bá»‹ sang trá»ng trÃªn bÃ n lÃ m viá»‡c hiá»‡n Ä‘áº¡i.
-2. TiÃªu Ä‘á»: Äá»™c vá»‹ phong cÃ¡ch - Chá»n ${title}.
-3. Ná»™i dung chÃ­nh: Giáº£i quyáº¿t váº¥n Ä‘á» má»i tay, tÄƒng tá»‘c gÃµ vÃ  tá»‘i Æ°u hÃ³a khÃ´ng gian lÃ m viá»‡c.
-4. Call to Action: ÄÄƒng kÃ½ nháº­n Æ°u Ä‘Ã£i 10% ra máº¯t.`;
-          bodyText = `ðŸ”¥ Báº¬T PHONG CÃCH - NHÃ‚N HIá»†U SUáº¤T CÃ™NG ${title}! ðŸ”¥
+          contentType = "Hình ảnh kèm Caption";
+          outline = `DÀN Ý CHI TIẾT (OUTLINE):
+1. Hình ảnh: Ảnh flatlay thiết bị sang trọng trên bàn làm việc hiện đại.
+2. Tiêu đề: Độc vị phong cách - Chon ${title}.
+3. Nội dung chính: Giải quyết vấn đề mỏi tay, tăng tốc gõ và tối ưu hóa không gian làm việc.
+4. Call to Action: Đăng ký nhận ưu đãi 10% ra mắt.`;
+          bodyText = `BẬT PHONG CÁCH - NHẬN HIỆU SUẤT CÙNG ${title}!
 
-Báº¡n cÃ³ biáº¿t 90% hiá»‡u suáº¥t lÃ m viá»‡c phá»¥ thuá»™c vÃ o sá»± thoáº£i mÃ¡i cá»§a thiáº¿t bá»‹ Ä‘á»“ng hÃ nh? Vá»›i chiáº¿n dá»‹ch ${summary}, chÃºng tÃ´i mang Ä‘áº¿n giáº£i phÃ¡p tá»‘i Æ°u cho báº¡n:
-ðŸ’» Thiáº¿t káº¿ cÃ´ng thÃ¡i há»c tinh táº¿.
-âš¡ TÄƒng tá»‘c Ä‘á»™ pháº£n há»“i phÃ­m gÃµ lÃªn 150%.
-ðŸŽ QuÃ  táº·ng kÃ¨m kÃª tay gá»— sá»“i Ä‘áº·c quyá»n.
+Bạn có biết 90% hiệu suất làm việc phụ thuộc vào sự thoải mái của thiết bị đồng hành? Với chiến dịch ${summary}, chúng tôi mang đến giải pháp tối ưu cho bạn:
+Thiết kế công thái học tinh tế.
 
-ðŸ’¡ Ã tÆ°á»Ÿng cá»‘t lÃµi: "${suggestedContent}"
+Tăng tốc độ phản hồi phím gõ lên 150%.
 
-ðŸ“² Nháº¯n tin ngay cho iGen Ä‘á»ƒ nháº­n deal há»i! #iGenMarketing #WorkspaceV2 #CongNgheSo #Success`;
+Quà tặng kèm kê tay gỗ sồi đặc quyền.
+
+Ý tưởng cốt lõi: "${suggestedContent}"
+
+Nhắn tin ngay cho iGen để nhận deal hời! #iGenMarketing #WorkspaceV2 #CongNgheSo #Success`;
           mockMediaPrompt = `A professional product photoshoot of ${title} on a modern wooden desk, warm cozy lighting, detailed textures, 8k resolution.`;
         } else if (chan === "TikTok") {
-          contentType = "Ká»‹ch báº£n Video ngáº¯n 8s";
-          outline = `ðŸŽ¬ Ká»ŠCH Báº¢N QUAY (TIMELINE VIDEO SCRIPTS - MAX 8S):
+          contentType = "Kịch bản Video ngắn 8s";
+          outline = `KỊCH BẢN QUAY (TIMELINE VIDEO SCRIPTS - MAX 8S):
 [0:00 - 0:03]
-- Visual: Hook so sÃ¡nh tÆ° tháº¿ lÃ m viá»‡c gÃ¹ lÆ°ng/má»i tay vá»›i tÆ° tháº¿ chuáº©n.
-- Audio (Voiceover): "Báº¡n cÃ³ Ä‘ang lÃ m viá»‡c sai tÆ° tháº¿?"
+- Visual: Hook so sánh tư thế làm việc gù lưng/mỏi tay với tư thế chuẩn.
+- Audio (Voiceover): "Bạn có đang làm việc sai tư thế?"
 
 [0:03 - 0:08]
-- Visual: Show cáº­n cáº£nh thiáº¿t káº¿ sang trá»ng & Ã¢m thanh gÃµ phÃ­m Ä‘áº§m cháº¯c cá»§a ${title}.
-- Audio (Voiceover): "NÃ¢ng cáº¥p hiá»‡u nÄƒng lÃ m viá»‡c cá»±c Ä‘á»‰nh cÃ¹ng ${summary}"`;
-          bodyText = `ðŸ”¥ Cá»©u tinh deadline cá»§a báº¡n Ä‘Ã¢y rá»“i! NÃ¢ng cáº¥p hiá»‡u nÄƒng lÃ m viá»‡c cá»±c Ä‘á»‰nh vá»›i ${title}. ÄÄƒng kÃ½ tráº£i nghiá»‡m ngay hÃ´m nay Ä‘á»ƒ nháº­n voucher giáº£m giÃ¡ 45% Ä‘á»™c quyá»n! #iGenMarketing #WorkspaceV2 #WorkSmart #Deadline`;
+- Visual: Show cận cảnh thiết kế sang trọng & âm thanh gõ phím đầm chắc của ${title}.
+- Audio (Voiceover): "Nâng cấp hiệu năng làm việc cực đỉnh cùng ${summary}"`;
+          bodyText = `Cứu tinh deadline của bạn đây rồi! Nâng cấp hiệu năng làm việc cực đỉnh với ${title}. Đăng ký trải nghiệm ngay hôm nay để nhận voucher giảm giá 45% độc quyền! #iGenMarketing #WorkspaceV2 #WorkSmart #Deadline`;
           mockMediaPrompt = `An energetic, dynamic lifestyle video showing someone typing fast on ${title}, neon lighting, high-tech vibes, cinematic look.`;
         } else if (chan === "LinkedIn") {
-          contentType = "BÃ i viáº¿t chuyÃªn sÃ¢u (Article)";
-          outline = `ðŸ“‹ DÃ€N Ã CHI TIáº¾T (OUTLINE):
-1. Äáº·t váº¥n Ä‘á»: Xu hÆ°á»›ng chuyá»ƒn Ä‘á»•i sá»‘ vÃ  nÃ¢ng cao nÄƒng suáº¥t doanh nghiá»‡p.
-2. PhÃ¢n tÃ­ch: Vai trÃ² cá»§a thiáº¿t bá»‹ chuáº©n cÃ´ng thÃ¡i há»c Ä‘á»‘i vá»›i nhÃ¢n sá»± IT/Láº­p trÃ¬nh.
-3. Chiáº¿n dá»‹ch ${summary} Ä‘Ã³ng gÃ³p giÃ¡ trá»‹ nhÆ° tháº¿ nÃ o.
-4. CTA káº¿t ná»‘i nháº­n tÆ° váº¥n.`;
-          bodyText = `[XU HÆ¯á»šNG Váº¬N HÃ€NH] Tá»I Æ¯U HÃ“A TRáº I NGHIá»†M NHÃ‚N Sá»° Äá»‚ Äá»˜T PHÃ HIá»†U SUáº¤T
+          contentType = "Bài viết chuyên sâu (Article)";
+          outline = `DÀN Ý CHI TIẾT (OUTLINE):
+1. Đặt vấn đề: Xu hướng chuyển đổi số và nâng cao năng suất doanh nghiệp.
+2. Phân tích: Vai trò của thiết bị chuẩn công thái học đối với nhân sự IT/Lập trình.
+3. Chiến dịch ${summary} đóng góp giá trị như thế nào.
+4. CTA kết nối nhận tư vấn.`;
+          bodyText = `[XU HƯỚNG VẬN HÀNH] TỐI ƯU HÓA TRẢI NGHIỆM NHÂN SỰ ĐỂ ĐỘT PHÁ HIỆU SUẤT
 
-KÃ­nh gá»­i quÃ½ Ä‘á»‘i tÃ¡c vÃ  cá»™ng Ä‘á»“ng doanh nghiá»‡p,
+Kính gửi quý đối tác và cộng đồng doanh nghiệp,
 
-Trong quáº£n trá»‹ hiá»‡n Ä‘áº¡i, sá»± hÃ i lÃ²ng vÃ  sá»©c khá»e thá»ƒ cháº¥t cá»§a nhÃ¢n viÃªn chÃ­nh lÃ  Ä‘Ã²n báº©y hiá»‡u nÄƒng lá»›n nháº¥t. Vá»›i chiáº¿n dá»‹ch "${title}" cÃ¹ng Ä‘á»‹nh hÆ°á»›ng: ${summary}.
+Trong quản trị hiện đại, sự hài lòng và sức khỏe thể chất của nhân viên chính là đòn bẩy hiệu suất lớn nhất. Với chiến dịch "${title}" cùng định hướng: ${summary}.
 
-Dá»±a trÃªn gá»£i Ã½ Ä‘á» xuáº¥t: "${suggestedContent}", iGen Marketing mang tá»›i gÃ³c nhÃ¬n má»›i giÃºp doanh nghiá»‡p:
-âœ… Giáº£m thiá»ƒu cháº¥n thÆ°Æ¡ng cá»• tay (RSI) á»Ÿ bá»™ pháº­n ká»¹ thuáº­t.
-âœ… Gia tÄƒng sá»± táº­p trung vÃ  gáº¯n káº¿t cÃ´ng viá»‡c.
-âœ… XÃ¢y dá»±ng mÃ´i trÆ°á»ng lÃ m viá»‡c thÃ´ng minh vÃ  hiá»‡n Ä‘áº¡i.
+Dựa trên gợi ý đề xuất: "${suggestedContent}", iGen Marketing mang tới góc nhìn mới giúp doanh nghiệp:
+âœ… Giảm thiểu chấn thương cổ tay (RSI) ở bộ phận kỹ thuật.
+âœ… Gia tăng sự tập trung và gắn kết công việc.
+âœ… Xây dựng môi trường làm việc thông minh và hiện đại.
 
-ðŸ’¼ HÃ£y tháº£o luáº­n cÃ¹ng chÃºng tÃ´i Ä‘á»ƒ thiáº¿t káº¿ giáº£i phÃ¡p chuyá»ƒn Ä‘á»•i sá»‘ toÃ n diá»‡n cho doanh nghiá»‡p cá»§a báº¡n.
+Hãy thảo luận cùng chúng tôi để thiết kế giải pháp chuyển đổi số toàn diện cho doanh nghiệp của bạn.
 
 #ChuyenDoiSo #iGenMarketing #LinkedInArticle #CongNgheTuongLai`;
           mockMediaPrompt = `A minimalist, clean corporate office setting showing a laptop and ${title}, professional corporate workspace, bright natural light.`;
         } else {
-          contentType = "BÃ i viáº¿t truyá»n thÃ´ng Ä‘a kÃªnh";
-          outline = `ðŸ“‹ DÃ€N Ã CHI TIáº¾T (OUTLINE):
-1. Má»Ÿ bÃ i cuá»‘n hÃºt.
-2. PhÃ¢n tÃ­ch cá»‘t lÃµi.
-3. CTA kÃªu gá»i hÃ nh Ä‘á»™ng.`;
-          bodyText = `Giá»›i thiá»‡u chiáº¿n dá»‹ch: ${title}!
+          contentType = "Bài viết truyền thông đa kênh";
+          outline = `DÀN Ý CHI TIẾT (OUTLINE):
+1. Mở bài cuốn hút.
+2. Phân tích cốt lõi.
+3. CTA kêu gọi hành động.`;
+          bodyText = `Giới thiệu chiến dịch: ${title}!
 
-Äá»‹nh hÆ°á»›ng Ã½ tÆ°á»Ÿng: ${summary}.
-Ná»™i dung chi tiáº¿t gá»£i Ã½: ${suggestedContent}`;
+Định hướng ý tưởng: ${summary}.
+Nội dung chi tiết gợi ý: ${suggestedContent}`;
           mockMediaPrompt = `A creative, appealing social media visual representing ${title}.`;
         }
         const voiceScript = `Xin chao, day la noi dung gioi thieu ngan gon cho chien dich ${title}. ${summary}. Hay lien he ngay de nhan tu van chi tiet va uu dai phu hop.`;
@@ -1577,40 +1579,40 @@ Ná»™i dung chi tiáº¿t gá»£i Ã½: ${suggestedContent}`;
         const humanVoiceRules = isHumanVideo
           ? `
 
-YÃŠU Cáº¦U RIÃŠNG CHO VIDEO NGÆ¯á»œI THáº¬T:
-1. Má»—i bÃ i viáº¿t báº¯t buá»™c pháº£i cÃ³ thÃªm trÆ°á»ng "voiceScript" báº±ng tiáº¿ng Viá»‡t tá»± nhiÃªn, mÆ°á»£t mÃ , chuáº©n vÄƒn phong nÃ³i tiáº¿ng Viá»‡t vÃ  khÃ´ng bá»‹ cáº£m giÃ¡c dá»‹ch mÃ¡y.
-2. "voiceScript" pháº£i lÃ  Ä‘oáº¡n lá»i thoáº¡i hoÃ n chá»‰nh Ä‘á»ƒ Ä‘Æ°a trá»±c tiáº¿p sang bá»™ chuyá»ƒn Ä‘á»•i Text-to-Speech (TTS). Tuyá»‡t Ä‘á»‘i khÃ´ng chá»©a kÃ½ hiá»‡u markdown, khÃ´ng chá»©a gáº¡ch Ä‘áº§u dÃ²ng (bullet points), khÃ´ng chá»©a báº¥t ká»³ nhÃ£n dáº«n hay lá»i ghi chÃº nÃ o (vÃ­ dá»¥: khÃ´ng cÃ³ "MC:", "Voiceover:", "Cáº£nh 1:", v.v.).
-3. RÃ€NG BUá»˜C Äá»˜ DÃ€I VÃ€ THá»œI LÆ¯á»¢NG NGHIÃŠM NGáº¶T: Thá»i lÆ°á»£ng Ä‘á»c má»¥c tiÃªu lÃ  Ä‘Ãºng ${humanDurationSeconds} giÃ¢y. Äá»ƒ Ä‘áº£m báº£o Ä‘iá»u nÃ y, sá»‘ lÆ°á»£ng tá»«/Ã¢m tiáº¿t tiáº¿ng Viá»‡t trong "voiceScript" báº¯t buá»™c pháº£i náº±m trong giá»›i háº¡n tá»« ${minWords} Ä‘áº¿n ${maxWords} tá»«. TrÃ¡nh viá»‡c viáº¿t quÃ¡ dÃ i hoáº·c quÃ¡ ngáº¯n sáº½ lÃ m há»ng thá»i lÆ°á»£ng video.
-4. "bodyText" váº«n lÃ  pháº§n caption/ná»™i dung ngáº¯n gá»n Ä‘Äƒng lÃªn kÃªnh máº¡ng xÃ£ há»™i, cÃ²n "voiceScript" má»›i lÃ  ká»‹ch báº£n thoáº¡i Ä‘Æ°á»£c Ä‘á»c thÃ nh tiáº¿ng. Hai trÆ°á»ng nÃ y pháº£i nháº¥t quÃ¡n nhÆ°ng tÃ¡ch biá»‡t.
-5. "outline" pháº£i mÃ´ táº£ cÃ¡c cáº£nh quay, gÃ³c mÃ¡y, nhá»‹p cáº¯t khá»›p hoÃ n háº£o vá»›i diá»…n biáº¿n cá»§a "voiceScript".
-6. "motionText" lÃ  mÃ´ táº£ chi tiáº¿t báº±ng TIáº¾NG VIá»†T vá» cá»­ chá»‰, biá»ƒu cáº£m gÆ°Æ¡ng máº·t, cá»­ Ä‘á»™ng cÆ¡ thá»ƒ vÃ  hÃ nh Ä‘á»™ng cá»§a avatar ngÆ°á»i tháº­t trong video (vÃ­ dá»¥: "NgÆ°á»i thuyáº¿t trÃ¬nh tá»± tin, gáº­t Ä‘áº§u nháº¹ nhÃ ng, biá»ƒu cáº£m thÃ¢n thiá»‡n, cá»­ chá»‰ tay cá»Ÿi má»Ÿ"). MÃ´ táº£ pháº£i tá»± nhiÃªn, bÃ¡m sÃ¡t ná»™i dung vÃ  ngá»¯ Ä‘iá»‡u lá»i thoáº¡i.
-7. Tuyá»‡t Ä‘á»‘i khÃ´ng viáº¿t "voiceScript" chung chung. Ná»™i dung pháº£i táº­p trung lÃ m ná»•i báº­t tiÃªu Ä‘á», tÃ³m táº¯t chiáº¿n dá»‹ch, insight khÃ¡ch hÃ ng vÃ  thÃ´ng Ä‘iá»‡p bÃ¡n hÃ ng cá»¥ thá»ƒ Ä‘Æ°á»£c cung cáº¥p.
+YÊU CẦU RIÊNG CHO VIDEO NGƯỜI THẬT:
+1. Mọi bài viết bắt buộc phải có thêm trường "voiceScript" bằng tiếng Việt tự nhiên, mượt mà, chuẩn văn phong nói tiếng Việt và không bị cảm giác dịch máy.
+2. "voiceScript" phải là đoạn lời thoại hoàn chỉnh để đưa trực tiếp sang bộ chuyển đổi Text-to-Speech (TTS). Tuyệt đối không chứa ký hiệu markdown, không chứa gạch đầu dòng (bullet points), không chứa bất kỳ nhãn dẫn hay lời ghi chú nào (ví dụ: không có "MC:", "Voiceover:", "Cảnh 1:", v.v.).
+3. RÀNG BUỘC ĐỘ DÀI VÀ THỜI LƯỢNG NGHIÊM NGẶT: Thời lượng đọc mục tiêu là đúng ${humanDurationSeconds} giây. Để đảm bảo điều này, số lượng từ/âm tiết tiếng Việt trong "voiceScript" bắt buộc phải nằm trong giới hạn từ ${minWords} đến ${maxWords} từ. Tránh việc viết quá dài hoặc quá ngắn sẽ làm hỏng thời lượng video.
+4. "bodyText" vẫn là phần caption/nội dung ngắn gọn đăng lên kênh mạng xã hội, còn "voiceScript" mới là kịch bản thoại được đọc thành tiếng. Hai trường này phải nhất quán nhưng tách biệt.
+5. "outline" phải mô tả các cảnh quay, góc máy, nhịp cắt khớp hoàn hảo với diễn biến của "voiceScript".
+6. "motionText" là mô tả chi tiết bằng TIẾNG VIỆT về cử chỉ, biểu cảm gương mặt, cử động cơ thể và hành động của avatar người thật trong video (ví dụ: "Người thuyết trình tự tin, gật đầu nhẹ nhàng, biểu cảm thân thiện, cử chỉ tay cởi mở"). Mô tả phải tự nhiên, bám sát nội dung và ngữ điệu lời thoại.
+7. Tuyệt đối không viết "voiceScript" chung chung. Nội dung phải tập trung làm nổi bật tiêu đề, tóm tắt chiến dịch, insight khách hàng và thông điệp bán hàng cụ thể được cung cấp.
 `
           : "";
 
-        const prompt = `Báº¡n lÃ  má»™t chuyÃªn gia viáº¿t ká»‹ch báº£n vÃ  AI Copywriter xuáº¥t sáº¯c.
-HÃ£y láº­p DÃ n Ã½ (Outline) vÃ  viáº¿t Báº£n nhÃ¡p ná»™i dung (Draft Content) cho cÃ¡c kÃªnh sau Ä‘Ã¢y: ${targetChannels.join(", ")}
+        const prompt = `Bạn là một chuyên gia viết kịch bản và AI Copywriter xuất sắc.
+Hãy lập Dàn Ý (Outline) và viết Bản Nháp nội dung (Draft Content) cho các kênh sau đây: ${targetChannels.join(", ")}
 
-QUY Táº®C PHÃ‚N TÃCH Dá»® LIá»†U Báº®T BUá»˜C CHO Tá»ªNG KÃŠNH:
-1. Äá»‘i vá»›i kÃªnh TikTok:
-   - TrÆ°á»ng "outline" (DÃ n Ã½): PHáº¢I chá»©a toÃ n bá»™ ká»‹ch báº£n quay chi tiáº¿t (Shooting Script / Storyboard), bao gá»“m phÃ¢n Ä‘oáº¡n visual (hÃ¬nh áº£nh/hÃ nh Ä‘á»™ng), audio (lá»i thoáº¡i/Ã¢m thanh/voiceover) vÃ  má»‘c thá»i gian (Timeline dáº¡ng [0:00 - 0:03], [0:03 - 0:08]...) cho tá»«ng cáº£nh. Tá»•ng thá»i lÆ°á»£ng ká»‹ch báº£n khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ ${videoDurationSeconds} giÃ¢y.
-   - TrÆ°á»ng "bodyText" (Ná»™i dung chÃ­nh): PHáº¢I lÃ  Caption/Description giá»›i thiá»‡u video sáº¡ch, cuá»‘n hÃºt kÃ¨m hashtag Ä‘á»ƒ Ä‘Äƒng táº£i trá»±c tiáº¿p lÃªn TikTok (vÃ­ dá»¥: "ðŸ”¥ Cá»©u tinh deadline cá»§a báº¡n Ä‘Ã¢y... #iGenMarketing..."). TUYá»†T Äá»I khÃ´ng chá»©a báº¥t ká»³ má»‘c thá»i gian timeline, phÃ¢n cáº£nh, Visual hay Audio nÃ o á»Ÿ trÆ°á»ng nÃ y.
-2. Äá»‘i vá»›i cÃ¡c kÃªnh khÃ¡c (Facebook, LinkedIn, Instagram...):
-   - TrÆ°á»ng "outline": Láº­p dÃ n Ã½ chi tiáº¿t, cá»¥ thá»ƒ vÃ  tá»‘i Æ°u cá»§a bÃ i viáº¿t.
-   - TrÆ°á»ng "bodyText": LÆ°u báº£n nhÃ¡p ná»™i dung bÃ i viáº¿t sáº¡ch hoÃ n chá»‰nh Ä‘á»ƒ Ä‘Äƒng táº£i trá»±c tiáº¿p (khÃ´ng chá»©a dÃ n Ã½ hay tiÃªu Ä‘á» nhÃ¡p).
-3. Äá»‘i vá»›i má»i kÃªnh: Sinh thÃªm trÆ°á»ng "mediaPrompt" lÃ  má»™t Ä‘oáº¡n mÃ´ táº£ chi tiáº¿t báº±ng tiáº¿ng Anh (visual prompt) mÃ´ phá»ng chÃ­nh xÃ¡c ná»™i dung trá»±c quan (hÃ¬nh áº£nh hoáº·c video) phÃ¹ há»£p cho bÃ i viáº¿t nÃ y Ä‘á»ƒ gá»­i tá»›i AI Generator.
-4. mediaPrompt pháº£i lÃ  báº£n dá»‹ch trung thÃ nh sang tiáº¿ng Anh tá»« dá»¯ liá»‡u gá»‘c, khÃ´ng Ä‘Æ°á»£c Ä‘á»•i nghÄ©a, khÃ´ng Ä‘Æ°á»£c tá»± Ã½ thÃªm chi tiáº¿t khÃ´ng cÃ³ trong input hoáº·c tÃ i liá»‡u Ä‘Ã­nh kÃ¨m, khÃ´ng Ä‘Æ°á»£c biáº¿n thÃ nh bá»‘i cáº£nh generic.
+QUY TẮC PHÂN TÍCH DỮ LIỆU BẮT BUỘC CHO TỪNG KÊNH:
+1. Đối với kênh TikTok:
+   - Trường "outline" (Dàn Ý): PHẢI chứa toàn bộ kịch bản quay chi tiết (Shooting Script / Storyboard), bao gồm phân đoạn visual (hình ảnh/hành động), audio (lời thoại/âm thanh/voiceover) và mốc thời gian (Timeline dạng [0:00 - 0:03], [0:03 - 0:08]...) cho từng cảnh. Tổng thời lượng kịch bản không được vượt quá ${videoDurationSeconds} giây.
+   - Trường "bodyText" (Nội dung chính): PHẢI là Caption/Description giới thiệu video sạch, cuốn hút kèm hashtag để đăng tải trực tiếp lên TikTok (ví dụ: "ðŸ”¥ Cứu tinh deadline của bạn đây... #iGenMarketing..."). TUYỆT ĐỐI không chứa bất kỳ mốc thời gian timeline, phân cảnh, Visual hay Audio nào ở trường này.
+2. Đối với các kênh khác (Facebook, LinkedIn, Instagram...):
+   - Trường "outline": Lập dàn ý chi tiết, cụ thể và tối ưu của bài viết.
+   - Trường "bodyText": Lưu bản nháp nội dung bài viết sạch hoàn chỉnh để đăng tải trực tiếp (không chứa dàn ý hay tiêu đề nháp).
+3. Đối với mọi kênh: Sinh thêm trường "mediaPrompt" là một đoạn mô tả chi tiết bằng tiếng Anh (visual prompt) mô phỏng chính xác nội dung trực quan (hình ảnh hoặc video) phù hợp cho bài viết này để gợi tới AI Generator.
+4. mediaPrompt phải là bản dịch trung thành sang tiếng Anh từ dữ liệu gốc, không được đổi nghĩa, không được tự ý thêm chi tiết không có trong input hoặc tài liệu đính kèm, không được biến thành bối cảnh generic.
 ${humanVoiceRules}
 
-ThÃ´ng tin chiáº¿n dá»‹ch marketing:
-- TiÃªu Ä‘á» Ã½ tÆ°á»Ÿng: "${title}"
-- TÃ³m táº¯t Ã½ tÆ°á»Ÿng: "${summary}"
-- Ná»™i dung gá»£i Ã½ ban Ä‘áº§u: "${suggestedContent}"
+Thông tin chiến dịch marketing:
+- Tiêu đề ý tưởng: "${title}"
+- Tóm tắt ý tưởng: "${summary}"
+- Nội dung gợi ý ban đầu: "${suggestedContent}"
 
-NGUá»’N Sá»° THáº¬T Báº®T BUá»˜C:
+NGUỒN SỰ THẬT BẮT BUỘC:
 ${extractSourceBrief(sourceBriefText).normalizedBrief || sourceBriefText}
 
-Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ há»£p chÃ­nh xÃ¡c vá»›i cáº¥u trÃºc yÃªu cáº§u.`;
+Trả về kết quả ở định dạng JSON phù hợp chính xác với cấu trúc yêu cầu.`;
 
         const response = await generateText(
           GEMINI_HEAVY_MODEL,
@@ -1625,15 +1627,15 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
                   items: {
                     type: Type.OBJECT,
                     properties: {
-                      channel: { type: Type.STRING, description: "KÃªnh Ä‘Äƒng bÃ i (vÃ­ dá»¥: Facebook, TikTok, LinkedIn, Instagram, Zalo)" },
-                      contentType: { type: Type.STRING, description: "Loáº¡i ná»™i dung" },
+                      channel: { type: Type.STRING, description: "Kênh đăng bài (ví dụ: Facebook, TikTok, LinkedIn, Instagram, Zalo)" },
+                      contentType: { type: Type.STRING, description: "Loại nội dung" },
                       outline: {
                         type: Type.STRING,
-                        description: `DÃ n Ã½ chi tiáº¿t cá»§a bÃ i viáº¿t. Äáº¶C BIá»†T vá»›i TikTok: Pháº£i lÆ°u Ká»ŠCH Báº¢N QUAY (timeline video script) chi tiáº¿t bao gá»“m Visual, Audio vÃ  má»‘c thá»i gian dáº¡ng [0:00 - 0:03], [0:03 - 0:08]... vá»›i tá»•ng thá»i lÆ°á»£ng tá»‘i Ä‘a khÃ´ng quÃ¡ ${videoDurationSeconds} giÃ¢y.`
+                        description: `Dàn ý chi tiết của bài viết. ĐẶC BIỆT với TikTok: Phải lưu KỊCH BẢN QUAY (timeline video script) chi tiết bao gồm Visual, Audio và mốc thời gian dạng [0:00 - 0:03], [0:03 - 0:08]... với tổng thời lượng tối đa không quá ${videoDurationSeconds} giây.`
                       },
                       bodyText: {
                         type: Type.STRING,
-                        description: "Ná»™i dung bÃ i Ä‘Äƒng/caption sáº¡ch Ä‘á»ƒ Ä‘Äƒng táº£i trá»±c tiáº¿p. Äáº¶C BIá»†T vá»›i TikTok: Chá»‰ lÃ  Caption/Description giá»›i thiá»‡u video kÃ¨m hashtag vÃ  call-to-action (TUYá»†T Äá»I khÃ´ng chá»©a ká»‹ch báº£n quay, visual, audio hay timeline video á»Ÿ trÆ°á»ng nÃ y)."
+                        description: "Nội dung bài đăng/caption sạch để đăng tải trực tiếp. ĐẶC BIỆT với TikTok: Chỉ là Caption/Description giới thiệu video kèm hashtag và call-to-action (TUYỆT ĐỐI không chứa kịch bản quay, visual, audio hay timeline video ở trường này)."
                       },
                       mediaPrompt: {
                         type: Type.STRING,
@@ -1962,29 +1964,29 @@ Tráº£ vá» káº¿t quáº£ á»Ÿ Ä‘á»‹nh dáº¡ng JSON phÃ¹ h
   },
 
   /**
-   * Tá»‘i Æ°u ká»‹ch báº£n giá»ng nÃ³i
+   * Tá»‘i Æ°u ká»‹ch báº£n giá» ng nÃ³i
    */
   async optimizeScript(text: string, readingStyle: string, model?: string) {
     if (!process.env.OPENROUTER_API_KEY) {
-      return { optimizedText: `[Tá»‘i Æ°u hÃ³a Giáº£ láº­p] ${text}` };
+      return { optimizedText: `[Tối ưu hóa Giả lập] ${text}` };
     }
     try {
-      const systemInstruction = `Báº¡n lÃ  má»™t chuyÃªn gia biÃªn soáº¡n ká»‹ch báº£n vÃ  phÃ¡t thanh viÃªn chuyÃªn nghiá»‡p cá»§a ÄÃ i Tiáº¿ng nÃ³i Viá»‡t Nam (VOV).
-HÃ£y tá»‘i Æ°u hÃ³a vÄƒn báº£n gá»‘c cá»§a ngÆ°á»i dÃ¹ng Ä‘á»ƒ biáº¿n nÃ³ thÃ nh má»™t ká»‹ch báº£n thoáº¡i (voiceover script) cháº¥t lÆ°á»£ng cao, lÆ°u loÃ¡t, chuáº©n tiáº¿ng Viá»‡t vÃ  cá»±c ká»³ tá»± nhiÃªn.
+      const systemInstruction = `Bạn là một chuyên gia biên soạn kịch bản và phát thanh viên chuyên nghiệp của Đài Tiếng Nói Việt Nam (VOV).
+Hãy tối ưu hóa văn bản gốc của người dùng để biến nó thành một kịch bản thoại (voiceover script) chất lượng cao, lưu loát, chuẩn tiếng Việt và cực kỳ tự nhiên.
 
-Ãp dá»¥ng cÃ¡c quy táº¯c biÃªn táº­p vÃ  phÃ¡t thanh nghiÃªm ngáº·t sau:
-1. Sá»° Tá»° NHIÃŠN VÃ€ TRÃ”I CHáº¢Y: Chuyá»ƒn Ä‘á»•i vÄƒn báº£n thÃ nh vÄƒn phong nÃ³i tá»± nhiÃªn, chuáº©n ngÃ´n ngá»¯ phÃ¡t thanh. Loáº¡i bá» cÃ¡c cá»¥m tá»« rÆ°á»m rÃ , láº·p Ã½ hoáº·c mang tÃ­nh cháº¥t vÄƒn viáº¿t khÃ´ khan.
-2. NGáº®T NGHá»ˆ Há»¢P LÃ Báº°NG Dáº¤U CÃ‚U: Tá»± Ä‘á»™ng chÃ¨n thÃªm dáº¥u pháº©y (,), dáº¥u cháº¥m (.) hoáº·c dáº¥u ba cháº¥m (...) táº¡i cÃ¡c vá»‹ trÃ­ cáº§n ngáº¯t nghá»‰, láº¥y hÆ¡i tá»± nhiÃªn cá»§a phÃ¡t thanh viÃªn. Äiá»u nÃ y ráº¥t quan trá»ng Ä‘á»ƒ giÃºp cÃ´ng cá»¥ Text-to-Speech (TTS) Ä‘á»c vá»›i nhá»‹p Ä‘iá»‡u vá»«a pháº£i, nháº¥n nhÃ¡ chÃ­nh xÃ¡c, khÃ´ng bá»‹ Ä‘á»c liá»n má»™t máº¡ch quÃ¡ nhanh hay dÃ­nh chá»¯.
-3. PHÃT Ã‚M VÃ€ CHá»® Sá» (Báº®T BUá»˜C):
-   - Äá»c vÃ  viáº¿t rÃµ hoÃ n toÃ n cÃ¡c tá»« viáº¿t táº¯t thÃ nh tiáº¿ng Viá»‡t chuáº©n (VÃ­ dá»¥: "KH" -> "khÃ¡ch hÃ ng", "SP" -> "sáº£n pháº©m", "DN" -> "doanh nghiá»‡p", "VS" -> "vá»›i").
-   - Viáº¿t rÃµ cÃ¡c tá»« tiáº¿ng Anh thÃ´ng dá»¥ng theo cÃ¡ch Ä‘á»c tá»± nhiÃªn cá»§a tiáº¿ng Viá»‡t hoáº·c phiÃªn Ã¢m dá»… Ä‘á»c (VÃ­ dá»¥: "ERP" -> "E-R-P", "AI" -> "A-I", "IT" -> "I-T", "Sales" -> "sale", "Marketing" -> "mÃ¡c-kÃ©t-tinh").
-   - Viáº¿t chá»¯ hoÃ n toÃ n cho táº¥t cáº£ cÃ¡c con sá»‘, pháº§n trÄƒm, kÃ½ hiá»‡u, ngÃ y thÃ¡ng hoáº·c sá»‘ tiá»n (VÃ­ dá»¥: "10%" -> "mÆ°á»i pháº§n trÄƒm", "24/7" -> "hai mÆ°Æ¡i tÆ° trÃªn báº£y", "2026" -> "nÄƒm hai nghÃ¬n khÃ´ng trÄƒm hai mÆ°Æ¡i sÃ¡u", "15s" -> "mÆ°á»i lÄƒm giÃ¢y", "$100" -> "má»™t trÄƒm Ä‘Ã´ la").
-4. PHONG CÃCH Äá»ŒC: BÃ¡m sÃ¡t vÃ  thá»ƒ hiá»‡n rÃµ nÃ©t phong cÃ¡ch Ä‘á»c yÃªu cáº§u (vÃ­ dá»¥: hÃ o há»©ng, sÃ¢u láº¯ng, cháº­m rÃ£i...).
-5. Káº¾T QUáº¢ TRáº¢ Vá»€: Chá»‰ tráº£ vá» DUY NHáº¤T vÄƒn báº£n ká»‹ch báº£n thoáº¡i tiáº¿ng Viá»‡t Ä‘Ã£ Ä‘Æ°á»£c tá»‘i Æ°u hÃ³a hoÃ n chá»‰nh. KhÃ´ng thÃªm lá»i bÃ¬nh luáº­n, khÃ´ng cÃ³ kÃ½ tá»± markdown (nhÆ° **, ##, *), khÃ´ng chá»©a tiÃªu Ä‘á» ká»‹ch báº£n, lá»i má»Ÿ Ä‘áº§u hay báº¥t ká»³ lá»i giáº£i thÃ­ch nÃ o.`;
+Áp dụng các quy tắc biên tập và phát thanh nghiêm ngặt sau:
+1. SỰ TỰ NHIÊN VÀ TRÔI CHẢY: Chuyển đổi văn bản thành văn phong nói tự nhiên, chuẩn ngôn ngữ phát thanh. Loại bỏ các cụm từ rườm rà, lặp ý hoặc mang tính chất văn viết khô khan.
+2. NGẮT NGHỈ HỢP LÀ BẰNG DẤU CÂU: Tự động chèn thêm dấu phẩy (,), dấu chấm (.) hoặc dấu ba chấm (...) tại các vị trí cần ngắt nghỉ, lấy hơi tự nhiên của phát thanh viên. Điều này rất quan trọng để giúp công cụ Text-to-Speech (TTS) đọc với nhịp điệu vừa phải, nhấn nhá chính xác, không bị đọc liền một mạch quá nhanh hay dính chữ.
+3. PHÁT ÂM VÀ CHỮ SỐ (BẮT BUỘC):
+   - Đọc và viết rõ hoàn toàn các từ viết tắt thành tiếng Việt chuẩn (Ví dụ: "KH" -> "khách hàng", "SP" -> "sản phẩm", "DN" -> "doanh nghiệp", "VS" -> "với").
+   - Viết rõ các từ tiếng Anh thông dụng theo cách đọc tự nhiên của tiếng Việt hoặc phiên âm dễ đọc (Ví dụ: "ERP" -> "E-R-P", "AI" -> "A-I", "IT" -> "I-T", "Sales" -> "sale", "Marketing" -> "mác-két-tinh").
+   - Viết chữ hoàn toàn cho tất cả các con số, phần trăm, ký hiệu, ngày tháng hoặc số tiền (Ví dụ: "10%" -> "mười phần trăm", "24/7" -> "hai mươi tư trên bảy", "2026" -> "năm hai nghìn không trăm hai mươi sáu", "15s" -> "mười lăm giây", "$100" -> "một trăm đô la").
+4. PHONG CÁCH ĐỌC: Bám sát và thể hiện rõ nét phong cách đọc yêu cầu (ví dụ: hào hứng, sâu lắng, chậm rãi...).
+5. KẾT QUẢ TRẢ VỀ: Chỉ trả về DUY NHẤT văn bản kịch bản thoại tiếng Việt đã được tối ưu hóa hoàn chỉnh. Không thêm lời bình luận, không có ký tự markdown (như **, ##, *), không chứa tiêu đề kịch bản, lời mở đầu hay bất kỳ lời giải thích nào.`;
       const selectedModel = model || GEMINI_TEXT_MODEL;
       const response = await generateText(
         selectedModel,
-        `Phong cÃ¡ch: ${readingStyle || "háº¥p dáº«n, lÃ´i cuá»‘n"}\nVÄƒn báº£n gá»‘c:\n${text}`,
+        `Phong cách: ${readingStyle || "hấp dẫn, lôi cuốn"}\nVăn bản gốc:\n${text}`,
         {
           systemInstruction,
           temperature: 0.7,
@@ -1993,7 +1995,7 @@ HÃ£y tá»‘i Æ°u hÃ³a vÄƒn báº£n gá»‘c cá»§a ngÆ°á»i d
       return { optimizedText: response.text || text };
     } catch (error: any) {
       console.error("[geminiService.optimizeScript] Error, fallback to mock script:", error);
-      return { optimizedText: `[Tá»‘i Æ°u hÃ³a Giáº£ láº­p] ${text}` };
+      return { optimizedText: `[Tối ưu hóa Giả lập] ${text}` };
     }
   },
 
@@ -2005,7 +2007,7 @@ HÃ£y tá»‘i Æ°u hÃ³a vÄƒn báº£n gá»‘c cá»§a ngÆ°á»i d
 
     const getMockImagePrompt = () => {
       const wantsGraphicLayout = /\b(banner|poster|advertisement|ad creative|cover|thumbnail|flyer|social post)\b/i.test(normalizedDescription)
-        || /(bÄƒng rÃ´n|banner|Ã¡p phÃ­ch|poster|quáº£ng cÃ¡o|giá»›i thiá»‡u|máº·t hÃ ng|bÃ¬a|thumbnail|tá» rÆ¡i|bÃ i Ä‘Äƒng)/i.test(normalizedDescription);
+        || /(banner|áp phích|poster|quảng cáo|giới thiệu|mặt hàng|bìa|thumbnail|tờ rơi|bài đăng)/i.test(normalizedDescription);
       const optimizedPrompt = wantsGraphicLayout
         ? `A professional commercial banner design that faithfully represents this exact brief: ${normalizedDescription || "the provided concept"}. Use a clear hero product or subject, designed background, headline area, subheadline area, CTA button area, brand/logo placeholder, clean typography, safe margins, and negative space for readable Vietnamese text. Do not make it a plain product photo.`
         : `A precise visual that faithfully represents this exact marketing or business concept: ${normalizedDescription || "the provided concept"}`;
@@ -2080,7 +2082,7 @@ Do not include markdown blocks or any text other than the JSON object.`
 
     const getMockVideoPrompt = () => {
       const text = normalizedDescription.toLowerCase().trim();
-      const isEnglish = !/[Ã Ã¡áº£Ã£áº¡Äƒáº¯áº±áº³áºµáº·Ã¢áº¥áº§áº©áº«áº­Ã¨Ã©áº»áº½áº¹Ãªáº¿á»á»ƒá»…á»‡Ä‘Ã¬Ã­á»‰Ä©á»‹Ã²Ã³á»Ãµá»Ã´á»‘á»“á»•á»—á»™Æ¡á»›á»á»Ÿá»¡á»£Ã¹Ãºá»§Å©á»¥Æ°á»©á»«á»­á»¯á»±á»³Ã½á»·á»¹á»µ]/i.test(normalizedDescription);
+      const isEnglish = !/[Ã áº£Ã£áº¡Äƒáº¯áº±áº³áºµáº·Ã¢áº¥áº§áº©áº«áº­Ã¨Ã©áº»áº½áº¹Ãªáº¿á» á»ƒá»…á»‡Ä‘Ã¬Ã­á»‰Ä©á»‹Ã²Ã³á» Ãµá» Ã´á»‘á»“á»•á»—á»™Æ¡á»›á» á»Ÿá»¡á»£Ã¹Ãºá»§Å©á»¥Æ°á»©á»«á»­á»¯á»±á»³Ã½á»·á»¹á»µ]/i.test(normalizedDescription);
       if (isEnglish) {
         return {
           motion_analysis: "smooth cinematic motion of the subject",
@@ -2098,33 +2100,33 @@ Do not include markdown blocks or any text other than the JSON object.`
 
       // Translation mappings
       const dict: { [key: string]: string } = {
-        "cÃ¢u chuyá»‡n ngáº¯n vá» tuna": "a short narrative story about a character named Tuna",
-        "cÃ¢u chuyá»‡n vá» tuna": "a narrative story featuring Tuna",
-        "táº­p truyá»‡n vá» tuna": "a short story about Tuna",
+        "câu chuyện ngắn về tuna": "a short narrative story about a character named Tuna",
+        "câu chuyện về tuna": "a narrative story featuring Tuna",
+        "tập truyện về tuna": "a short story about Tuna",
         "tuna": "a character named Tuna",
-        "nÃºi tuyáº¿t": "majestic snow-capped mountains under a clear sky",
-        "nÃºi": "picturesque mountain ranges",
-        "hoÃ ng hÃ´n": "sunset during golden hour with warm amber tones",
-        "bÃ¬nh minh": "sunrise during blue hour, soft morning mist",
-        "sáº£n pháº©m": "a premium commercial product showcase",
-        "quáº£ng cÃ¡o": "high-end promotional commercial video",
-        "ngÆ°á»i máº«u": "an elegant fashion model",
-        "sÃ n diá»…n": "a glamorous fashion show catwalk runway",
+        "núi tuyết": "majestic snow-capped mountains under a clear sky",
+        "núi": "picturesque mountain ranges",
+        "hoàng hôn": "sunset during golden hour with warm amber tones",
+        "bình minh": "sunrise during blue hour, soft morning mist",
+        "sản phẩm": "a premium commercial product showcase",
+        "quảng cáo": "high-end promotional commercial video",
+        "người mẫu": "an elegant fashion model",
+        "sàn diễn": "a glamorous fashion show catwalk runway",
         "runway": "fashion catwalk runway with bright studio lights",
         "flycam": "aerial drone perspective sweeping across the landscape",
         "bay": "soaring aerial shot",
         "xoay": "360-degree rotating showcase",
-        "cáº­n cáº£nh": "extreme close-up macro details",
-        "toÃ n cáº£nh": "wide-angle scenic overview",
+        "cận cảnh": "extreme close-up macro details",
+        "toàn cảnh": "wide-angle scenic overview",
         "xe": "a sleek modern luxury sports car",
-        "Ã´ tÃ´": "a luxury car driving along a scenic route",
-        "biá»ƒn": "crystal clear ocean waves gently crashing on a sandy beach",
-        "Ä‘áº¡i dÆ°Æ¡ng": "vast deep blue ocean landscape",
-        "thÃ nh phá»‘": "modern cityscape with towering skyscrapers",
-        "cÃ´ng nghá»‡": "futuristic technology environment with holographic displays",
+        "ô tô": "a luxury car driving along a scenic route",
+        "biển": "crystal clear ocean waves gently crashing on a sandy beach",
+        "đại dương": "vast deep blue ocean landscape",
+        "thành phố": "modern cityscape with towering skyscrapers",
+        "công nghệ": "futuristic technology environment with holographic displays",
         "phim": "cinematic movie style footage",
-        "Ä‘iá»‡n áº£nh": "cinematic film style",
-        "cháº­m": "dramatic slow-motion video",
+        "điện ảnh": "cinematic film style",
+        "chậm": "dramatic slow-motion video",
         "nhanh": "dynamic fast-paced cuts and motion",
       };
 
@@ -2144,11 +2146,11 @@ Do not include markdown blocks or any text other than the JSON object.`
         englishSubject = detectedKeywords.join(", ");
       } else {
         const cleanText = normalizedDescription
-          .replace(/tiáº¿n hÃ nh/gi, "")
-          .replace(/táº¡o 1/gi, "")
-          .replace(/táº¡o má»™t/gi, "")
-          .replace(/táº¡o/gi, "")
-          .replace(/lÃ m/gi, "")
+          .replace(/tiến hành/gi, "")
+          .replace(/tạo 1/gi, "")
+          .replace(/tạo một/gi, "")
+          .replace(/tạo/gi, "")
+          .replace(/làm/gi, "")
           .trim();
         if (cleanText) {
           englishSubject = `a cinematic representation of: "${cleanText}"`;
@@ -2156,7 +2158,7 @@ Do not include markdown blocks or any text other than the JSON object.`
       }
 
       // Adjust motion and camera based on keyword detection
-      if (text.includes("cháº­m") || text.includes("slow")) {
+      if (text.includes("chậm") || text.includes("slow")) {
         motion = "dramatic slow-motion action with elegant fluid dynamics";
         camera = "ultra-smooth slow tracking camera";
       } else if (text.includes("nhanh") || text.includes("fast")) {
@@ -2164,18 +2166,18 @@ Do not include markdown blocks or any text other than the JSON object.`
         camera = "rapid cuts, active handheld tracking, whip pans";
       }
 
-      if (text.includes("flycam") || text.includes("bay") || text.includes("trÃªn cao")) {
+      if (text.includes("flycam") || text.includes("bay") || text.includes("trên cao")) {
         camera = "high-altitude aerial drone sweep, panning down smoothly";
       } else if (text.includes("xoay") || text.includes("360")) {
         camera = "orbiting 360-degree rotation around the subject";
-      } else if (text.includes("cáº­n cáº£nh") || text.includes("cáº­n")) {
+      } else if (text.includes("cận cảnh") || text.includes("cận")) {
         camera = "macro close-up focus with shallow depth of field";
       }
 
-      if (text.includes("sáº£n pháº©m") || text.includes("product")) {
+      if (text.includes("sản phẩm") || text.includes("product")) {
         lighting = "professional studio key lighting, soft box diffusion, edge highlight";
         style = "commercial grade, high-end product commercial, 8k, photorealistic";
-      } else if (text.includes("ngÆ°á»i máº«u") || text.includes("fashion") || text.includes("runway")) {
+      } else if (text.includes("người mẫu") || text.includes("fashion") || text.includes("runway")) {
         lighting = "bright runway stage lights, high-contrast spotlighting, camera flashes";
         style = "high-fashion editorial look, cinematic 4k, vibrant colors";
       }
@@ -2244,28 +2246,28 @@ Do not include markdown blocks or any text other than the JSON object.`
     }
 
     try {
-      const systemInstruction = `Báº¡n lÃ  trá»£ lÃ½ chá»‰nh sá»­a video chuyÃªn nghiá»‡p, thÃ nh tháº¡o tiáº¿ng Viá»‡t vÃ  tiáº¿ng Anh.
-Nhiá»‡m vá»¥ cá»§a báº¡n: chuyá»ƒn Ä‘á»•i prompt mÃ´ táº£ tá»± nhiÃªn cá»§a ngÆ°á»i dÃ¹ng thÃ nh cÃ¡c lá»‡nh chá»‰nh sá»­a video Cá»¤ THá»‚, CHI TIáº¾T báº±ng tiáº¿ng Viá»‡t.
+      const systemInstruction = `Bạn là trợ lý chỉnh sửa video chuyên nghiệp, thành thạo tiếng Việt và tiếng Anh.
+Nhiệm vụ của bạn: chuyển đổi prompt mô tả tự nhiên của người dùng thành các lệnh chỉnh sửa video CỤ THỂ, CHI TIẾT bằng tiếng Việt.
 
-âš ï¸ QUAN TRá»ŒNG: 
-- Äáº§u ra pháº£i lÃ  cÃ¡c Lá»†NH CHá»ˆNH Sá»¬A (cáº¯t, zoom, filter, text, nháº¡c, tá»‘c Ä‘á»™), KHÃ”NG pháº£i mÃ´ táº£ chung chung.
-- Náº¿u ngÆ°á»i dÃ¹ng nÃ³i "viral TikTok", hÃ£y cá»¥ thá»ƒ hÃ³a: "cáº¯t thÃ nh cÃ¡c Ä‘oáº¡n 2-3 giÃ¢y, tua nhanh 1.5x, zoom in/out xen káº½, thÃªm text popup ná»•i báº­t, chÃ¨n nháº¡c EDM sÃ´i Ä‘á»™ng xuyÃªn suá»‘t"
-- Náº¿u ngÆ°á»i dÃ¹ng nÃ³i "chuyÃªn nghiá»‡p", hÃ£y cá»¥ thá»ƒ hÃ³a: "filter cinematic, chuyá»ƒn cáº£nh fade mÆ°á»£t, text tiÃªu Ä‘á» á»Ÿ giá»¯a 3 giÃ¢y Ä‘áº§u, nháº¡c ná»n corporate, tÄƒng tÆ°Æ¡ng pháº£n 1.25"
-- Bao gá»“m CHÃNH XÃC cÃ¡c thÃ´ng sá»‘: thá»i gian (giÃ¢y), tá»‘c Ä‘á»™ (playbackRate), vá»‹ trÃ­ text, mÃ u sáº¯c.
-- Viáº¿t báº±ng TIáº¾NG VIá»†T.
+⚠️ QUAN TRỌNG: 
+- Đầu ra phải là các LỆNH CHỈNH SỬA (cắt, zoom, filter, text, nhạc, tốc độ), KHÔNG phải mô tả chung chung.
+- Nếu người dùng nói "viral TikTok", hãy cụ thể hóa: "cắt thành các đoạn 2-3 giây, tua nhanh 1.5x, zoom in/out xen kẽ, thêm text popup nổi bật, chèn nhạc EDM sôi động xuyên suốt"
+- Nếu người dùng nói "chuyên nghiệp", hãy cụ thể hóa: "filter cinematic, chuyển cảnh fade mượt, text tiêu đề ở giữa 3 giây đầu, nhạc nền corporate, tăng tương phản 1.25"
+- Bao gồm CHÍNH XÁC các thông số: thời gian (giây), tốc độ (playbackRate), vị trí text, màu sắc.
+- Viết bằng TIẾNG VIỆT.
 
-VÃ­ dá»¥:
-Input: "Biáº¿n video nÃ y thÃ nh clip viral TikTok"
-Output: "Cáº¯t video thÃ nh cÃ¡c Ä‘oáº¡n ngáº¯n 2-3 giÃ¢y, tua nhanh gáº¥p 1.5 láº§n toÃ n bá»™, zoom in vÃ  zoom out xen káº½ má»—i 2 giÃ¢y, thÃªm text highlight mÃ u vÃ ng #FFD700 á»Ÿ bottom-center, chÃ¨n nháº¡c EDM sÃ´i Ä‘á»™ng xuyÃªn suá»‘t tá»« 0 giÃ¢y Ä‘áº¿n háº¿t video."
+VÍ DỤ:
+Input: "Biến video này thành clip viral TikTok"
+Output: "Cắt video thành các đoạn ngắn 2-3 giây, tua nhanh gấp 1.5 lần toàn bộ, zoom in và zoom out xen kẽ mỗi 2 giây, thêm text highlight màu vàng #FFD700 ở bottom-center, chèn nhạc EDM sôi động xuyên suốt từ 0 giây đến hết video."
 
-Input: "LÃ m video chuyÃªn nghiá»‡p hÆ¡n"
-Output: "ThÃªm filter cinematic (tÄƒng tÆ°Æ¡ng pháº£n 1.25, tÄƒng bÃ£o hÃ²a 1.3, giáº£m sÃ¡ng 0.95), chuyá»ƒn cáº£nh fade mÆ°á»£t giá»¯a cÃ¡c Ä‘oáº¡n, thÃªm text tiÃªu Ä‘á» 'Giá»›i thiá»‡u' á»Ÿ center trong 3 giÃ¢y Ä‘áº§u, chÃ¨n nháº¡c ná»n corporate xuyÃªn suá»‘t."
+Input: "Làm video chuyên nghiệp hơn"
+Output: "Thêm filter cinematic (tăng tương phản 1.25, tăng bảo hòa 1.3, giảm sáng 0.95), chuyển cảnh fade mượt giữa các đoạn, thêm text tiêu đề 'Giới thiệu' ở center trong 3 giây đầu, chèn nhạc nền corporate xuyên suốt."
 
-CHá»ˆ tráº£ vá» lá»‡nh chá»‰nh sá»­a, khÃ´ng thÃªm giáº£i thÃ­ch, khÃ´ng markdown.`;
+CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdown.`;
 
       const response = await generateText(
         GEMINI_TEXT_MODEL,
-        `Chuyá»ƒn prompt sau thÃ nh lá»‡nh chá»‰nh sá»­a video cá»¥ thá»ƒ, chi tiáº¿t:
+        `Chuyển prompt sau thành lệnh chỉnh sửa video cụ thể, chi tiết:
 "${normalizedDescription}"`,
         {
           systemInstruction,
@@ -2382,7 +2384,7 @@ CHá»ˆ tráº£ vá» lá»‡nh chá»‰nh sá»­a, khÃ´ng thÃªm giá
     try {
       const result = await AIMediaModel.deleteOne({ _id: id, userId });
       if (result.deletedCount === 0) {
-        throw new Error("KhÃ´ng tÃ¬m tháº¥y báº£n ghi hoáº·c khÃ´ng cÃ³ quyá»n xÃ³a");
+        throw new Error("Không tìm thấy bản ghi hoặc không có quyền xóa");
       }
       return { status: "success" };
     } catch (error: any) {
@@ -2447,7 +2449,7 @@ CHá»ˆ tráº£ vá» lá»‡nh chá»‰nh sá»­a, khÃ´ng thÃªm giá
           console.error(`[PiAPI Background Poll] Timeout for task ${taskId}`);
           await AIMediaModel.findByIdAndUpdate(recordId, {
             "metadata.status": "timeout",
-            "metadata.error": "QuÃ¡ thá»i gian chá» táº¡o video tá»« PiAPI (10 phÃºt)",
+            "metadata.error": "Quá thời gian chờ tạo video từ PiAPI (10 phút)",
           });
         }
       } catch (error: any) {

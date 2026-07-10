@@ -58,7 +58,7 @@ export default function ApprovalTab({
       channel: "Facebook",
       contentType: "Bài viết AI Copywriter soạn thảo",
       status: "draft",
-      bodyText: `Chao don su but pha cua du an moi! Voi chu de "${topic}", hay trien khai mot chien dich truyen thong hap dan, giau cam xuc de tiep can dung khach hang muc tieu va lam noi bat gia tri giai phap iGen. Dang ky ngay hom nay de nhan tu van chi tiet!`,
+      bodyText: `Chào đón sự bứt phá của dự án mới! Với chủ đề "${topic}", hãy triển khai một chiến dịch truyền thông hấp dẫn, giàu cảm xúc để tiếp cận đúng khách hàng mục tiêu và làm nổi bật giá trị giải pháp iGen. Đăng ký ngay hôm nay để nhận tư vấn chi tiết!`,
       generatedAt: new Date().toISOString(),
       authorUid: userProfile?.uid ?? "",
     };
@@ -73,10 +73,10 @@ export default function ApprovalTab({
       const savedCard = await marketingService.saveCard(card);
       setApprovalCards((prev) => [savedCard, ...prev]);
       setPromptMore("");
-      toast.success("Da tao bai dang nhap moi tu AI!");
+      toast.success("Đã tạo bài đăng nháp mới từ AI!");
     } catch (e) {
       console.error(e);
-      toast.error("Khong the tao bai dang nhap tu AI.");
+      toast.error("Không thể tạo bài đăng nháp từ AI.");
     }
   };
 

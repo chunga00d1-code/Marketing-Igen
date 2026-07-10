@@ -74,7 +74,7 @@ export const geminiApi = {
       headers
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Không thỒ tải gợi ý chiến d�9ch marketing');
+      await handleErrorResponse(response, 'Không thể tải gợi ý chiến dịch marketing');
     }
     const data = await response.json();
     return data.suggestions || [];
@@ -96,7 +96,7 @@ export const geminiApi = {
       'Hết thời gian phân tích Content Pillars. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'L�i phân tích Content Pillars');
+      await handleErrorResponse(response, 'Lỗi phân tích Content Pillars');
     }
     return response.json();
   },
@@ -119,16 +119,15 @@ export const geminiApi = {
         body: JSON.stringify({ campaignTopic, currentPillars, pillarIdToReplace, images }),
       },
       90000,
-      'Hết thời gian thay ��"i Content Pillar. Vui lòng thử lại.'
+      'Hết thời gian thay thế Content Pillar. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'L�i thay ��"i Content Pillar');
+      await handleErrorResponse(response, 'Lỗi thay thế Content Pillar');
     }
     return response.json();
   },
 
   /**
-   * Phát sinh các bản nháp ý tư�xng chiến d�9ch marketing từ các pillars �ược chọn.
    */
   async generateMarketingIdeas(
     campaignTopic: string,
@@ -147,11 +146,11 @@ export const geminiApi = {
       },
       mediaType === "human-video" ? 300000 : 180000,
       mediaType === "human-video"
-        ? 'Tạo ý tư�xng cho video người thật mất quá lâu. Vui lòng thử lại sau ít phút.'
-        : 'Tạo ý tư�xng marketing b�9 quá thời gian chờ. Vui lòng thử lại.'
+        ? 'Tạo ý tưởng cho video người thật mất quá lâu. Vui lòng thử lại sau ít phút.'
+        : 'Tạo ý tưởng marketing quá lâu. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'L�i phát sinh ý tư�xng marketing');
+      await handleErrorResponse(response, 'Lỗi phát sinh ý tưởng marketing');
     }
     return response.json();
   },
@@ -187,11 +186,11 @@ export const geminiApi = {
       },
       concept.mediaType === "human-video" ? 360000 : 240000,
       concept.mediaType === "human-video"
-        ? 'Phát triỒn n�"i dung cho video người thật mất quá lâu. Vui lòng thử lại sau.'
-        : 'Phát triỒn n�"i dung AI b�9 quá thời gian chờ. Vui lòng thử lại.'
+        ? 'Phát triển nội dung cho video người thật mất quá lâu. Vui lòng thử lại sau.'
+        : 'Phát triển nội dung AI quá lâu. Vui lòng thử lại.'
     );
     if (!response.ok) {
-      await handleErrorResponse(response, 'L�i lập dàn ý và viết bài chi tiết');
+      await handleErrorResponse(response, 'Lỗi lập dàn ý và viết bài chi tiết');
     }
     return response.json();
   },
@@ -211,7 +210,7 @@ export const geminiApi = {
       body: JSON.stringify({ message, history, aiConfig }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'L�i kết n�i Trợ lý AI');
+      await handleErrorResponse(response, 'Lỗi kết nối Trợ lý AI');
     }
     return response.json();
   },
@@ -221,7 +220,7 @@ export const geminiApi = {
       headers: getJwtHeaders(false),
     });
     if (!response.ok) {
-      throw new Error("Không thỒ kiỒm tra trạng thái AI knowledge");
+      throw new Error("Không thể kiểm tra trạng thái AI knowledge");
     }
     return response.json();
   },
@@ -232,7 +231,7 @@ export const geminiApi = {
       headers: getJwtHeaders(true),
     });
     if (!response.ok) {
-      throw new Error("Khong the xoa toan bo tri thuc AI");
+      throw new Error("Không thể xóa toàn bộ tri thức AI");
     }
     return response.json();
   },
@@ -244,7 +243,7 @@ export const geminiApi = {
       body: JSON.stringify({ message, aiConfig }),
     });
     if (!response.ok) {
-      throw new Error("Không thỒ tạo câu trả lời thử");
+      throw new Error("Không thể tạo câu trả lời thử");
     }
     return response.json();
   },
@@ -254,7 +253,7 @@ export const geminiApi = {
       headers: getJwtHeaders(false),
     });
     if (!response.ok) {
-      throw new Error("Không thỒ tải log phản h�i AI");
+      throw new Error("Không thể tải log phản hồi AI");
     }
     const data = await response.json();
     return data.logs || [];
@@ -455,7 +454,7 @@ export const geminiApi = {
       '/api/v1/gemini/generate-edit-script',
       { method: 'POST', headers, body: JSON.stringify({ videoUrl, duration, prompt }) },
       300000,
-      'Tạo k�9ch bản biên tập mất quá lâu. Vui lòng thử lại.'
+      'Tạo kịch bản biên tập mất quá lâu. Vui lòng thử lại.'
     );
     if (!response.ok) {
       await handleErrorResponse(response, 'Lỗi tạo kịch bản biên tập video');
