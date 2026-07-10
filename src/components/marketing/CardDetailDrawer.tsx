@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Clock, 
   Trash2, 
@@ -12,7 +12,8 @@ import {
   RefreshCw,
   X,
   Loader2,
-  ZoomIn
+  ZoomIn,
+  Upload
 } from "lucide-react";
 import { ContentApprovalCard } from "../../types";
 import { formatCardDate, isRenderableVideoUrl, formatPublishError } from "./CardWidgets";
@@ -67,6 +68,8 @@ export default function CardDetailDrawer({
   const [editedOutline, setEditedOutline] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(true);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (card) {
@@ -118,6 +121,47 @@ export default function CardDetailDrawer({
       toast.error("Không thể lưu thay đổi. Vui lòng thử lại.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleUploadMedia = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+      toast.error("Chỉ hỗ trợ file ảnh hoặc video.");
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      toast.error("File không được lớn hơn 100MB.");
+      return;
+    }
+
+    setIsUploadingMedia(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Không thể đọc file media."));
+        reader.readAsDataURL(file);
+      });
+      const type = file.type.startsWith("video/") ? "video" : "image";
+      const storedUrl = await marketingService.uploadMediaToStorage(
+        dataUrl,
+        `marketing_${card.id}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
+        type
+      );
+      const updatedFields: Partial<ContentApprovalCard> = type === "video"
+        ? { videoUrl: storedUrl, mediaType: "video" }
+        : { imageUrl: storedUrl, mediaType: "image" };
+      await marketingService.updateCard(card.id, updatedFields);
+      onUpdateCard(card.id, updatedFields);
+      toast.success("Đã tải media lên và gắn vào card.");
+    } catch (error: any) {
+      console.error("Không thể upload media cho card:", error);
+      toast.error(error?.message || "Không thể tải media lên. Vui lòng thử lại.");
+    } finally {
+      setIsUploadingMedia(false);
     }
   };
 
@@ -188,6 +232,15 @@ export default function CardDetailDrawer({
           {/* Media Section */}
           <div>
             <label className="block text-[10px] font-bold text-gray-450 font-mono uppercase mb-2">Phương tiện (Media)</label>
+            {card.status !== "published" && (
+              <>
+                <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUploadMedia} />
+                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={isUploadingMedia || card.status === "processing"} className="mb-3 inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60">
+                  <Upload className={`h-3.5 w-3.5 ${isUploadingMedia ? "animate-pulse" : ""}`} />
+                  {isUploadingMedia ? "Đang tải media..." : "Tải ảnh / video của bạn"}
+                </button>
+              </>
+            )}
             {card.status === 'processing' && (
               <div className="relative overflow-hidden rounded-xl aspect-video w-full border border-purple-200 bg-purple-50/30 flex flex-col items-center justify-center gap-3">
                 <Loader2 className="h-7 w-7 text-purple-600 animate-spin" />

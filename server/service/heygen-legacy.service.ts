@@ -46,6 +46,7 @@ export const heygenLegacyService = {
       avatarBackground,
       backgroundColor,
       avatarLayout,
+      cardId,
     } = input;
 
     if (!avatarId?.trim()) {
@@ -136,6 +137,7 @@ export const heygenLegacyService = {
       status: data?.data?.status || data?.status || "processing",
       title: title || "Video Avatar III",
       description: description || "Táº¡o tá»« ká»‹ch báº£n vÄƒn báº£n",
+      cardId,
     });
 
     return {
