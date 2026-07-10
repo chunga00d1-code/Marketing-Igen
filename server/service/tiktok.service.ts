@@ -50,7 +50,10 @@ function encodeHtml(value: string) {
 }
 
 function verifyWebhookToken(token?: string) {
-  const expectedToken = String(process.env.TIKTOK_WEBHOOK_SECRET || process.env.N8N_WEBHOOK_SECRET || "").trim();
+  // TikTok webhooks must not inherit the n8n secret. TikTok's own
+  // signature header is handled by the platform; this optional token is
+  // only for an explicitly configured private relay.
+  const expectedToken = String(process.env.TIKTOK_WEBHOOK_SECRET || "").trim();
   if (!expectedToken) {
     return true;
   }
