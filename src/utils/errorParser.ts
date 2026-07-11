@@ -9,7 +9,7 @@ type SerializableError = {
 
 export function parseAppError(
   error: unknown,
-  fallbackMessage = "Da xay ra loi he thong. Vui long thu lai sau."
+  fallbackMessage = "Đã xảy ra lỗi hệ thống. Vui lòng thử lại sau."
 ): string {
   if (!error) return fallbackMessage;
 
@@ -31,28 +31,28 @@ export function parseAppError(
   const cleanCode = errorCode.toLowerCase();
 
   if (cleanMsg.includes("failed to fetch") || cleanMsg.includes("fetch failed") || cleanMsg.includes("typeerror")) {
-    return "Khong the ket noi toi may chu. Vui long kiem tra ket noi Internet hoac thu lai sau.";
+    return "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối Internet hoặc thử lại sau.";
   }
   if (cleanCode.includes("unauthorized") || cleanMsg.includes("unauthorized") || cleanMsg.includes("401")) {
-    return "Phien dang nhap khong hop le hoac da het han.";
+    return "Phiên đăng nhập không hợp lệ hoặc đã hết hạn.";
   }
   if (cleanCode.includes("forbidden") || cleanMsg.includes("forbidden") || cleanMsg.includes("403")) {
-    return "Ban khong co quyen thuc hien thao tac nay.";
+    return "Bạn không có quyền thực hiện thao tác này.";
   }
   if (cleanMsg.includes("email") && cleanMsg.includes("already")) {
-    return "Dia chi email nay da duoc su dung.";
+    return "Địa chỉ email này đã được sử dụng.";
   }
   if (cleanMsg.includes("invalid credential") || cleanMsg.includes("email hoac mat khau khong chinh xac")) {
-    return "Email hoac mat khau khong chinh xac.";
+    return "Email hoặc mật khẩu không chính xác.";
   }
   if (cleanMsg.includes("khong tim thay") || cleanMsg.includes("khong ton tai") || cleanMsg.includes("not found")) {
-    return "Du lieu yeu cau khong ton tai tren he thong.";
+    return "Dữ liệu yêu cầu không tồn tại trên hệ thống.";
   }
   if (cleanMsg.includes("permission denied") || cleanMsg.includes("insufficient permissions")) {
-    return "Tai khoan cua ban khong du quyen han de thuc hien thao tac nay.";
+    return "Tài khoản của bạn không đủ quyền hạn để thực hiện thao tác này.";
   }
   if (cleanMsg.includes("network")) {
-    return "Loi ket noi mang. Vui long kiem tra duong truyen Internet.";
+    return "Lỗi kết nối mạng. Vui lòng kiểm tra đường truyền Internet.";
   }
 
   return errorMessage || fallbackMessage;

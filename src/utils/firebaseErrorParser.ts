@@ -6,12 +6,12 @@ type FirebaseLikeError = {
 };
 
 const FIREBASE_AUTH_MESSAGES: Record<string, string> = {
-  "auth/invalid-credential": "Email hoac mat khau khong chinh xac.",
-  "auth/user-not-found": "Email hoac mat khau khong chinh xac.",
-  "auth/wrong-password": "Email hoac mat khau khong chinh xac.",
-  "auth/invalid-email": "Dia chi email khong dung dinh dang.",
-  "auth/too-many-requests": "Tai khoan tam thoi bi khoa do dang nhap qua nhieu lan. Vui long thu lai sau.",
-  "auth/network-request-failed": "Khong the ket noi toi may chu. Vui long kiem tra ket noi Internet hoac thu lai sau.",
+  "auth/invalid-credential": "Email hoặc mật khẩu không chính xác.",
+  "auth/user-not-found": "Email hoặc mật khẩu không chính xác.",
+  "auth/wrong-password": "Email hoặc mật khẩu không chính xác.",
+  "auth/invalid-email": "Địa chỉ email không đúng định dạng.",
+  "auth/too-many-requests": "Tài khoản tạm thời bị khóa do đăng nhập quá nhiều lần. Vui lòng thử lại sau.",
+  "auth/network-request-failed": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối Internet hoặc thử lại sau.",
 };
 
 export function parseFirebaseError(error: unknown, fallbackMessage: string): string {
