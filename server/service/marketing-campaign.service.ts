@@ -22,6 +22,7 @@ interface CreateCampaignInput {
   latePublishWindowMinutes?: number;
   minimumScore?: number;
   mediaPolicy?: "text" | "image" | "video" | "auto";
+  images?: string[];
   rules?: {
     requiredCta?: string;
     requiredHashtags?: string[];
@@ -104,6 +105,7 @@ export const marketingCampaignService = {
       postsPerDay: input.postsPerDay,
       postingTimes: input.postingTimes,
       channels: input.platforms,
+      images: input.images,
     });
     if (strategy.slots.length !== schedule.length) {
       throw new Error(`AI trả về ${strategy.slots.length}/${schedule.length} slot chiến dịch.`);
@@ -162,8 +164,29 @@ export const marketingCampaignService = {
     }
   },
 
-  async list(companyCode: string) {
-    return MarketingCampaignModel.find({ companyCode }).sort({ createdAt: -1 }).lean();
+  async list(companyCode: string, query?: { page?: number; limit?: number }) {
+    const page = Math.max(1, Number(query?.page || 1));
+    const limit = Math.max(1, Math.min(100, Number(query?.limit || 10)));
+    const skip = (page - 1) * limit;
+
+    const [campaigns, total] = await Promise.all([
+      MarketingCampaignModel.find({ companyCode })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      MarketingCampaignModel.countDocuments({ companyCode }),
+    ]);
+
+    return {
+      campaigns,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   },
 
   async getDetail(companyCode: string, campaignId: string) {

@@ -81,8 +81,10 @@ export const marketingCampaignController = {
   async list(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);
-      const campaigns = await marketingCampaignService.list(companyCode);
-      return res.status(200).json({ status: "success", data: campaigns });
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const result = await marketingCampaignService.list(companyCode, { page, limit });
+      return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải chiến dịch." });
     }

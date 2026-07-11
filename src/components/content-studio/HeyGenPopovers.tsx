@@ -195,7 +195,7 @@ export function PickerPopover({
                 const isActive = name === selectedFolder;
                 const folderItems = avatarsByFolder[name] ?? [];
                 const count = folderItems.length;
-                const thumb = folderItems[0]?.thumbnail || folderItems[0]?.avatarUrl || folderItems[0]?.previewImage || '';
+                const thumb = (folderItems[0] as { thumbnail?: string; avatarUrl?: string; previewImage?: string })?.thumbnail || (folderItems[0] as { thumbnail?: string; avatarUrl?: string; previewImage?: string })?.avatarUrl || folderItems[0]?.previewImage || '';
                 return (
                   <li key={name}>
                     <button
@@ -269,7 +269,7 @@ export function PickerPopover({
                         {/* Thumbnail with gradient name overlay */}
                         <div className="relative aspect-[2/3] w-full overflow-hidden bg-slate-100">
                           <img
-                            src={item.thumbnail || item.avatarUrl || item.previewImage || ''}
+                            src={(item as { thumbnail?: string; avatarUrl?: string; previewImage?: string }).thumbnail || (item as { thumbnail?: string; avatarUrl?: string; previewImage?: string }).avatarUrl || item.previewImage || ''}
                             alt={item.name}
                             loading="lazy"
                             decoding="async"

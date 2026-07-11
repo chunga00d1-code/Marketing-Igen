@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Pause, Play, Sparkles, XCircle } from 'lucide-react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
 import CustomTimePicker from '../common/CustomTimePicker';
+import CampaignPromptBox from './CampaignPromptBox';
+import CampaignDetailModal, { CampaignSlot } from './CampaignDetailModal';
+import CampaignItem from './CampaignItem';
 
 interface CampaignPlannerTabProps {
   userProfile?: {
@@ -38,10 +41,29 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
   const [candidateCount, setCandidateCount] = useState(3);
 
-  const loadCampaigns = async () => {
+  // File Upload states
+  const [uploadedDocName, setUploadedDocName] = useState('');
+  const [uploadedDocText, setUploadedDocText] = useState('');
+  const [uploadedImageBase64, setUploadedImageBase64] = useState('');
+  const [loadingDoc, setLoadingDoc] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // Detail Modal states
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [campaignDetail, setCampaignDetail] = useState<{ campaign: MarketingCampaignSummary; slots: CampaignSlot[] } | null>(null);
+
+  const loadCampaigns = async (page = 1) => {
     setLoadingCampaigns(true);
     try {
-      setCampaigns(await marketingCampaignService.list());
+      const result = await marketingCampaignService.list(page, 10);
+      setCampaigns(result.campaigns);
+      setTotalPages(result.pagination.totalPages);
+      setCurrentPage(result.pagination.page);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể tải danh sách chiến dịch.');
     } finally {
@@ -58,8 +80,212 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   }, []);
 
   useEffect(() => {
-    void loadCampaigns();
+    void loadCampaigns(1);
   }, []);
+
+  const loadScript = (src: string, globalVar: string): Promise<unknown> => {
+    return new Promise((resolve, reject) => {
+      const windowRecord = window as unknown as Record<string, unknown>;
+      if (windowRecord[globalVar]) {
+        resolve(windowRecord[globalVar]);
+        return;
+      }
+      const existingScript = document.querySelector(`script[src="${src}"]`);
+      if (existingScript) {
+        existingScript.addEventListener('load', () => resolve(windowRecord[globalVar]));
+        existingScript.addEventListener('error', (e) => reject(e));
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      script.onload = () => resolve(windowRecord[globalVar]);
+      script.onerror = (e) => reject(e);
+      document.body.appendChild(script);
+    });
+  };
+
+  const processFile = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.warning('Dung lượng file không được vượt quá 10MB!');
+      return;
+    }
+
+    setUploadedDocName(file.name);
+    setLoadingDoc(true);
+    setUploadedDocText('');
+    setUploadedImageBase64('');
+
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+    const isImage = file.type.startsWith('image/');
+
+    if (isImage) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const base64Data = evt.target?.result as string;
+        setUploadedImageBase64(base64Data);
+        setLoadingDoc(false);
+        toast.success('Đã tải hình ảnh lên thành công!');
+      };
+      reader.onerror = () => {
+        setLoadingDoc(false);
+        toast.error('Lỗi khi đọc tệp tin hình ảnh.');
+      };
+      reader.readAsDataURL(file);
+    } else if (fileExt === 'txt' || fileExt === 'md') {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const text = evt.target?.result as string;
+        setUploadedDocText(text);
+        setLoadingDoc(false);
+        toast.success('Đã trích xuất nội dung văn bản thành công!');
+      };
+      reader.onerror = () => {
+        setLoadingDoc(false);
+        toast.error('Lỗi khi đọc file văn bản.');
+      };
+      reader.readAsText(file);
+    } else if (fileExt === 'pdf') {
+      try {
+        const pdfjsObj = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js', 'pdfjsLib');
+        const pdfjs = pdfjsObj as {
+          GlobalWorkerOptions: { workerSrc: string };
+          getDocument: (args: { data: Uint8Array }) => {
+            promise: Promise<{
+              numPages: number;
+              getPage: (num: number) => Promise<{
+                getTextContent: () => Promise<{
+                  items: Array<{ str: string }>;
+                }>;
+              }>;
+            }>;
+          };
+        };
+        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+        let extractedText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          const pageText = textContent.items.map((item) => item.str).join(' ');
+          extractedText += pageText + '\n';
+        }
+        if (!extractedText.trim()) {
+          throw new Error('Không thể trích xuất văn bản từ PDF (tài liệu rỗng hoặc dạng scan ảnh).');
+        }
+        setUploadedDocText(extractedText);
+        setLoadingDoc(false);
+        toast.success(`Đã trích xuất tài liệu PDF (${pdf.numPages} trang) thành công!`);
+      } catch (err: unknown) {
+        setLoadingDoc(false);
+        console.error(err);
+        toast.error(err instanceof Error ? err.message : 'Lỗi xử lý file PDF.');
+      }
+    } else if (fileExt === 'docx') {
+      try {
+        const mammothObj = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', 'mammoth');
+        const mammoth = mammothObj as {
+          extractRawText: (args: { arrayBuffer: ArrayBuffer }) => Promise<{ value: string }>;
+        };
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        const extractedText = result.value;
+        if (!extractedText.trim()) {
+          throw new Error('Tài liệu Word trống hoặc không có văn bản.');
+        }
+        setUploadedDocText(extractedText);
+        setLoadingDoc(false);
+        toast.success('Đã trích xuất tài liệu Word thành công!');
+      } catch (err: unknown) {
+        setLoadingDoc(false);
+        console.error(err);
+        toast.error(err instanceof Error ? err.message : 'Lỗi xử lý file Word.');
+      }
+    } else {
+      setLoadingDoc(false);
+      toast.error('Định dạng file không được hỗ trợ. Vui lòng tải hình ảnh, .txt, .md, .pdf hoặc .docx');
+    }
+  };
+
+  const handleDocumentUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      void processFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      void processFile(file);
+    }
+  };
+
+  const handleRemoveDocument = () => {
+    setUploadedDocName('');
+    setUploadedDocText('');
+    setUploadedImageBase64('');
+    toast.success('Đã gỡ tập tin đính kèm.');
+  };
+
+  const buildSourceBriefContext = (baseText?: string) => {
+    const primaryText = String(baseText || prompt || '').trim();
+    const parts = [primaryText];
+
+    if (uploadedDocText) {
+      parts.push(
+        `TÀI LIỆU ĐÍNH KÈM:\nTên tài liệu: ${uploadedDocName || 'Tài liệu tải lên'}\nNội dung tài liệu:\n${uploadedDocText}`
+      );
+    }
+
+    return parts.filter(Boolean).join('\n\n').trim();
+  };
+
+  // Load campaign details on selection
+  useEffect(() => {
+    if (!selectedCampaignId) {
+      setCampaignDetail(null);
+      return;
+    }
+    let active = true;
+    setLoadingDetail(true);
+    marketingCampaignService.detail(selectedCampaignId)
+      .then((res) => {
+        if (active) {
+          setCampaignDetail({
+            campaign: res.campaign,
+            slots: res.slots as CampaignSlot[],
+          });
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          toast.error(error instanceof Error ? error.message : 'Không thể tải chi tiết chiến dịch.');
+          setSelectedCampaignId(null);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingDetail(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedCampaignId]);
 
   const dayCount = useMemo(() => {
     const start = new Date(`${startDate}T00:00:00`);
@@ -84,8 +310,11 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
     setLoading(true);
     try {
+      const brief = buildSourceBriefContext();
+      const imagesParam = uploadedImageBase64 ? [uploadedImageBase64] : undefined;
+
       const result = await marketingCampaignService.create({
-        sourceBrief: prompt.trim(),
+        sourceBrief: brief,
         startDate,
         endDate,
         postsPerDay,
@@ -95,10 +324,15 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         integrationIds: integrationId ? { Facebook: integrationId } : {},
         candidateCount,
         mediaPolicy: 'auto',
+        images: imagesParam,
       });
       setCampaigns((current) => [result.campaign, ...current]);
       setPrompt('');
+      setUploadedDocName('');
+      setUploadedDocText('');
+      setUploadedImageBase64('');
       toast.success(`Đã khởi chạy chiến dịch “${result.campaign.title}” với ${result.campaign.statistics.totalSlots} slot.`);
+      void loadCampaigns(1);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể tạo chiến dịch tự động.');
     } finally {
@@ -132,12 +366,24 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         </div>
 
         <label className="mb-2 block text-xs font-bold text-slate-700">Mục tiêu và brief chiến dịch</label>
-        <textarea
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          rows={7}
-          placeholder="Ví dụ: Tạo chiến dịch 7 ngày ra mắt sản phẩm mới, tập trung vào khách hàng 25–35 tuổi, giọng văn gần gũi, mục tiêu tăng inbox..."
-          className="w-full resize-y rounded-xl border border-slate-200 p-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+        <CampaignPromptBox
+          prompt={prompt}
+          setPrompt={setPrompt}
+          uploadedDocName={uploadedDocName}
+          uploadedImageBase64={uploadedImageBase64}
+          loadingDoc={loadingDoc}
+          isDragging={isDragging}
+          handleDragOver={handleDragOver}
+          handleDragLeave={handleDragLeave}
+          handleDrop={handleDrop}
+          handleDocumentUpload={handleDocumentUpload}
+          handleRemoveDocument={handleRemoveDocument}
+          onClearAll={() => {
+            setPrompt('');
+            setUploadedDocName('');
+            setUploadedDocText('');
+            setUploadedImageBase64('');
+          }}
         />
 
         <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -209,32 +455,77 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
       <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
-          <div><h3 className="text-sm font-extrabold text-slate-800">Chiến dịch tự động</h3><p className="mt-1 text-xs text-slate-500">Trạng thái được lưu trên server và tiếp tục chạy khi đóng trình duyệt.</p></div>
+          <div><h3 className="text-sm font-extrabold text-slate-850">Chiến dịch tự động</h3><p className="mt-1 text-xs text-slate-500 font-medium">Trạng thái được lưu trên server và tiếp tục chạy khi đóng trình duyệt.</p></div>
           {loadingCampaigns && <Loader2 size={17} className="animate-spin text-indigo-600" />}
         </div>
         {!loadingCampaigns && campaigns.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400">Chưa có chiến dịch nào.</div>
         ) : (
           <div className="space-y-3">
-            {campaigns.map((campaign) => {
-              const completed = campaign.statistics.publishedSlots + campaign.statistics.failedSlots;
-              const progress = campaign.statistics.totalSlots > 0 ? Math.round(completed / campaign.statistics.totalSlots * 100) : 0;
-              return <div key={campaign._id} className="rounded-xl border border-slate-200 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div><div className="flex items-center gap-2"><h4 className="text-sm font-bold text-slate-800">{campaign.title}</h4><span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${campaign.status === 'active' ? 'bg-green-50 text-green-700' : campaign.status === 'paused' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{statusLabel[campaign.status]}</span></div><p className="mt-1 text-[11px] text-slate-500">{campaign.startDate} → {campaign.endDate} · {campaign.statistics.totalSlots} slot · {campaign.candidateCount} phương án/slot</p></div>
-                  <div className="flex gap-2">
-                    {campaign.status === 'active' && <button type="button" onClick={() => handleLifecycle(campaign, 'pause')} className="flex items-center gap-1 rounded-lg border border-amber-200 px-2.5 py-1.5 text-[10px] font-bold text-amber-700"><Pause size={12} /> Tạm dừng</button>}
-                    {campaign.status === 'paused' && <button type="button" onClick={() => handleLifecycle(campaign, 'resume')} className="flex items-center gap-1 rounded-lg border border-green-200 px-2.5 py-1.5 text-[10px] font-bold text-green-700"><Play size={12} /> Tiếp tục</button>}
-                    {['active', 'paused', 'failed', 'draft'].includes(campaign.status) && <button type="button" onClick={() => handleLifecycle(campaign, 'cancel')} className="flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-[10px] font-bold text-red-600"><XCircle size={12} /> Hủy</button>}
-                  </div>
-                </div>
-                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${progress}%` }} /></div>
-                <div className="mt-1.5 flex justify-between text-[10px] text-slate-400"><span>Đã đăng {campaign.statistics.publishedSlots}</span><span>{progress}%</span></div>
-              </div>;
-            })}
+            {campaigns.map((campaign) => (
+              <CampaignItem
+                key={campaign._id}
+                campaign={campaign}
+                statusLabel={statusLabel}
+                onOpenDetail={(campaignId) => setSelectedCampaignId(campaignId)}
+                onLifecycle={handleLifecycle}
+              />
+            ))}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6 pt-4 border-t border-slate-100 select-none">
+                <button
+                  type="button"
+                  onClick={() => void loadCampaigns(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition cursor-pointer"
+                >
+                  Trang trước
+                </button>
+                <span className="text-xs text-slate-500 font-medium">
+                  Trang {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void loadCampaigns(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition cursor-pointer"
+                >
+                  Trang sau
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>
+
+      {/* Campaign Detail Modal */}
+      <CampaignDetailModal
+        isOpen={Boolean(selectedCampaignId)}
+        onClose={() => setSelectedCampaignId(null)}
+        loadingDetail={loadingDetail}
+        campaignDetail={campaignDetail}
+        statusLabel={statusLabel}
+        slotStatusColors={{
+          planned: 'bg-slate-100 text-slate-700 border-slate-200',
+          queued: 'bg-blue-50 text-blue-700 border-blue-200',
+          generating: 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse',
+          publishing: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+          published: 'bg-green-50 text-green-700 border-green-200',
+          failed: 'bg-red-50 text-red-750 border-red-200',
+          cancelled: 'bg-slate-150 text-slate-500 border-slate-200',
+        }}
+        slotStatusLabel={{
+          planned: 'Lên kế hoạch',
+          queued: 'Trong hàng đợi',
+          generating: 'Đang tạo bài...',
+          publishing: 'Đang đăng...',
+          published: 'Đã đăng',
+          failed: 'Thất bại',
+          cancelled: 'Đã hủy',
+        }}
+      />
     </div>
   );
 }

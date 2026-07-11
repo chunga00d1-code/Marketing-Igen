@@ -22,6 +22,7 @@ const createSchema = {
     latePublishWindowMinutes: Joi.number().integer().min(0).max(1440).default(30),
     minimumScore: Joi.number().integer().min(0).max(100).default(80),
     mediaPolicy: Joi.string().valid("text", "image", "video", "auto").default("auto"),
+    images: Joi.array().items(Joi.string()).optional(),
     rules: Joi.object({
       requiredCta: Joi.string().allow(""),
       requiredHashtags: Joi.array().items(Joi.string()),
