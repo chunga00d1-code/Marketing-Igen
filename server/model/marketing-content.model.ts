@@ -41,6 +41,9 @@ const MarketingContentSchema = new Schema<IMarketingContent>(
     avatarId: { type: String },
     voiceId: { type: String },
     inputText: { type: String },
+    campaignId: { type: String, index: true },
+    campaignTitle: { type: String },
+    campaignSlotId: { type: Schema.Types.ObjectId, ref: "MarketingCampaignSlot", index: true },
   },
   { timestamps: false }
 );

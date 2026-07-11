@@ -71,12 +71,15 @@ export const facebookPostService = {
     publishType: "immediate" | "scheduled" = "immediate",
     scheduledTime?: string,
     title?: string,
-    callbackUrl?: string
+    callbackUrl?: string,
+    idempotencyKey?: string
   ) {
-    const webhookUrl = process.env.N8N_FB_WEBHOOK_URL;
+    const webhookUrl = idempotencyKey
+      ? (process.env.N8N_CAMPAIGN_FB_WEBHOOK_URL || process.env.N8N_FB_WEBHOOK_URL)
+      : process.env.N8N_FB_WEBHOOK_URL;
     if (!webhookUrl) {
       throw new Error(
-        "Cấu hình N8N_FB_WEBHOOK_URL chưa được thiết lập trong biến môi trường."
+        "Cấu hình webhook n8n Facebook chưa được thiết lập trong biến môi trường."
       );
     }
 
@@ -118,6 +121,7 @@ export const facebookPostService = {
           pageId,
           accessToken,
           callbackUrl: finalCallbackUrl,
+          idempotencyKey: idempotencyKey || "",
         }),
       });
 
@@ -378,4 +382,3 @@ export const facebookPostService = {
     );
   },
 };
-

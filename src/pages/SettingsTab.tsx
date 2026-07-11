@@ -1,4 +1,4 @@
-﻿import React, { useState, lazy, Suspense } from "react";
+import React, { useState, lazy, Suspense } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   Calendar,
@@ -76,12 +76,13 @@ export default function SettingsTab() {
     if (!userProfile?.createdAt) return "Chưa cập nhật";
 
     let date: Date;
-    if (typeof userProfile.createdAt.toDate === "function") {
-      date = userProfile.createdAt.toDate();
-    } else if (userProfile.createdAt.seconds) {
-      date = new Date(userProfile.createdAt.seconds * 1000);
+    const createdAtVal = userProfile.createdAt as { toDate?: () => Date; seconds?: number };
+    if (typeof createdAtVal.toDate === "function") {
+      date = createdAtVal.toDate();
+    } else if (typeof createdAtVal.seconds === "number") {
+      date = new Date(createdAtVal.seconds * 1000);
     } else {
-      date = new Date(userProfile.createdAt);
+      date = new Date(userProfile.createdAt as string | number | Date);
     }
 
     if (isNaN(date.getTime())) {

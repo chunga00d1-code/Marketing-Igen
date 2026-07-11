@@ -20,6 +20,7 @@ import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
 
 // Lazy-loaded subcomponents
 const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
+const CampaignPlannerTab = lazy(() => import("../components/marketing/CampaignPlannerTab"));
 const ApprovalTab = lazy(() => import("../components/marketing/ApprovalTab"));
 const CalendarTab = lazy(() => import("../components/marketing/CalendarTab"));
 const ContentStudioWorkspace = lazy(() =>
@@ -33,13 +34,14 @@ export default function MarketingTab() {
   const isUserRole = userProfile?.role === "user" || userProfile?.role === "manager";
   const MARKETING_SUB_TAB_ROUTES = [
     { slug: "y-tuong", value: "LÊN Ý TƯỞNG AI" as MarketingSubTabType },
+    { slug: "tao-chien-dich", value: "TẠO CHIẾN DỊCH" as MarketingSubTabType },
     { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
   ] as const;
   const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
 
-  const CONTENT_STUDIO_SUB_TAB = MARKETING_SUB_TAB_ROUTES[3].value;
+  const CONTENT_STUDIO_SUB_TAB = MARKETING_SUB_TAB_ROUTES[4].value;
   const DEFAULT_HUMAN_VOICE_DURATION_SECONDS = 45;
 
   // AI Media Generation States
@@ -749,7 +751,7 @@ export default function MarketingTab() {
       {/* Sub Tabs control header switcher */}
       <div className="border-b border-gray-200 bg-gray-50/50 p-2 text-xs flex justify-between shrink-0" id="marketing_sub_tabs_switch">
         <div className="flex gap-2">
-          {["LÊN Ý TƯỞNG AI", "DUYỆT NỘI DUNG", "LỊCH ĐĂNG CONTENT", "XƯỞNG NỘI DUNG"].map((tab) => (
+          {["LÊN Ý TƯỞNG AI", "TẠO CHIẾN DỊCH", "DUYỆT NỘI DUNG", "LỊCH ĐĂNG CONTENT", "XƯỞNG NỘI DUNG"].map((tab) => (
             <button
               key={tab}
               onClick={() => setSubTab(tab as MarketingSubTabType)}
@@ -775,6 +777,12 @@ export default function MarketingTab() {
               setSubTab={setSubTab}
             />
           </div>
+
+          {subTab === "TẠO CHIẾN DỊCH" && (
+            <CampaignPlannerTab
+              userProfile={userProfile}
+            />
+          )}
 
           {/* SUB TAB 2: DUYỆT NỘI DUNG */}
           {subTab === "DUYỆT NỘI DUNG" && (

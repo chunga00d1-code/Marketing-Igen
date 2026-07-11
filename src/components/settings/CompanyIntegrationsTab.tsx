@@ -878,13 +878,12 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">{currentPlatformMeta.usernameLabel}</label>
                       <div className="relative">
-                        {compPlatform === "TikTok" && <span className="absolute left-3.5 top-2.5 text-xs text-gray-400 font-bold select-none">@</span>}
                         <input
                           type="text"
                           value={compUsername}
                           onChange={(e) => setCompUsername(e.target.value)}
                           placeholder={currentPlatformMeta.usernamePlaceholder}
-                          className={`w-full ${compPlatform === "TikTok" ? "pl-8" : "px-3.5"} py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all`}
+                          className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
                         />
                       </div>
                       {compPlatform === "Facebook" && (
@@ -917,7 +916,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                         </button>
                       </div>
                       <p className="text-[9px] text-gray-400 leading-normal">{currentPlatformMeta.tokenHelp}</p>
-                      {(compPlatform === "Zalo" || compPlatform === "TikTok") && (
+                      {compPlatform === "Zalo" && (
                         <div className="mt-3 space-y-1">
                           <label className="text-[11px] font-semibold text-gray-700">Refresh Token (tùy chọn)</label>
                           <input
@@ -937,30 +936,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                               className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-800 shadow-sm focus:border-[#0068ff] focus:outline-none focus:ring-1 focus:ring-[#0068ff]"
                             />
                             <p className="text-[9px] text-gray-400 leading-normal">Nếu bạn biết thời điểm hết hạn của access token hiện tại, hãy lưu để backend chủ động refresh sớm hơn.</p>
-                          </div>
-                        </div>
-                      )}
-                      {compPlatform === "TikTok" && (
-                        <div className="mt-3 space-y-3 border-t border-slate-150 pt-3">
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-gray-700">TikTok Client Key (tùy chọn)</label>
-                            <input
-                              type="text"
-                              value={compVerifyToken}
-                              onChange={(e) => setCompVerifyToken(e.target.value)}
-                              placeholder="Nhập TikTok Client Key"
-                              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-800 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-semibold text-gray-700">TikTok Client Secret (tùy chọn)</label>
-                            <input
-                              type={showCompToken ? "text" : "password"}
-                              value={compAppSecret}
-                              onChange={(e) => setCompAppSecret(e.target.value)}
-                              placeholder="Nhập TikTok Client Secret"
-                              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-800 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                            />
                           </div>
                         </div>
                       )}
