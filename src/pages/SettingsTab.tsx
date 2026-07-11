@@ -76,13 +76,13 @@ export default function SettingsTab() {
     if (!userProfile?.createdAt) return "Chưa cập nhật";
 
     let date: Date;
-    const createdAtVal = userProfile.createdAt as any;
+    const createdAtVal = userProfile.createdAt as { toDate?: () => Date; seconds?: number };
     if (typeof createdAtVal.toDate === "function") {
       date = createdAtVal.toDate();
-    } else if (createdAtVal.seconds) {
+    } else if (typeof createdAtVal.seconds === "number") {
       date = new Date(createdAtVal.seconds * 1000);
     } else {
-      date = new Date(userProfile.createdAt);
+      date = new Date(userProfile.createdAt as string | number | Date);
     }
 
     if (isNaN(date.getTime())) {
