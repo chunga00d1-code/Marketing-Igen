@@ -21,17 +21,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/prepare' }}",
+        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/prepare",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_PREPARE_LIMIT || 3) }) }}",
+        "jsonBody": "={{ JSON.stringify({ limit: 3 }) }}",
         "options": {
           "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
           "timeout": 300000
@@ -46,17 +46,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/media' }}",
+        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/media",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_MEDIA_LIMIT || 2) }) }}",
+        "jsonBody": "={{ JSON.stringify({ limit: 2 }) }}",
         "options": {
           "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
           "timeout": 300000
@@ -71,17 +71,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/verify' }}",
+        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/verify",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_VERIFY_LIMIT || 5) }) }}",
+        "jsonBody": "={{ JSON.stringify({ limit: 5 }) }}",
         "options": {
           "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
           "timeout": 60000
@@ -96,17 +96,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/publish' }}",
+        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/publish",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_PUBLISH_LIMIT || 3) }) }}",
+        "jsonBody": "={{ JSON.stringify({ limit: 3 }) }}",
         "options": {
           "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
           "timeout": 120000
