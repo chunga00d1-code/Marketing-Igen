@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { Zap, FileText, DollarSign, MessageSquare } from "lucide-react";
 import { CRMSubTabType, ChatMessage, CustomerInbox, AIChatConfig, ChatPagination } from "../types";
 import { toast } from "./Toast";
@@ -339,7 +339,7 @@ export default function CRMTab() {
     }
 
     if (targetIntegration?.aiAutoReplyConfig) {
-      const config = targetIntegration.aiAutoReplyConfig;
+      const config = targetIntegration.aiAutoReplyConfig as unknown as AIChatConfig;
       setAIConfig({
         enabled: config.enabled ?? true,
         commentReplyEnabled: config.commentReplyEnabled ?? true,
@@ -410,7 +410,7 @@ export default function CRMTab() {
         }
         // Update local state in memory
         setCompanySocialIntegrations(prev =>
-          prev.map(item => item._id === targetIntegrationId ? { ...item, aiAutoReplyConfig: configWithTimestamp } : item)
+          prev.map(item => item._id === targetIntegrationId ? { ...item, aiAutoReplyConfig: configWithTimestamp as unknown as Record<string, unknown> } : item)
         );
       } else {
         await updateAiAutoReplyConfig(configWithTimestamp);
@@ -470,7 +470,7 @@ export default function CRMTab() {
         if (res.ok) {
           successCount++;
           setCompanySocialIntegrations(prev =>
-            prev.map(item => item._id === integration._id ? { ...item, aiAutoReplyConfig: aiConfig } : item)
+            prev.map(item => item._id === integration._id ? { ...item, aiAutoReplyConfig: aiConfig as unknown as Record<string, unknown> } : item)
           );
         }
       }
