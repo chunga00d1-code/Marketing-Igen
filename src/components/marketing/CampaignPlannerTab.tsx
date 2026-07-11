@@ -599,7 +599,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         )}
       </section>
 
-      {/* Campaign Detail Modal */}
       <CampaignDetailModal
         isOpen={Boolean(selectedCampaignId)}
         onClose={() => setSelectedCampaignId(null)}
@@ -608,21 +607,35 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         statusLabel={statusLabel}
         slotStatusColors={{
           planned: 'bg-slate-100 text-slate-700 border-slate-200',
-          queued: 'bg-blue-50 text-blue-700 border-blue-200',
+          queued: 'bg-blue-50 text-blue-750 border-blue-200',
           generating: 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse',
-          publishing: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+          scoring: 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse',
+          generating_media: 'bg-pink-50 text-pink-700 border-pink-200 animate-pulse',
+          verifying: 'bg-cyan-50 text-cyan-700 border-cyan-200 animate-pulse',
+          ready_to_publish: 'bg-teal-50 text-teal-750 border-teal-200',
+          publishing: 'bg-yellow-50 text-yellow-700 border-yellow-200 animate-pulse',
           published: 'bg-green-50 text-green-700 border-green-200',
           failed: 'bg-red-50 text-red-750 border-red-200',
           cancelled: 'bg-slate-150 text-slate-500 border-slate-200',
+          skipped: 'bg-gray-150 text-gray-500 border-gray-200',
+          retrying: 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse',
+          needs_attention: 'bg-amber-50 text-amber-700 border-amber-200',
         }}
         slotStatusLabel={{
           planned: 'Lên kế hoạch',
           queued: 'Trong hàng đợi',
-          generating: 'Đang tạo bài...',
+          generating: 'Đang tạo bài viết...',
+          scoring: 'Đang chấm điểm AI...',
+          generating_media: 'Đang thiết kế ảnh...',
+          verifying: 'Đang duyệt chất lượng...',
+          ready_to_publish: 'Sẵn sàng đăng',
           publishing: 'Đang đăng...',
-          published: 'Đã đăng',
+          published: 'Đã đăng thành công',
           failed: 'Thất bại',
           cancelled: 'Đã hủy',
+          skipped: 'Đã bỏ qua',
+          retrying: 'Đang thử lại...',
+          needs_attention: 'Cần chú ý',
         }}
       />
     </div>
