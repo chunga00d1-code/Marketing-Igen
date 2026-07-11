@@ -1,5 +1,5 @@
-import React from 'react';
-import { CalendarClock, X, Loader2, Facebook, ExternalLink, AlertTriangle } from 'lucide-react';
+import React, { useState } from 'react';
+import { CalendarClock, X, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCcw } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 
 interface CampaignSlot {
@@ -21,6 +21,8 @@ interface CampaignDetailModalProps {
   statusLabel: Record<CampaignStatus, string>;
   slotStatusColors: Record<string, string>;
   slotStatusLabel: Record<string, string>;
+  onRetrySlot?: (campaignId: string, slotId: string) => Promise<void>;
+  onRetryAll?: (campaignId: string) => Promise<void>;
 }
 
 const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
@@ -96,7 +98,11 @@ export default function CampaignDetailModal({
   statusLabel,
   slotStatusColors,
   slotStatusLabel,
+  onRetrySlot,
+  onRetryAll,
 }: CampaignDetailModalProps) {
+  const [retryingSlotId, setRetryingSlotId] = useState<string | null>(null);
+  const [retryingAll, setRetryingAll] = useState(false);
   if (!isOpen) return null;
 
   // Compute detailed status counts & next/last slots
@@ -377,11 +383,31 @@ export default function CampaignDetailModal({
                                         </span>
                                       );
                                     }
-                                    if (slot.status === 'needs_attention') {
+                                    if (slot.status === 'needs_attention' || slot.status === 'failed') {
                                       return (
-                                        <div className="flex items-center justify-end gap-1 text-[10px] text-amber-600 font-semibold font-sans">
-                                          <AlertTriangle size={10} />
-                                          Cần kiểm tra
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <span className="flex items-center gap-1 text-[10px] text-amber-600 font-semibold font-sans">
+                                            <AlertTriangle size={10} />
+                                            {slot.status === 'failed' ? 'Lỗi' : 'Cần kiểm tra'}
+                                          </span>
+                                          {onRetrySlot && campaignDetail?.campaign?.status === 'active' && (
+                                            <button
+                                              type="button"
+                                              disabled={retryingSlotId === slot._id}
+                                              onClick={async () => {
+                                                setRetryingSlotId(slot._id);
+                                                try {
+                                                  await onRetrySlot(campaignDetail.campaign._id, slot._id);
+                                                } finally {
+                                                  setRetryingSlotId(null);
+                                                }
+                                              }}
+                                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-indigo-50 text-[9px] font-bold text-indigo-600 hover:bg-indigo-100 transition cursor-pointer disabled:opacity-50"
+                                            >
+                                              {retryingSlotId === slot._id ? <Loader2 size={9} className="animate-spin" /> : <RotateCcw size={9} />}
+                                              Thử lại
+                                            </button>
+                                          )}
                                         </div>
                                       );
                                     }
@@ -442,7 +468,27 @@ export default function CampaignDetailModal({
         </div>
         
         {/* Modal Footer */}
-        <div className="border-t border-slate-100 px-6 py-4 flex justify-end bg-slate-50/50">
+        <div className="border-t border-slate-100 px-6 py-4 flex items-center justify-between bg-slate-50/50">
+          <div>
+            {onRetryAll && campaignDetail?.campaign?.status === 'active' && sortedSlots.some(s => s.status === 'needs_attention' || s.status === 'failed') && (
+              <button
+                type="button"
+                disabled={retryingAll}
+                onClick={async () => {
+                  setRetryingAll(true);
+                  try {
+                    await onRetryAll(campaignDetail.campaign._id);
+                  } finally {
+                    setRetryingAll(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 transition cursor-pointer disabled:opacity-50"
+              >
+                {retryingAll ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                Thử lại tất cả slot lỗi
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}

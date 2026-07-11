@@ -70,4 +70,12 @@ export const marketingCampaignService = {
   lifecycle(id: string, action: 'pause' | 'resume' | 'cancel') {
     return request<MarketingCampaignSummary>(`/api/v1/marketing-campaigns/${id}/${action}`, { method: 'POST' });
   },
+
+  retrySlot(campaignId: string, slotId: string) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/retry`, { method: 'POST' });
+  },
+
+  retryAllSlots(campaignId: string) {
+    return request<{ retriedCount: number }>(`/api/v1/marketing-campaigns/${campaignId}/retry-all`, { method: 'POST' });
+  },
 };

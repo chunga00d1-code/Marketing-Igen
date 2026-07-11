@@ -40,6 +40,8 @@ marketingCampaignRouter.use(requireAuth as never, requirePermission("marketing:p
 marketingCampaignRouter.post("/", validateRequest(createSchema), marketingCampaignController.create as never);
 marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
+marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
 marketingCampaignRouter.post("/:id/:action", (req, res, next) => {
   if (!["pause", "resume", "cancel"].includes(req.params.action)) {
     return res.status(404).json({ status: "error", message: "Thao tác chiến dịch không hợp lệ." });

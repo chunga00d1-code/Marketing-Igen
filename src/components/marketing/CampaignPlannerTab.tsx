@@ -637,6 +637,26 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           retrying: 'Đang thử lại...',
           needs_attention: 'Cần chú ý',
         }}
+        onRetrySlot={async (campaignId, slotId) => {
+          try {
+            await marketingCampaignService.retrySlot(campaignId, slotId);
+            toast.success('Đã đặt lại slot để thử lại.');
+            const res = await marketingCampaignService.detail(campaignId);
+            setCampaignDetail({ campaign: res.campaign, slots: res.slots as CampaignSlot[] });
+          } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Không thể thử lại slot.');
+          }
+        }}
+        onRetryAll={async (campaignId) => {
+          try {
+            const result = await marketingCampaignService.retryAllSlots(campaignId);
+            toast.success(`Đã đặt lại ${result.retriedCount} slot để thử lại.`);
+            const res = await marketingCampaignService.detail(campaignId);
+            setCampaignDetail({ campaign: res.campaign, slots: res.slots as CampaignSlot[] });
+          } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Không thể thử lại các slot.');
+          }
+        }}
       />
     </div>
   );
