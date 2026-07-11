@@ -46,5 +46,5 @@ export interface CompanyEditFormState {
   name: string;
   code: string;
   ownerEmail: string;
-  heygenConfig: CompanyHeyGenConfig;
+  heygenConfig?: CompanyHeyGenConfig;
 }

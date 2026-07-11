@@ -3,6 +3,7 @@ import { CalendarClock, Clock3, Facebook, Loader2, Pause, Play, Sparkles, XCircl
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
+import CustomTimePicker from '../common/CustomTimePicker';
 
 interface CampaignPlannerTabProps {
   userProfile?: {
@@ -165,9 +166,17 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-5">
           {postingTimes.map((time, index) => (
-            <label key={index} className="text-[11px] font-bold text-slate-600">Giờ bài {index + 1}
-              <input type="time" value={time} onChange={(event) => setPostingTimes((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} className="mt-1.5 w-full rounded-lg border border-slate-200 px-2 py-2 font-normal" />
-            </label>
+            <div key={index} className="flex flex-col">
+              <span className="text-[11px] font-bold text-slate-600">Giờ bài {index + 1}</span>
+              <CustomTimePicker
+                value={time}
+                onChange={(newTime) =>
+                  setPostingTimes((current) =>
+                    current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
+                  )
+                }
+              />
+            </div>
           ))}
         </div>
 
