@@ -51,11 +51,49 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [filterStatus, setFilterStatus] = useState<'all' | CampaignStatus>('all');
 
   // Detail Modal states
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [campaignDetail, setCampaignDetail] = useState<{ campaign: MarketingCampaignSummary; slots: CampaignSlot[] } | null>(null);
+
+  const filteredCampaigns = useMemo(() => {
+    if (filterStatus === 'all') return campaigns;
+    return campaigns.filter((item) => item.status === filterStatus);
+  }, [campaigns, filterStatus]);
+
+  // Polling for campaign list
+  useEffect(() => {
+    const hasActiveCampaign = campaigns.some(c => c.status === 'active');
+    if (!hasActiveCampaign) return;
+
+    const interval = setInterval(() => {
+      if (document.hidden) return; // Skip if tab is in background
+      void loadCampaigns(currentPage);
+    }, 120000); // 2 minutes
+
+    return () => clearInterval(interval);
+  }, [currentPage, campaigns]);
+
+  // Polling for campaign detail modal
+  useEffect(() => {
+    if (!selectedCampaignId || !campaignDetail || campaignDetail.campaign.status !== 'active') return;
+
+    const interval = setInterval(() => {
+      if (document.hidden) return; // Skip if tab is in background
+      marketingCampaignService.detail(selectedCampaignId)
+        .then((res) => {
+          setCampaignDetail({
+            campaign: res.campaign,
+            slots: res.slots as CampaignSlot[],
+          });
+        })
+        .catch(console.error);
+    }, 60000); // 60 seconds
+
+    return () => clearInterval(interval);
+  }, [selectedCampaignId, campaignDetail]);
 
   const loadCampaigns = async (page = 1) => {
     setLoadingCampaigns(true);
@@ -341,6 +379,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   };
 
   const handleLifecycle = async (campaign: MarketingCampaignSummary, action: 'pause' | 'resume' | 'cancel') => {
+    if (action === 'cancel') {
+      const isConfirmed = window.confirm(
+        `Bạn có chắc chắn muốn hủy chiến dịch "${campaign.title}" không? Tất cả các lịch bài đăng dự kiến chưa hoàn thành sẽ bị hủy bỏ.`
+      );
+      if (!isConfirmed) return;
+    }
     try {
       const updated = await marketingCampaignService.lifecycle(campaign._id, action);
       setCampaigns((current) => current.map((item) => item._id === updated._id ? updated : item));
@@ -454,15 +498,70 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       </aside>
 
       <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div><h3 className="text-sm font-extrabold text-slate-850">Chiến dịch tự động</h3><p className="mt-1 text-xs text-slate-500 font-medium">Trạng thái được lưu trên server và tiếp tục chạy khi đóng trình duyệt.</p></div>
-          {loadingCampaigns && <Loader2 size={17} className="animate-spin text-indigo-600" />}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-sm font-extrabold text-slate-850">Chiến dịch tự động</h3>
+            <p className="mt-1 text-xs text-slate-500 font-medium">Trạng thái được lưu trên server và tiếp tục chạy khi đóng trình duyệt.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {loadingCampaigns && <Loader2 size={17} className="animate-spin text-indigo-600" />}
+          </div>
         </div>
+
+        {/* Filter Status Tabs */}
+        {campaigns.length > 0 && (
+          <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-100 pb-3 select-none">
+            {(
+              [
+                { value: 'all', label: 'Tất cả' },
+                { value: 'active', label: 'Đang chạy' },
+                { value: 'paused', label: 'Tạm dừng' },
+                { value: 'completed', label: 'Hoàn thành' },
+                { value: 'cancelled', label: 'Đã hủy' },
+                { value: 'failed', label: 'Có lỗi' },
+              ] as const
+            ).map((tab) => {
+              return (
+                <button
+                  type="button"
+                  key={tab.value}
+                  onClick={() => setFilterStatus(tab.value)}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                    filterStatus === tab.value
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/40'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {!loadingCampaigns && campaigns.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400">Chưa có chiến dịch nào.</div>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 p-10 text-center bg-slate-50/20">
+            <div className="rounded-full bg-indigo-50 p-4 text-indigo-600 mb-4 shadow-xs border border-indigo-100/50">
+              <Sparkles size={28} className="animate-pulse" />
+            </div>
+            <h4 className="text-sm font-bold text-slate-800 mb-1">Chưa có chiến dịch Marketing nào</h4>
+            <p className="text-xs text-slate-500 max-w-sm leading-relaxed mb-6 font-medium">
+              Lập lịch bài đăng tự động bằng AI sẽ giúp bạn tiết kiệm thời gian và tiếp cận khách hàng liên tục. Hãy nhập mục tiêu chiến dịch của bạn ở bên trái để bắt đầu!
+            </p>
+            <div className="flex flex-wrap justify-center gap-2 max-w-md bg-white border border-slate-100 p-3.5 rounded-xl text-[11px] text-slate-500 font-sans text-left leading-relaxed">
+              <div className="flex gap-2">
+                <span className="text-indigo-600 font-bold select-none">💡</span>
+                <span><b>Gợi ý:</b> Nhập prompt cụ thể (sản phẩm, giọng điệu, đối tượng khách hàng) hoặc tải lên file tài liệu/ảnh hỗ trợ để AI lập lịch chính xác nhất.</span>
+              </div>
+            </div>
+          </div>
+        ) : !loadingCampaigns && filteredCampaigns.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400">
+            Không tìm thấy chiến dịch nào với trạng thái này.
+          </div>
         ) : (
           <div className="space-y-3">
-            {campaigns.map((campaign) => (
+            {filteredCampaigns.map((campaign) => (
               <CampaignItem
                 key={campaign._id}
                 campaign={campaign}
