@@ -131,8 +131,8 @@ export default function DashboardTab() {
     if (userProfile?.zaloIntegration?.isConnected && !channelMap.has("Zalo")) {
       channelMap.set("Zalo", {
         platform: "Zalo",
-        displayName: userProfile.zaloIntegration.displayName || "Zalo Personal",
-        username: userProfile.zaloIntegration.username,
+        displayName: userProfile.zaloIntegration.oaName || "Zalo Personal",
+        username: userProfile.zaloIntegration.oaId,
         isConnected: true,
         createdBy: userProfile.uid,
       });

@@ -496,6 +496,7 @@ export default function UserAdminTab() {
       name: targetCompany.name,
       code: targetCompany.code,
       ownerEmail: targetCompany.ownerEmail,
+      heygenConfig: targetCompany.heygenConfig,
     });
     setIsEditCompanyModalOpen(true);
   };
@@ -564,7 +565,7 @@ export default function UserAdminTab() {
       if (editingUser) {
         await authService.updateUser(editingUser.uid, {
           displayName: userDisplayName.trim(),
-          role: userRole,
+          role: userRole as "user" | "manager" | "admin" | "superadmin",
           companyCode: userCompanyCode,
           companyName: compName,
           parentId: userParentId || null,
@@ -581,7 +582,7 @@ export default function UserAdminTab() {
           userDisplayName,
           userEmail,
           userPassword,
-          userRole,
+          userRole as "user" | "manager" | "admin",
           userCompanyCode,
           compName,
           userParentId || undefined,
