@@ -16,6 +16,7 @@ import { parseFirebaseError } from "../utils/firebaseErrorParser";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { estimateAudioDuration } from "../utils/usage-tracker";
+import CustomTimePicker from "../components/common/CustomTimePicker";
 import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
 
 // Lazy-loaded subcomponents
@@ -113,11 +114,11 @@ export default function MarketingTab() {
         });
       }
     } else if (platform === "Zalo") {
-      if (userProfile?.zaloIntegration?.isConnected && userProfile.zaloIntegration.username) {
+      if (userProfile?.zaloIntegration?.isConnected && userProfile.zaloIntegration.oaId) {
         list.push({
           id: "personal",
-          displayName: userProfile.zaloIntegration.displayName || "Zalo OA cá nhân",
-          username: userProfile.zaloIntegration.username,
+          displayName: userProfile.zaloIntegration.oaName || "Zalo OA cá nhân",
+          username: userProfile.zaloIntegration.oaId,
           accessToken: userProfile.zaloIntegration.accessToken,
           isMock: !!userProfile.zaloIntegration.isMock,
           platform: "Zalo",
@@ -1095,13 +1096,10 @@ export default function MarketingTab() {
                   </div>
                   <div className="flex flex-col gap-1.5 text-left">
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Giờ đăng *</label>
-                    <input
-                      type="time"
-                      required
-                      disabled={isScheduling}
-                      className="w-full p-2.5 border border-slate-200 rounded-xl text-xs font-mono outline-none bg-white font-medium text-slate-750 focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+                    <CustomTimePicker
                       value={scheduleTime}
-                      onChange={(e) => setScheduleTime(e.target.value)}
+                      onChange={(newTime) => setScheduleTime(newTime)}
+                      disabled={isScheduling}
                     />
                   </div>
                 </div>

@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, prefer-const, react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, prefer-const, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
@@ -22,6 +22,7 @@ import { toast } from "../../pages/Toast";
 import HumanVideoSettingsCard from "./HumanVideoSettingsCard";
 import { heygenApi, type HeyGenLibraryItem } from "../../api/heygen";
 import { elevenlabsApi } from "../../api/elevenlabs";
+import CustomTimePicker from "../common/CustomTimePicker";
 
 interface IdeationTabProps {
   userProfile: any;
@@ -1633,12 +1634,9 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                         {/* Scheduled Time */}
                         <div className="space-y-1.5">
                           <label className="block text-gray-500 font-bold text-[10px] uppercase font-mono">Giờ đăng bài *</label>
-                          <input
-                            type="time"
-                            required
-                            className="w-full p-2.5 border border-slate-200 bg-white rounded-lg text-xs font-mono focus:ring-1 focus:ring-purple-500 outline-none"
+                          <CustomTimePicker
                             value={autoScheduleTime}
-                            onChange={(e) => setAutoScheduleTime(e.target.value)}
+                            onChange={(newTime) => setAutoScheduleTime(newTime)}
                           />
                         </div>
                       </div>

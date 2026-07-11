@@ -65,8 +65,35 @@ export const marketingCampaignService = {
       verificationLeadMinutes,
     });
 
-    if (schedule.some((slot) => slot.prepareAt <= new Date())) {
-      throw new Error("Lịch đầu tiên phải cách thời điểm hiện tại đủ thời gian chuẩn bị nội dung.");
+    const now = new Date();
+    const failingSlot = schedule.find((slot) => slot.prepareAt <= now);
+    if (failingSlot) {
+      const formatZonedTime = (date: Date) => {
+        return new Intl.DateTimeFormat("vi-VN", {
+          timeZone: timezone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        }).format(date);
+      };
+
+      const scheduledStr = formatZonedTime(failingSlot.scheduledAt);
+      const prepareStr = formatZonedTime(failingSlot.prepareAt);
+      const nowStr = formatZonedTime(now);
+
+      if (failingSlot.scheduledAt <= now) {
+        throw new Error(
+          `Lịch đăng lúc ${scheduledStr} đã trôi qua so với thời gian hiện tại (${nowStr}). Vui lòng chọn khung giờ khác.`
+        );
+      } else {
+        throw new Error(
+          `Lịch đăng lúc ${scheduledStr} quá sát thời gian hiện tại (${nowStr}). Hệ thống cần ${generationLeadMinutes} phút để chuẩn bị nội dung (bắt đầu từ ${prepareStr}).`
+        );
+      }
     }
     await validateIntegrations(companyCode, input.platforms, input.integrationIds);
 
