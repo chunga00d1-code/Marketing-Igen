@@ -223,4 +223,36 @@ export const marketingCampaignService = {
     }
     return campaign;
   },
+
+  async retrySlot(companyCode: string, campaignId: string, slotId: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+      throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode, status: "active" });
+    if (!campaign) throw new Error("Chiến dịch không ở trạng thái đang chạy.");
+    const slot = await MarketingCampaignSlotModel.findOneAndUpdate(
+      { _id: slotId, campaignId, companyCode, status: { $in: ["needs_attention", "failed"] } },
+      {
+        $set: { status: "planned", attemptCount: 0, lockId: null, lockedAt: null, lockExpiresAt: null, lastError: null, prepareAt: new Date() },
+        $push: { transitions: { to: "planned", reason: "Manual retry requested", at: new Date() } },
+      },
+      { new: true }
+    );
+    if (!slot) throw new Error("Slot không ở trạng thái cho phép thử lại.");
+    return slot;
+  },
+
+  async retryAllSlots(companyCode: string, campaignId: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) throw new Error("ID chiến dịch không hợp lệ.");
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode, status: "active" });
+    if (!campaign) throw new Error("Chiến dịch không ở trạng thái đang chạy.");
+    const result = await MarketingCampaignSlotModel.updateMany(
+      { campaignId, companyCode, status: { $in: ["needs_attention", "failed"] } },
+      {
+        $set: { status: "planned", attemptCount: 0, lockId: null, lockedAt: null, lockExpiresAt: null, lastError: null, prepareAt: new Date() },
+        $push: { transitions: { to: "planned", reason: "Bulk retry requested", at: new Date() } },
+      }
+    );
+    return { retriedCount: result.modifiedCount };
+  },
 };

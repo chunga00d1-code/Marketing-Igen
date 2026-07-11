@@ -109,4 +109,24 @@ export const marketingCampaignController = {
       return res.status(409).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật chiến dịch." });
     }
   },
+
+  async retrySlot(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const slot = await marketingCampaignService.retrySlot(companyCode, req.params.id, req.params.slotId);
+      return res.status(200).json({ status: "success", data: slot });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thử lại slot." });
+    }
+  },
+
+  async retryAllSlots(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const result = await marketingCampaignService.retryAllSlots(companyCode, req.params.id);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thử lại các slot." });
+    }
+  },
 };
