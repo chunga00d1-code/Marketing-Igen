@@ -20,6 +20,7 @@ import { walletRouter } from "./wallet.router";
 import { professionalRouter } from "./professional.router";
 import { klingRouter } from "./kling.router";
 import { opusclipRouter } from "./opusclip.router";
+import { marketingCampaignRouter } from "./marketing-campaign.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -66,6 +67,7 @@ apiRouter.use("/tiktok-business", tiktokRouter);
 
 // Gáº¯n káº¿t router phá»¥ cá»§a Scheduler
 apiRouter.use("/scheduler", schedulerRouter);
+apiRouter.use("/marketing-campaigns", marketingCampaignRouter);
 
 // Gáº¯n káº¿t router phá»¥ cá»§a Media Cloudinary Relay
 apiRouter.use("/media", mediaRouter);

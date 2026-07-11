@@ -1,0 +1,4 @@
+interface:
+  display_name: "Automated Marketing Campaign"
+  short_description: "Build reliable autonomous campaign workflows"
+  default_prompt: "Use $automated-marketing-campaign to implement the next safe phase of the autonomous campaign pipeline."

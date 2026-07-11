@@ -58,6 +58,17 @@ const ideasSchema = {
   }),
 };
 
+const scheduledCampaignSchema = {
+  body: Joi.object({
+    prompt: Joi.string().trim().min(3).required(),
+    startDate: Joi.string().isoDate().required(),
+    endDate: Joi.string().isoDate().required(),
+    postsPerDay: Joi.number().integer().min(1).max(5).required(),
+    postingTimes: Joi.array().items(Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/)).min(1).max(5).required(),
+    channels: Joi.array().items(Joi.string().valid("Facebook", "TikTok")).min(1).required(),
+  }),
+};
+
 const developSchema = {
   body: Joi.object({
     title: Joi.string().required(),
@@ -219,6 +230,7 @@ geminiRouter.get("/marketing-suggestions", requireAuth as any, geminiController.
 geminiRouter.post("/marketing-pillars", requireAuth as any, validateRequest(pillarsSchema), geminiController.analyzeMarketingPillars as any);
 geminiRouter.post("/marketing-pillars/swap", requireAuth as any, validateRequest(swapPillarSchema), geminiController.swapMarketingPillar as any);
 geminiRouter.post("/marketing-ideas", requireAuth as any, validateRequest(ideasSchema), geminiController.generateMarketingIdeas as any);
+geminiRouter.post("/scheduled-campaign", requireAuth as any, validateRequest(scheduledCampaignSchema), geminiController.generateScheduledCampaign as any);
 geminiRouter.post("/marketing-develop", requireAuth as any, validateRequest(developSchema), geminiController.developMarketingIdea as any);
 
 // Knowledge management / auto reply endpoints
@@ -293,4 +305,3 @@ const hermesWebhookSchema = {
 };
 
 geminiRouter.post("/hermes-webhook", validateRequest(hermesWebhookSchema), geminiController.hermesWebhook);
-

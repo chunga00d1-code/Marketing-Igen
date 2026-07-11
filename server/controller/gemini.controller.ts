@@ -771,6 +771,34 @@ export const geminiController = {
   },
 
   /**
+   * POST /api/v1/gemini/scheduled-campaign
+   */
+  async generateScheduledCampaign(req: Request, res: Response) {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
+      }
+
+      const { prompt, startDate, endDate, postsPerDay, postingTimes, channels } = req.body;
+      await walletService.checkBalance(userId, API_COSTS.GEMINI_MARKETING);
+      const result = await geminiService.generateScheduledCampaign({
+        prompt,
+        startDate,
+        endDate,
+        postsPerDay,
+        postingTimes,
+        channels,
+      });
+      await walletService.deductBalance(userId, API_COSTS.GEMINI_MARKETING, "Chi phí tạo chiến dịch nội dung theo lịch bằng AI");
+      return res.status(200).json(result);
+    } catch (error: any) {
+      console.error("[geminiController.generateScheduledCampaign] Error:", error);
+      return handleGeminiError(res, error, "Lỗi tạo chiến dịch nội dung theo lịch");
+    }
+  },
+
+  /**
    * POST /api/v1/gemini/marketing-develop
    */
   async developMarketingIdea(req: Request, res: Response) {

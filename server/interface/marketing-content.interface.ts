@@ -39,4 +39,7 @@ export interface IMarketingContent extends Document {
   avatarId?: string;
   voiceId?: string;
   inputText?: string;
+  campaignId?: string;
+  campaignTitle?: string;
+  campaignSlotId?: Types.ObjectId | string;
 }
