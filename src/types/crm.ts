@@ -1,4 +1,4 @@
-﻿export type CRMSubTabType = "PHỄU KHÁCH HÀNG" | "OMNI-INBOX CHAT" | "AI COMMENT AUTO-REPLY";
+export type CRMSubTabType = "PHỄU KHÁCH HÀNG" | "OMNI-INBOX CHAT" | "AI COMMENT AUTO-REPLY";
 
 export interface ChatMessage {
   id: string;
@@ -35,6 +35,7 @@ export interface CustomerInbox {
   channel?: "facebook" | "zalo" | "tiktok";
   aiPausedUntil?: string | null;
   pageId?: string;
+  lastMessageAt?: Date;
 }
 
 export interface AIChatConfig {

@@ -7,7 +7,7 @@ export const Root: React.FC = () => {
   return (
     <Composition
       id="video-edit"
-      component={VideoComposition}
+      component={VideoComposition as any}
       durationInFrames={300} // Default
       fps={30}
       width={1280}

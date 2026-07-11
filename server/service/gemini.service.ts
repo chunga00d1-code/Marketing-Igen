@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
 import { AIMediaModel } from "../model/ai-media.model";
 import { CompanyModel } from "../model/company.model";
 import { cloudinaryService } from "./cloudinary.service";
@@ -1450,6 +1450,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     postsPerDay: number;
     postingTimes: string[];
     channels: string[];
+    images?: string[];
   }): Promise<{
     campaignTitle: string;
     contentPillars: string[];
@@ -1539,6 +1540,7 @@ Trả về JSON đúng schema.`;
         },
         required: ["campaignTitle", "contentPillars", "slots"],
       },
+      images: input.images,
     });
 
     const parsed = safeParseJson(response.text || "{}");

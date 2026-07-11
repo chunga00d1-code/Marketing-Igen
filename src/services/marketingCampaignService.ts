@@ -38,8 +38,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const marketingCampaignService = {
-  list() {
-    return request<MarketingCampaignSummary[]>('/api/v1/marketing-campaigns');
+  list(page: number = 1, limit: number = 10) {
+    return request<{ campaigns: MarketingCampaignSummary[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(
+      `/api/v1/marketing-campaigns?page=${page}&limit=${limit}`
+    );
   },
 
   create(input: {
@@ -53,11 +55,16 @@ export const marketingCampaignService = {
     integrationIds: Partial<Record<'Facebook' | 'TikTok', string>>;
     candidateCount: number;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
+    images?: string[];
   }) {
     return request<{ campaign: MarketingCampaignSummary }>('/api/v1/marketing-campaigns', {
       method: 'POST',
       body: JSON.stringify(input),
     });
+  },
+
+  detail(id: string) {
+    return request<{ campaign: MarketingCampaignSummary; slots: unknown[] }>(`/api/v1/marketing-campaigns/${id}`);
   },
 
   lifecycle(id: string, action: 'pause' | 'resume' | 'cancel') {
