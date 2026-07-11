@@ -1443,6 +1443,246 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     }
   },
 
+  async generateScheduledCampaign(input: {
+    prompt: string;
+    startDate: string;
+    endDate: string;
+    postsPerDay: number;
+    postingTimes: string[];
+    channels: string[];
+  }): Promise<{
+    campaignTitle: string;
+    contentPillars: string[];
+    slots: Array<{
+      scheduledDate: string;
+      scheduledTime: string;
+      channel: "Facebook" | "TikTok";
+      pillar: string;
+      objective: string;
+      topicBrief: string;
+      mediaType: "text" | "image" | "video" | "human-video";
+    }>;
+  }> {
+    if (!process.env.OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY is not configured.");
+    }
+
+    const start = new Date(`${input.startDate}T00:00:00Z`);
+    const end = new Date(`${input.endDate}T00:00:00Z`);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) {
+      throw new Error("Khoảng ngày chiến dịch không hợp lệ.");
+    }
+
+    const dayCount = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+    const totalPosts = dayCount * input.postsPerDay;
+    if (dayCount > 31 || totalPosts > 60) {
+      throw new Error("Mỗi chiến dịch tối đa 31 ngày và 60 bài đăng.");
+    }
+
+    const slots: Array<{ scheduledDate: string; scheduledTime: string; channel: string }> = [];
+    for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
+      const date = new Date(start.getTime() + dayIndex * 86400000);
+      const scheduledDate = date.toISOString().slice(0, 10);
+      for (let postIndex = 0; postIndex < input.postsPerDay; postIndex += 1) {
+        slots.push({
+          scheduledDate,
+          scheduledTime: input.postingTimes[postIndex % input.postingTimes.length],
+          channel: input.channels[(dayIndex * input.postsPerDay + postIndex) % input.channels.length],
+        });
+      }
+    }
+
+    const prompt = `Bạn là chiến lược gia marketing đa kênh.
+Từ brief duy nhất bên dưới, hãy lập chiến lược và brief riêng cho đúng các slot đăng đã định sẵn.
+KHÔNG viết nội dung bài đăng hoàn chỉnh, caption, outline quay hay media prompt ở bước này.
+
+BRIEF CHIẾN DỊCH:
+${input.prompt}
+
+LỊCH BẮT BUỘC (giữ nguyên scheduledDate, scheduledTime và channel của từng phần tử):
+${JSON.stringify(slots)}
+
+Yêu cầu:
+- Đề xuất 3-6 content pillars xuyên suốt chiến dịch.
+- Trả về đúng ${totalPosts} slot, theo đúng thứ tự lịch.
+- Giữ nguyên scheduledDate, scheduledTime và channel của mỗi slot.
+- Mỗi slot chỉ gồm pillar, objective, topicBrief và mediaType để worker dùng gần giờ đăng.
+- Phân bổ hành trình hợp lý giữa nhận diện, cung cấp giá trị, tương tác, social proof và chuyển đổi.
+- topicBrief phải đủ cụ thể để sau này sinh nhiều phương án khác nhau nhưng không được là bài viết hoàn chỉnh.
+- TikTok ưu tiên mediaType video; Facebook có thể text hoặc image tùy chiến lược.
+
+Trả về JSON đúng schema.`;
+
+    const response = await generateText(GEMINI_HEAVY_MODEL, prompt, {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          campaignTitle: { type: Type.STRING },
+          contentPillars: { type: Type.ARRAY, items: { type: Type.STRING } },
+          slots: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                scheduledDate: { type: Type.STRING },
+                scheduledTime: { type: Type.STRING },
+                channel: { type: Type.STRING },
+                pillar: { type: Type.STRING },
+                objective: { type: Type.STRING },
+                topicBrief: { type: Type.STRING },
+                mediaType: { type: Type.STRING },
+              },
+              required: ["scheduledDate", "scheduledTime", "channel", "pillar", "objective", "topicBrief", "mediaType"],
+            },
+          },
+        },
+        required: ["campaignTitle", "contentPillars", "slots"],
+      },
+    });
+
+    const parsed = safeParseJson(response.text || "{}");
+    const generatedSlots = Array.isArray(parsed.slots) ? parsed.slots : [];
+    if (generatedSlots.length !== slots.length) {
+      throw new Error(`AI trả về ${generatedSlots.length}/${slots.length} slot. Vui lòng thử lại.`);
+    }
+
+    const plannedSlots = slots.map((slot, index) => {
+      const item = generatedSlots[index] || {};
+      const channel: "Facebook" | "TikTok" = slot.channel === "TikTok" ? "TikTok" : "Facebook";
+      const requestedMediaType = String(item.mediaType || "").trim();
+      const mediaType = channel === "TikTok"
+        ? "video"
+        : (["text", "image", "video", "human-video"].includes(requestedMediaType) ? requestedMediaType : "image");
+      return {
+        ...slot,
+        channel,
+        pillar: String(item.pillar || "Nội dung cốt lõi").trim(),
+        objective: String(item.objective || "Tăng nhận diện").trim(),
+        topicBrief: String(item.topicBrief || "").trim(),
+        mediaType: mediaType as "text" | "image" | "video" | "human-video",
+      };
+    });
+
+    if (plannedSlots.some((slot) => !slot.topicBrief)) {
+      throw new Error("AI trả về slot chưa có topic brief.");
+    }
+    const contentPillars = (Array.isArray(parsed.contentPillars) ? parsed.contentPillars : [])
+      .map((pillar: unknown) => String(pillar || "").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+    return {
+      campaignTitle: String(parsed.campaignTitle || "Chiến dịch AI").trim(),
+      contentPillars: contentPillars.length > 0 ? contentPillars : ["Nội dung cốt lõi"],
+      slots: plannedSlots,
+    };
+  },
+
+  async generateCampaignCandidate(input: {
+    sourceBrief: string;
+    campaignTitle: string;
+    pillar: string;
+    objective: string;
+    topicBrief: string;
+    platform: "Facebook" | "TikTok";
+    mediaType: "text" | "image" | "video" | "human-video";
+    variant: string;
+    requiredCta?: string;
+    requiredHashtags?: string[];
+    forbiddenTerms?: string[];
+    recentTitles?: string[];
+  }): Promise<{ title: string; outline: string; bodyText: string; mediaPrompt: string; voiceScript: string }> {
+    const prompt = `Bạn là AI Copywriter chuyên nghiệp. Viết MỘT phương án nội dung cho slot chiến dịch.
+
+BRIEF GỐC: ${input.sourceBrief}
+CHIẾN DỊCH: ${input.campaignTitle}
+CONTENT PILLAR: ${input.pillar}
+MỤC TIÊU SLOT: ${input.objective}
+TOPIC BRIEF: ${input.topicBrief}
+NỀN TẢNG: ${input.platform}
+LOẠI MEDIA: ${input.mediaType}
+GÓC SÁNG TẠO BẮT BUỘC: ${input.variant}
+CTA BẮT BUỘC: ${input.requiredCta || "Tự đề xuất phù hợp"}
+HASHTAG BẮT BUỘC: ${(input.requiredHashtags || []).join(", ") || "Không có"}
+TỪ CẤM: ${(input.forbiddenTerms || []).join(", ") || "Không có"}
+TIÊU ĐỀ GẦN ĐÂY CẦN TRÁNH LẶP: ${(input.recentTitles || []).join(" | ") || "Không có"}
+
+Yêu cầu:
+- Bám sát tuyệt đối brief và topic, không bịa thông tin sản phẩm.
+- Viết tiếng Việt tự nhiên, có hook và CTA rõ ràng.
+- Facebook: bodyText là bài đăng sạch. TikTok: bodyText chỉ là caption, outline là storyboard video ngắn.
+- mediaPrompt viết bằng tiếng Anh và trung thành với nội dung.
+- voiceScript chỉ cần có khi mediaType là human-video, ngược lại trả chuỗi rỗng.
+- Không chứa placeholder hoặc ghi chú nội bộ.
+Trả về JSON đúng schema.`;
+    const response = await generateText(GEMINI_HEAVY_MODEL, prompt, {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          outline: { type: Type.STRING },
+          bodyText: { type: Type.STRING },
+          mediaPrompt: { type: Type.STRING },
+          voiceScript: { type: Type.STRING },
+        },
+        required: ["title", "outline", "bodyText", "mediaPrompt", "voiceScript"],
+      },
+    });
+    const parsed = safeParseJson(response.text || "{}");
+    return {
+      title: String(parsed.title || "").trim(),
+      outline: String(parsed.outline || "").trim(),
+      bodyText: String(parsed.bodyText || "").trim(),
+      mediaPrompt: String(parsed.mediaPrompt || "").trim(),
+      voiceScript: String(parsed.voiceScript || "").trim(),
+    };
+  },
+
+  async scoreCampaignCandidate(input: {
+    sourceBrief: string;
+    objective: string;
+    platform: "Facebook" | "TikTok";
+    title: string;
+    bodyText: string;
+    recentTitles?: string[];
+  }): Promise<{
+    fidelity: number;
+    objective: number;
+    platform: number;
+    hook: number;
+    conversion: number;
+    readability: number;
+    novelty: number;
+  }> {
+    const prompt = `Chấm điểm nghiêm khắc nội dung marketing theo đúng trọng số tối đa của từng trường.
+Brief: ${input.sourceBrief}
+Mục tiêu: ${input.objective}
+Nền tảng: ${input.platform}
+Tiêu đề: ${input.title}
+Nội dung: ${input.bodyText}
+Tiêu đề gần đây để đánh giá độ mới: ${(input.recentTitles || []).join(" | ") || "Không có"}
+
+Giới hạn điểm: fidelity 0-25, objective 0-15, platform 0-15, hook 0-15, conversion 0-10, readability 0-10, novelty 0-10. Trả JSON.`;
+    const response = await generateText(GEMINI_HEAVY_MODEL, prompt, {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          fidelity: { type: Type.INTEGER }, objective: { type: Type.INTEGER }, platform: { type: Type.INTEGER },
+          hook: { type: Type.INTEGER }, conversion: { type: Type.INTEGER }, readability: { type: Type.INTEGER }, novelty: { type: Type.INTEGER },
+        },
+        required: ["fidelity", "objective", "platform", "hook", "conversion", "readability", "novelty"],
+      },
+    });
+    const parsed = safeParseJson(response.text || "{}");
+    const clamp = (value: unknown, max: number) => Math.max(0, Math.min(max, Number(value) || 0));
+    return {
+      fidelity: clamp(parsed.fidelity, 25), objective: clamp(parsed.objective, 15), platform: clamp(parsed.platform, 15),
+      hook: clamp(parsed.hook, 15), conversion: clamp(parsed.conversion, 10), readability: clamp(parsed.readability, 10), novelty: clamp(parsed.novelty, 10),
+    };
+  },
+
   async developMarketingIdea(
     title: string,
     summary: string,
@@ -2548,5 +2788,3 @@ function pcmToWav(pcmBuffer: Buffer, sampleRate: number = 24000, numChannels: nu
 function estimateAudioDuration(text: string): number {
   return Math.max(1, Math.ceil(text.length / 13));
 }
-
-

@@ -4,6 +4,8 @@ import { facebookPostService } from "../service/facebook-post.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { UserDataDeletionModel } from "../model/user-data-deletion.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
+import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
+import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import crypto from "crypto";
 
 function base64UrlDecode(str: string) {
@@ -617,6 +619,52 @@ export const facebookPostController = {
       }
 
       await card.save();
+
+      if (card.campaignSlotId) {
+        if (publishStatus === "published") {
+          const transitioned = await MarketingCampaignSlotModel.findOneAndUpdate(
+            { _id: card.campaignSlotId, status: { $ne: "published" } },
+            {
+              $set: {
+                status: "published",
+                publishedPostId: postId || card.facebookPostId,
+                publishedUrl: postUrl || card.postUrl,
+                lockId: null,
+                lockedAt: null,
+                lockExpiresAt: null,
+              },
+              $push: { transitions: { from: "publishing", to: "published", reason: "Facebook n8n callback completed", at: new Date() } },
+            },
+            { new: true }
+          );
+          if (transitioned) {
+            await MarketingCampaignModel.updateOne({ _id: transitioned.campaignId }, { $inc: { "statistics.publishedSlots": 1 } });
+          }
+        } else if (publishStatus === "processing") {
+          await MarketingCampaignSlotModel.updateOne(
+            { _id: card.campaignSlotId, status: { $ne: "published" } },
+            { $set: { status: "publishing", publishedPostId: postId || undefined } }
+          );
+        } else if (publishStatus === "failed") {
+          const transitioned = await MarketingCampaignSlotModel.findOneAndUpdate(
+            { _id: card.campaignSlotId, status: { $nin: ["published", "needs_attention"] } },
+            {
+              $set: {
+                status: "needs_attention",
+                lastError: { type: "provider", message: card.publishError || "Facebook publish failed", occurredAt: new Date() },
+                lockId: null,
+                lockedAt: null,
+                lockExpiresAt: null,
+              },
+              $push: { transitions: { from: "publishing", to: "needs_attention", reason: card.publishError || "Facebook publish failed", at: new Date() } },
+            },
+            { new: true }
+          );
+          if (transitioned) {
+            await MarketingCampaignModel.updateOne({ _id: transitioned.campaignId }, { $inc: { "statistics.failedSlots": 1 } });
+          }
+        }
+      }
 
       return res.status(200).json({
         status: "success",

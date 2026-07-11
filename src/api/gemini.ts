@@ -155,6 +155,38 @@ export const geminiApi = {
     return response.json();
   },
 
+  async generateScheduledCampaign(input: {
+    prompt: string;
+    startDate: string;
+    endDate: string;
+    postsPerDay: number;
+    postingTimes: string[];
+    channels: Array<'Facebook' | 'TikTok'>;
+  }): Promise<{
+    campaignTitle: string;
+    contentPillars: string[];
+    slots: Array<{
+      scheduledDate: string;
+      scheduledTime: string;
+      channel: 'Facebook' | 'TikTok';
+      pillar: string;
+      objective: string;
+      topicBrief: string;
+      mediaType: 'text' | 'image' | 'video' | 'human-video';
+    }>;
+  }> {
+    const headers = await getHeaders(true);
+    const response = await fetchWithTimeout('/api/v1/gemini/scheduled-campaign', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    }, 300000, 'Tạo chiến dịch mất quá lâu. Vui lòng thử lại.');
+    if (!response.ok) {
+      await handleErrorResponse(response, 'Lỗi tạo chiến dịch theo lịch');
+    }
+    return response.json();
+  },
+
   /**
    * Lập dàn ý và viết bài �Ēng chi tiết cho từng kênh truyền thông từ m�"t ý tư�xng cụ thỒ.
    */

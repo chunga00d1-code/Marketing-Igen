@@ -1,0 +1,214 @@
+{
+  "name": "iGen Campaign - Facebook Idempotent Publisher",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "campaign-facebook-publish",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "facebook-webhook",
+      "name": "Webhook - ERP Publish",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 300],
+      "webhookId": "4e4ad8ac-a933-49a4-a996-cfcabf8fd306"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst envelope = item.json || {};\nconst headers = envelope.headers || {};\nconst body = envelope.body || envelope;\nconst expected = String($env.N8N_WEBHOOK_SECRET || '');\nconst received = String(headers['x-webhook-token'] || headers['X-Webhook-Token'] || '');\nif (!expected || received !== expected) throw new Error('Unauthorized webhook token');\n\nconst required = ['cardId', 'idempotencyKey', 'pageId', 'accessToken', 'callbackUrl'];\nfor (const field of required) {\n  if (!String(body[field] || '').trim()) throw new Error(`Missing required field: ${field}`);\n}\nif (!/^https:\\/\\//i.test(String(body.callbackUrl))) throw new Error('callbackUrl must use HTTPS');\n\nconst mediaType = ['none', 'image', 'video'].includes(body.mediaType) ? body.mediaType : 'none';\nif (mediaType !== 'none' && !/^https:\\/\\//i.test(String(body.mediaUrl || ''))) throw new Error('mediaUrl must use HTTPS');\n\nconst store = $getWorkflowStaticData('global');\nstore.deliveries = store.deliveries || {};\nconst now = Date.now();\nfor (const [key, value] of Object.entries(store.deliveries)) {\n  if (!value?.updatedAt || now - value.updatedAt > 30 * 24 * 60 * 60 * 1000) delete store.deliveries[key];\n}\nconst key = String(body.idempotencyKey);\nconst existing = store.deliveries[key];\nconst locked = existing && (existing.status === 'published' || (existing.status === 'processing' && now - existing.updatedAt < 20 * 60 * 1000));\nif (locked) {\n  return [{ json: { duplicate: true, idempotencyKey: key, cached: existing, cardId: body.cardId } }];\n}\nstore.deliveries[key] = { status: 'processing', cardId: body.cardId, updatedAt: now };\n\nlet apiUrl;\nlet facebookBody;\nif (mediaType === 'video') {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/videos`;\n  facebookBody = { description: String(body.content || ''), file_url: String(body.mediaUrl), access_token: String(body.accessToken), published: true };\n} else if (mediaType === 'image') {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/photos`;\n  facebookBody = { caption: String(body.content || ''), url: String(body.mediaUrl), access_token: String(body.accessToken), published: true };\n} else {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/feed`;\n  facebookBody = { message: String(body.content || ''), access_token: String(body.accessToken) };\n}\nreturn [{ json: { duplicate: false, prepared: { cardId: String(body.cardId), idempotencyKey: key, callbackUrl: String(body.callbackUrl), mediaType, apiUrl, facebookBody } } }];"
+      },
+      "id": "facebook-validate",
+      "name": "Validate, Lock & Prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.duplicate }}", "operation": "isTrue" }
+          ]
+        }
+      },
+      "id": "facebook-if-duplicate",
+      "name": "Already Delivered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [620, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', duplicate: true, message: 'Idempotent delivery already exists', data: { id: $json.cached?.postId || '', postUrl: $json.cached?.postUrl || '', idempotencyKey: $json.idempotencyKey } }) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "facebook-respond-duplicate",
+      "name": "Respond - Duplicate",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [860, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.prepared.apiUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.prepared.facebookBody) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 120000
+        }
+      },
+      "id": "facebook-api-post",
+      "name": "Facebook Graph - Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            { "value1": "={{ String($json.id || $json.post_id || '') }}", "operation": "isNotEmpty" }
+          ]
+        }
+      },
+      "id": "facebook-if-success",
+      "name": "Facebook Accepted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1080, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json || {};\nconst prepared = $items('Validate, Lock & Prepare', 0, 0)[0].json.prepared;\nconst postId = String(response.id || response.post_id || '');\nconst store = $getWorkflowStaticData('global');\nstore.deliveries = store.deliveries || {};\nstore.deliveries[prepared.idempotencyKey] = { status: 'published', cardId: prepared.cardId, postId, postUrl: '', updatedAt: Date.now() };\nreturn [{ json: { prepared, postId, postUrl: '' } }];"
+      },
+      "id": "facebook-mark-success",
+      "name": "Mark Delivery Published",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.prepared.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cardId: $json.prepared.cardId, postId: $json.postId, postUrl: $json.postUrl, status: 'published' }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 30000
+        }
+      },
+      "id": "facebook-callback-success",
+      "name": "ERP Callback - Published",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 280]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', message: 'Facebook publish completed', data: { id: $items('Mark Delivery Published', 0, 0)[0].json.postId, postUrl: $items('Mark Delivery Published', 0, 0)[0].json.postUrl, idempotencyKey: $items('Mark Delivery Published', 0, 0)[0].json.prepared.idempotencyKey } }) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "facebook-respond-success",
+      "name": "Respond - Published",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1740, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json || {};\nconst prepared = $items('Validate, Lock & Prepare', 0, 0)[0].json.prepared;\nconst message = String(response.error?.message || response.error?.type || response.message || JSON.stringify(response));\nconst store = $getWorkflowStaticData('global');\nif (store.deliveries) delete store.deliveries[prepared.idempotencyKey];\nreturn [{ json: { prepared, error: message.slice(0, 1000) } }];"
+      },
+      "id": "facebook-clear-failure",
+      "name": "Release Delivery Lock",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 520]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.prepared.callbackUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.N8N_WEBHOOK_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ cardId: $json.prepared.cardId, postId: '', postUrl: '', status: 'failed', error: $json.error }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 30000
+        }
+      },
+      "id": "facebook-callback-failure",
+      "name": "ERP Callback - Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 520]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', message: 'Facebook publish failed', details: $items('Release Delivery Lock', 0, 0)[0].json.error }) }}",
+        "options": { "responseCode": 502 }
+      },
+      "id": "facebook-respond-failure",
+      "name": "Respond - Failed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1740, 520]
+    }
+  ],
+  "connections": {
+    "Webhook - ERP Publish": { "main": [[{ "node": "Validate, Lock & Prepare", "type": "main", "index": 0 }]] },
+    "Validate, Lock & Prepare": { "main": [[{ "node": "Already Delivered?", "type": "main", "index": 0 }]] },
+    "Already Delivered?": {
+      "main": [
+        [{ "node": "Respond - Duplicate", "type": "main", "index": 0 }],
+        [{ "node": "Facebook Graph - Publish", "type": "main", "index": 0 }]
+      ]
+    },
+    "Facebook Graph - Publish": { "main": [[{ "node": "Facebook Accepted?", "type": "main", "index": 0 }]] },
+    "Facebook Accepted?": {
+      "main": [
+        [{ "node": "Mark Delivery Published", "type": "main", "index": 0 }],
+        [{ "node": "Release Delivery Lock", "type": "main", "index": 0 }]
+      ]
+    },
+    "Mark Delivery Published": { "main": [[{ "node": "ERP Callback - Published", "type": "main", "index": 0 }]] },
+    "ERP Callback - Published": { "main": [[{ "node": "Respond - Published", "type": "main", "index": 0 }]] },
+    "Release Delivery Lock": { "main": [[{ "node": "ERP Callback - Failed", "type": "main", "index": 0 }]] },
+    "ERP Callback - Failed": { "main": [[{ "node": "Respond - Failed", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bangkok",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "executionTimeout": 180
+  },
+  "versionId": "4cb383cf-8a71-46bd-89b9-dcd5c05c088f",
+  "id": "igen-campaign-facebook-publisher",
+  "tags": []
+}

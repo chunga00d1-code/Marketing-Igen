@@ -1,0 +1,151 @@
+{
+  "name": "iGen Campaign - Autonomous Worker Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "campaign-cron",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/prepare' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_PREPARE_LIMIT || 3) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 300000
+        }
+      },
+      "id": "campaign-prepare",
+      "name": "Campaign - Prepare",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/media' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_MEDIA_LIMIT || 2) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 300000
+        }
+      },
+      "id": "campaign-media",
+      "name": "Campaign - Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/verify' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_VERIFY_LIMIT || 5) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 60000
+        }
+      },
+      "id": "campaign-verify",
+      "name": "Campaign - Verify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL.replace(/\\/$/, '') + '/api/v1/marketing-campaigns/internal/publish' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: Number($env.CAMPAIGN_PUBLISH_LIMIT || 3) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 120000
+        }
+      },
+      "id": "campaign-publish",
+      "name": "Campaign - Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const names = ['Campaign - Prepare', 'Campaign - Media', 'Campaign - Verify', 'Campaign - Publish'];\nconst steps = names.map((name) => {\n  const row = $items(name, 0, 0)[0]?.json || {};\n  return { name, ok: row.status === 'success', claimed: Number(row.data?.claimed || 0), response: row };\n});\nconst failed = steps.filter((step) => !step.ok);\nconst claimed = steps.reduce((sum, step) => sum + step.claimed, 0);\nreturn [{ json: { status: failed.length ? 'warning' : 'success', claimed, failedSteps: failed.map((step) => step.name), steps, executedAt: new Date().toISOString() } }];"
+      },
+      "id": "campaign-summary",
+      "name": "Campaign - Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, 300]
+    }
+  ],
+  "connections": {
+    "Every Minute": { "main": [[{ "node": "Campaign - Prepare", "type": "main", "index": 0 }]] },
+    "Campaign - Prepare": { "main": [[{ "node": "Campaign - Media", "type": "main", "index": 0 }]] },
+    "Campaign - Media": { "main": [[{ "node": "Campaign - Verify", "type": "main", "index": 0 }]] },
+    "Campaign - Verify": { "main": [[{ "node": "Campaign - Publish", "type": "main", "index": 0 }]] },
+    "Campaign - Publish": { "main": [[{ "node": "Campaign - Summary", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bangkok",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "executionTimeout": 600
+  },
+  "versionId": "e57edce0-136e-4ca0-a890-ca0000000001",
+  "id": "igen-campaign-worker-orchestrator",
+  "tags": []
+}

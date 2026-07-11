@@ -55,3 +55,17 @@ These rules apply whenever Codex adds, edits, fixes, reviews, or verifies code i
   - `npm run build` for routing, bundling, dependency, server entry, or production-impacting changes.
 - Report what passed, what failed, and what remains unverified.
 - Do not claim functionality is safe solely because lint passed.
+
+## Autonomous Marketing Campaign Rules
+
+- Use the repository skill `automated-marketing-campaign` for every change to campaign planning, campaign slots, AI candidate generation/scoring, campaign workers, automatic media creation, or scheduled autonomous publishing.
+- Campaign creation must persist strategy and slot briefs only. Do not generate every final post body at campaign creation time.
+- Autonomous execution must run in backend workers and continue when no browser session is open.
+- Before publishing, generate multiple bounded-concurrency candidates, apply hard validation and duplicate detection, score valid candidates, and persist the winning decision.
+- Keep campaign, slot, candidate, and final marketing-content records separate and tenant-scoped.
+- Use atomic worker leases and idempotency keys so retries cannot process or publish a slot twice.
+- Store schedule instants in UTC with an explicit campaign timezone; do not derive dates with locale-dependent parsing.
+- Required media must be completed and verified before a slot becomes publish-ready. TikTok must never publish without a valid completed video.
+- Persist state transitions, attempts, provider errors, wallet usage, selected candidate, platform post ID, and final URL for auditability.
+- Apply capped retries with explicit terminal states; never retry invalid content, missing permissions, or exhausted budgets indefinitely.
+- Implement the rollout phases and acceptance criteria in `.codex/skills/automated-marketing-campaign/references/architecture.md` in order unless the user explicitly changes priority.
