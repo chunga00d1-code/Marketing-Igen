@@ -201,7 +201,7 @@ export function CompanyModal({
                 </div>
               </div>
               <div className="space-y-1.5 text-left">
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">Dia chi email *</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">Địa chỉ email *</label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-2.5 h-4 w-4 text-gray-400" />
                   <input
@@ -215,7 +215,7 @@ export function CompanyModal({
                 </div>
               </div>
               <div className="space-y-1.5 text-left">
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">Mat khau *</label>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">Mật khẩu *</label>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-2.5 h-4 w-4 text-gray-400" />
                   <input

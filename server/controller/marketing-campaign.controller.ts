@@ -7,7 +7,10 @@ import { marketingCampaignFacebookWorkerService } from "../service/marketing-cam
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
-  const companyCode = req.user?.companyCode;
+  let companyCode = req.user?.companyCode;
+  if (req.user?.role === "superadmin") {
+    companyCode = (req.body?.companyCode || req.query?.companyCode || companyCode || "SYSTEM") as string;
+  }
   if (!userId || !companyCode) throw new Error("Không xác định được người dùng hoặc doanh nghiệp.");
   return { userId, companyCode };
 }
