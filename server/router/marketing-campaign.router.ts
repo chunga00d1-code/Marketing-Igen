@@ -16,12 +16,14 @@ const createSchema = {
     timezone: Joi.string().max(100).default("Asia/Bangkok"),
     platforms: Joi.array().items(Joi.string().valid("Facebook", "TikTok")).min(1).required(),
     integrationIds: Joi.object({ Facebook: Joi.string().allow(""), TikTok: Joi.string().allow("") }).default({}),
-    candidateCount: Joi.number().integer().min(2).max(5).default(3),
+    candidateCount: Joi.number().integer().min(1).max(5).default(1),
     generationLeadMinutes: Joi.number().integer().min(15).max(1440).default(60),
     verificationLeadMinutes: Joi.number().integer().min(5).max(180).default(15),
     latePublishWindowMinutes: Joi.number().integer().min(0).max(1440).default(30),
     minimumScore: Joi.number().integer().min(0).max(100).default(80),
     mediaPolicy: Joi.string().valid("text", "image", "video", "auto").default("auto"),
+    qualityMode: Joi.string().valid("premium", "budget").default("premium"),
+    publishMode: Joi.string().valid("auto", "manual").default("manual"),
     images: Joi.array().items(Joi.string()).optional(),
     rules: Joi.object({
       requiredCta: Joi.string().allow(""),
@@ -29,6 +31,21 @@ const createSchema = {
       forbiddenTerms: Joi.array().items(Joi.string()),
       allowTextOnlyFallback: Joi.boolean(),
     }).default({}),
+  }),
+};
+
+const updateContentSchema = {
+  body: Joi.object({
+    title: Joi.string().trim().max(500).optional(),
+    bodyText: Joi.string().trim().max(10000).optional(),
+    outline: Joi.string().trim().max(5000).allow("").optional(),
+    mediaPrompt: Joi.string().trim().max(5000).allow("").optional(),
+  }),
+};
+
+const replaceImageSchema = {
+  body: Joi.object({
+    image: Joi.string().required(),
   }),
 };
 
@@ -42,6 +59,9 @@ marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
 marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/approve", marketingCampaignController.approveSlot as never);
+marketingCampaignRouter.patch("/:id/slots/:slotId/content", validateRequest(updateContentSchema), marketingCampaignController.updateSlotContent as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/replace-image", validateRequest(replaceImageSchema), marketingCampaignController.replaceSlotImage as never);
 marketingCampaignRouter.post("/:id/:action", (req, res, next) => {
   if (!["pause", "resume", "cancel"].includes(req.params.action)) {
     return res.status(404).json({ status: "error", message: "Thao tác chiến dịch không hợp lệ." });

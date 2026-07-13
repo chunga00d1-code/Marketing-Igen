@@ -472,8 +472,6 @@ async function generateText(
   }
 ): Promise<{ text: string }> {
   let modelId = model || GEMINI_TEXT_MODEL;
-  // normalize alias
-  if (modelId === "gemini-3.5-flash") modelId = "gemini-2.5-flash";
 
   const needsJson = !!config?.responseMimeType?.includes("json") || !!config?.responseSchema;
 
@@ -1451,6 +1449,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     postingTimes: string[];
     channels: string[];
     images?: string[];
+    customSchedule?: Record<string, string[]>;
   }): Promise<{
     campaignTitle: string;
     contentPillars: string[];
@@ -1475,22 +1474,29 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     }
 
     const dayCount = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-    const totalPosts = dayCount * input.postsPerDay;
-    if (dayCount > 31 || totalPosts > 60) {
-      throw new Error("Mỗi chiến dịch tối đa 31 ngày và 60 bài đăng.");
+    if (dayCount > 90) {
+      throw new Error("Mỗi chiến dịch tối đa 90 ngày.");
     }
 
     const slots: Array<{ scheduledDate: string; scheduledTime: string; channel: string }> = [];
+    let slotCounter = 0;
     for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
       const date = new Date(start.getTime() + dayIndex * 86400000);
       const scheduledDate = date.toISOString().slice(0, 10);
-      for (let postIndex = 0; postIndex < input.postsPerDay; postIndex += 1) {
+      const dayTimes = input.customSchedule?.[scheduledDate] || input.postingTimes;
+      for (const time of dayTimes) {
         slots.push({
           scheduledDate,
-          scheduledTime: input.postingTimes[postIndex % input.postingTimes.length],
-          channel: input.channels[(dayIndex * input.postsPerDay + postIndex) % input.channels.length],
+          scheduledTime: time,
+          channel: input.channels[slotCounter % input.channels.length],
         });
+        slotCounter += 1;
       }
+    }
+
+    const totalPosts = slots.length;
+    if (totalPosts > 450) {
+      throw new Error("Mỗi chiến dịch tối đa 450 bài đăng.");
     }
 
     const prompt = `Bạn là chiến lược gia marketing đa kênh.
@@ -1593,6 +1599,7 @@ Trả về JSON đúng schema.`;
     requiredHashtags?: string[];
     forbiddenTerms?: string[];
     recentTitles?: string[];
+    model?: string;
   }): Promise<{ title: string; outline: string; bodyText: string; mediaPrompt: string; voiceScript: string }> {
     const prompt = `Bạn là AI Copywriter chuyên nghiệp. Viết MỘT phương án nội dung cho slot chiến dịch.
 
@@ -1617,7 +1624,7 @@ Yêu cầu:
 - voiceScript chỉ cần có khi mediaType là human-video, ngược lại trả chuỗi rỗng.
 - Không chứa placeholder hoặc ghi chú nội bộ.
 Trả về JSON đúng schema.`;
-    const response = await generateText(GEMINI_HEAVY_MODEL, prompt, {
+    const response = await generateText(input.model || GEMINI_HEAVY_MODEL, prompt, {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,

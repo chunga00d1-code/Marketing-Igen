@@ -15,6 +15,7 @@ export interface MarketingCampaignSummary {
   platforms: Array<'Facebook' | 'TikTok'>;
   candidateCount: number;
   contentPillars: string[];
+  publishMode?: 'auto' | 'manual';
   statistics: {
     totalSlots: number;
     publishedSlots: number;
@@ -54,8 +55,11 @@ export const marketingCampaignService = {
     platforms: Array<'Facebook' | 'TikTok'>;
     integrationIds: Partial<Record<'Facebook' | 'TikTok', string>>;
     candidateCount: number;
+    qualityMode?: 'premium' | 'budget';
+    publishMode?: 'auto' | 'manual';
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     images?: string[];
+    customSchedule?: Record<string, string[]>;
   }) {
     return request<{ campaign: MarketingCampaignSummary }>('/api/v1/marketing-campaigns', {
       method: 'POST',
@@ -77,5 +81,23 @@ export const marketingCampaignService = {
 
   retryAllSlots(campaignId: string) {
     return request<{ retriedCount: number }>(`/api/v1/marketing-campaigns/${campaignId}/retry-all`, { method: 'POST' });
+  },
+
+  approveSlot(campaignId: string, slotId: string) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, { method: 'POST' });
+  },
+
+  updateSlotContent(campaignId: string, slotId: string, updates: { title?: string; bodyText?: string; outline?: string; mediaPrompt?: string }) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/content`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  },
+
+  replaceSlotImage(campaignId: string, slotId: string, imageBase64OrUrl: string) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/replace-image`, {
+      method: 'POST',
+      body: JSON.stringify({ image: imageBase64OrUrl }),
+    });
   },
 };

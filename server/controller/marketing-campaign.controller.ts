@@ -4,6 +4,7 @@ import { marketingCampaignService } from "../service/marketing-campaign.service"
 import { walletService, API_COSTS } from "../service/wallet.service";
 import { marketingCampaignWorkerService } from "../service/marketing-campaign-worker.service";
 import { marketingCampaignFacebookWorkerService } from "../service/marketing-campaign-facebook-worker.service";
+import { cloudinaryService } from "../service/cloudinary.service";
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
@@ -68,9 +69,9 @@ export const marketingCampaignController = {
   async create(req: AuthenticatedRequest, res: Response) {
     try {
       const { userId, companyCode } = getIdentity(req);
-      await walletService.checkBalance(userId, API_COSTS.GEMINI_MARKETING);
+      await walletService.checkBalance(userId, API_COSTS.CAMPAIGN_STRATEGY);
       const result = await marketingCampaignService.create(companyCode, userId, req.body);
-      await walletService.deductBalance(userId, API_COSTS.GEMINI_MARKETING, "Chi phí lập kế hoạch chiến dịch tự động bằng AI");
+      await walletService.deductBalance(userId, API_COSTS.CAMPAIGN_STRATEGY, "Chi phí lập kế hoạch chiến dịch tự động bằng AI");
       return res.status(201).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Không thể tạo chiến dịch.";
@@ -127,6 +128,43 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thử lại các slot." });
+    }
+  },
+
+  async approveSlot(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const slot = await marketingCampaignService.approveSlot(companyCode, req.params.id, req.params.slotId, userId);
+      return res.status(200).json({ status: "success", data: slot });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể duyệt slot." });
+    }
+  },
+
+  async updateSlotContent(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const content = await marketingCampaignService.updateSlotContent(companyCode, req.params.id, req.params.slotId, req.body);
+      return res.status(200).json({ status: "success", data: content });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật nội dung slot." });
+    }
+  },
+
+  async replaceSlotImage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const { image } = req.body;
+      if (!image) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp ảnh để thay thế." });
+      }
+      const folder = "igen_erp/marketing/campaign_manual";
+      const secureUrl = await cloudinaryService.uploadMedia(image, folder);
+      
+      const content = await marketingCampaignService.replaceSlotImage(companyCode, req.params.id, req.params.slotId, secureUrl);
+      return res.status(200).json({ status: "success", data: content });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thay đổi ảnh slot." });
     }
   },
 };

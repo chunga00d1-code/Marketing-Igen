@@ -36,6 +36,9 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
       forbiddenTerms: { type: [String], default: [] },
       allowTextOnlyFallback: { type: Boolean, default: false },
     },
+    qualityMode: { type: String, enum: ["premium", "budget"], default: "premium" },
+    publishMode: { type: String, enum: ["auto", "manual"], default: "manual" },
+    customSchedule: { type: Schema.Types.Map, of: [String] },
     statistics: {
       totalSlots: { type: Number, default: 0 },
       publishedSlots: { type: Number, default: 0 },
