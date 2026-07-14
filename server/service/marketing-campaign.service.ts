@@ -147,7 +147,7 @@ export const marketingCampaignService = {
       postingTimes: input.postingTimes,
       platforms: input.platforms,
       integrationIds: input.integrationIds || {},
-      candidateCount: 1, // Single-Render Flow
+      candidateCount: input.candidateCount ?? 1,
       generationLeadMinutes,
       verificationLeadMinutes,
       latePublishWindowMinutes: input.latePublishWindowMinutes ?? 30,
