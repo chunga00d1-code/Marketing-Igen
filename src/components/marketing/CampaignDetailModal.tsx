@@ -130,6 +130,7 @@ export default function CampaignDetailModal({
   
   const [selectedSlot, setSelectedSlot] = useState<CampaignSlot | null>(null);
   const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
   const [isSavingContent, setIsSavingContent] = useState(false);
   const [isReplacingImage, setIsReplacingImage] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -178,6 +179,42 @@ export default function CampaignDetailModal({
       toast.error(error instanceof Error ? error.message : 'Không thể duyệt đăng bài.');
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  // Handle Slot Rejection
+  const handleRejectSlot = async () => {
+    if (!campaignDetail || !activeSlot) return;
+    const reason = window.prompt('Nhập lý do từ chối bài viết này:');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.warning('Vui lòng nhập lý do từ chối.');
+      return;
+    }
+    setIsRejecting(true);
+    try {
+      await marketingCampaignService.rejectSlot(campaignDetail.campaign._id, activeSlot._id, reason.trim());
+      toast.success('Đã từ chối đăng bài thành công.');
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể từ chối đăng bài.');
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
+  // Handle Share Review Link
+  const handleShareReviewLink = async (slotId: string) => {
+    if (!campaignDetail) return;
+    try {
+      const response = await marketingCampaignService.getShareLink(campaignDetail.campaign._id, slotId);
+      const shareLink = response.shareLink;
+      await navigator.clipboard.writeText(shareLink);
+      toast.success('Đã sao chép link duyệt bài đăng vào bộ nhớ tạm!');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể lấy link chia sẻ.');
     }
   };
 
@@ -402,7 +439,8 @@ export default function CampaignDetailModal({
               <span className="text-xs text-slate-500 font-semibold font-mono">ĐANG TẢI CHI TIẾT CHIẾN DỊCH...</span>
             </div>
           ) : campaignDetail ? (
-            <div className="flex flex-col lg:flex-row gap-6">
+            <>
+              <div className="flex flex-col lg:flex-row gap-6">
               
               {/* Left Column: Stats, Info, and Table */}
               <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
@@ -523,9 +561,297 @@ export default function CampaignDetailModal({
                     </div>
                   </div>
                 )}
+              </div> {/* Close Left Column */}
 
-                {/* Slots Table */}
-                <div className="space-y-3">
+              {/* Right Column: Preview & Editor Panel */}
+              {activeSlot && (
+                <div className="w-full lg:w-[450px] lg:shrink-0 border border-slate-200 rounded-2xl bg-slate-50/20 p-5 flex flex-col space-y-4 max-h-[75vh] overflow-y-auto transition-all duration-300">
+                  <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800">Duyệt & Biên tập nội dung</h4>
+                      <p className="text-[10px] text-slate-400 font-semibold font-mono mt-0.5">
+                        Giờ đăng: {new Intl.DateTimeFormat('vi-VN', {
+                          timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
+                          month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+                        }).format(new Date(activeSlot.scheduledAt))}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSlot(null)}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {/* Status & Actions Box */}
+                  <div className="flex flex-col gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-xs">
+                    <div className="flex items-center justify-between w-full">
+                      <div>
+                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Trạng thái slot</span>
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold select-none ${slotStatusColors[activeSlot.status] || DEFAULT_SLOT_STATUS_COLORS[activeSlot.status] || 'bg-slate-100 text-slate-655'}`}>
+                          {slotStatusLabel[activeSlot.status] || DEFAULT_SLOT_STATUS_LABEL[activeSlot.status] || activeSlot.status}
+                        </span>
+                      </div>
+
+                      {activeSlot.status === 'pending_approval' && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isApproving || isRejecting}
+                            onClick={handleApproveSlot}
+                            className="inline-flex items-center gap-1 bg-green-650 hover:bg-green-755 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+                          >
+                            {isApproving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                            Duyệt
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isApproving || isRejecting}
+                            onClick={handleRejectSlot}
+                            className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+                          >
+                            {isRejecting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                            Từ chối
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {activeSlot.status === 'pending_approval' && (
+                      <div className="border-t border-slate-100 pt-2 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleShareReviewLink(activeSlot._id)}
+                          className="text-[10px] font-bold text-indigo-650 hover:text-indigo-850 hover:underline transition cursor-pointer flex items-center gap-1"
+                        >
+                          Chia sẻ link duyệt cho người ngoài &rarr;
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tabs Selector */}
+                  <div className="flex border-b border-slate-200 mb-2 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('preview')}
+                      className={`flex-1 pb-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                        detailTab === 'preview'
+                          ? 'border-indigo-600 text-indigo-600'
+                          : 'border-transparent text-slate-400 hover:text-slate-655'
+                      }`}
+                    >
+                      Xem trước Facebook
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('edit')}
+                      className={`flex-1 pb-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                        detailTab === 'edit'
+                          ? 'border-indigo-600 text-indigo-600'
+                          : 'border-transparent text-slate-400 hover:text-slate-655'
+                      }`}
+                    >
+                      Biên tập nội dung
+                    </button>
+                  </div>
+
+                  {/* Content Preview & Form */}
+                  {activeSlot.content ? (
+                    <div className="space-y-4">
+                      {detailTab === 'preview' ? (
+                        <div className="space-y-4">
+                          {/* Realistic Facebook Post Preview */}
+                          <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden font-sans text-left">
+                            {/* Post Header */}
+                            <div className="p-3.5 flex items-center gap-2.5">
+                              <div className="h-9 w-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-655 font-bold select-none shrink-0">
+                                {campaignDetail?.campaign?.title?.slice(0, 2).toUpperCase() || 'FB'}
+                              </div>
+                              <div>
+                                <span className="block text-xs font-bold text-slate-800 hover:underline cursor-pointer">
+                                  {campaignDetail?.campaign?.title || 'Trang Facebook'}
+                                </span>
+                                <span className="flex items-center gap-1 text-[10px] text-slate-400 select-none">
+                                  {new Intl.DateTimeFormat('vi-VN', {
+                                    timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
+                                    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+                                  }).format(new Date(activeSlot.scheduledAt))}
+                                  &nbsp;·&nbsp;🌐
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Post Title & Text Body */}
+                            <div className="px-3.5 pb-3 text-xs text-slate-800 leading-relaxed font-sans">
+                              {editTitle && (
+                                <h5 className="font-bold text-slate-900 mb-1.5">{editTitle}</h5>
+                              )}
+                              <div className="whitespace-pre-wrap">{editBody || 'Chưa có nội dung...'}</div>
+                            </div>
+
+                            {/* Post Media */}
+                            {activeSlot.content.mediaUrls && activeSlot.content.mediaUrls.length > 0 && (
+                              <div className="relative border-t border-b border-slate-100 bg-slate-950 aspect-video flex items-center justify-center">
+                                {activeSlot.content.mediaType === 'video' ? (
+                                  <video src={activeSlot.content.mediaUrls[0]} controls className="w-full h-full object-contain" />
+                                ) : (
+                                  <img src={activeSlot.content.mediaUrls[0]} alt="Facebook Post Media" className="w-full h-full object-contain" />
+                                )}
+                              </div>
+                            )}
+
+                            {/* FB Stats Mock */}
+                            <div className="px-3.5 py-2 flex items-center justify-between border-b border-slate-100 text-[10px] text-slate-400 select-none">
+                              <div className="flex items-center gap-1">
+                                <span className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[8px] font-bold">👍</span>
+                                <span>0</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <span>0 bình luận</span>
+                                <span>0 lượt chia sẻ</span>
+                              </div>
+                            </div>
+
+                            {/* FB Action Buttons Mock */}
+                            <div className="px-1 py-1 grid grid-cols-3 gap-1 text-slate-500 font-bold text-[10px] select-none">
+                              <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1.5 transition cursor-pointer">
+                                👍 Thích
+                              </button>
+                              <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1.5 transition cursor-pointer">
+                                💬 Bình luận
+                              </button>
+                              <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1.5 transition cursor-pointer">
+                                ➡️ Chia sẻ
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl bg-indigo-50/50 border border-indigo-100/50 p-3.5 text-[11px] text-slate-600 leading-relaxed flex gap-2">
+                            <span>📢</span>
+                            <span>Đây là giao diện xem trước bài đăng thực tế của bạn trên mạng xã hội Facebook.</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Media Display and Replacement */}
+                          {activeSlot.content.mediaUrls && activeSlot.content.mediaUrls.length > 0 ? (
+                            <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-black aspect-video flex items-center justify-center">
+                              {activeSlot.content.mediaType === 'video' ? (
+                                <video src={activeSlot.content.mediaUrls[0]} controls className="w-full h-full object-contain" />
+                              ) : (
+                                <>
+                                  <img src={activeSlot.content.mediaUrls[0]} alt="Post Media" className="w-full h-full object-contain" />
+                                  {['pending_approval', 'verifying', 'needs_attention', 'failed'].includes(activeSlot.status) && (
+                                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent flex justify-end">
+                                      <label className="flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition shadow-sm select-none">
+                                        <Upload size={12} />
+                                        Thay ảnh của bạn
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageReplacement} disabled={isReplacingImage} />
+                                      </label>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              {isReplacingImage && (
+                                <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center space-y-1.5">
+                                  <Loader2 size={20} className="animate-spin text-indigo-600" />
+                                  <span className="text-[10px] font-bold text-slate-500 font-mono">ĐANG TẢI ẢNH LÊN...</span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            // Upload trigger when no media is present
+                            ['pending_approval', 'verifying', 'needs_attention', 'failed'].includes(activeSlot.status) && (
+                              <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 flex flex-col items-center justify-center text-center">
+                                <Image className="text-slate-300 mb-1.5" size={24} />
+                                <span className="text-[10px] text-slate-400 font-semibold mb-2">Chưa có ảnh — AI chưa tạo hoặc bạn muốn dùng ảnh riêng</span>
+                                <label className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition select-none">
+                                  <Upload size={13} />
+                                  Tải ảnh của bạn lên
+                                  <input type="file" accept="image/*" className="hidden" onChange={handleImageReplacement} disabled={isReplacingImage} />
+                                </label>
+                                {isReplacingImage && <Loader2 size={13} className="animate-spin text-indigo-650 mt-2" />}
+                              </div>
+                            )
+                          )}
+
+                          {/* Content Form Editor */}
+                          <div className="space-y-3.5">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1 select-none">Tiêu đề bài viết (Nếu có)</label>
+                              <input
+                                type="text"
+                                value={editTitle}
+                                onChange={(e) => setEditTitle(e.target.value)}
+                                disabled={activeSlot.status !== 'pending_approval'}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-800 disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs"
+                                placeholder="Nhập tiêu đề bài đăng..."
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1 select-none">Nội dung bài viết</label>
+                              <textarea
+                                rows={10}
+                                value={editBody}
+                                onChange={(e) => setEditBody(e.target.value)}
+                                disabled={activeSlot.status !== 'pending_approval'}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-normal text-slate-850 leading-relaxed disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs font-sans whitespace-pre-wrap"
+                                placeholder="Nhập nội dung bài đăng..."
+                              />
+                            </div>
+
+                            {activeSlot.status === 'pending_approval' && (
+                              <div className="flex justify-end pt-1">
+                                <button
+                                  type="button"
+                                  disabled={isSavingContent}
+                                  onClick={handleSaveContent}
+                                  className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-55"
+                                >
+                                  {isSavingContent ? <Loader2 size={13} className="animate-spin" /> : null}
+                                  Lưu thay đổi
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* AI Prompts and Outline Info */}
+                          <div className="pt-3 border-t border-slate-150 space-y-2.5 bg-slate-50/50 p-3 rounded-xl">
+                            {activeSlot.content.mediaPrompt && (
+                              <div>
+                                <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Ý tưởng hình ảnh (Media Prompt)</span>
+                                <p className="text-[11px] text-slate-650 mt-0.5 leading-relaxed font-sans">{activeSlot.content.mediaPrompt}</p>
+                              </div>
+                            )}
+                            {activeSlot.content.outline && (
+                              <div>
+                                <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Dàn ý bài viết (Outline)</span>
+                                <p className="text-[11px] text-slate-650 mt-0.5 leading-relaxed font-sans">{activeSlot.content.outline}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 text-center bg-white border border-slate-150 rounded-2xl p-5 shadow-2xs">
+                      <Image size={24} className="text-slate-350 mb-2 animate-pulse" />
+                      <span className="text-[11px] text-slate-500 font-bold">Chưa tạo nội dung chi tiết</span>
+                      <p className="text-[10px] text-slate-450 mt-1 max-w-[220px] leading-relaxed">Hệ thống sẽ tự động sinh nội dung hoàn chỉnh gần thời điểm đăng bài.</p>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+            </div>
+
+            {/* Slots Table */}
+            <div className="space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2 select-none">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Lịch trình đăng bài chi tiết (Campaign Slots)</span>
@@ -781,6 +1107,20 @@ export default function CampaignDetailModal({
                                           </div>
                                         );
                                       }
+                                      if (slot.status === 'pending_approval') {
+                                        return (
+                                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleShareReviewLink(slot._id)}
+                                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-indigo-50 text-[9px] font-bold text-indigo-650 hover:bg-indigo-100 transition cursor-pointer"
+                                              title="Lấy link để gửi người ngoài duyệt"
+                                            >
+                                              Chia sẻ link
+                                            </button>
+                                          </div>
+                                        );
+                                      }
                                       if ([
                                         'generating',
                                         'researching',
@@ -889,270 +1229,8 @@ export default function CampaignDetailModal({
                     </div>
                   )}
                 </div>
-              </div>
-
-              {/* Right Column: Preview & Editor Panel */}
-              {activeSlot && (
-                <div className="w-full lg:w-[450px] lg:shrink-0 border border-slate-200 rounded-2xl bg-slate-50/20 p-5 flex flex-col space-y-4 max-h-[75vh] overflow-y-auto transition-all duration-300">
-                  <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                    <div>
-                      <h4 className="text-sm font-bold text-slate-800">Duyệt & Biên tập nội dung</h4>
-                      <p className="text-[10px] text-slate-400 font-semibold font-mono mt-0.5">
-                        Giờ đăng: {new Intl.DateTimeFormat('vi-VN', {
-                          timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
-                          month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-                        }).format(new Date(activeSlot.scheduledAt))}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSlot(null)}
-                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  {/* Status & Actions Box */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-xs">
-                    <div>
-                      <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Trạng thái slot</span>
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold select-none ${slotStatusColors[activeSlot.status] || DEFAULT_SLOT_STATUS_COLORS[activeSlot.status] || 'bg-slate-100 text-slate-655'}`}>
-                        {slotStatusLabel[activeSlot.status] || DEFAULT_SLOT_STATUS_LABEL[activeSlot.status] || activeSlot.status}
-                      </span>
-                    </div>
-
-                    {activeSlot.status === 'pending_approval' && (
-                      <button
-                        type="button"
-                        disabled={isApproving}
-                        onClick={handleApproveSlot}
-                        className="inline-flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
-                      >
-                        {isApproving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                        Duyệt đăng bài
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Tabs Selector */}
-                  <div className="flex border-b border-slate-200 mb-2 select-none">
-                    <button
-                      type="button"
-                      onClick={() => setDetailTab('preview')}
-                      className={`flex-1 pb-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                        detailTab === 'preview'
-                          ? 'border-indigo-600 text-indigo-600'
-                          : 'border-transparent text-slate-400 hover:text-slate-655'
-                      }`}
-                    >
-                      Xem trước Facebook
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDetailTab('edit')}
-                      className={`flex-1 pb-2.5 text-xs font-bold border-b-2 transition-all cursor-pointer ${
-                        detailTab === 'edit'
-                          ? 'border-indigo-600 text-indigo-600'
-                          : 'border-transparent text-slate-400 hover:text-slate-655'
-                      }`}
-                    >
-                      Biên tập nội dung
-                    </button>
-                  </div>
-
-                  {/* Content Preview & Form */}
-                  {activeSlot.content ? (
-                    <div className="space-y-4">
-                      {detailTab === 'preview' ? (
-                        <div className="space-y-4">
-                          {/* Realistic Facebook Post Preview */}
-                          <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden font-sans text-left">
-                            {/* Post Header */}
-                            <div className="p-3.5 flex items-center gap-2.5">
-                              <div className="h-9 w-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-650 font-bold select-none shrink-0">
-                                {campaignDetail?.campaign?.title?.slice(0, 2).toUpperCase() || 'FB'}
-                              </div>
-                              <div>
-                                <span className="block text-xs font-bold text-slate-800 hover:underline cursor-pointer">
-                                  {campaignDetail?.campaign?.title || 'Trang Facebook'}
-                                </span>
-                                <span className="flex items-center gap-1 text-[10px] text-slate-400 select-none">
-                                  {new Intl.DateTimeFormat('vi-VN', {
-                                    timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
-                                    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-                                  }).format(new Date(activeSlot.scheduledAt))}
-                                  &nbsp;·&nbsp;🌐
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Post Title & Text Body */}
-                            <div className="px-3.5 pb-3 text-xs text-slate-800 leading-relaxed font-sans">
-                              {editTitle && (
-                                <h5 className="font-bold text-slate-900 mb-1.5">{editTitle}</h5>
-                              )}
-                              <div className="whitespace-pre-wrap">{editBody || 'Chưa có nội dung...'}</div>
-                            </div>
-
-                            {/* Post Media */}
-                            {activeSlot.content.mediaUrls && activeSlot.content.mediaUrls.length > 0 && (
-                              <div className="relative border-t border-b border-slate-100 bg-slate-950 aspect-video flex items-center justify-center">
-                                {activeSlot.content.mediaType === 'video' ? (
-                                  <video src={activeSlot.content.mediaUrls[0]} controls className="w-full h-full object-contain" />
-                                ) : (
-                                  <img src={activeSlot.content.mediaUrls[0]} alt="Facebook Post Media" className="w-full h-full object-contain" />
-                                )}
-                              </div>
-                            )}
-
-                            {/* FB Stats Mock */}
-                            <div className="px-3.5 py-2 flex items-center justify-between border-b border-slate-100 text-[10px] text-slate-400 select-none">
-                              <div className="flex items-center gap-1">
-                                <span className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[8px] font-bold">👍</span>
-                                <span>0</span>
-                              </div>
-                              <div className="flex gap-2">
-                                <span>0 bình luận</span>
-                                <span>0 lượt chia sẻ</span>
-                              </div>
-                            </div>
-
-                            {/* FB Action Buttons Mock */}
-                            <div className="px-1 py-1 grid grid-cols-3 gap-1 text-slate-500 font-bold text-[10px] select-none">
-                              <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1.5 transition cursor-pointer">
-                                👍 Thích
-                              </button>
-                              <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1.5 transition cursor-pointer">
-                                💬 Bình luận
-                              </button>
-                              <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1.5 transition cursor-pointer">
-                                ➡️ Chia sẻ
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="rounded-xl bg-indigo-50/50 border border-indigo-100/50 p-3.5 text-[11px] text-slate-600 leading-relaxed flex gap-2">
-                            <span>📢</span>
-                            <span>Đây là giao diện xem trước bài đăng thực tế của bạn trên mạng xã hội Facebook.</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {/* Media Display and Replacement */}
-                          {activeSlot.content.mediaUrls && activeSlot.content.mediaUrls.length > 0 ? (
-                            <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-black aspect-video flex items-center justify-center">
-                              {activeSlot.content.mediaType === 'video' ? (
-                                <video src={activeSlot.content.mediaUrls[0]} controls className="w-full h-full object-contain" />
-                              ) : (
-                                <>
-                                  <img src={activeSlot.content.mediaUrls[0]} alt="Post Media" className="w-full h-full object-contain" />
-                                  {['pending_approval', 'verifying', 'needs_attention', 'failed'].includes(activeSlot.status) && (
-                                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent flex justify-end">
-                                      <label className="flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition shadow-sm select-none">
-                                        <Upload size={12} />
-                                        Thay ảnh của bạn
-                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageReplacement} disabled={isReplacingImage} />
-                                      </label>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                              {isReplacingImage && (
-                                <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center space-y-1.5">
-                                  <Loader2 size={20} className="animate-spin text-indigo-600" />
-                                  <span className="text-[10px] font-bold text-slate-500 font-mono">ĐANG TẢI ẢNH LÊN...</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            // Upload trigger when no media is present
-                            ['pending_approval', 'verifying', 'needs_attention', 'failed'].includes(activeSlot.status) && (
-                              <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 flex flex-col items-center justify-center text-center">
-                                <Image className="text-slate-300 mb-1.5" size={24} />
-                                <span className="text-[10px] text-slate-400 font-semibold mb-2">Chưa có ảnh — AI chưa tạo hoặc bạn muốn dùng ảnh riêng</span>
-                                <label className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition select-none">
-                                  <Upload size={13} />
-                                  Tải ảnh của bạn lên
-                                  <input type="file" accept="image/*" className="hidden" onChange={handleImageReplacement} disabled={isReplacingImage} />
-                                </label>
-                                {isReplacingImage && <Loader2 size={13} className="animate-spin text-indigo-600 mt-2" />}
-                              </div>
-                            )
-                          )}
-
-                          {/* Content Form Editor */}
-                          <div className="space-y-3.5">
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1 select-none">Tiêu đề bài viết (Nếu có)</label>
-                              <input
-                                type="text"
-                                value={editTitle}
-                                onChange={(e) => setEditTitle(e.target.value)}
-                                disabled={activeSlot.status !== 'pending_approval'}
-                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-800 disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs"
-                                placeholder="Nhập tiêu đề bài đăng..."
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1 select-none">Nội dung bài viết</label>
-                              <textarea
-                                rows={10}
-                                value={editBody}
-                                onChange={(e) => setEditBody(e.target.value)}
-                                disabled={activeSlot.status !== 'pending_approval'}
-                                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-normal text-slate-850 leading-relaxed disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs font-sans whitespace-pre-wrap"
-                                placeholder="Nhập nội dung bài đăng..."
-                              />
-                            </div>
-
-                            {activeSlot.status === 'pending_approval' && (
-                              <div className="flex justify-end pt-1">
-                                <button
-                                  type="button"
-                                  disabled={isSavingContent}
-                                  onClick={handleSaveContent}
-                                  className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-55"
-                                >
-                                  {isSavingContent ? <Loader2 size={13} className="animate-spin" /> : null}
-                                  Lưu thay đổi
-                                </button>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* AI Prompts and Outline Info */}
-                          <div className="pt-3 border-t border-slate-150 space-y-2.5 bg-slate-50/50 p-3 rounded-xl">
-                            {activeSlot.content.mediaPrompt && (
-                              <div>
-                                <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Ý tưởng hình ảnh (Media Prompt)</span>
-                                <p className="text-[11px] text-slate-605 mt-0.5 leading-relaxed font-sans">{activeSlot.content.mediaPrompt}</p>
-                              </div>
-                            )}
-                            {activeSlot.content.outline && (
-                              <div>
-                                <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Dàn ý bài viết (Outline)</span>
-                                <p className="text-[11px] text-slate-650 mt-0.5 leading-relaxed font-sans">{activeSlot.content.outline}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-16 text-center bg-white border border-slate-150 rounded-2xl p-5 shadow-2xs">
-                      <Image size={24} className="text-slate-350 mb-2 animate-pulse" />
-                      <span className="text-[11px] text-slate-500 font-bold">Chưa tạo nội dung chi tiết</span>
-                      <p className="text-[10px] text-slate-450 mt-1 max-w-[220px] leading-relaxed">Hệ thống sẽ tự động sinh nội dung hoàn chỉnh gần thời điểm đăng bài.</p>
-                    </div>
-                  )}
-
-                </div>
-              )}
-
-            </div>
-          ) : (
+              </>
+            ) : (
             <div className="text-center py-10 text-slate-400 font-sans">Không có thông tin chi tiết.</div>
           )}
         </div>

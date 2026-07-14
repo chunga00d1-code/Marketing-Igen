@@ -73,7 +73,8 @@ export const facebookPostService = {
     title?: string,
     callbackUrl?: string,
     idempotencyKey?: string,
-    forceRetry?: boolean
+    forceRetry?: boolean,
+    mediaUrls?: string[]
   ) {
     const webhookUrl = idempotencyKey
       ? (process.env.N8N_CAMPAIGN_FB_WEBHOOK_URL || process.env.N8N_FB_WEBHOOK_URL)
@@ -119,6 +120,7 @@ export const facebookPostService = {
           content,
           mediaType,
           mediaUrl,
+          mediaUrls: mediaUrls || [],
           pageId,
           accessToken,
           callbackUrl: finalCallbackUrl,

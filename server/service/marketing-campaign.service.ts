@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import jwt from "jsonwebtoken";
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
@@ -8,6 +9,7 @@ import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slo
 import { buildCampaignSchedule } from "./marketing-campaign-schedule.service";
 import { geminiService } from "./gemini.service";
 import { API_COSTS } from "./wallet.service";
+import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
 
 interface CreateCampaignInput {
   sourceBrief: string;
@@ -27,6 +29,8 @@ interface CreateCampaignInput {
   images?: string[];
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
+  imageMode?: "ai" | "real";
+  googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   rules?: {
     requiredCta?: string;
@@ -98,40 +102,125 @@ export const marketingCampaignService = {
     }
     await validateIntegrations(companyCode, input.platforms, input.integrationIds);
 
-    const researchReport = await geminiService.conductWebResearch(input.sourceBrief);
+    const imageMode = input.imageMode || "ai";
+    const googleDriveFolderUrl = input.googleDriveFolderUrl || "";
 
-    const strategy = await geminiService.generateScheduledCampaign({
-      prompt: input.sourceBrief,
-      startDate: input.startDate,
-      endDate: input.endDate,
-      postsPerDay: input.postsPerDay,
-      postingTimes: input.postingTimes,
-      channels: input.platforms,
-      images: input.images,
-      customSchedule: input.customSchedule,
-      researchReport,
-      rules: input.rules,
-    });
-    if (strategy.slots.length !== schedule.length) {
-      throw new Error(`AI trả về ${strategy.slots.length}/${schedule.length} slot chiến dịch.`);
+    let researchReport = "";
+    let strategy: {
+      campaignTitle: string;
+      contentPillars: string[];
+      slots: Array<{
+        pillar: string;
+        objective: string;
+        topicBrief: string;
+        mediaType: "text" | "image" | "video" | "human-video";
+        customBodyText?: string;
+        realImageDriveUrls?: string[];
+        realImageDirectUrls?: string[];
+      }>;
+    };
+
+    if (imageMode === "real") {
+      if (!googleDriveFolderUrl) {
+        throw new Error("Vui lòng điền đường dẫn thư mục Google Drive khi chọn chế độ ảnh thật.");
+      }
+      
+      const files = await listGoogleDriveFolderFiles(googleDriveFolderUrl);
+      if (files.length === 0) {
+        throw new Error("Không tìm thấy tệp tin hình ảnh hoặc video nào trong thư mục Google Drive. Vui lòng kiểm tra lại quyền truy cập hoặc định dạng file.");
+      }
+      
+      const grouped = groupDriveFiles(files);
+      
+      researchReport = "Sử dụng kho ảnh thật từ thư mục Google Drive.";
+      strategy = {
+        campaignTitle: input.sourceBrief.trim() || `Chiến dịch ảnh thật - ${input.startDate}`,
+        contentPillars: ["Ảnh thật", "Sản phẩm", "Feedback"],
+        slots: schedule.map((scheduledSlot, index) => {
+          const postIndex = index + 1;
+          const postFiles = grouped[postIndex] || [];
+          
+          if (postFiles.length === 0) {
+            throw new Error(
+              `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
+            );
+          }
+          
+          const hasVideo = postFiles.some((f) => f.isVideo);
+          const mediaType = hasVideo ? "video" : "image";
+          
+          const realImageDriveUrls = postFiles.map((f) => `https://drive.google.com/file/d/${f.id}/view`);
+          const realImageDirectUrls = postFiles.map((f) => f.directUrl);
+          const topicBrief = `Bài đăng thứ ${postIndex} sử dụng tư liệu ảnh thật từ Drive`;
+          const customBodyText = ""; // AI Copywriter will generate caption based on prompt
+
+          return {
+            pillar: "Sản phẩm",
+            objective: "Brand Awareness",
+            topicBrief,
+            mediaType,
+            customBodyText,
+            realImageDriveUrls,
+            realImageDirectUrls,
+          };
+        }),
+      };
+    } else {
+      researchReport = await geminiService.conductWebResearch(input.sourceBrief);
+      const aiStrategy = await geminiService.generateScheduledCampaign({
+        prompt: input.sourceBrief,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        postsPerDay: input.postsPerDay,
+        postingTimes: input.postingTimes,
+        channels: input.platforms,
+        images: input.images,
+        customSchedule: input.customSchedule,
+        researchReport,
+        rules: input.rules,
+      });
+
+      if (aiStrategy.slots.length !== schedule.length) {
+        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
+      }
+
+      strategy = {
+        campaignTitle: aiStrategy.campaignTitle,
+        contentPillars: aiStrategy.contentPillars,
+        slots: aiStrategy.slots,
+      };
     }
 
     const isBudget = input.qualityMode === "budget";
-    const pPlan = API_COSTS.CAMPAIGN_STRATEGY;
-    const pResearch = API_COSTS.CAMPAIGN_RESEARCH;
-    const pContent = isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
-
+    const pPlan = imageMode === "real" ? 0 : API_COSTS.CAMPAIGN_STRATEGY;
+    const pResearch = imageMode === "real" ? 0 : API_COSTS.CAMPAIGN_RESEARCH;
+    
+    let totalContentCost = 0;
     let totalMediaCost = 0;
-    strategy.slots.forEach((brief: { mediaType?: string }) => {
+
+    strategy.slots.forEach((brief) => {
       const type = brief.mediaType;
-      if (type === "image") {
-        totalMediaCost += isBudget ? API_COSTS.CAMPAIGN_IMAGE_BUDGET : API_COSTS.CAMPAIGN_IMAGE_PREMIUM;
-      } else if (type === "video" || type === "human-video") {
-        totalMediaCost += isBudget ? API_COSTS.CAMPAIGN_VIDEO_BUDGET : API_COSTS.CAMPAIGN_VIDEO_PREMIUM;
+      
+      // Calculate content write cost (only charge if AI Copywriter needs to generate copy)
+      if (imageMode === "real") {
+        if (!brief.customBodyText) {
+          totalContentCost += isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
+        }
+      } else {
+        totalContentCost += isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
+      }
+
+      // Calculate media cost (always 0 for real image mode)
+      if (imageMode === "ai") {
+        if (type === "image") {
+          totalMediaCost += isBudget ? API_COSTS.CAMPAIGN_IMAGE_BUDGET : API_COSTS.CAMPAIGN_IMAGE_PREMIUM;
+        } else if (type === "video" || type === "human-video") {
+          totalMediaCost += isBudget ? API_COSTS.CAMPAIGN_VIDEO_BUDGET : API_COSTS.CAMPAIGN_VIDEO_PREMIUM;
+        }
       }
     });
 
-    const estimatedCost = pPlan + (schedule.length * (pResearch + pContent)) + totalMediaCost;
+    const estimatedCost = pPlan + (schedule.length * pResearch) + totalContentCost + totalMediaCost;
 
     const campaign = await MarketingCampaignModel.create({
       companyCode,
@@ -156,6 +245,8 @@ export const marketingCampaignService = {
       contentPillars: strategy.contentPillars,
       qualityMode: input.qualityMode || "premium",
       publishMode: input.publishMode || "manual",
+      imageMode,
+      googleDriveFolderUrl,
       customSchedule: input.customSchedule,
       rules: input.rules || {},
       statistics: { totalSlots: schedule.length, publishedSlots: 0, failedSlots: 0, estimatedCost, actualCost: 0 },
@@ -177,6 +268,9 @@ export const marketingCampaignService = {
           objective: brief.objective,
           topicBrief: brief.topicBrief,
           mediaType: brief.mediaType,
+          realImageDriveUrls: brief.realImageDriveUrls || [],
+          realImageDirectUrls: brief.realImageDirectUrls || [],
+          customBodyText: brief.customBodyText,
           status: "planned",
           attemptCount: 0,
           publishIdempotencyKey: `${campaign._id}:${index}:${scheduledSlot.platform}`,
@@ -394,5 +488,169 @@ export const marketingCampaignService = {
     );
     if (!content) throw new Error("Không tìm thấy nội dung bài viết.");
     return content;
+  },
+
+  async generateShareLink(companyCode: string, campaignId: string, slotId: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+      throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
+    }
+    const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
+    if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+    
+    // Sign token valid for 30 days
+    const token = jwt.sign(
+      { slotId, campaignId, companyCode },
+      process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key",
+      { expiresIn: "30d" }
+    );
+    
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    if (baseUrl.endsWith("/")) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    
+    return { shareLink: `${baseUrl}/approve-post?token=${token}` };
+  },
+
+  async getPublicSlotDetail(token: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { slotId: string; campaignId: string; companyCode: string };
+
+      if (!decoded.slotId || !decoded.campaignId || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: decoded.slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      const campaign = await MarketingCampaignModel.findOne({
+        _id: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+
+      let content = null;
+      if (slot.marketingContentId) {
+        content = await MarketingContentModel.findOne({
+          _id: slot.marketingContentId,
+          companyCode: decoded.companyCode,
+        });
+      }
+
+      return { slot, content, campaign };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
+    }
+  },
+
+  async executePublicSlotAction(token: string, action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { slotId: string; campaignId: string; companyCode: string };
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: decoded.slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (slot.status !== "pending_approval") {
+        throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
+      }
+
+      if (action === "approve") {
+        slot.status = "ready_to_publish";
+        slot.approvedBy = "External Reviewer";
+        slot.approvedAt = new Date();
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "ready_to_publish",
+          reason: "Approved by external reviewer via public link",
+          at: new Date(),
+        });
+      } else if (action === "reject") {
+        slot.status = "needs_attention";
+        slot.lastError = {
+          type: "validation",
+          message: reason || "Từ chối bởi người duyệt bên ngoài.",
+          occurredAt: new Date(),
+        };
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "needs_attention",
+          reason: `Rejected by external reviewer: ${reason || "Không có lý do."}`,
+          at: new Date(),
+        });
+      } else {
+        throw new Error("Thao tác không hợp lệ.");
+      }
+
+      await slot.save();
+      return slot;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác phê duyệt thất bại.");
+    }
+  },
+
+  async rejectSlot(companyCode: string, campaignId: string, slotId: string, reason: string, rejectedBy: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+      throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
+    }
+    const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
+    if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+    if (slot.status !== "pending_approval") {
+      throw new Error(`Slot không thể được từ chối ở trạng thái này: ${slot.status}`);
+    }
+
+    slot.status = "needs_attention";
+    slot.lastError = {
+      type: "validation",
+      message: reason,
+      occurredAt: new Date(),
+    };
+    slot.transitions.push({
+      from: "pending_approval",
+      to: "needs_attention",
+      reason: `Rejected by ${rejectedBy}: ${reason}`,
+      at: new Date(),
+    });
+
+    await slot.save();
+    return slot;
+  },
+
+  async previewDrive(googleDriveFolderUrl: string) {
+    if (!googleDriveFolderUrl) {
+      throw new Error("Vui lòng cung cấp đường dẫn thư mục Google Drive.");
+    }
+    const files = await listGoogleDriveFolderFiles(googleDriveFolderUrl);
+    if (!files.length) {
+      return [];
+    }
+    return files
+      .filter((file) => {
+        const name = file.name.toLowerCase();
+        return /\.(jpg|jpeg|png|webp|gif|heic|mp4|mov|avi|webm)$/.test(name);
+      })
+      .map((file) => {
+        const name = file.name.toLowerCase();
+        const isVideo = /\.(mp4|mov|avi|webm)$/.test(name);
+        const directUrl = getGoogleDriveDirectLink(file.id, isVideo ? "video" : "image");
+        return {
+          id: file.id,
+          name: file.name,
+          directUrl,
+          isVideo,
+        };
+      });
   }
 };

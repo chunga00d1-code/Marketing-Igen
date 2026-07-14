@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles } from 'lucide-react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
-import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
+import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
 import CustomTimePicker from '../common/CustomTimePicker';
 import CampaignPromptBox from './CampaignPromptBox';
@@ -44,6 +44,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
   const qualityMode = 'premium';
   const [publishMode, setPublishMode] = useState<'auto' | 'manual'>('manual');
+  const [imageMode, setImageMode] = useState<'ai' | 'real'>('ai');
+  const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState('');
+  const [drivePreviews, setDrivePreviews] = useState<DriveFileItem[]>([]);
+  const [loadingPreviews, setLoadingPreviews] = useState(false);
 
   // Cleanup customSchedule when date range changes
   useEffect(() => {
@@ -85,6 +89,21 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [campaignDetail, setCampaignDetail] = useState<{ campaign: MarketingCampaignSummary; slots: CampaignSlot[] } | null>(null);
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+    confirmText?: string;
+    cancelText?: string;
+    isDangerous?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const filteredCampaigns = useMemo(() => {
     if (filterStatus === 'all') return campaigns;
@@ -388,8 +407,30 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setPostingTimes((current) => Array.from({ length: value }, (_, index) => current[index] || `${String(9 + index * 3).padStart(2, '0')}:00`));
   };
 
+  const handlePreviewDrive = async () => {
+    if (!googleDriveFolderUrl.trim()) {
+      toast.warning('Vui lòng điền link thư mục Google Drive công khai trước.');
+      return;
+    }
+    setLoadingPreviews(true);
+    try {
+      const files = await marketingCampaignService.previewDrive(googleDriveFolderUrl.trim());
+      setDrivePreviews(files);
+      if (files.length === 0) {
+        toast.error('Không tìm thấy ảnh hoặc video nào trong thư mục Google Drive. Vui lòng kiểm tra quyền chia sẻ công khai.');
+      } else {
+        toast.success(`Đã quét thấy và kết nối thành công ${files.length} ảnh/video.`);
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể quét thư mục Google Drive. Vui lòng kiểm tra lại đường dẫn.');
+    } finally {
+      setLoadingPreviews(false);
+    }
+  };
+
   const handleCreateCampaign = async () => {
     if (!prompt.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
+    if (imageMode === 'real' && !googleDriveFolderUrl.trim()) return toast.warning('Vui lòng điền link thư mục Google Drive công khai.');
     if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
     if (!integrationId && !hasPersonalFacebook) {
@@ -399,7 +440,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setLoading(true);
     try {
       const brief = buildSourceBriefContext();
-      const imagesParam = uploadedImageBase64 ? [uploadedImageBase64] : undefined;
+      const imagesParam = imageMode === 'real' ? undefined : (uploadedImageBase64 ? [uploadedImageBase64] : undefined);
 
       const result = await marketingCampaignService.create({
         sourceBrief: brief,
@@ -413,6 +454,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         candidateCount: 1, // Single-Render Flow
         qualityMode,
         publishMode,
+        imageMode,
+        googleDriveFolderUrl: imageMode === 'real' ? googleDriveFolderUrl.trim() : undefined,
         mediaPolicy: 'auto',
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
@@ -422,24 +465,21 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setUploadedDocName('');
       setUploadedDocText('');
       setUploadedImageBase64('');
+      setGoogleDriveFolderUrl('');
+      setDrivePreviews([]);
+      setImageMode('ai');
       setCustomSchedule({});
       setShowCustomSchedule(false);
       toast.success(`Đã khởi chạy chiến dịch “${result.campaign.title}” với ${result.campaign.statistics.totalSlots} slot.`);
       void loadCampaigns(1);
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Không thể tạo chiến dịch tự động.');
+      toast.error(error instanceof Error ? error.message : 'Không thể tạo chiến dịch.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLifecycle = async (campaign: MarketingCampaignSummary, action: 'pause' | 'resume' | 'cancel') => {
-    if (action === 'cancel') {
-      const isConfirmed = window.confirm(
-        `Bạn có chắc chắn muốn hủy chiến dịch "${campaign.title}" không? Tất cả các lịch bài đăng dự kiến chưa hoàn thành sẽ bị hủy bỏ.`
-      );
-      if (!isConfirmed) return;
-    }
+  const executeLifecycle = async (campaign: MarketingCampaignSummary, action: 'pause' | 'resume' | 'cancel') => {
     try {
       const updated = await marketingCampaignService.lifecycle(campaign._id, action);
       setCampaigns((current) => current.map((item) => item._id === updated._id ? updated : item));
@@ -449,19 +489,77 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     }
   };
 
+  const handleLifecycle = async (campaign: MarketingCampaignSummary, action: 'pause' | 'resume' | 'cancel') => {
+    if (action === 'cancel') {
+      setConfirmConfig({
+        isOpen: true,
+        title: 'Hủy chiến dịch',
+        message: `Bạn có chắc chắn muốn hủy chiến dịch "${campaign.title}" không? Tất cả các lịch bài đăng dự kiến chưa hoàn thành sẽ bị hủy bỏ.`,
+        isDangerous: true,
+        confirmText: 'Xác nhận hủy',
+        cancelText: 'Quay lại',
+        onConfirm: async () => {
+          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+          await executeLifecycle(campaign, action);
+        }
+      });
+      return;
+    }
+    await executeLifecycle(campaign, action);
+  };
+
   const statusLabel: Record<CampaignStatus, string> = {
     draft: 'Bản nháp', active: 'Đang chạy', paused: 'Tạm dừng', completed: 'Hoàn thành', cancelled: 'Đã hủy', failed: 'Có lỗi',
   };
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
-        <div className="mb-5 flex items-start gap-3">
-          <div className="rounded-xl bg-indigo-50 p-2.5 text-indigo-600"><Sparkles size={20} /></div>
+      <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+          <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600"><Sparkles size={16} /></div>
           <div>
-            <h2 className="text-base font-extrabold text-slate-850">Tạo chiến dịch tự động từ một prompt</h2>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">AI viết nội dung cho từng ngày, lưu thành bài duyệt và đăng ký lịch tự động lên Facebook.</p>
+            <h2 className="text-sm font-extrabold text-slate-850">Tạo chiến dịch tự động</h2>
+            <p className="mt-0.5 text-[10px] text-slate-400">AI tự động viết nội dung, tạo ảnh minh họa và chuẩn bị lịch đăng bài Facebook.</p>
           </div>
+        </div>
+
+        <div className="mt-3 mb-4">
+          <label className="mb-1.5 block text-xs font-bold text-slate-700">Nguồn tư liệu & Hình ảnh</label>
+          <div className="flex p-1 bg-slate-100 rounded-xl max-w-md">
+            <button
+              type="button"
+              onClick={() => {
+                setImageMode('ai');
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
+                imageMode === 'ai'
+                  ? 'bg-white text-slate-850 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-850'
+              }`}
+            >
+              <Sparkles size={13} className={imageMode === 'ai' ? 'text-indigo-600' : ''} />
+              <span>Hình ảnh sinh từ AI</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setImageMode('real');
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
+                imageMode === 'real'
+                  ? 'bg-white text-slate-850 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-850'
+              }`}
+            >
+              <FolderOpen size={13} className={imageMode === 'real' ? 'text-indigo-600' : ''} />
+              <span>Kho Ảnh thật (Drive)</span>
+            </button>
+          </div>
+          <p className="mt-1.5 text-[10px] text-slate-400">
+            {imageMode === 'ai'
+              ? 'AI tự nghiên cứu chủ đề, viết bài và vẽ ảnh minh họa phù hợp.'
+              : 'Quét toàn bộ ảnh/video từ một thư mục Google Drive công khai.'}
+          </p>
         </div>
 
         <label className="mb-2 block text-xs font-bold text-slate-700">Mục tiêu và brief chiến dịch</label>
@@ -485,58 +583,226 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           }}
         />
 
-        <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="text-xs font-bold text-slate-700">Ngày bắt đầu
-            <input type="date" min={today} value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" />
-          </label>
-          <label className="text-xs font-bold text-slate-700">Ngày kết thúc
-            <input type="date" min={startDate || today} value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-normal" />
-          </label>
-        </div>
-
-        <div className="mt-5">
-          <label className="mb-2 block text-xs font-bold text-slate-700">Số bài mỗi ngày</label>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((value) => <button type="button" key={value} onClick={() => changePostsPerDay(value)} className={`h-9 w-10 rounded-lg border text-xs font-bold ${postsPerDay === value ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>{value}</button>)}
-          </div>
-        </div>
-
-        <div className="mt-5 flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-4">
-          <div className="pr-4">
-            <label className="text-xs font-bold text-slate-800">Tự động hóa xuất bản (Auto-Publish)</label>
-            <p className="mt-1 text-[11px] text-slate-400 leading-normal">
-              Khi bật, hệ thống sẽ tự động duyệt chất lượng và đăng bài viết lên mạng xã hội theo lịch hẹn mà không cần thao tác duyệt tay thủ công.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-              publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                publishMode === 'auto' ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-5">
-          {postingTimes.map((time, index) => (
-            <div key={index} className="flex flex-col">
-              <span className="text-[11px] font-bold text-slate-600">Giờ bài {index + 1}</span>
-              <CustomTimePicker
-                value={time}
-                onChange={(newTime) =>
-                  setPostingTimes((current) =>
-                    current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
-                  )
-                }
-              />
+        {imageMode === 'real' && (
+          <div className="mt-3.5 space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-bold text-slate-700">Đường dẫn thư mục Google Drive công khai</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="https://drive.google.com/drive/folders/..."
+                  value={googleDriveFolderUrl}
+                  onChange={(e) => setGoogleDriveFolderUrl(e.target.value)}
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-850 placeholder:text-slate-450 focus:border-indigo-600 focus:outline-hidden"
+                />
+                <button
+                  type="button"
+                  onClick={handlePreviewDrive}
+                  disabled={loadingPreviews || !googleDriveFolderUrl}
+                  className="rounded-xl bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-all shrink-0"
+                >
+                  {loadingPreviews ? (
+                    <Loader2 size={14} className="animate-spin text-indigo-600" />
+                  ) : (
+                    <FolderOpen size={14} />
+                  )}
+                  <span>Quét ảnh</span>
+                </button>
+              </div>
             </div>
-          ))}
+
+            <div className="rounded-lg bg-amber-50/60 border border-amber-200/40 p-2.5 text-[10px] leading-relaxed text-amber-850 font-medium">
+              <p className="font-bold mb-0.5">💡 Quy tắc đặt tên file trong thư mục Drive:</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>Đặt link Drive ở chế độ <strong className="text-amber-900 font-bold">"Bất kỳ ai có liên kết đều có thể xem"</strong>.</li>
+                <li>Bài viết đơn: chứa số thứ tự bài (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">2.mp4</code>).</li>
+                <li>Bài viết nhiều hình (Album): chứa số thứ tự và gạch dưới (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">3_1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">3_2.png</code>).</li>
+              </ul>
+            </div>
+
+            {drivePreviews.length > 0 && (
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Tư liệu đã quét ({drivePreviews.length} tệp)</span>
+                  <button
+                    type="button"
+                    onClick={() => setDrivePreviews([])}
+                    className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
+                  >
+                    Xóa xem trước
+                  </button>
+                </div>
+                
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200">
+                  {drivePreviews.map((file) => {
+                    const hasNumber = /\d+/.test(file.name);
+                    return (
+                      <div
+                        key={file.id}
+                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white group shadow-xs ${
+                          hasNumber ? "border-slate-200" : "border-red-300 ring-1 ring-red-300"
+                        }`}
+                      >
+                        {file.isVideo ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 text-white select-none">
+                            <span className="text-[9px] font-bold uppercase text-red-500 font-mono">Video</span>
+                            <span className="mt-0.5 max-w-full truncate px-1 text-[7px] text-slate-400">{file.name}</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={file.directUrl}
+                            alt={file.name}
+                            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                            loading="lazy"
+                          />
+                        )}
+                        {!hasNumber && (
+                          <div
+                            className="absolute top-0.5 right-0.5 h-4.5 w-4.5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold shadow-sm select-none"
+                            title="Tên file thiếu số thứ tự (Ví dụ: 1.jpg, 2_1.jpg)"
+                          >
+                            ⚠️
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-0.5 justify-center">
+                          <span className="text-[7px] text-white truncate max-w-full font-medium">{file.name}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Warning details for invalid file names */}
+                {drivePreviews.some((file) => !/\d+/.test(file.name)) && (
+                  <div className="rounded-lg border border-red-200 bg-red-50/75 p-3 text-[10.5px] leading-relaxed text-red-800 font-medium space-y-1">
+                    <span className="font-bold flex items-center gap-1 text-red-900">
+                      ⚠️ Tên tệp không hợp lệ (Không chứa số thứ tự bài đăng):
+                    </span>
+                    <p className="text-[10px] text-red-700">
+                      Các tệp dưới đây sẽ bị bỏ qua vì hệ thống không xác định được thứ tự đăng bài tương ứng. Vui lòng đổi tên tệp trên Google Drive (ví dụ: thêm số thứ tự như <code className="bg-red-100/50 px-1 rounded font-bold">1_product.jpg</code>) và quét lại.
+                    </p>
+                    <ul className="list-disc pl-4 space-y-0.5 text-red-800 font-mono max-h-32 overflow-y-auto mt-1.5">
+                      {drivePreviews
+                        .filter((file) => !/\d+/.test(file.name))
+                        .map((file) => (
+                          <li key={file.id} className="truncate" title={file.name}>
+                            {file.name}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="mt-4 border-t border-slate-150 pt-4">
+          <h3 className="text-xs font-bold text-slate-850 uppercase tracking-wider mb-3">Cấu hình lịch chạy</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Left Column: Dates & Count & Channel */}
+            <div className="space-y-4.5">
+              <div className="grid grid-cols-2 gap-2.5">
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                  Ngày bắt đầu
+                  <input
+                    type="date"
+                    min={today}
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
+                  />
+                </label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                  Ngày kết thúc
+                  <input
+                    type="date"
+                    min={startDate || today}
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Số bài mỗi ngày</label>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <button
+                      type="button"
+                      key={value}
+                      onClick={() => changePostsPerDay(value)}
+                      className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                        postsPerDay === value
+                          ? 'border-indigo-600 bg-indigo-600 text-white'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Facebook Page nhận lịch đăng</label>
+                <select
+                  value={integrationId}
+                  onChange={(event) => setIntegrationId(event.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden"
+                >
+                  {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
+                  {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
+                  {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
+                </select>
+              </div>
+            </div>
+
+            {/* Right Column: Auto-Publish & Posting Times */}
+            <div className="space-y-4.5">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 flex items-center justify-between gap-3">
+                <div className="flex-1">
+                  <label className="text-[11px] font-bold text-slate-700 block uppercase tracking-wide">Tự động xuất bản</label>
+                  <p className="mt-0.5 text-[10px] text-slate-400 leading-normal">
+                    AI tự duyệt & đăng bài lên Facebook mà không cần phê duyệt tay thủ công.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                    publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                      publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Khung giờ bài đăng</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {postingTimes.map((time, index) => (
+                    <div key={index} className="flex flex-col">
+                      <span className="text-[9px] font-semibold text-slate-400 uppercase">Giờ {index + 1}</span>
+                      <CustomTimePicker
+                        value={time}
+                        onChange={(newTime) =>
+                          setPostingTimes((current) =>
+                            current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
+                          )
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Detailed custom schedule editor */}
@@ -701,9 +967,18 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm('Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?')) {
-                        setCustomSchedule({});
-                      }
+                      setConfirmConfig({
+                        isOpen: true,
+                        title: 'Đặt lại lịch đăng',
+                        message: 'Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?',
+                        isDangerous: true,
+                        confirmText: 'Xác nhận xóa',
+                        cancelText: 'Quay lại',
+                        onConfirm: () => {
+                          setCustomSchedule({});
+                          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                        }
+                      });
                     }}
                     className="text-[11px] font-bold text-red-655 hover:text-red-800 flex items-center gap-1 cursor-pointer"
                   >
@@ -715,14 +990,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           )}
         </div>
 
-        <div className="mt-5">
-          <label className="mb-2 block text-xs font-bold text-slate-700">Facebook Page nhận lịch đăng</label>
-          <select value={integrationId} onChange={(event) => setIntegrationId(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm">
-            {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
-            {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
-            {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
-          </select>
-        </div>
+
 
         <button type="button" onClick={handleCreateCampaign} disabled={loading || !prompt.trim() || !dayCount || totalPosts > 450} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 cursor-pointer">
           {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
@@ -915,6 +1183,33 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           }
         }}
       />
+
+      {confirmConfig.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs select-none">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-100 bg-white p-5 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+            <h3 className="text-sm font-extrabold text-slate-850">{confirmConfig.title || 'Xác nhận'}</h3>
+            <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500">{confirmConfig.message}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 cursor-pointer transition-colors"
+              >
+                {confirmConfig.cancelText || 'Hủy bỏ'}
+              </button>
+              <button
+                type="button"
+                onClick={confirmConfig.onConfirm}
+                className={`rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer transition-colors ${
+                  confirmConfig.isDangerous ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+              >
+                {confirmConfig.confirmText || 'Xác nhận'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
