@@ -23,7 +23,7 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
       Facebook: { type: Schema.Types.ObjectId, ref: "SocialIntegration" },
       TikTok: { type: Schema.Types.ObjectId, ref: "SocialIntegration" },
     },
-    candidateCount: { type: Number, min: 2, max: 5, default: 3 },
+    candidateCount: { type: Number, min: 1, max: 5, default: 3 },
     generationLeadMinutes: { type: Number, min: 15, max: 1440, default: 60 },
     verificationLeadMinutes: { type: Number, min: 5, max: 180, default: 15 },
     latePublishWindowMinutes: { type: Number, min: 0, max: 1440, default: 30 },
