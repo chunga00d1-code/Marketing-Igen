@@ -88,9 +88,10 @@ export function buildCampaignSchedule(input: {
   platforms: MarketingCampaignPlatform[];
   generationLeadMinutes: number;
   verificationLeadMinutes: number;
+  customSchedule?: Record<string, string[]>;
 }): CampaignScheduleSlotInput[] {
   const dates = enumerateDates(input.startDate, input.endDate);
-  if (dates.length > 31) throw new Error("Mỗi chiến dịch tối đa 31 ngày.");
+  if (dates.length > 90) throw new Error("Mỗi chiến dịch tối đa 90 ngày.");
   if (!Number.isInteger(input.postsPerDay) || input.postsPerDay < 1 || input.postsPerDay > 5) {
     throw new Error("Số bài mỗi ngày phải từ 1 đến 5.");
   }
@@ -102,18 +103,53 @@ export function buildCampaignSchedule(input: {
   }
   if (input.platforms.length === 0) throw new Error("Chiến dịch phải có ít nhất một nền tảng.");
 
-  const totalSlots = dates.length * input.postsPerDay;
-  if (totalSlots > 60) throw new Error("Mỗi chiến dịch tối đa 60 lượt đăng.");
+  if (input.customSchedule) {
+    for (const [date, times] of Object.entries(input.customSchedule)) {
+      if (!dates.includes(date)) {
+        throw new Error(`Ngày tùy chỉnh ${date} không nằm trong khoảng thời gian chiến dịch.`);
+      }
+      if (!Array.isArray(times)) {
+        throw new Error(`Lịch đăng của ngày ${date} phải là danh sách giờ.`);
+      }
+      if (times.length > 5) {
+        throw new Error(`Ngày ${date} chỉ được đăng tối đa 5 bài.`);
+      }
+      if (times.some((time) => !TIME_PATTERN.test(time))) {
+        throw new Error(`Giờ đăng ngày ${date} không đúng định dạng HH:MM.`);
+      }
+      if (new Set(times).size !== times.length) {
+        throw new Error(`Các khung giờ đăng ngày ${date} không được trùng nhau.`);
+      }
+    }
+  }
 
-  return dates.flatMap((date, dayIndex) => input.postingTimes.map((time, timeIndex) => {
-    const slotIndex = dayIndex * input.postsPerDay + timeIndex;
-    const scheduledAt = zonedLocalTimeToUtc(date, time, input.timezone);
-    return {
-      scheduledAt,
-      prepareAt: new Date(scheduledAt.getTime() - input.generationLeadMinutes * 60000),
-      verifyAt: new Date(scheduledAt.getTime() - input.verificationLeadMinutes * 60000),
-      platform: input.platforms[slotIndex % input.platforms.length],
-      slotIndex,
-    };
-  }));
+  let totalSlots = 0;
+  for (const date of dates) {
+    const times = input.customSchedule?.[date] || input.postingTimes;
+    totalSlots += times.length;
+  }
+
+  if (totalSlots === 0) {
+    throw new Error("Chiến dịch phải có ít nhất 1 bài đăng.");
+  }
+  if (totalSlots > 450) {
+    throw new Error("Mỗi chiến dịch tối đa 450 lượt đăng.");
+  }
+
+  let globalSlotIndex = 0;
+  return dates.flatMap((date) => {
+    const times = input.customSchedule?.[date] || input.postingTimes;
+    return times.map((time) => {
+      const scheduledAt = zonedLocalTimeToUtc(date, time, input.timezone);
+      const currentSlotIndex = globalSlotIndex;
+      globalSlotIndex += 1;
+      return {
+        scheduledAt,
+        prepareAt: new Date(scheduledAt.getTime() - input.generationLeadMinutes * 60000),
+        verifyAt: new Date(scheduledAt.getTime() - input.verificationLeadMinutes * 60000),
+        platform: input.platforms[currentSlotIndex % input.platforms.length],
+        slotIndex: currentSlotIndex,
+      };
+    });
+  });
 }

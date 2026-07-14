@@ -5,9 +5,12 @@ export type MarketingCampaignSlotStatus =
   | "planned"
   | "queued"
   | "generating"
+  | "researching"
+  | "writing"
   | "scoring"
   | "generating_media"
   | "verifying"
+  | "pending_approval"
   | "ready_to_publish"
   | "publishing"
   | "published"
@@ -23,6 +26,8 @@ export interface IMarketingCampaignSlot extends Document {
   scheduledAt: Date;
   prepareAt: Date;
   verifyAt: Date;
+  approvedBy?: string;
+  approvedAt?: Date;
   platform: MarketingCampaignPlatform;
   integrationId?: Types.ObjectId;
   pillar: string;
