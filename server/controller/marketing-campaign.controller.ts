@@ -167,4 +167,68 @@ export const marketingCampaignController = {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thay đổi ảnh slot." });
     }
   },
+
+  async getShareLink(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const result = await marketingCampaignService.generateShareLink(companyCode, req.params.id, req.params.slotId);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tạo link chia sẻ." });
+    }
+  },
+
+  async getPublicSlot(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token } = req.params;
+      if (!token) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp mã xác thực." });
+      }
+      const data = await marketingCampaignService.getPublicSlotDetail(token);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể lấy thông tin bài viết." });
+    }
+  },
+
+  async publicSlotAction(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token, action } = req.params;
+      const { reason } = req.body;
+      if (!token || !["approve", "reject"].includes(action)) {
+        return res.status(400).json({ status: "error", message: "Thao tác không hợp lệ." });
+      }
+      const data = await marketingCampaignService.executePublicSlotAction(token, action as "approve" | "reject", reason);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thực hiện phê duyệt bài viết." });
+    }
+  },
+
+  async rejectSlot(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const { reason } = req.body;
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu nhập lý do từ chối." });
+      }
+      const slot = await marketingCampaignService.rejectSlot(companyCode, req.params.id, req.params.slotId, reason, userId);
+      return res.status(200).json({ status: "success", data: slot });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể từ chối slot." });
+    }
+  },
+
+  async previewDrive(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { googleDriveFolderUrl } = req.body;
+      if (!googleDriveFolderUrl) {
+        return res.status(400).json({ status: "error", message: "Đường dẫn thư mục Google Drive không được để trống." });
+      }
+      const files = await marketingCampaignService.previewDrive(googleDriveFolderUrl);
+      return res.status(200).json({ status: "success", data: files });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải trước ảnh từ thư mục Google Drive." });
+    }
+  },
 };

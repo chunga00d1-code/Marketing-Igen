@@ -111,7 +111,8 @@ export class PublisherAgentService {
         content.title,
         undefined,
         slot.publishIdempotencyKey,
-        isRetry // bypass n8n lock on retry
+        isRetry, // bypass n8n lock on retry
+        content.mediaUrls
       );
 
       const postId = String(result.data?.id || result.data?.post_id || "").trim();

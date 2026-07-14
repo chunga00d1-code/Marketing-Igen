@@ -38,6 +38,8 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     },
     qualityMode: { type: String, enum: ["premium", "budget"], default: "premium" },
     publishMode: { type: String, enum: ["auto", "manual"], default: "manual" },
+    imageMode: { type: String, enum: ["ai", "real"], default: "ai" },
+    googleDriveFolderUrl: { type: String },
     customSchedule: { type: Schema.Types.Map, of: [String] },
     researchReport: { type: String },
     statistics: {

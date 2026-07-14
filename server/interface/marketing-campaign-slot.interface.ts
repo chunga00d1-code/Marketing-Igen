@@ -41,6 +41,9 @@ export interface IMarketingCampaignSlot extends Document {
   lockExpiresAt?: Date;
   selectedCandidateId?: Types.ObjectId;
   marketingContentId?: Types.ObjectId;
+  realImageDriveUrls?: string[];
+  realImageDirectUrls?: string[];
+  customBodyText?: string;
   publishIdempotencyKey: string;
   publishRequestedAt?: Date;
   publishedPostId?: string;

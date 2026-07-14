@@ -25,6 +25,34 @@ export interface MarketingCampaignSummary {
   createdAt: string;
 }
 
+export interface CampaignSlot {
+  _id: string;
+  pillar: string;
+  objective?: string;
+  topicBrief: string;
+  scheduledAt: string;
+  status: string;
+  errorMessage?: string;
+  publishedPostUrl?: string;
+  platform?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  marketingContentId?: string;
+  content?: MarketingContent | null;
+}
+
+export interface MarketingContent {
+  _id: string;
+  title?: string;
+  bodyText?: string;
+  outline?: string;
+  mediaPrompt?: string;
+  mediaUrls?: string[];
+  imageUrl?: string;
+  videoUrl?: string;
+  mediaType?: 'text' | 'image' | 'video';
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
@@ -58,6 +86,8 @@ export const marketingCampaignService = {
     candidateCount: number;
     qualityMode?: 'premium' | 'budget';
     publishMode?: 'auto' | 'manual';
+    imageMode?: 'ai' | 'real';
+    googleDriveFolderUrl?: string;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     images?: string[];
     customSchedule?: Record<string, string[]>;
@@ -101,4 +131,49 @@ export const marketingCampaignService = {
       body: JSON.stringify({ image: imageBase64OrUrl }),
     });
   },
+
+  getShareLink(campaignId: string, slotId: string) {
+    return request<{ shareLink: string }>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/share-link`);
+  },
+
+  rejectSlot(campaignId: string, slotId: string, reason: string) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+
+  async getPublicSlot(token: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/slots/${token}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể lấy chi tiết bài viết.');
+    return result.data as { slot: CampaignSlot; content: MarketingContent | null; campaign: MarketingCampaignSummary };
+  },
+
+  async publicSlotAction(token: string, action: 'approve' | 'reject', reason?: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/slots/${token}/${action}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể xử lý phê duyệt bài viết.');
+    return result.data;
+  },
+
+  previewDrive(googleDriveFolderUrl: string) {
+    return request<DriveFileItem[]>('/api/v1/marketing-campaigns/preview-drive', {
+      method: 'POST',
+      body: JSON.stringify({ googleDriveFolderUrl }),
+    });
+  },
 };
+
+export interface DriveFileItem {
+  id: string;
+  name: string;
+  directUrl: string;
+  isVideo: boolean;
+}

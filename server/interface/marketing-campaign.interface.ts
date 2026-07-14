@@ -32,6 +32,8 @@ export interface IMarketingCampaign extends Document {
   };
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
+  imageMode?: "ai" | "real";
+  googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   researchReport?: string;
   statistics: {

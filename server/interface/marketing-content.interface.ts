@@ -42,4 +42,5 @@ export interface IMarketingContent extends Document {
   campaignId?: string;
   campaignTitle?: string;
   campaignSlotId?: Types.ObjectId | string;
+  mediaUrls?: string[];
 }
