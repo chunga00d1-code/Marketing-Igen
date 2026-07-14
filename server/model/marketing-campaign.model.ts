@@ -13,7 +13,7 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
       default: "draft",
       index: true,
     },
-    timezone: { type: String, required: true, default: "Asia/Bangkok" },
+    timezone: { type: String, required: true, default: "Asia/Ho_Chi_Minh" },
     startDate: { type: String, required: true },
     endDate: { type: String, required: true },
     postsPerDay: { type: Number, required: true, min: 1, max: 5 },
