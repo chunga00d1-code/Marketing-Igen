@@ -452,7 +452,7 @@ export default function CampaignDetailModal({
                 )}
 
                 {/* Campaign Info Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={`grid grid-cols-1 gap-4 ${activeSlot ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
                   <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4.5">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Trạng thái</span>
                     <div className="mt-1.5 flex items-center gap-2">
@@ -488,7 +488,7 @@ export default function CampaignDetailModal({
                 </div>
 
                 {/* Expandable/Scrollable Brief Box & Research Report */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`grid grid-cols-1 gap-4 ${activeSlot ? '' : 'md:grid-cols-2'}`}>
                   <div className="rounded-xl border border-slate-150 p-4 bg-slate-50/30">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono mb-2">Định hướng chiến dịch (Source Brief)</span>
                     <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed h-48 overflow-y-auto p-3 border border-slate-100 bg-white rounded-lg">
