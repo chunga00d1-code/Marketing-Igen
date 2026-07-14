@@ -498,7 +498,7 @@ async function generateText(
 
     return res;
   } catch (error: any) {
-    const fallbackModel = process.env.FALLBACK_MODEL || "qwen/qwen-2.5-72b-instruct";
+    const fallbackModel = process.env.FALLBACK_MODEL || "qwen/qwen-3.6-flash";
     console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
 
     try {
@@ -525,16 +525,10 @@ async function generateText(
 
 export const geminiService = {
   async conductWebResearch(prompt: string): Promise<string> {
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn("[geminiService] GEMINI_API_KEY is missing. Skipping web research.");
-      return "Không có thông tin nghiên cứu từ Google do thiếu API Key.";
-    }
-
     try {
-      console.log(`[geminiService] Conducting web research with Google Search Grounding for prompt: "${prompt}"`);
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: `Bạn là một chuyên gia nghiên cứu thị trường và social listening. Hãy thực hiện tìm kiếm trên Google và các mạng xã hội để tổng hợp thông tin chi tiết về chủ đề sau:
+      console.log(`[geminiService] Conducting web research with OpenRouter for prompt: "${prompt}"`);
+      
+      const systemInstruction = `Bạn là một chuyên gia nghiên cứu thị trường và social listening. Hãy thực hiện tìm kiếm trên internet và các mạng xã hội để tổng hợp thông tin chi tiết về chủ đề sau:
 "${prompt}"
 
 Yêu cầu báo cáo bao gồm:
@@ -543,17 +537,20 @@ Yêu cầu báo cáo bao gồm:
 3. Các góc tiếp cận/nhìn nhận độc đáo từ đối thủ cạnh tranh (Competitor Angles).
 4. Đề xuất các công thức viết bài/loại hình nội dung thành công cho chủ đề này.
 
-Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, chuyên nghiệp và súc tích.`,
-        config: {
-          tools: [{ googleSearch: {} }]
-        }
+Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, chuyên nghiệp và súc tích.`;
+
+      // Sử dụng model perplexity/sonar để thực hiện tìm kiếm web thực tế trên OpenRouter.
+      // Nếu thất bại, hệ thống tự động fallback về các model text khác của OpenRouter.
+      const response = await generateText("perplexity/sonar", prompt, {
+        systemInstruction,
+        temperature: 0.5,
       });
 
       const researchText = response.text || "";
-      console.log(`[geminiService] Web research completed. Report length: ${researchText.length} characters.`);
+      console.log(`[geminiService] Web research completed via OpenRouter. Report length: ${researchText.length} characters.`);
       return researchText;
     } catch (error: any) {
-      console.error("[geminiService] Web research failed:", error);
+      console.error("[geminiService] Web research via OpenRouter failed:", error);
       return `Lỗi trong quá trình nghiên cứu tự động: ${error?.message || error}`;
     }
   },
