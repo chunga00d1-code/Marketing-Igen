@@ -1,5 +1,3 @@
-import fetch from "node-fetch";
-
 export interface DriveFileItem {
   id: string;
   name: string;
@@ -111,28 +109,107 @@ export async function fetchGoogleSheetData(sheetUrl: string): Promise<string[][]
 /**
  * Quét danh sách file từ thư mục Google Drive công khai
  */
+interface GoogleDriveFolderReference {
+  folderId: string;
+  resourceKey?: string;
+}
+
+function parseGoogleDriveFolderReference(input: string): GoogleDriveFolderReference | null {
+  const trimmed = input.trim();
+  const markdownUrl = trimmed.match(/^\[[^\]]*\]\((https?:\/\/[^)]+)\)$/)?.[1];
+  const candidate = markdownUrl || trimmed;
+
+  if (/^[\w-]{10,}$/.test(candidate)) {
+    return { folderId: candidate };
+  }
+
+  try {
+    const url = new URL(candidate);
+    if (url.hostname !== "drive.google.com") return null;
+
+    const folderId = url.pathname.match(/\/folders\/([\w-]+)/)?.[1] || url.searchParams.get("id");
+    if (!folderId || !/^[\w-]{10,}$/.test(folderId)) return null;
+
+    const resourceKey = url.searchParams.get("resourcekey") || undefined;
+    return { folderId, resourceKey };
+  } catch {
+    return null;
+  }
+}
+
+function decodeHtmlEntities(value: string): string {
+  const namedEntities: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    quot: '"',
+  };
+
+  return value.replace(/&(#(?:x[\da-f]+|\d+)|[a-z]+);/gi, (entity, code: string) => {
+    if (!code.startsWith("#")) return namedEntities[code.toLowerCase()] || entity;
+
+    const isHex = code[1]?.toLowerCase() === "x";
+    const codePoint = Number.parseInt(code.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+    return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+      ? String.fromCodePoint(codePoint)
+      : entity;
+  });
+}
+
+function extractGoogleDriveFolderFiles(html: string): Array<{ id: string; name: string }> {
+  const files = new Map<string, { id: string; name: string }>();
+  const addMatches = (regex: RegExp) => {
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(html)) !== null) {
+      const id = match[1];
+      const name = decodeHtmlEntities(match[2]).trim();
+      if (id && name && !files.has(id)) files.set(id, { id, name });
+    }
+  };
+
+  addMatches(/\{"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"/g);
+  addMatches(/id="entry-([\w-]+)"[^>]*>[\s\S]*?<div class="flip-entry-title">([^<]+)<\/div>/g);
+  addMatches(/data-id="([\w-]+)"[^>]*>[\s\S]{0,2000}?<strong[^>]*class="[^"]*\bDNoYtb\b[^"]*"[^>]*>([^<]+)<\/strong>/g);
+  addMatches(/href="(?:https:\/\/drive\.google\.com)?\/file\/d\/([\w-]+)\/view[^>]*>([^<]+)/g);
+
+  return [...files.values()];
+}
+
 export async function listGoogleDriveFolderFiles(folderUrl: string): Promise<Array<{ id: string; name: string }>> {
   if (!folderUrl) throw new Error("Chưa nhập đường dẫn thư mục Google Drive.");
   
-  const match = folderUrl.match(/(?:\/folders\/|id=)([\w-]+)/);
-  if (!match || !match[1]) {
+  const reference = parseGoogleDriveFolderReference(folderUrl);
+  if (!reference) {
     throw new Error("Đường dẫn thư mục Google Drive không hợp lệ. Vui lòng kiểm tra lại.");
   }
-  const folderId = match[1];
-  const url = `https://drive.google.com/embeddedfolderview?id=${folderId}`;
+  const { folderId, resourceKey } = reference;
+  const resourceKeyQuery = resourceKey ? `&resourcekey=${encodeURIComponent(resourceKey)}` : "";
+  const embeddedUrl = `https://drive.google.com/embeddedfolderview?id=${folderId}${resourceKeyQuery}`;
+  const publicUrl = `https://drive.google.com/drive/folders/${folderId}${resourceKey ? `?resourcekey=${encodeURIComponent(resourceKey)}` : ""}`;
+  let usedPublicView = false;
   
-  const response = await fetch(url, {
+  let response = await fetch(embeddedUrl, {
     headers: {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
   });
+
+  if (!response.ok) {
+    usedPublicView = true;
+    response = await fetch(publicUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+      }
+    });
+  }
   
   if (!response.ok) {
     throw new Error(`Không thể kết nối tới Google Drive. Vui lòng đảm bảo thư mục đã được chia sẻ ở chế độ "Bất kỳ ai có liên kết đều có thể xem".`);
   }
   
   const html = await response.text();
-  const files: Array<{ id: string; name: string }> = [];
+  const files = extractGoogleDriveFolderFiles(html);
   
   // Trích xuất từ mảng JSON items trong mã nguồn của Google Drive folderview
   const itemsMatch = html.match(/"items":\s*(\[[^\]]+\])/);
@@ -162,10 +239,37 @@ export async function listGoogleDriveFolderFiles(folderUrl: string): Promise<Arr
 
   // Regex fallback 2: Tìm link HTML dạng href="/file/d/FILE_ID/view..."
   if (files.length === 0) {
-    const linkRegex = /href="\/file\/d\/([\w-]+)\/view[^>]*>([^<]+)/g;
+    const entryRegex = /id="entry-([\w-]+)"[^>]*>[\s\S]*?<div class="flip-entry-title">([^<]+)<\/div>/g;
+    let m;
+    while ((m = entryRegex.exec(html)) !== null) {
+      files.push({ id: m[1], name: m[2].trim() });
+    }
+  }
+
+  if (files.length === 0) {
+    const dataIdRegex = /data-id="([\w-]+)"[^>]*>[\s\S]{0,1200}?<strong class="DNoYtb">([^<]+)<\/strong>/g;
+    let m;
+    while ((m = dataIdRegex.exec(html)) !== null) {
+      files.push({ id: m[1], name: m[2].trim() });
+    }
+  }
+
+  if (files.length === 0) {
+    const linkRegex = /href="(?:https:\/\/drive\.google\.com)?\/file\/d\/([\w-]+)\/view[^>]*>([^<]+)/g;
     let m;
     while ((m = linkRegex.exec(html)) !== null) {
       files.push({ id: m[1], name: m[2].trim() });
+    }
+  }
+
+  if (files.length === 0 && !usedPublicView) {
+    const publicResponse = await fetch(publicUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+      }
+    });
+    if (publicResponse.ok) {
+      files.push(...extractGoogleDriveFolderFiles(await publicResponse.text()));
     }
   }
   

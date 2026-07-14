@@ -28,6 +28,7 @@ Follow these rules:
    - Ensure the image concept matches the Vietnamese post content faithfully.
    - Do NOT add unrelated objects/persons not in the brief.
 4. Voice script (voiceScript): If the post format involves video/audio, write a natural narration script in Vietnamese.
+5. Real-media grounding: If the Research Context contains a visual analysis, the caption MUST match the observed subjects, setting, visible text, and factual details. Never turn uncertain visual guesses or suggested marketing angles into product facts.
 
 JSON Output Schema:
 {

@@ -43,6 +43,23 @@ export interface IMarketingCampaignSlot extends Document {
   marketingContentId?: Types.ObjectId;
   realImageDriveUrls?: string[];
   realImageDirectUrls?: string[];
+  visualAnalysis?: {
+    fingerprint: string;
+    sourceUrls: string[];
+    summary: string;
+    subjects: string[];
+    visibleText: string[];
+    setting: string;
+    visualStyle: string;
+    mood: string;
+    factualDetails: string[];
+    marketingAngles: string[];
+    cautions: string[];
+    model: string;
+    analyzedAt: Date;
+    cost: number;
+    billedAt?: Date;
+  };
   customBodyText?: string;
   publishIdempotencyKey: string;
   publishRequestedAt?: Date;
