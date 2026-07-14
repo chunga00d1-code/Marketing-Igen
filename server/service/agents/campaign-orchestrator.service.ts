@@ -8,6 +8,47 @@ import { QcAgentService } from "./qc-agent.service";
 import { PublisherAgentService } from "./publisher-agent.service";
 import { releaseWithFailure } from "./campaign-utils";
 import { cloudinaryService } from "../cloudinary.service";
+import { API_COSTS, walletService } from "../wallet.service";
+import { VisualAnalystAgentService } from "./visual-analyst-agent.service";
+
+async function getVisualContext(
+  slot: InstanceType<typeof MarketingCampaignSlotModel>,
+  campaign: InstanceType<typeof MarketingCampaignModel>
+): Promise<string> {
+  const fingerprint = VisualAnalystAgentService.fingerprint(slot, campaign);
+  let analysis = slot.visualAnalysis;
+
+  if (!analysis || analysis.fingerprint !== fingerprint) {
+    await walletService.checkBalance(campaign.createdBy, API_COSTS.CAMPAIGN_VISION);
+    analysis = await VisualAnalystAgentService.analyze(slot, campaign);
+    slot.visualAnalysis = analysis;
+    slot.transitions.push({
+      from: slot.status,
+      to: slot.status,
+      reason: `Vision Agent đã phân tích ${analysis.sourceUrls.length} ảnh thật của slot bằng ${analysis.model}.`,
+      at: new Date(),
+    });
+    await slot.save();
+  }
+
+  if (!analysis.billedAt) {
+    await walletService.checkBalance(campaign.createdBy, analysis.cost);
+    await walletService.deductBalance(
+      campaign.createdBy,
+      analysis.cost,
+      `Phân tích ảnh thật cho slot chiến dịch ${slot._id} (Vision Analyst Agent)`
+    );
+    analysis.billedAt = new Date();
+    slot.visualAnalysis = analysis;
+    await slot.save();
+    await MarketingCampaignModel.updateOne(
+      { _id: campaign._id, companyCode: campaign.companyCode },
+      { $inc: { "statistics.actualCost": analysis.cost } }
+    );
+  }
+
+  return VisualAnalystAgentService.formatForCopywriter(analysis);
+}
 
 export class CampaignOrchestratorService {
   /**
@@ -38,12 +79,28 @@ export class CampaignOrchestratorService {
       };
 
       if (campaign.imageMode === "real") {
-        // Step A: Skip Researcher Agent and set mock status transitions
-        slot.status = "writing";
+        // Step A: Research the slot and analyze only this slot's real media
+        slot.status = "researching";
         slot.transitions.push({
           from: "generating",
+          to: "researching",
+          reason: "Researcher Agent bắt đầu thu thập bối cảnh trước khi phân tích ảnh thật của slot.",
+          at: new Date(),
+        });
+        await slot.save();
+
+        let researchContext = "";
+        let visualContext = "";
+        if (!slot.customBodyText) {
+          researchContext = await ResearcherAgentService.research(slot, campaign);
+          visualContext = await getVisualContext(slot, campaign);
+        }
+
+        slot.status = "writing";
+        slot.transitions.push({
+          from: "researching",
           to: "writing",
-          reason: "Khởi tạo nội dung viết sẵn/brief từ Google Sheet.",
+          reason: "Đã kết hợp nghiên cứu slot và phân tích ảnh thật. Copywriter Agent bắt đầu viết nội dung.",
           at: new Date(),
         });
         await slot.save();
@@ -59,8 +116,11 @@ export class CampaignOrchestratorService {
           };
         } else {
           // Let copywriter write it based on the sheet brief
-          const researchContext = "Nguồn tư liệu ảnh thật từ Google Drive và ý chính kịch bản từ Google Sheet.";
-          candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
+          candidate = await CopywriterAgentService.write(
+            slot,
+            campaign,
+            `${researchContext}\n\n${visualContext}`.trim()
+          );
         }
       } else {
         // Step A: Move to "researching" status
@@ -140,30 +200,43 @@ export class CampaignOrchestratorService {
       console.log(`[Orchestrator] Slot ${slotId} prepare phase completed. Next status: ${nextStatus}`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
+      const statusCode = typeof error === "object" && error !== null
+        ? Number((error as { statusCode?: unknown }).statusCode || 0)
+        : 0;
+      const isBudgetError = statusCode === 402;
+      const attemptsExhausted = slot.attemptCount >= 2;
+      const targetStatus = isBudgetError || attemptsExhausted ? "needs_attention" : "retrying";
+      const errorType = isBudgetError ? "budget" : attemptsExhausted ? "terminal" : "retryable";
       console.error(`[Orchestrator] Error during slot ${slotId} prepare phase:`, error);
-      // Reset to retrying to let the worker retry it
+      // Retry transient failures with a cap; budget exhaustion requires user attention.
       await MarketingCampaignSlotModel.updateOne(
         { _id: slot._id, lockId },
         {
           $set: {
-            status: "retrying",
+            status: targetStatus,
             prepareAt: new Date(Date.now() + 5 * 60000), // Retry in 5 minutes
             lockId: null,
             lockedAt: null,
             lockExpiresAt: null,
-            lastError: { type: "retryable", message: msg, occurredAt: new Date() },
+            lastError: { type: errorType, message: msg, occurredAt: new Date() },
           },
           $inc: { attemptCount: 1 },
           $push: {
             transitions: {
               from: slot.status,
-              to: "retrying",
+              to: targetStatus,
               reason: `Lỗi Prepare Phase: ${msg}`,
               at: new Date(),
             },
           },
         }
       );
+      if (isBudgetError) {
+        await MarketingCampaignModel.updateOne(
+          { _id: campaign._id, companyCode: campaign.companyCode, status: "active" },
+          { $set: { status: "paused" } }
+        );
+      }
     }
   }
 

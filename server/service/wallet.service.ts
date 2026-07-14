@@ -17,6 +17,7 @@ export const API_COSTS = {
 
   // Campaign Tiered Costs (2026 Architectural Billing)
   CAMPAIGN_RESEARCH: 1.5,
+  CAMPAIGN_VISION: 1.5,
   CAMPAIGN_STRATEGY: 2.5,
   CAMPAIGN_CONTENT_PREMIUM: 2.5,
   CAMPAIGN_CONTENT_BUDGET: 0.5,
