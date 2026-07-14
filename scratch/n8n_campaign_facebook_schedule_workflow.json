@@ -131,7 +131,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "={{ $env.N8N_WEBHOOK_SECRET || 'igen_n8n_secret_token_2026' }}" }
+            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
           ]
         },
         "sendBody": true,
@@ -178,7 +178,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "={{ $env.N8N_WEBHOOK_SECRET || 'igen_n8n_secret_token_2026' }}" }
+            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
           ]
         },
         "sendBody": true,
