@@ -193,7 +193,8 @@ export const marketingCampaignService = {
 
     const isBudget = input.qualityMode === "budget";
     const pPlan = imageMode === "real" ? 0 : API_COSTS.CAMPAIGN_STRATEGY;
-    const pResearch = imageMode === "real" ? 0 : API_COSTS.CAMPAIGN_RESEARCH;
+    const pResearch = API_COSTS.CAMPAIGN_RESEARCH;
+    const pVision = imageMode === "real" ? API_COSTS.CAMPAIGN_VISION : 0;
     
     let totalContentCost = 0;
     let totalMediaCost = 0;
@@ -220,7 +221,7 @@ export const marketingCampaignService = {
       }
     });
 
-    const estimatedCost = pPlan + (schedule.length * pResearch) + totalContentCost + totalMediaCost;
+    const estimatedCost = pPlan + (schedule.length * (pResearch + pVision)) + totalContentCost + totalMediaCost;
 
     const campaign = await MarketingCampaignModel.create({
       companyCode,
