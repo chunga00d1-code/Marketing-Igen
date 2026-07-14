@@ -57,7 +57,7 @@ async function validateIntegrations(companyCode: string, platforms: MarketingCam
 
 export const marketingCampaignService = {
   async create(companyCode: string, createdBy: string, input: CreateCampaignInput) {
-    const timezone = input.timezone || "Asia/Bangkok";
+    const timezone = input.timezone || "Asia/Ho_Chi_Minh";
     const generationLeadMinutes = input.generationLeadMinutes ?? 60;
     const verificationLeadMinutes = input.verificationLeadMinutes ?? 15;
     const schedule = buildCampaignSchedule({

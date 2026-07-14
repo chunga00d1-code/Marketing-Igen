@@ -13,7 +13,7 @@ const createSchema = {
     endDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
     postsPerDay: Joi.number().integer().min(1).max(5).required(),
     postingTimes: Joi.array().items(Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/)).min(1).max(5).required(),
-    timezone: Joi.string().max(100).default("Asia/Bangkok"),
+    timezone: Joi.string().max(100).default("Asia/Ho_Chi_Minh"),
     platforms: Joi.array().items(Joi.string().valid("Facebook", "TikTok")).min(1).required(),
     integrationIds: Joi.object({ Facebook: Joi.string().allow(""), TikTok: Joi.string().allow("") }).default({}),
     candidateCount: Joi.number().integer().min(1).max(5).default(1),
