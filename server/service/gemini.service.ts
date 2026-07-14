@@ -498,7 +498,7 @@ async function generateText(
 
     return res;
   } catch (error: any) {
-    const fallbackModel = process.env.FALLBACK_MODEL || "qwen/qwen-2.5-72b-instruct";
+    const fallbackModel = process.env.FALLBACK_MODEL || "qwen/qwen-3.6-flash";
     console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
 
     try {
