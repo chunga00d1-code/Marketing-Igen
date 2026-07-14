@@ -44,9 +44,9 @@ export default function CampaignPromptBox({
       <textarea
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
-        rows={6}
+        rows={3}
         placeholder="Ví dụ: Tạo chiến dịch 7 ngày ra mắt sản phẩm mới, tập trung vào khách hàng 25–35 tuổi, giọng văn gần gũi, mục tiêu tăng inbox..."
-        className="w-full text-left min-h-[120px] p-4 pb-2 bg-transparent text-sm outline-none resize-none"
+        className="w-full text-left min-h-[80px] p-3 pb-1.5 bg-transparent text-xs outline-none resize-none"
       />
 
       {/* Attached file chip */}

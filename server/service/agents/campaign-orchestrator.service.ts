@@ -7,6 +7,7 @@ import { MediaCreatorAgentService } from "./media-creator-agent.service";
 import { QcAgentService } from "./qc-agent.service";
 import { PublisherAgentService } from "./publisher-agent.service";
 import { releaseWithFailure } from "./campaign-utils";
+import { cloudinaryService } from "../cloudinary.service";
 
 export class CampaignOrchestratorService {
   /**
@@ -27,31 +28,67 @@ export class CampaignOrchestratorService {
     }
 
     try {
-      // Step A: Move to "researching" status
-      slot.status = "researching";
-      slot.transitions.push({
-        from: "generating",
-        to: "researching",
-        reason: "Researcher Agent bắt đầu thu thập bối cảnh và nghiên cứu từ khóa.",
-        at: new Date(),
-      });
-      await slot.save();
+      let candidate: {
+        _id?: unknown;
+        title: string;
+        bodyText: string;
+        outline?: string;
+        mediaPrompt?: string;
+        voiceScript?: string;
+      };
 
-      // Run Researcher Agent
-      const researchContext = await ResearcherAgentService.research(slot, campaign);
+      if (campaign.imageMode === "real") {
+        // Step A: Skip Researcher Agent and set mock status transitions
+        slot.status = "writing";
+        slot.transitions.push({
+          from: "generating",
+          to: "writing",
+          reason: "Khởi tạo nội dung viết sẵn/brief từ Google Sheet.",
+          at: new Date(),
+        });
+        await slot.save();
 
-      // Step B: Move to "writing" status
-      slot.status = "writing";
-      slot.transitions.push({
-        from: "researching",
-        to: "writing",
-        reason: "Copywriter Agent bắt đầu viết bài viết dựa trên kết quả nghiên cứu.",
-        at: new Date(),
-      });
-      await slot.save();
+        if (slot.customBodyText) {
+          // Use pre-written content
+          candidate = {
+            title: slot.topicBrief || "Bài đăng chiến dịch",
+            bodyText: slot.customBodyText,
+            outline: "Nội dung tự soạn thảo từ Google Sheet",
+            mediaPrompt: "Sử dụng ảnh thật Google Drive",
+            voiceScript: slot.customBodyText,
+          };
+        } else {
+          // Let copywriter write it based on the sheet brief
+          const researchContext = "Nguồn tư liệu ảnh thật từ Google Drive và ý chính kịch bản từ Google Sheet.";
+          candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
+        }
+      } else {
+        // Step A: Move to "researching" status
+        slot.status = "researching";
+        slot.transitions.push({
+          from: "generating",
+          to: "researching",
+          reason: "Researcher Agent bắt đầu thu thập bối cảnh và nghiên cứu từ khóa.",
+          at: new Date(),
+        });
+        await slot.save();
 
-      // Run Copywriter Agent (Single-Variant Content Generation)
-      const candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
+        // Run Researcher Agent
+        const researchContext = await ResearcherAgentService.research(slot, campaign);
+
+        // Step B: Move to "writing" status
+        slot.status = "writing";
+        slot.transitions.push({
+          from: "researching",
+          to: "writing",
+          reason: "Copywriter Agent bắt đầu viết bài viết dựa trên kết quả nghiên cứu.",
+          at: new Date(),
+        });
+        await slot.save();
+
+        // Run Copywriter Agent (Single-Variant Content Generation)
+        candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
+      }
 
       // Create Marketing Content
       const content = await MarketingContentModel.create({
@@ -83,7 +120,7 @@ export class CampaignOrchestratorService {
         {
           $set: {
             status: nextStatus,
-            selectedCandidateId: candidate._id,
+            selectedCandidateId: candidate._id || null,
             marketingContentId: content._id,
             lockId: null,
             lockedAt: null,
@@ -152,33 +189,87 @@ export class CampaignOrchestratorService {
     }
 
     try {
-      // Run Media Creator Agent
-      await MediaCreatorAgentService.createMedia(slot, campaign);
-
-      // Next status logic: auto -> verifying, manual -> pending_approval
       const nextStatus = campaign.publishMode === "auto" ? "verifying" : "pending_approval";
 
-      await MarketingCampaignSlotModel.updateOne(
-        { _id: slot._id, lockId },
-        {
-          $set: {
-            status: nextStatus,
-            lockId: null,
-            lockedAt: null,
-            lockExpiresAt: null,
-          },
-          $push: {
-            transitions: {
-              from: "generating_media",
-              to: nextStatus,
-              reason: `Media Creator Agent đã tạo ảnh thành công. Chuyển sang bước: ${nextStatus}.`,
-              at: new Date(),
-            },
-          },
+      if (campaign.imageMode === "real") {
+        const content = await MarketingContentModel.findOne({
+          _id: slot.marketingContentId,
+          companyCode: slot.companyCode,
+        });
+        if (content) {
+          const directUrls = slot.realImageDirectUrls || [];
+          const uploadedUrls: string[] = [];
+          
+          for (let i = 0; i < directUrls.length; i++) {
+            const directUrl = directUrls[i];
+            try {
+              // Upload Drive file directly to Cloudinary
+              const uploadedUrl = await cloudinaryService.uploadMedia(directUrl, `campaign_${campaign._id}`);
+              uploadedUrls.push(uploadedUrl);
+            } catch (err) {
+              console.error(`[Orchestrator] Failed to upload drive file ${directUrl} to Cloudinary:`, err);
+              // Fallback to direct link itself
+              uploadedUrls.push(directUrl);
+            }
+          }
+          
+          if (slot.mediaType === "video" || slot.mediaType === "human-video") {
+            content.videoUrl = uploadedUrls[0] || "";
+            content.mediaUrls = uploadedUrls;
+            content.mediaType = "video";
+          } else {
+            content.imageUrl = uploadedUrls[0] || "";
+            content.mediaUrls = uploadedUrls;
+            content.mediaType = "image";
+          }
+          await content.save();
         }
-      );
 
-      console.log(`[Orchestrator] Slot ${slotId} media phase completed. Next status: ${nextStatus}`);
+        await MarketingCampaignSlotModel.updateOne(
+          { _id: slot._id, lockId },
+          {
+            $set: {
+              status: nextStatus,
+              lockId: null,
+              lockedAt: null,
+              lockExpiresAt: null,
+            },
+            $push: {
+              transitions: {
+                from: "generating_media",
+                to: nextStatus,
+                reason: `Đã tải lên và gán liên kết ảnh thật CDN Cloudinary. Chuyển sang bước: ${nextStatus}.`,
+                at: new Date(),
+              },
+            },
+          }
+        );
+        console.log(`[Orchestrator] Slot ${slotId} uploaded and linked real images from Drive/Cloudinary. Next status: ${nextStatus}`);
+      } else {
+        // Run Media Creator Agent (AI Generation)
+        await MediaCreatorAgentService.createMedia(slot, campaign);
+
+        await MarketingCampaignSlotModel.updateOne(
+          { _id: slot._id, lockId },
+          {
+            $set: {
+              status: nextStatus,
+              lockId: null,
+              lockedAt: null,
+              lockExpiresAt: null,
+            },
+            $push: {
+              transitions: {
+                from: "generating_media",
+                to: nextStatus,
+                reason: `Media Creator Agent đã tạo ảnh thành công. Chuyển sang bước: ${nextStatus}.`,
+                at: new Date(),
+              },
+            },
+          }
+        );
+        console.log(`[Orchestrator] Slot ${slotId} media phase completed. Next status: ${nextStatus}`);
+      }
     } catch (error: unknown) {
       console.error(`[Orchestrator] Error during slot ${slotId} media phase:`, error);
       await releaseWithFailure(slotId, lockId, "media", error);

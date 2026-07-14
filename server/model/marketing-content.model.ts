@@ -44,6 +44,7 @@ const MarketingContentSchema = new Schema<IMarketingContent>(
     campaignId: { type: String, index: true },
     campaignTitle: { type: String },
     campaignSlotId: { type: Schema.Types.ObjectId, ref: "MarketingCampaignSlot", index: true },
+    mediaUrls: { type: [String], default: [] },
   },
   { timestamps: false }
 );
