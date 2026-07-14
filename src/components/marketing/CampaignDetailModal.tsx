@@ -368,7 +368,7 @@ export default function CampaignDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300">
-      <div className={`relative w-full ${activeSlot ? 'max-w-6xl' : 'max-w-4xl'} max-h-[85vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 animate-scaleIn`}>
+      <div className={`relative w-full ${activeSlot ? 'max-w-7xl' : 'max-w-5xl'} max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 animate-scaleIn`}>
         
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4.5">
@@ -405,7 +405,7 @@ export default function CampaignDetailModal({
             <div className="flex flex-col lg:flex-row gap-6">
               
               {/* Left Column: Stats, Info, and Table */}
-              <div className={`space-y-6 flex-1 transition-all duration-300 ${activeSlot ? 'lg:w-7/12' : 'w-full'}`}>
+              <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
                 
                 {/* Real-time Activity Banner */}
                 {campaignDetail.campaign.status === 'active' && (
@@ -659,7 +659,7 @@ export default function CampaignDetailModal({
                                       Facebook
                                     </span>
                                   </td>
-                                  <td className="px-4 py-3.5 max-w-xs md:max-w-sm">
+                                  <td className="px-4 py-3.5 max-w-[200px] sm:max-w-[300px] md:max-w-[400px] xl:max-w-[600px]">
                                     <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] text-indigo-755 font-bold mb-1 select-none">
                                       {slot.pillar}
                                     </span>
@@ -893,7 +893,7 @@ export default function CampaignDetailModal({
 
               {/* Right Column: Preview & Editor Panel */}
               {activeSlot && (
-                <div className="w-full lg:w-5/12 border border-slate-200 rounded-2xl bg-slate-50/20 p-5 flex flex-col space-y-4 max-h-[75vh] overflow-y-auto transition-all duration-300">
+                <div className="w-full lg:w-[450px] lg:shrink-0 border border-slate-200 rounded-2xl bg-slate-50/20 p-5 flex flex-col space-y-4 max-h-[75vh] overflow-y-auto transition-all duration-300">
                   <div className="flex items-center justify-between border-b border-slate-150 pb-3">
                     <div>
                       <h4 className="text-sm font-bold text-slate-800">Duyệt & Biên tập nội dung</h4>
@@ -970,7 +970,7 @@ export default function CampaignDetailModal({
                           <div className="border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden font-sans text-left">
                             {/* Post Header */}
                             <div className="p-3.5 flex items-center gap-2.5">
-                              <div className="h-9 w-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-650 font-bold select-none">
+                              <div className="h-9 w-9 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-650 font-bold select-none shrink-0">
                                 {campaignDetail?.campaign?.title?.slice(0, 2).toUpperCase() || 'FB'}
                               </div>
                               <div>
@@ -1047,11 +1047,11 @@ export default function CampaignDetailModal({
                               ) : (
                                 <>
                                   <img src={activeSlot.content.mediaUrls[0]} alt="Post Media" className="w-full h-full object-contain" />
-                                  {activeSlot.status === 'pending_approval' && (
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-200">
+                                  {['pending_approval', 'verifying', 'needs_attention', 'failed'].includes(activeSlot.status) && (
+                                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent flex justify-end">
                                       <label className="flex items-center gap-1.5 bg-white/90 hover:bg-white text-slate-800 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition shadow-sm select-none">
-                                        <Upload size={13} />
-                                        Thay thế ảnh
+                                        <Upload size={12} />
+                                        Thay ảnh của bạn
                                         <input type="file" accept="image/*" className="hidden" onChange={handleImageReplacement} disabled={isReplacingImage} />
                                       </label>
                                     </div>
@@ -1066,14 +1066,14 @@ export default function CampaignDetailModal({
                               )}
                             </div>
                           ) : (
-                            // Fallboard Replacement trigger when no media is present
-                            activeSlot.status === 'pending_approval' && (
+                            // Upload trigger when no media is present
+                            ['pending_approval', 'verifying', 'needs_attention', 'failed'].includes(activeSlot.status) && (
                               <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 flex flex-col items-center justify-center text-center">
                                 <Image className="text-slate-300 mb-1.5" size={24} />
-                                <span className="text-[10px] text-slate-400 font-semibold mb-2">Chưa có phương tiện hình ảnh/video</span>
+                                <span className="text-[10px] text-slate-400 font-semibold mb-2">Chưa có ảnh — AI chưa tạo hoặc bạn muốn dùng ảnh riêng</span>
                                 <label className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition select-none">
                                   <Upload size={13} />
-                                  Thêm ảnh thay thế
+                                  Tải ảnh của bạn lên
                                   <input type="file" accept="image/*" className="hidden" onChange={handleImageReplacement} disabled={isReplacingImage} />
                                 </label>
                                 {isReplacingImage && <Loader2 size={13} className="animate-spin text-indigo-600 mt-2" />}
