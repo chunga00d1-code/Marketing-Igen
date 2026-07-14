@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
+import { GoogleGenAI } from "@google/genai";
 import { AIMediaModel } from "../model/ai-media.model";
 import { CompanyModel } from "../model/company.model";
 import { cloudinaryService } from "./cloudinary.service";
+import { loadAgentSkill } from "./agents/campaign-utils";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 import { piapiService } from "./piapi.service";
 import { videoBlueprintService } from "./video-blueprint.service";
 import { hermesService } from "./hermes.service";
@@ -472,8 +476,6 @@ async function generateText(
   }
 ): Promise<{ text: string }> {
   let modelId = model || GEMINI_TEXT_MODEL;
-  // normalize alias
-  if (modelId === "gemini-3.5-flash") modelId = "gemini-2.5-flash";
 
   const needsJson = !!config?.responseMimeType?.includes("json") || !!config?.responseSchema;
 
@@ -522,6 +524,40 @@ async function generateText(
 }
 
 export const geminiService = {
+  async conductWebResearch(prompt: string): Promise<string> {
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("[geminiService] GEMINI_API_KEY is missing. Skipping web research.");
+      return "Không có thông tin nghiên cứu từ Google do thiếu API Key.";
+    }
+
+    try {
+      console.log(`[geminiService] Conducting web research with Google Search Grounding for prompt: "${prompt}"`);
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Bạn là một chuyên gia nghiên cứu thị trường và social listening. Hãy thực hiện tìm kiếm trên Google và các mạng xã hội để tổng hợp thông tin chi tiết về chủ đề sau:
+"${prompt}"
+
+Yêu cầu báo cáo bao gồm:
+1. Xu hướng hiện tại (Trends) & các cuộc thảo luận liên quan trên mạng xã hội (Facebook, TikTok, v.v.).
+2. Những vấn đề khó khăn, nỗi đau của khách hàng mục tiêu (Target Audience Pain Points).
+3. Các góc tiếp cận/nhìn nhận độc đáo từ đối thủ cạnh tranh (Competitor Angles).
+4. Đề xuất các công thức viết bài/loại hình nội dung thành công cho chủ đề này.
+
+Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, chuyên nghiệp và súc tích.`,
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      const researchText = response.text || "";
+      console.log(`[geminiService] Web research completed. Report length: ${researchText.length} characters.`);
+      return researchText;
+    } catch (error: any) {
+      console.error("[geminiService] Web research failed:", error);
+      return `Lỗi trong quá trình nghiên cứu tự động: ${error?.message || error}`;
+    }
+  },
+
   normalizeMarketingChannel(rawChannel: string): string {
     if (!rawChannel) return "Facebook";
     const c = String(rawChannel).toLowerCase().trim();
@@ -1451,6 +1487,14 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     postingTimes: string[];
     channels: string[];
     images?: string[];
+    customSchedule?: Record<string, string[]>;
+    researchReport?: string;
+    rules?: {
+      requiredCta?: string;
+      requiredHashtags?: string[];
+      forbiddenTerms?: string[];
+      allowTextOnlyFallback?: boolean;
+    };
   }): Promise<{
     campaignTitle: string;
     contentPillars: string[];
@@ -1475,30 +1519,52 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     }
 
     const dayCount = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-    const totalPosts = dayCount * input.postsPerDay;
-    if (dayCount > 31 || totalPosts > 60) {
-      throw new Error("Mỗi chiến dịch tối đa 31 ngày và 60 bài đăng.");
+    if (dayCount > 90) {
+      throw new Error("Mỗi chiến dịch tối đa 90 ngày.");
     }
 
     const slots: Array<{ scheduledDate: string; scheduledTime: string; channel: string }> = [];
+    let slotCounter = 0;
     for (let dayIndex = 0; dayIndex < dayCount; dayIndex += 1) {
       const date = new Date(start.getTime() + dayIndex * 86400000);
       const scheduledDate = date.toISOString().slice(0, 10);
-      for (let postIndex = 0; postIndex < input.postsPerDay; postIndex += 1) {
+      const dayTimes = input.customSchedule?.[scheduledDate] || input.postingTimes;
+      for (const time of dayTimes) {
         slots.push({
           scheduledDate,
-          scheduledTime: input.postingTimes[postIndex % input.postingTimes.length],
-          channel: input.channels[(dayIndex * input.postsPerDay + postIndex) % input.channels.length],
+          scheduledTime: time,
+          channel: input.channels[slotCounter % input.channels.length],
         });
+        slotCounter += 1;
       }
     }
 
-    const prompt = `Bạn là chiến lược gia marketing đa kênh.
+    const totalPosts = slots.length;
+    if (totalPosts > 450) {
+      throw new Error("Mỗi chiến dịch tối đa 450 bài đăng.");
+    }
+
+    const researchSection = input.researchReport
+      ? `\n\nTÀI LIỆU NGHIÊN CỨU & XU HƯỚNG TỪ GOOGLE/MXH (Sử dụng dữ liệu này để lập chiến lược sát với thực tế nhất):\n${input.researchReport}`
+      : "";
+
+    const strategistSkill = loadAgentSkill("strategist");
+    const skillPrefix = strategistSkill ? `KỸ NĂNG & HƯỚNG DẪN CHIẾN LƯỢC GIA:\n${strategistSkill}\n\n` : "";
+
+    const rulesSection = input.rules
+      ? `\n\nQUY TẮC CHIẾN DỊCH BẮT BUỘC:\n` +
+        (input.rules.requiredCta ? `- Kêu gọi hành động (CTA) bắt buộc: ${input.rules.requiredCta}\n` : "") +
+        (input.rules.requiredHashtags?.length ? `- Hashtags bắt buộc: ${input.rules.requiredHashtags.join(", ")}\n` : "") +
+        (input.rules.forbiddenTerms?.length ? `- Các từ ngữ cấm sử dụng: ${input.rules.forbiddenTerms.join(", ")}\n` : "") +
+        (input.rules.allowTextOnlyFallback !== undefined ? `- Cho phép bài viết chỉ có chữ (text-only fallback): ${input.rules.allowTextOnlyFallback ? "Có" : "Không"}\n` : "")
+      : "";
+
+    const prompt = `${skillPrefix}Bạn là chiến lược gia marketing đa kênh.
 Từ brief duy nhất bên dưới, hãy lập chiến lược và brief riêng cho đúng các slot đăng đã định sẵn.
 KHÔNG viết nội dung bài đăng hoàn chỉnh, caption, outline quay hay media prompt ở bước này.
 
 BRIEF CHIẾN DỊCH:
-${input.prompt}
+${input.prompt}${researchSection}${rulesSection}
 
 LỊCH BẮT BUỘC (giữ nguyên scheduledDate, scheduledTime và channel của từng phần tử):
 ${JSON.stringify(slots)}
@@ -1511,6 +1577,7 @@ Yêu cầu:
 - Phân bổ hành trình hợp lý giữa nhận diện, cung cấp giá trị, tương tác, social proof và chuyển đổi.
 - topicBrief phải đủ cụ thể để sau này sinh nhiều phương án khác nhau nhưng không được là bài viết hoàn chỉnh.
 - TikTok ưu tiên mediaType video; Facebook có thể text hoặc image tùy chiến lược.
+- Đảm bảo các slot được lập lịch tuân thủ các quy tắc chiến dịch bắt buộc nếu có.
 
 Trả về JSON đúng schema.`;
 
@@ -1593,6 +1660,7 @@ Trả về JSON đúng schema.`;
     requiredHashtags?: string[];
     forbiddenTerms?: string[];
     recentTitles?: string[];
+    model?: string;
   }): Promise<{ title: string; outline: string; bodyText: string; mediaPrompt: string; voiceScript: string }> {
     const prompt = `Bạn là AI Copywriter chuyên nghiệp. Viết MỘT phương án nội dung cho slot chiến dịch.
 
@@ -1617,7 +1685,7 @@ Yêu cầu:
 - voiceScript chỉ cần có khi mediaType là human-video, ngược lại trả chuỗi rỗng.
 - Không chứa placeholder hoặc ghi chú nội bộ.
 Trả về JSON đúng schema.`;
-    const response = await generateText(GEMINI_HEAVY_MODEL, prompt, {
+    const response = await generateText(input.model || GEMINI_HEAVY_MODEL, prompt, {
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,

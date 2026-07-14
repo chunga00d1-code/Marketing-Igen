@@ -34,12 +34,40 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [endDate, setEndDate] = useState(nextWeek);
   const [postsPerDay, setPostsPerDay] = useState(1);
   const [postingTimes, setPostingTimes] = useState(['09:00']);
+  const [customSchedule, setCustomSchedule] = useState<Record<string, string[]>>({});
+  const [showCustomSchedule, setShowCustomSchedule] = useState(false);
+  const [customSchedulePage, setCustomSchedulePage] = useState(1);
   const [integrations, setIntegrations] = useState<SocialIntegration[]>([]);
   const [integrationId, setIntegrationId] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
-  const [candidateCount, setCandidateCount] = useState(3);
+  const qualityMode = 'premium';
+  const [publishMode, setPublishMode] = useState<'auto' | 'manual'>('manual');
+
+  // Cleanup customSchedule when date range changes
+  useEffect(() => {
+    const start = new Date(`${startDate}T00:00:00`);
+    const end = new Date(`${endDate}T00:00:00`);
+
+    setCustomSchedule((prev) => {
+      if (Object.keys(prev).length === 0) return prev;
+      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) {
+        return {};
+      }
+
+      const updated = { ...prev };
+      let changed = false;
+      for (const date of Object.keys(updated)) {
+        const d = new Date(`${date}T00:00:00`);
+        if (d < start || d > end) {
+          delete updated[date];
+          changed = true;
+        }
+      }
+      return changed ? updated : prev;
+    });
+  }, [startDate, endDate]);
 
   // File Upload states
   const [uploadedDocName, setUploadedDocName] = useState('');
@@ -325,13 +353,35 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     };
   }, [selectedCampaignId]);
 
-  const dayCount = useMemo(() => {
+  const allDatesInRange = useMemo(() => {
     const start = new Date(`${startDate}T00:00:00`);
     const end = new Date(`${endDate}T00:00:00`);
-    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return 0;
-    return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return [];
+    
+    const dates: string[] = [];
+    const temp = new Date(start);
+    while (temp <= end) {
+      dates.push(temp.toISOString().slice(0, 10));
+      temp.setDate(temp.getDate() + 1);
+    }
+    return dates;
   }, [startDate, endDate]);
-  const totalPosts = dayCount * postsPerDay;
+
+  const dayCount = allDatesInRange.length;
+
+  const totalPosts = useMemo(() => {
+    let count = 0;
+    for (const date of allDatesInRange) {
+      const times = customSchedule[date] || postingTimes;
+      count += times.length;
+    }
+    return count;
+  }, [allDatesInRange, customSchedule, postingTimes]);
+
+  // Reset customSchedule page when dates range length changes
+  useEffect(() => {
+    setCustomSchedulePage(1);
+  }, [allDatesInRange.length]);
 
   const changePostsPerDay = (value: number) => {
     setPostsPerDay(value);
@@ -340,7 +390,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
   const handleCreateCampaign = async () => {
     if (!prompt.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
-    if (!dayCount || totalPosts > 60) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 60 bài.');
+    if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
     if (!integrationId && !hasPersonalFacebook) {
       return toast.warning('Vui lòng kết nối một Facebook Page trước khi tạo lịch tự động.');
@@ -360,15 +410,20 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         timezone: 'Asia/Bangkok',
         platforms: ['Facebook'],
         integrationIds: integrationId ? { Facebook: integrationId } : {},
-        candidateCount,
+        candidateCount: 1, // Single-Render Flow
+        qualityMode,
+        publishMode,
         mediaPolicy: 'auto',
         images: imagesParam,
+        customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
       });
       setCampaigns((current) => [result.campaign, ...current]);
       setPrompt('');
       setUploadedDocName('');
       setUploadedDocText('');
       setUploadedImageBase64('');
+      setCustomSchedule({});
+      setShowCustomSchedule(false);
       toast.success(`Đã khởi chạy chiến dịch “${result.campaign.title}” với ${result.campaign.statistics.totalSlots} slot.`);
       void loadCampaigns(1);
     } catch (error: unknown) {
@@ -446,12 +501,26 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           </div>
         </div>
 
-        <div className="mt-5">
-          <label className="mb-2 block text-xs font-bold text-slate-700">Số phương án AI cho mỗi slot</label>
-          <div className="flex gap-2">
-            {[2, 3, 4, 5].map((value) => <button type="button" key={value} onClick={() => setCandidateCount(value)} className={`h-9 min-w-10 rounded-lg border px-3 text-xs font-bold ${candidateCount === value ? 'border-purple-600 bg-purple-600 text-white' : 'border-slate-200 bg-white text-slate-600'}`}>{value}</button>)}
+        <div className="mt-5 flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/50 p-4">
+          <div className="pr-4">
+            <label className="text-xs font-bold text-slate-800">Tự động hóa xuất bản (Auto-Publish)</label>
+            <p className="mt-1 text-[11px] text-slate-400 leading-normal">
+              Khi bật, hệ thống sẽ tự động duyệt chất lượng và đăng bài viết lên mạng xã hội theo lịch hẹn mà không cần thao tác duyệt tay thủ công.
+            </p>
           </div>
-          <p className="mt-1.5 text-[10px] text-slate-400">Các phương án sẽ được sinh gần giờ đăng; hệ thống chấm điểm và chọn bản tốt nhất.</p>
+          <button
+            type="button"
+            onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+              publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
+                publishMode === 'auto' ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -470,6 +539,182 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           ))}
         </div>
 
+        {/* Detailed custom schedule editor */}
+        <div className="mt-5 border-t border-slate-100 pt-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày (Tùy chọn)</h4>
+              <p className="text-[11px] text-slate-400 mt-0.5">Thiết lập giờ đăng riêng cho từng ngày cụ thể nếu không muốn dùng giờ mặc định.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCustomSchedule(!showCustomSchedule)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+            >
+              {showCustomSchedule ? 'Thu gọn' : 'Cấu hình chi tiết'}
+            </button>
+          </div>
+
+          {showCustomSchedule && allDatesInRange.length > 0 && (
+            <div className="mt-4 rounded-xl border border-slate-150 bg-slate-50/30 p-4">
+              {/* Pagination controls for days */}
+              <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                <span className="text-[11px] font-bold text-slate-500">
+                  Hiển thị ngày {Math.min(allDatesInRange.length, (customSchedulePage - 1) * 7 + 1)} - {Math.min(allDatesInRange.length, customSchedulePage * 7)} trong tổng số {allDatesInRange.length} ngày
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={customSchedulePage === 1}
+                    onClick={() => setCustomSchedulePage(customSchedulePage - 1)}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Tuần trước
+                  </button>
+                  <button
+                    type="button"
+                    disabled={customSchedulePage >= Math.ceil(allDatesInRange.length / 7)}
+                    onClick={() => setCustomSchedulePage(customSchedulePage + 1)}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Tuần sau
+                  </button>
+                </div>
+              </div>
+
+              {/* Days List */}
+              <div className="space-y-4">
+                {allDatesInRange
+                  .slice((customSchedulePage - 1) * 7, customSchedulePage * 7)
+                  .map((date) => {
+                    const isCustomized = !!customSchedule[date];
+                    const times = customSchedule[date] || postingTimes;
+                    
+                    // Format date string nicely: e.g. "Thứ Hai, 13/07/2026"
+                    const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+                      weekday: 'long',
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    }).format(new Date(date));
+
+                    return (
+                      <div key={date} className="flex flex-col gap-3 rounded-lg border border-slate-150 bg-white p-3.5 shadow-2xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-slate-100 pb-2">
+                          <span className="text-xs font-bold text-slate-800 capitalize">{formattedDate}</span>
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isCustomized ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-100 text-slate-500'}`}>
+                              {isCustomized ? 'Đã tùy chỉnh' : 'Mặc định'}
+                            </span>
+                            {isCustomized ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...customSchedule };
+                                  delete updated[date];
+                                  setCustomSchedule(updated);
+                                }}
+                                className="text-[10px] font-extrabold text-red-550 hover:underline cursor-pointer"
+                              >
+                                Reset về mặc định
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCustomSchedule({
+                                    ...customSchedule,
+                                    [date]: [...postingTimes]
+                                  });
+                                }}
+                                className="text-[10px] font-extrabold text-indigo-655 hover:underline cursor-pointer"
+                              >
+                                Tùy chỉnh ngày này
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Times listing */}
+                        <div className="flex flex-wrap items-end gap-3.5">
+                          {times.map((time, idx) => (
+                            <div key={idx} className="flex flex-col w-32 relative">
+                              <div className="flex items-center justify-between select-none">
+                                <span className="text-[10px] font-bold text-slate-500">Giờ bài {idx + 1}</span>
+                                {isCustomized && times.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updatedTimes = times.filter((_, tIdx) => tIdx !== idx);
+                                      setCustomSchedule({
+                                        ...customSchedule,
+                                        [date]: updatedTimes
+                                      });
+                                    }}
+                                    className="text-[9px] font-extrabold text-red-500 hover:text-red-700 cursor-pointer"
+                                  >
+                                    Xóa
+                                  </button>
+                                )}
+                              </div>
+                              <CustomTimePicker
+                                value={time}
+                                disabled={!isCustomized}
+                                onChange={(newTime) => {
+                                  const updatedTimes = times.map((t, tIdx) => tIdx === idx ? newTime : t);
+                                  setCustomSchedule({
+                                    ...customSchedule,
+                                    [date]: updatedTimes
+                                  });
+                                }}
+                              />
+                            </div>
+                          ))}
+                          
+                          {isCustomized && times.length < 5 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextHour = times.length > 0 
+                                  ? String(parseInt(times[times.length - 1].split(':')[0]) + 2).padStart(2, '0') + ':00'
+                                  : '09:00';
+                                const validatedHour = parseInt(nextHour.split(':')[0]) >= 24 ? '23:00' : nextHour;
+                                setCustomSchedule({
+                                  ...customSchedule,
+                                  [date]: [...times, validatedHour]
+                                });
+                              }}
+                              className="h-9 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30 px-3 text-[11px] font-extrabold text-indigo-655 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer"
+                            >
+                              + Thêm khung giờ
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Reset All Button */}
+              {Object.keys(customSchedule).length > 0 && (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?')) {
+                        setCustomSchedule({});
+                      }
+                    }}
+                    className="text-[11px] font-bold text-red-655 hover:text-red-800 flex items-center gap-1 cursor-pointer"
+                  >
+                    Xóa tất cả tùy chỉnh
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="mt-5">
           <label className="mb-2 block text-xs font-bold text-slate-700">Facebook Page nhận lịch đăng</label>
           <select value={integrationId} onChange={(event) => setIntegrationId(event.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm">
@@ -479,7 +724,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           </select>
         </div>
 
-        <button type="button" onClick={handleCreateCampaign} disabled={loading || !prompt.trim() || !dayCount || totalPosts > 60} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+        <button type="button" onClick={handleCreateCampaign} disabled={loading || !prompt.trim() || !dayCount || totalPosts > 450} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 cursor-pointer">
           {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
           {loading ? 'AI đang lập chiến lược và tạo slot...' : `Khởi chạy chiến dịch ${totalPosts || 0} slot`}
         </button>
@@ -493,8 +738,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Clock3 size={13} /> Khung giờ</b><span>{postingTimes.join(', ')}</span></div>
           <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Facebook size={13} /> Nền tảng</b><span>Facebook</span></div>
         </div>
-        {totalPosts > 60 && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600">Tối đa 60 bài mỗi chiến dịch. Hãy giảm số ngày hoặc số bài/ngày.</p>}
-        <p className="mt-5 text-[11px] leading-relaxed text-slate-500">Bước này chỉ lập chiến lược và lịch slot. Nội dung hoàn chỉnh sẽ được worker tạo gần giờ đăng, sau đó chấm điểm và chọn phương án tốt nhất.</p>
+        {totalPosts > 450 && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600">Tối đa 450 bài mỗi chiến dịch. Hãy giảm số ngày hoặc số bài/ngày.</p>}
+        <p className="mt-5 text-[11px] leading-relaxed text-slate-500">Bước này lập lịch các bài viết dưới dạng chờ duyệt. Khi đến hạn, AI sẽ tự động sinh nội dung trước giờ đăng và gửi yêu cầu phê duyệt từ bạn.</p>
       </aside>
 
       <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white p-6">
@@ -607,15 +852,18 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         statusLabel={statusLabel}
         slotStatusColors={{
           planned: 'bg-slate-100 text-slate-700 border-slate-200',
-          queued: 'bg-blue-50 text-blue-750 border-blue-200',
+          queued: 'bg-blue-50 text-blue-755 border-blue-200',
           generating: 'bg-indigo-50 text-indigo-700 border-indigo-200 animate-pulse',
+          researching: 'bg-teal-50 text-teal-700 border-teal-200 animate-pulse',
+          writing: 'bg-violet-50 text-violet-750 border-violet-200 animate-pulse',
           scoring: 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse',
           generating_media: 'bg-pink-50 text-pink-700 border-pink-200 animate-pulse',
           verifying: 'bg-cyan-50 text-cyan-700 border-cyan-200 animate-pulse',
-          ready_to_publish: 'bg-teal-50 text-teal-750 border-teal-200',
+          pending_approval: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
+          ready_to_publish: 'bg-teal-50 text-teal-755 border-teal-200',
           publishing: 'bg-yellow-50 text-yellow-700 border-yellow-200 animate-pulse',
           published: 'bg-green-50 text-green-700 border-green-200',
-          failed: 'bg-red-50 text-red-750 border-red-200',
+          failed: 'bg-red-50 text-red-755 border-red-200',
           cancelled: 'bg-slate-150 text-slate-500 border-slate-200',
           skipped: 'bg-gray-150 text-gray-500 border-gray-200',
           retrying: 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse',
@@ -624,10 +872,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         slotStatusLabel={{
           planned: 'Lên kế hoạch',
           queued: 'Trong hàng đợi',
-          generating: 'Đang tạo bài viết...',
+          generating: 'Đang chuẩn bị...',
+          researching: 'Đang nghiên cứu...',
+          writing: 'Đang viết bài viết...',
           scoring: 'Đang chấm điểm AI...',
           generating_media: 'Đang thiết kế ảnh...',
           verifying: 'Đang duyệt chất lượng...',
+          pending_approval: 'Chờ duyệt',
           ready_to_publish: 'Sẵn sàng đăng',
           publishing: 'Đang đăng...',
           published: 'Đã đăng thành công',
@@ -655,6 +906,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             setCampaignDetail({ campaign: res.campaign, slots: res.slots as CampaignSlot[] });
           } catch (error: unknown) {
             toast.error(error instanceof Error ? error.message : 'Không thể thử lại các slot.');
+          }
+        }}
+        onRefresh={async () => {
+          if (selectedCampaignId) {
+            const res = await marketingCampaignService.detail(selectedCampaignId);
+            setCampaignDetail({ campaign: res.campaign, slots: res.slots as CampaignSlot[] });
           }
         }}
       />

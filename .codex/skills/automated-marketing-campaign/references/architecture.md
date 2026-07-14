@@ -78,6 +78,8 @@ Persist transition logs. Classify failures as retryable, validation, authenticat
 
 Estimate campaign cost before activation. Reserve enough balance per slot before generation. Record actual candidate/media usage and release unused reservation. Pause campaigns when balance is insufficient. Enforce maximum duration, slot count, candidates per slot, and concurrency server-side.
 
+For a detailed breakdown of the AI Agent billing mechanism, task pricing (Premium vs. Budget Chinese models), cost estimation formulas, and worker financial flows, refer to the [Agent Billing Design Document](agent_billing.md).
+
 ## API surface
 
 - CRUD and lifecycle under `/api/v1/marketing-campaigns`.
