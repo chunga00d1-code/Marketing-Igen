@@ -39,19 +39,31 @@ JSON Output Schema:
 }
 `;
 
+    const globalResearch = campaign.researchReport
+      ? `\n\nTài liệu nghiên cứu và xu hướng thị trường (Google & Social):
+${campaign.researchReport}`
+      : "";
+
+    const rulesSection = campaign.rules
+      ? `\n\nQUY TẮC CHIẾN DỊCH BẮT BUỘC (Bạn phải tuân thủ nghiêm ngặt):\n` +
+        (campaign.rules.requiredCta ? `- Kêu gọi hành động (CTA) bắt buộc: ${campaign.rules.requiredCta}\n` : "") +
+        (campaign.rules.requiredHashtags?.length ? `- Hashtags bắt buộc: ${campaign.rules.requiredHashtags.join(", ")}\n` : "") +
+        (campaign.rules.forbiddenTerms?.length ? `- Không được chứa các từ ngữ cấm sau: ${campaign.rules.forbiddenTerms.join(", ")}\n` : "")
+      : "";
+
     const userPrompt = `
 Chiến dịch:
 - Tiêu đề: ${campaign.title}
-- Brief chiến dịch: ${campaign.sourceBrief}
-
+- Brief chiến dịch: ${campaign.sourceBrief}${globalResearch}${rulesSection}
+ 
 Bài đăng cần viết:
 - Kênh (Platform): ${slot.platform}
 - Cột trụ (Pillar): ${slot.pillar}
 - Mục tiêu: ${slot.objective}
 - Định dạng (MediaType): ${slot.mediaType}
 - Chủ đề: ${slot.topicBrief}
-
-Kết quả nghiên cứu từ Researcher Agent:
+ 
+Kết quả nghiên cứu local của slot từ Researcher Agent:
 ${researchContext}
 `;
 

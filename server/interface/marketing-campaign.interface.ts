@@ -33,6 +33,7 @@ export interface IMarketingCampaign extends Document {
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
   customSchedule?: Record<string, string[]>;
+  researchReport?: string;
   statistics: {
     totalSlots: number;
     publishedSlots: number;

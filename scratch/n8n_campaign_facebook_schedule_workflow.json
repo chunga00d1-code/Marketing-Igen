@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first();\nconst envelope = item.json || {};\nconst headers = envelope.headers || {};\nconst body = envelope.body || envelope;\nconst expected = \\'igen_n8n_secret_token_2026\\';\nconst received = String(headers['x-webhook-token'] || headers['X-Webhook-Token'] || '');\nif (!expected || received !== expected) throw new Error('Unauthorized webhook token');\n\nconst required = ['cardId', 'idempotencyKey', 'pageId', 'accessToken', 'callbackUrl'];\nfor (const field of required) {\n  if (!String(body[field] || '').trim()) throw new Error(`Missing required field: ${field}`);\n}\nif (!/^https:\\/\\//i.test(String(body.callbackUrl))) throw new Error('callbackUrl must use HTTPS');\n\nconst mediaType = ['none', 'image', 'video'].includes(body.mediaType) ? body.mediaType : 'none';\nif (mediaType !== 'none' && !/^https:\\/\\//i.test(String(body.mediaUrl || ''))) throw new Error('mediaUrl must use HTTPS');\n\nconst store = $getWorkflowStaticData('global');\nstore.deliveries = store.deliveries || {};\nconst now = Date.now();\nfor (const [key, value] of Object.entries(store.deliveries)) {\n  if (!value?.updatedAt || now - value.updatedAt > 30 * 24 * 60 * 60 * 1000) delete store.deliveries[key];\n}\nconst key = String(body.idempotencyKey);\nconst existing = store.deliveries[key];\nconst locked = existing && (existing.status === 'published' || (existing.status === 'processing' && now - existing.updatedAt < 20 * 60 * 1000));\nif (locked) {\n  return [{ json: { duplicate: true, idempotencyKey: key, cached: existing, cardId: body.cardId } }];\n}\nstore.deliveries[key] = { status: 'processing', cardId: body.cardId, updatedAt: now };\n\nlet apiUrl;\nlet facebookBody;\nif (mediaType === 'video') {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/videos`;\n  facebookBody = { description: String(body.content || ''), file_url: String(body.mediaUrl), access_token: String(body.accessToken), published: true };\n} else if (mediaType === 'image') {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/photos`;\n  facebookBody = { caption: String(body.content || ''), url: String(body.mediaUrl), access_token: String(body.accessToken), published: true };\n} else {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/feed`;\n  facebookBody = { message: String(body.content || ''), access_token: String(body.accessToken) };\n}\nreturn [{ json: { duplicate: false, prepared: { cardId: String(body.cardId), idempotencyKey: key, callbackUrl: String(body.callbackUrl), mediaType, apiUrl, facebookBody } } }];"
+        "jsCode": "const item = $input.first();\nconst envelope = item.json || {};\nconst headers = envelope.headers || {};\nconst body = envelope.body || envelope;\n\nlet expected = 'igen_n8n_secret_token_2026';\ntry {\n  if (typeof $env !== 'undefined' && $env.N8N_WEBHOOK_SECRET) {\n    expected = $env.N8N_WEBHOOK_SECRET;\n  }\n} catch (e) {}\n\nconst received = String(headers['x-webhook-token'] || headers['X-Webhook-Token'] || '');\nif (!expected || received !== expected) throw new Error('Unauthorized webhook token');\n\nconst required = ['cardId', 'idempotencyKey', 'pageId', 'accessToken', 'callbackUrl'];\nfor (const field of required) {\n  if (!String(body[field] || '').trim()) throw new Error(`Missing required field: ${field}`);\n}\nif (!/^https?:\\/\\//i.test(String(body.callbackUrl))) throw new Error('callbackUrl must use HTTP or HTTPS');\n\nconst mediaType = ['none', 'image', 'video'].includes(body.mediaType) ? body.mediaType : 'none';\nif (mediaType !== 'none' && !/^https?:\\/\\//i.test(String(body.mediaUrl || ''))) throw new Error('mediaUrl must use HTTP or HTTPS');\n\nconst store = $getWorkflowStaticData('global');\nstore.deliveries = store.deliveries || {};\nconst now = Date.now();\nfor (const [key, value] of Object.entries(store.deliveries)) {\n  if (!value?.updatedAt || now - value.updatedAt > 30 * 24 * 60 * 60 * 1000) delete store.deliveries[key];\n}\nconst key = String(body.idempotencyKey);\nconst existing = store.deliveries[key];\nconst locked = existing && (existing.status === 'published' || (existing.status === 'processing' && now - existing.updatedAt < 20 * 60 * 1000));\nif (locked) {\n  return [{ json: { duplicate: true, idempotencyKey: key, cached: existing, cardId: body.cardId } }];\n}\nstore.deliveries[key] = { status: 'processing', cardId: body.cardId, updatedAt: now };\n\nlet apiUrl;\nlet facebookBody;\nif (mediaType === 'video') {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/videos`;\n  facebookBody = { description: String(body.content || ''), file_url: String(body.mediaUrl), access_token: String(body.accessToken), published: true };\n} else if (mediaType === 'image') {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/photos`;\n  facebookBody = { caption: String(body.content || ''), url: String(body.mediaUrl), access_token: String(body.accessToken), published: true };\n} else {\n  apiUrl = `https://graph.facebook.com/v19.0/${body.pageId}/feed`;\n  facebookBody = { message: String(body.content || ''), access_token: String(body.accessToken) };\n}\nreturn [{ json: { duplicate: false, prepared: { cardId: String(body.cardId), idempotencyKey: key, callbackUrl: String(body.callbackUrl), mediaType, apiUrl, facebookBody } } }];"
       },
       "id": "facebook-validate",
       "name": "Validate, Lock & Prepare",
@@ -85,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.first().json || {};\nconst prepared = $items('Validate, Lock & Prepare', 0, 0)[0].json.prepared;\nconst postId = String(response.id || response.post_id || '');\nconst store = $getWorkflowStaticData('global');\nstore.deliveries = store.deliveries || {};\nstore.deliveries[prepared.idempotencyKey] = { status: 'published', cardId: prepared.cardId, postId, postUrl: '', updatedAt: Date.now() };\nreturn [{ json: { prepared, postId, postUrl: '' } }];"
+        "jsCode": "const response = $input.first().json || {};\nconst prepared = $items('Validate, Lock & Prepare', 0, 0)[0].json.prepared;\nconst postId = String(response.post_id || response.id || '');\nlet postUrl = '';\nif (postId) {\n  if (postId.includes('_')) {\n    const [pageId, storyFbid] = postId.split('_');\n    postUrl = `https://www.facebook.com/permalink.php?story_fbid=${storyFbid}&id=${pageId}`;\n  } else {\n    postUrl = `https://www.facebook.com/${postId}`;\n  }\n}\nconst store = $getWorkflowStaticData('global');\nstore.deliveries = store.deliveries || {};\nstore.deliveries[prepared.idempotencyKey] = { status: 'published', cardId: prepared.cardId, postId, postUrl, updatedAt: Date.now() };\nreturn [{ json: { prepared, postId, postUrl } }];"
       },
       "id": "facebook-mark-success",
       "name": "Mark Delivery Published",
@@ -101,7 +101,7 @@
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
+            { "name": "X-Webhook-Token", "value": "={{ $env.N8N_WEBHOOK_SECRET || 'igen_n8n_secret_token_2026' }}" }
           ]
         },
         "sendBody": true,
@@ -148,11 +148,12 @@
         "headerParameters": {
           "parameters": [
             { "name": "Content-Type", "value": "application/json" },
-            { "name": "X-Webhook-Token", "value": "igen_n8n_secret_token_2026" }
+            { "name": "X-Webhook-Token", "value": "={{ $env.N8N_WEBHOOK_SECRET || 'igen_n8n_secret_token_2026' }}" }
           ]
         },
         "sendBody": true,
-        "specifyBody": "json",
+        "bodyType": "json",
+        "placeholder": "",
         "jsonBody": "={{ JSON.stringify({ cardId: $json.prepared.cardId, postId: '', postUrl: '', status: 'failed', error: $json.error }) }}",
         "options": {
           "response": { "response": { "neverThrow": true, "responseFormat": "json" } },

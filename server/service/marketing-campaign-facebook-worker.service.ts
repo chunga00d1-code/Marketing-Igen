@@ -39,15 +39,22 @@ async function processPublishSlot(slotId: unknown, lockId: string) {
   }
 }
 
-async function claimSlots(input: { statuses: MarketingCampaignSlotStatus[]; dueField?: "verifyAt" | "scheduledAt"; platform: "Facebook"; mediaType?: "image"; limit: number; nextStatus?: MarketingCampaignSlotStatus }) {
+async function claimSlots(input: {
+  statuses: MarketingCampaignSlotStatus[];
+  dueField?: "verifyAt" | "scheduledAt";
+  limit: number;
+  nextStatus?: MarketingCampaignSlotStatus;
+}) {
   const now = new Date();
   const leaseFilter = [{ lockExpiresAt: { $exists: false } }, { lockExpiresAt: null }, { lockExpiresAt: { $lte: now } }];
-  const baseFilter = { status: { $in: input.statuses }, platform: input.platform, $or: leaseFilter };
+  const baseFilter = { status: { $in: input.statuses }, $or: leaseFilter };
+  
   const candidates = input.dueField === "verifyAt"
     ? await MarketingCampaignSlotModel.find({ ...baseFilter, verifyAt: { $lte: now } }).sort({ verifyAt: 1 }).limit(input.limit).select("_id status").lean()
     : input.dueField === "scheduledAt"
       ? await MarketingCampaignSlotModel.find({ ...baseFilter, scheduledAt: { $lte: now } }).sort({ scheduledAt: 1 }).limit(input.limit).select("_id status").lean()
-      : await MarketingCampaignSlotModel.find({ ...baseFilter, mediaType: input.mediaType }).sort({ updatedAt: 1 }).limit(input.limit).select("_id status").lean();
+      : await MarketingCampaignSlotModel.find(baseFilter).sort({ updatedAt: 1 }).limit(input.limit).select("_id status").lean();
+      
   const claims: Array<{ slotId: Types.ObjectId; lockId: string }> = [];
   for (const candidate of candidates) {
     const lockId = randomUUID();
@@ -63,17 +70,17 @@ async function claimSlots(input: { statuses: MarketingCampaignSlotStatus[]; dueF
 
 export const marketingCampaignFacebookWorkerService = {
   async generateDueMedia(limit = 2) {
-    const claims = await claimSlots({ statuses: ["generating_media"], platform: "Facebook", mediaType: "image", limit: Math.max(1, Math.min(limit, 5)) });
+    const claims = await claimSlots({ statuses: ["generating_media"], limit: Math.max(1, Math.min(limit, 5)) });
     return { claimed: claims.length, results: await Promise.all(claims.map((claim) => processImageSlot(claim.slotId, claim.lockId))) };
   },
 
   async verifyDueSlots(limit = 5) {
-    const claims = await claimSlots({ statuses: ["verifying"], platform: "Facebook", dueField: "verifyAt", limit: Math.max(1, Math.min(limit, 10)) });
+    const claims = await claimSlots({ statuses: ["verifying"], dueField: "verifyAt", limit: Math.max(1, Math.min(limit, 10)) });
     return { claimed: claims.length, results: await Promise.all(claims.map((claim) => processVerifySlot(claim.slotId, claim.lockId))) };
   },
 
   async publishDueSlots(limit = 3) {
-    const claims = await claimSlots({ statuses: ["ready_to_publish", "publishing"], platform: "Facebook", dueField: "scheduledAt", limit: Math.max(1, Math.min(limit, 10)), nextStatus: "publishing" });
+    const claims = await claimSlots({ statuses: ["ready_to_publish", "publishing"], dueField: "scheduledAt", limit: Math.max(1, Math.min(limit, 10)), nextStatus: "publishing" });
     return { claimed: claims.length, results: await Promise.all(claims.map((claim) => processPublishSlot(claim.slotId, claim.lockId))) };
   },
 };

@@ -73,7 +73,8 @@ export const marketingCampaignService = {
     });
 
     const now = new Date();
-    const failingSlot = schedule.find((slot) => slot.prepareAt <= now);
+    const minLeadTimeMs = 15 * 60 * 1000;
+    const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
     if (failingSlot) {
       const formatZonedTime = (date: Date) => {
         return new Intl.DateTimeFormat("vi-VN", {
@@ -89,20 +90,15 @@ export const marketingCampaignService = {
       };
 
       const scheduledStr = formatZonedTime(failingSlot.scheduledAt);
-      const prepareStr = formatZonedTime(failingSlot.prepareAt);
       const nowStr = formatZonedTime(now);
 
-      if (failingSlot.scheduledAt <= now) {
-        throw new Error(
-          `Lịch đăng lúc ${scheduledStr} đã trôi qua so với thời gian hiện tại (${nowStr}). Vui lòng chọn khung giờ khác.`
-        );
-      } else {
-        throw new Error(
-          `Lịch đăng lúc ${scheduledStr} quá sát thời gian hiện tại (${nowStr}). Hệ thống cần ${generationLeadMinutes} phút để chuẩn bị nội dung (bắt đầu từ ${prepareStr}).`
-        );
-      }
+      throw new Error(
+        `Lịch đăng lúc ${scheduledStr} quá sát so với thời gian hiện tại (${nowStr}). Hệ thống cần ít nhất 15 phút để chuẩn bị nội dung.`
+      );
     }
     await validateIntegrations(companyCode, input.platforms, input.integrationIds);
+
+    const researchReport = await geminiService.conductWebResearch(input.sourceBrief);
 
     const strategy = await geminiService.generateScheduledCampaign({
       prompt: input.sourceBrief,
@@ -113,6 +109,8 @@ export const marketingCampaignService = {
       channels: input.platforms,
       images: input.images,
       customSchedule: input.customSchedule,
+      researchReport,
+      rules: input.rules,
     });
     if (strategy.slots.length !== schedule.length) {
       throw new Error(`AI trả về ${strategy.slots.length}/${schedule.length} slot chiến dịch.`);
@@ -140,6 +138,7 @@ export const marketingCampaignService = {
       createdBy,
       title: strategy.campaignTitle,
       sourceBrief: input.sourceBrief,
+      researchReport,
       status: "active",
       timezone,
       startDate: input.startDate,
@@ -224,7 +223,40 @@ export const marketingCampaignService = {
       .sort({ scheduledAt: 1 })
       .populate("marketingContentId")
       .lean();
-    return { campaign, slots };
+
+    const transformedSlots = slots.map((slot) => {
+      const contentDoc = slot.marketingContentId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        title: string;
+        bodyText: string;
+        outline?: string;
+        mediaPrompt?: string;
+        imageUrl?: string;
+        videoUrl?: string;
+        mediaType?: "image" | "video" | "human-video";
+      } | null;
+
+      const content = contentDoc
+        ? {
+            _id: contentDoc._id,
+            title: contentDoc.title,
+            bodyText: contentDoc.bodyText,
+            outline: contentDoc.outline,
+            mediaPrompt: contentDoc.mediaPrompt,
+            mediaUrls: contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : []),
+            mediaType: contentDoc.mediaType,
+          }
+        : null;
+
+      return {
+        ...slot,
+        content,
+        errorMessage: slot.lastError?.message,
+        publishedPostUrl: slot.publishedUrl,
+      };
+    });
+
+    return { campaign, slots: transformedSlots };
   },
 
   async changeStatus(companyCode: string, campaignId: string, action: "pause" | "resume" | "cancel") {

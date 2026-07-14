@@ -37,6 +37,19 @@ export class QcAgentService {
       }
     }
 
+    if (slot.mediaType === "video" || slot.mediaType === "human-video") {
+      if (!content.videoUrl) {
+        reasons.push("Video bắt buộc chưa sẵn sàng.");
+      } else {
+        try {
+          await assertReachableMedia(content.videoUrl);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          reasons.push(`Video không truy cập được: ${msg}`);
+        }
+      }
+    }
+
     if (slot.mediaType === "text" && ["image", "video"].includes(campaign.mediaPolicy) && !campaign.rules?.allowTextOnlyFallback) {
       reasons.push("Chiến dịch yêu cầu đa phương tiện nhưng không cho phép bài viết text-only fallback.");
     }
@@ -82,12 +95,19 @@ JSON Output Schema:
 }
 `;
 
+    const rulesSection = campaign.rules
+      ? `\n\nQUY TẮC CHIẾN DỊCH BẮT BUỘC (Hãy kiểm tra nghiêm ngặt, nếu vi phạm, đặt passed thành false và nêu rõ lý do):\n` +
+        (campaign.rules.requiredCta ? `- Kêu gọi hành động (CTA) bắt buộc: ${campaign.rules.requiredCta}\n` : "") +
+        (campaign.rules.requiredHashtags?.length ? `- Hashtags bắt buộc (bài viết phải chứa các hashtag này): ${campaign.rules.requiredHashtags.join(", ")}\n` : "") +
+        (campaign.rules.forbiddenTerms?.length ? `- Các từ ngữ cấm sử dụng (không được xuất hiện trong bài viết): ${campaign.rules.forbiddenTerms.join(", ")}\n` : "")
+      : "";
+
     const userPrompt = `
 Tiêu đề: ${content.title}
 Nội dung bài đăng:
 """
 ${content.bodyText}
-"""
+"""${rulesSection}
 `;
 
     const responseSchema = {

@@ -16,6 +16,7 @@ export interface MarketingCampaignSummary {
   candidateCount: number;
   contentPillars: string[];
   publishMode?: 'auto' | 'manual';
+  researchReport?: string;
   statistics: {
     totalSlots: number;
     publishedSlots: number;

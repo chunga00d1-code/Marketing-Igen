@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
+import { GoogleGenAI } from "@google/genai";
 import { AIMediaModel } from "../model/ai-media.model";
 import { CompanyModel } from "../model/company.model";
 import { cloudinaryService } from "./cloudinary.service";
+import { loadAgentSkill } from "./agents/campaign-utils";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 import { piapiService } from "./piapi.service";
 import { videoBlueprintService } from "./video-blueprint.service";
 import { hermesService } from "./hermes.service";
@@ -520,6 +524,40 @@ async function generateText(
 }
 
 export const geminiService = {
+  async conductWebResearch(prompt: string): Promise<string> {
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("[geminiService] GEMINI_API_KEY is missing. Skipping web research.");
+      return "Không có thông tin nghiên cứu từ Google do thiếu API Key.";
+    }
+
+    try {
+      console.log(`[geminiService] Conducting web research with Google Search Grounding for prompt: "${prompt}"`);
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: `Bạn là một chuyên gia nghiên cứu thị trường và social listening. Hãy thực hiện tìm kiếm trên Google và các mạng xã hội để tổng hợp thông tin chi tiết về chủ đề sau:
+"${prompt}"
+
+Yêu cầu báo cáo bao gồm:
+1. Xu hướng hiện tại (Trends) & các cuộc thảo luận liên quan trên mạng xã hội (Facebook, TikTok, v.v.).
+2. Những vấn đề khó khăn, nỗi đau của khách hàng mục tiêu (Target Audience Pain Points).
+3. Các góc tiếp cận/nhìn nhận độc đáo từ đối thủ cạnh tranh (Competitor Angles).
+4. Đề xuất các công thức viết bài/loại hình nội dung thành công cho chủ đề này.
+
+Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, chuyên nghiệp và súc tích.`,
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
+      });
+
+      const researchText = response.text || "";
+      console.log(`[geminiService] Web research completed. Report length: ${researchText.length} characters.`);
+      return researchText;
+    } catch (error: any) {
+      console.error("[geminiService] Web research failed:", error);
+      return `Lỗi trong quá trình nghiên cứu tự động: ${error?.message || error}`;
+    }
+  },
+
   normalizeMarketingChannel(rawChannel: string): string {
     if (!rawChannel) return "Facebook";
     const c = String(rawChannel).toLowerCase().trim();
@@ -1450,6 +1488,13 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     channels: string[];
     images?: string[];
     customSchedule?: Record<string, string[]>;
+    researchReport?: string;
+    rules?: {
+      requiredCta?: string;
+      requiredHashtags?: string[];
+      forbiddenTerms?: string[];
+      allowTextOnlyFallback?: boolean;
+    };
   }): Promise<{
     campaignTitle: string;
     contentPillars: string[];
@@ -1499,12 +1544,27 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
       throw new Error("Mỗi chiến dịch tối đa 450 bài đăng.");
     }
 
-    const prompt = `Bạn là chiến lược gia marketing đa kênh.
+    const researchSection = input.researchReport
+      ? `\n\nTÀI LIỆU NGHIÊN CỨU & XU HƯỚNG TỪ GOOGLE/MXH (Sử dụng dữ liệu này để lập chiến lược sát với thực tế nhất):\n${input.researchReport}`
+      : "";
+
+    const strategistSkill = loadAgentSkill("strategist");
+    const skillPrefix = strategistSkill ? `KỸ NĂNG & HƯỚNG DẪN CHIẾN LƯỢC GIA:\n${strategistSkill}\n\n` : "";
+
+    const rulesSection = input.rules
+      ? `\n\nQUY TẮC CHIẾN DỊCH BẮT BUỘC:\n` +
+        (input.rules.requiredCta ? `- Kêu gọi hành động (CTA) bắt buộc: ${input.rules.requiredCta}\n` : "") +
+        (input.rules.requiredHashtags?.length ? `- Hashtags bắt buộc: ${input.rules.requiredHashtags.join(", ")}\n` : "") +
+        (input.rules.forbiddenTerms?.length ? `- Các từ ngữ cấm sử dụng: ${input.rules.forbiddenTerms.join(", ")}\n` : "") +
+        (input.rules.allowTextOnlyFallback !== undefined ? `- Cho phép bài viết chỉ có chữ (text-only fallback): ${input.rules.allowTextOnlyFallback ? "Có" : "Không"}\n` : "")
+      : "";
+
+    const prompt = `${skillPrefix}Bạn là chiến lược gia marketing đa kênh.
 Từ brief duy nhất bên dưới, hãy lập chiến lược và brief riêng cho đúng các slot đăng đã định sẵn.
 KHÔNG viết nội dung bài đăng hoàn chỉnh, caption, outline quay hay media prompt ở bước này.
 
 BRIEF CHIẾN DỊCH:
-${input.prompt}
+${input.prompt}${researchSection}${rulesSection}
 
 LỊCH BẮT BUỘC (giữ nguyên scheduledDate, scheduledTime và channel của từng phần tử):
 ${JSON.stringify(slots)}
@@ -1517,6 +1577,7 @@ Yêu cầu:
 - Phân bổ hành trình hợp lý giữa nhận diện, cung cấp giá trị, tương tác, social proof và chuyển đổi.
 - topicBrief phải đủ cụ thể để sau này sinh nhiều phương án khác nhau nhưng không được là bài viết hoàn chỉnh.
 - TikTok ưu tiên mediaType video; Facebook có thể text hoặc image tùy chiến lược.
+- Đảm bảo các slot được lập lịch tuân thủ các quy tắc chiến dịch bắt buộc nếu có.
 
 Trả về JSON đúng schema.`;
 

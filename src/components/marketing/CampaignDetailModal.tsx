@@ -487,12 +487,26 @@ export default function CampaignDetailModal({
                   </div>
                 </div>
 
-                {/* Expandable/Scrollable Brief Box */}
-                <div className="rounded-xl border border-slate-150 p-4 bg-slate-50/30">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono mb-2">Định hướng chiến dịch (Source Brief)</span>
-                  <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed max-h-32 overflow-y-auto p-3 border border-slate-100 bg-white rounded-lg">
-                    {campaignDetail.campaign.sourceBrief}
-                  </pre>
+                {/* Expandable/Scrollable Brief Box & Research Report */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-slate-150 p-4 bg-slate-50/30">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono mb-2">Định hướng chiến dịch (Source Brief)</span>
+                    <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed h-48 overflow-y-auto p-3 border border-slate-100 bg-white rounded-lg">
+                      {campaignDetail.campaign.sourceBrief}
+                    </pre>
+                  </div>
+                  {campaignDetail.campaign.researchReport ? (
+                    <div className="rounded-xl border border-indigo-150 p-4 bg-indigo-50/10">
+                      <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider block font-mono mb-2">Báo cáo nghiên cứu & Xu hướng (Google & Social Research)</span>
+                      <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed h-48 overflow-y-auto p-3 border border-indigo-50 bg-white rounded-lg">
+                        {campaignDetail.campaign.researchReport}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-150 p-4 bg-slate-50/30 flex items-center justify-center h-full">
+                      <p className="text-xs text-slate-400 font-medium">Không có dữ liệu nghiên cứu xu hướng.</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Content Pillars */}
