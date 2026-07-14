@@ -91,6 +91,9 @@ export class PublisherAgentService {
 
       console.log(`[PublisherAgent] Publishing slot ${slot._id} to Facebook page ${credentials.pageId}...`);
 
+      // Detect retry: slot already had a publish attempt before
+      const isRetry = !!slot.publishRequestedAt;
+
       // Record publish requested timestamp
       slot.publishRequestedAt = new Date();
       await slot.save();
@@ -107,7 +110,8 @@ export class PublisherAgentService {
         undefined,
         content.title,
         undefined,
-        slot.publishIdempotencyKey
+        slot.publishIdempotencyKey,
+        isRetry // bypass n8n lock on retry
       );
 
       const postId = String(result.data?.id || result.data?.post_id || "").trim();

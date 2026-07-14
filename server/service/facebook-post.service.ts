@@ -72,7 +72,8 @@ export const facebookPostService = {
     scheduledTime?: string,
     title?: string,
     callbackUrl?: string,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    forceRetry?: boolean
   ) {
     const webhookUrl = idempotencyKey
       ? (process.env.N8N_CAMPAIGN_FB_WEBHOOK_URL || process.env.N8N_FB_WEBHOOK_URL)
@@ -122,6 +123,7 @@ export const facebookPostService = {
           accessToken,
           callbackUrl: finalCallbackUrl,
           idempotencyKey: idempotencyKey || "",
+          ...(forceRetry ? { forceRetry: true } : {}),
         }),
       });
 
