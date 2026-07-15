@@ -204,7 +204,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                       className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
                     >
                       <Send className="h-4 w-4 text-sky-500" />
-                      Kết nối Telegram & MXH
+                      Kết nối Telegram
                     </button>
 
                     <button
@@ -235,10 +235,10 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
               <div className="text-left">
                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                   <Send className="h-5 w-5 text-sky-500 animate-pulse" />
-                  Liên Kết Cá Nhân & Nhận Thông Báo
+                  Kết Nối Telegram
                 </h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Quản lý tài khoản mạng xã hội cá nhân và cấu hình nhận thông báo phê duyệt qua Telegram
+                  Cấu hình nhận thông báo phê duyệt bài đăng và báo cáo nhanh từ AI qua Telegram
                 </p>
               </div>
               <button
