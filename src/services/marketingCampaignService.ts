@@ -222,6 +222,43 @@ export const marketingCampaignService = {
     return result.data;
   },
 
+  getDailyShareLink(campaignId: string, date: string) {
+    return request<{ shareLink: string }>(`/api/v1/marketing-campaigns/${campaignId}/dates/${date}/share-link`);
+  },
+
+  async getPublicDailySlots(token: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/dates/${token}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể lấy danh sách bài viết theo ngày.');
+    return result.data as { campaign: MarketingCampaignSummary; slots: (CampaignSlot & { content: MarketingContent | null })[]; date: string };
+  },
+
+  async publicDailySlotAction(token: string, slotId: string, action: 'approve' | 'reject', reason?: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/dates/${token}/slots/${slotId}/${action}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể xử lý phê duyệt bài viết.');
+    return result.data;
+  },
+
+  async updatePublicDailySlotContent(token: string, slotId: string, updates: { title?: string; bodyText?: string }) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/dates/${token}/slots/${slotId}/content`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể lưu chỉnh sửa bài viết.');
+    return result.data as { slot: CampaignSlot; content: MarketingContent | null };
+  },
+
   previewDrive(googleDriveFolderUrl: string) {
     return request<DriveFileItem[]>('/api/v1/marketing-campaigns/preview-drive', {
       method: 'POST',

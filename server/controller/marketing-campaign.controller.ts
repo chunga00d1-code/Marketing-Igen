@@ -231,4 +231,59 @@ export const marketingCampaignController = {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải trước ảnh từ thư mục Google Drive." });
     }
   },
+
+  async getDailyShareLink(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const { date } = req.params;
+      if (!date) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp ngày." });
+      }
+      const result = await marketingCampaignService.generateDailyShareLink(companyCode, req.params.id, date);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tạo link chia sẻ theo ngày." });
+    }
+  },
+
+  async getPublicDailySlots(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token } = req.params;
+      if (!token) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp mã xác thực." });
+      }
+      const data = await marketingCampaignService.getPublicDailySlotsDetail(token);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể lấy danh sách bài viết theo ngày." });
+    }
+  },
+
+  async publicDailySlotAction(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token, slotId, action } = req.params;
+      const { reason } = req.body;
+      if (!token || !slotId || !["approve", "reject"].includes(action)) {
+        return res.status(400).json({ status: "error", message: "Thao tác không hợp lệ." });
+      }
+      const data = await marketingCampaignService.executePublicDailySlotAction(token, slotId, action as "approve" | "reject", reason);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thực hiện phê duyệt bài viết." });
+    }
+  },
+
+  async publicDailySlotUpdateContent(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token, slotId } = req.params;
+      const { title, bodyText } = req.body;
+      if (!token || !slotId) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp đầy đủ thông tin." });
+      }
+      const data = await marketingCampaignService.updatePublicDailySlotContent(token, slotId, { title, bodyText });
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật nội dung bài viết." });
+    }
+  },
 };

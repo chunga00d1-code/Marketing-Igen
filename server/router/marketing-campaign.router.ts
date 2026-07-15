@@ -60,6 +60,9 @@ marketingCampaignRouter.post("/internal/publish", marketingCampaignController.pu
 // Public endpoints (no auth required)
 marketingCampaignRouter.get("/public/slots/:token", marketingCampaignController.getPublicSlot as never);
 marketingCampaignRouter.post("/public/slots/:token/:action", marketingCampaignController.publicSlotAction as never);
+marketingCampaignRouter.get("/public/dates/:token", marketingCampaignController.getPublicDailySlots as never);
+marketingCampaignRouter.post("/public/dates/:token/slots/:slotId/:action", marketingCampaignController.publicDailySlotAction as never);
+marketingCampaignRouter.patch("/public/dates/:token/slots/:slotId/content", marketingCampaignController.publicDailySlotUpdateContent as never);
 
 marketingCampaignRouter.use(requireAuth as never, requirePermission("marketing:post") as never);
 marketingCampaignRouter.post("/preview-drive", marketingCampaignController.previewDrive as never);
@@ -71,6 +74,7 @@ marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignContro
 marketingCampaignRouter.post("/:id/slots/:slotId/approve", marketingCampaignController.approveSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/reject", marketingCampaignController.rejectSlot as never);
 marketingCampaignRouter.get("/:id/slots/:slotId/share-link", marketingCampaignController.getShareLink as never);
+marketingCampaignRouter.get("/:id/dates/:date/share-link", marketingCampaignController.getDailyShareLink as never);
 marketingCampaignRouter.patch("/:id/slots/:slotId/content", validateRequest(updateContentSchema), marketingCampaignController.updateSlotContent as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/replace-image", validateRequest(replaceImageSchema), marketingCampaignController.replaceSlotImage as never);
 marketingCampaignRouter.post("/:id/:action", (req, res, next) => {

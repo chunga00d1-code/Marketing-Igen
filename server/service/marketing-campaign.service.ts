@@ -6,7 +6,7 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
 import { MarketingCampaignStatus, MarketingCampaignPlatform } from "../interface/marketing-campaign.interface";
 import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
-import { buildCampaignSchedule } from "./marketing-campaign-schedule.service";
+import { buildCampaignSchedule, zonedLocalTimeToUtc } from "./marketing-campaign-schedule.service";
 import { geminiService } from "./gemini.service";
 import { API_COSTS } from "./wallet.service";
 import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
@@ -514,6 +514,19 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       { new: true }
     );
     if (!content) throw new Error("Không tìm thấy nội dung bài viết.");
+
+    if (slot.status === "needs_attention") {
+      slot.status = "pending_approval";
+      slot.lastError = undefined;
+      slot.transitions.push({
+        from: "needs_attention",
+        to: "pending_approval",
+        reason: "Content updated by internal user after rejection.",
+        at: new Date()
+      });
+      await slot.save();
+    }
+
     return content;
   },
 
@@ -537,6 +550,19 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       { new: true }
     );
     if (!content) throw new Error("Không tìm thấy nội dung bài viết.");
+
+    if (slot.status === "needs_attention") {
+      slot.status = "pending_approval";
+      slot.lastError = undefined;
+      slot.transitions.push({
+        from: "needs_attention",
+        to: "pending_approval",
+        reason: "Image replaced by internal user after rejection.",
+        at: new Date()
+      });
+      await slot.save();
+    }
+
     return content;
   },
 
@@ -702,5 +728,192 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
           isVideo,
         };
       });
+  },
+
+  async generateDailyShareLink(companyCode: string, campaignId: string, date: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      throw new Error("ID chiến dịch không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode });
+    if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+    // Sign token valid for 30 days
+    const token = jwt.sign(
+      { campaignId, date, companyCode },
+      process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key",
+      { expiresIn: "30d" }
+    );
+
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    if (baseUrl.endsWith("/")) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+
+    return { shareLink: `${baseUrl}/approve-posts-day?token=${token}` };
+  },
+
+  async getPublicDailySlotsDetail(token: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; date: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.date || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      const campaign = await MarketingCampaignModel.findOne({
+        _id: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+      // Calculate start and end of date in campaign's timezone
+      const startOfDay = zonedLocalTimeToUtc(decoded.date, "00:00", campaign.timezone || "Asia/Ho_Chi_Minh");
+      const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+
+      const slots = await MarketingCampaignSlotModel.find({
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+        scheduledAt: { $gte: startOfDay, $lt: endOfDay }
+      }).lean();
+
+      const slotsWithContent = await Promise.all(slots.map(async (slot) => {
+        let content = null;
+        if (slot.marketingContentId) {
+          content = await MarketingContentModel.findOne({
+            _id: slot.marketingContentId,
+            companyCode: decoded.companyCode,
+          }).lean();
+        }
+        return { ...slot, content };
+      }));
+
+      return { campaign, slots: slotsWithContent, date: decoded.date };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
+    }
+  },
+
+  async executePublicDailySlotAction(token: string, slotId: string, action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; date: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.date || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(slotId)) {
+        throw new Error("ID slot không hợp lệ.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (slot.status !== "pending_approval") {
+        throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
+      }
+
+      if (action === "approve") {
+        slot.status = "ready_to_publish";
+        slot.approvedBy = "External Reviewer (Daily)";
+        slot.approvedAt = new Date();
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "ready_to_publish",
+          reason: "Approved by external reviewer via public daily link",
+          at: new Date(),
+        });
+      } else if (action === "reject") {
+        slot.status = "needs_attention";
+        slot.lastError = {
+          type: "validation",
+          message: reason || "Từ chối bởi người duyệt bên ngoài (Daily).",
+          occurredAt: new Date(),
+        };
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "needs_attention",
+          reason: `Rejected by external reviewer via daily link: ${reason || "Không có lý do."}`,
+          at: new Date(),
+        });
+      } else {
+        throw new Error("Thao tác không hợp lệ.");
+      }
+
+      await slot.save();
+      return slot;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác phê duyệt thất bại.");
+    }
+  },
+
+  async updatePublicDailySlotContent(token: string, slotId: string, updates: { title?: string; bodyText?: string }) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; date: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.date || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(slotId)) {
+        throw new Error("ID slot không hợp lệ.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (!["pending_approval", "needs_attention", "failed"].includes(slot.status)) {
+        throw new Error(`Không thể chỉnh sửa nội dung ở trạng thái hiện tại (${slot.status}).`);
+      }
+
+      let content = null;
+      if (slot.marketingContentId) {
+        content = await MarketingContentModel.findOne({
+          _id: slot.marketingContentId,
+          companyCode: decoded.companyCode,
+        });
+      }
+
+      if (!content) {
+        content = new MarketingContentModel({
+          campaignId: decoded.campaignId,
+          companyCode: decoded.companyCode,
+          mediaType: slot.platform === "TikTok" ? "video" : "image",
+          mediaUrls: [],
+          createdAt: new Date(),
+        });
+        await content.save();
+        slot.marketingContentId = content._id;
+        await slot.save();
+      }
+
+      if (updates.title !== undefined) {
+        content.title = updates.title;
+      }
+      if (updates.bodyText !== undefined) {
+        content.bodyText = updates.bodyText;
+      }
+      await content.save();
+
+      return { slot, content };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Cập nhật nội dung thất bại.");
+    }
   }
 };
