@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, X, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCcw, Check, Upload, Image } from 'lucide-react';
+import { CalendarClock, X, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCcw, Check, Upload, Image, Share2 } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
 
@@ -1308,6 +1308,21 @@ export default function CampaignDetailModal({
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Lịch trình đăng bài chi tiết (Campaign Slots)</span>
                       {activeSlot && <span className="text-[10px] text-indigo-650 font-bold bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded mt-1 inline-block">Bấm chọn slot để xem/sửa chi tiết</span>}
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const todayStr = new Intl.DateTimeFormat('en-CA', {
+                          timeZone: campaignDetail?.campaign?.timezone || 'Asia/Bangkok',
+                          year: 'numeric', month: '2-digit', day: '2-digit'
+                        }).format(new Date());
+                        handleShareDailyReviewLink(todayStr);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-650 transition cursor-pointer shadow-2xs"
+                      title="Lấy link để gửi người ngoài duyệt toàn bộ bài đăng của ngày hôm nay"
+                    >
+                      <Share2 size={11} className="text-slate-400" />
+                      Chia sẻ duyệt bài hôm nay
+                    </button>
                   </div>
 
                   {/* Bulk Actions Panel */}
@@ -1411,10 +1426,7 @@ export default function CampaignDetailModal({
                                 year: 'numeric', month: '2-digit', day: '2-digit',
                                 hour: '2-digit', minute: '2-digit', hour12: false
                               }).format(scheduledDate);
-                              const localDateString = new Intl.DateTimeFormat('en-CA', {
-                                timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
-                                year: 'numeric', month: '2-digit', day: '2-digit'
-                              }).format(scheduledDate);
+
 
                               const progress = getSlotProgress(slot.status);
 
@@ -1577,14 +1589,6 @@ export default function CampaignDetailModal({
                                               title="Lấy link để gửi người ngoài duyệt slot này"
                                             >
                                               Chia sẻ slot
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleShareDailyReviewLink(localDateString)}
-                                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-indigo-50 text-[9px] font-bold text-indigo-650 hover:bg-indigo-100 transition cursor-pointer"
-                                              title="Lấy link để gửi người ngoài duyệt toàn bộ các bài đăng của ngày này"
-                                            >
-                                              Chia sẻ ngày
                                             </button>
                                           </div>
                                         );

@@ -170,7 +170,7 @@ export default function PublicDailySlotsApproval() {
       <div className="flex-grow flex flex-col lg:flex-row overflow-hidden max-w-[1600px] w-full mx-auto p-4 md:p-6 gap-6">
         
         {/* Left Side: Campaign Info & Slots List */}
-        <div className="w-full lg:w-[45%] flex flex-col gap-4 overflow-hidden h-full">
+        <div className="w-full lg:w-[32%] flex flex-col gap-4 overflow-hidden h-full">
           {/* Campaign details */}
           <div className="bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none shrink-0">
             <span className="text-[9px] font-black tracking-widest text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded">Chiến dịch Marketing</span>
@@ -254,7 +254,7 @@ export default function PublicDailySlotsApproval() {
         </div>
 
         {/* Right Side: Active Preview & Decision */}
-        <div className="w-full lg:w-[55%] flex flex-col overflow-hidden h-full">
+        <div className="w-full lg:w-[68%] flex flex-col overflow-hidden h-full">
           {activeSlot ? (
             <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden h-full">
               {/* Preview mockup (Facebook / TikTok) */}
@@ -377,7 +377,7 @@ export default function PublicDailySlotsApproval() {
               </div>
 
               {/* Action Column for the active slot */}
-              <div className="w-full lg:w-[220px] shrink-0 flex flex-col gap-4 justify-between h-full bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none">
+              <div className="w-full lg:w-[240px] shrink-0 flex flex-col gap-4 justify-between h-full bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none">
                 <div className="space-y-4">
                   <div>
                     <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Trạng thái hiện tại</span>
