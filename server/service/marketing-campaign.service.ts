@@ -464,15 +464,17 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    if (slot.status !== "pending_approval") {
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể được duyệt ở trạng thái này: ${slot.status}`);
     }
 
+    const previousStatus = slot.status;
     slot.status = "ready_to_publish";
     slot.approvedBy = approvedBy;
     slot.approvedAt = new Date();
     slot.transitions.push({
-      from: "pending_approval",
+      from: previousStatus,
       to: "ready_to_publish",
       reason: `Approved manually by ${approvedBy}`,
       at: new Date()
@@ -498,8 +500,9 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    if (slot.status !== "pending_approval") {
-      throw new Error("Chỉ có thể chỉnh sửa nội dung khi bài viết đang chờ duyệt.");
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    if (!allowedStatuses.includes(slot.status)) {
+      throw new Error("Chỉ có thể chỉnh sửa nội dung khi bài viết đang chờ duyệt, cần kiểm tra hoặc lỗi.");
     }
     if (!slot.marketingContentId) {
       throw new Error("Không tìm thấy nội dung bài viết liên kết với slot này.");
@@ -520,8 +523,9 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    if (slot.status !== "pending_approval") {
-      throw new Error("Chỉ có thể thay ảnh khi bài viết đang chờ duyệt.");
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    if (!allowedStatuses.includes(slot.status)) {
+      throw new Error("Chỉ có thể thay ảnh khi bài viết đang chờ duyệt, cần kiểm tra hoặc lỗi.");
     }
     if (!slot.marketingContentId) {
       throw new Error("Không tìm thấy nội dung bài viết liên kết với slot này.");
