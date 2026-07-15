@@ -977,7 +977,18 @@ export const telegramService = {
           ],
         }).lean();
 
-        const linkToken = await TelegramLinkTokenModel.findOne({ code: normalizedCode });
+        const linkToken = await TelegramLinkTokenModel.findOneAndUpdate(
+          {
+            code: normalizedCode,
+            $or: [
+              { isClaimed: { $ne: true } },
+              { claimedAt: { $lt: new Date(Date.now() - 10000) } }
+            ]
+          },
+          { $set: { isClaimed: true, claimedAt: new Date() } },
+          { new: true }
+        );
+
         logTelegramDebug("link:tokenLookup", {
           chatId,
           telegramUserId: telegramUserId ?? "none",
@@ -989,6 +1000,12 @@ export const telegramService = {
         });
 
         if (!linkToken) {
+          const checkClaimed = await TelegramLinkTokenModel.findOne({ code: normalizedCode }).lean();
+          if (checkClaimed && checkClaimed.isClaimed) {
+            logTelegramDebug("link:duplicateRequestSilencedDueToOngoingClaim", { chatId });
+            return;
+          }
+
           if (existingSession) {
             logTelegramDebug("link:duplicateRequestSilenced", { chatId });
             return;
@@ -1009,8 +1026,6 @@ export const telegramService = {
           return;
         }
 
-        await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id });
-
         await TelegramSessionModel.deleteMany({
           $or: [
             { telegramChatId: chatId },
@@ -1028,6 +1043,8 @@ export const telegramService = {
           role: user.role || "user",
           companyCode: user.companyCode || "",
         });
+
+        await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id });
 
         logTelegramDebug("link:sessionCreated", {
           chatId,

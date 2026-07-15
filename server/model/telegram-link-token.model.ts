@@ -6,6 +6,8 @@ export interface ITelegramLinkToken extends Document {
   displayName: string;
   code: string;
   expiresAt: Date;
+  isClaimed?: boolean;
+  claimedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +19,8 @@ const TelegramLinkTokenSchema = new Schema<ITelegramLinkToken>(
     displayName: { type: String, default: "" },
     code: { type: String, required: true, unique: true, index: true },
     expiresAt: { type: Date, required: true },
+    isClaimed: { type: Boolean, default: false },
+    claimedAt: { type: Date },
   },
   { timestamps: true }
 );
