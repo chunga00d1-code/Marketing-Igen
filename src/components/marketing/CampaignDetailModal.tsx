@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CalendarClock, X, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCcw, Check, Upload, Image } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -199,6 +199,19 @@ export default function CampaignDetailModal({
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
 
   const activeSlot = campaignDetail?.slots.find(s => s._id === selectedSlot?._id) || null;
+
+  const parsedResearch = useMemo(() => {
+    if (!activeSlot?.researchAnalysis?.context) return null;
+    try {
+      const data = JSON.parse(activeSlot.researchAnalysis.context);
+      if (typeof data === 'object' && data !== null) {
+        return data;
+      }
+    } catch {
+      // not JSON
+    }
+    return null;
+  }, [activeSlot?.researchAnalysis?.context]);
 
   // Reset pagination/selections when campaign changes
   useEffect(() => {
@@ -919,9 +932,55 @@ export default function CampaignDetailModal({
                               <p className="mt-1 text-[10px] text-slate-500">
                                 {activeSlot.researchAnalysis.model} · {new Date(activeSlot.researchAnalysis.researchedAt).toLocaleString('vi-VN')}
                               </p>
-                              <p className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-slate-650">
-                                {activeSlot.researchAnalysis.context}
-                              </p>
+                              <div className="mt-2 max-h-60 overflow-y-auto pr-1 border-t border-slate-100/50 pt-2">
+                                {parsedResearch ? (
+                                  <div className="space-y-3.5 text-[11px] leading-relaxed text-slate-700 font-sans">
+                                    {parsedResearch.summary && (
+                                      <div className="bg-slate-50 border border-slate-150 rounded-xl p-2.5 text-[10.5px] leading-normal text-slate-600 font-medium">
+                                        <p className="font-bold text-slate-800 mb-0.5 text-[10px] uppercase tracking-wide">💡 Định hướng nghiên cứu:</p>
+                                        {parsedResearch.summary}
+                                      </div>
+                                    )}
+
+                                    {parsedResearch.angles && parsedResearch.angles.length > 0 && (
+                                      <div className="space-y-1">
+                                        <strong className="block text-[9.5px] font-extrabold text-teal-650 uppercase tracking-wide">📐 Góc tiếp cận bài viết:</strong>
+                                        <ul className="list-disc pl-4 space-y-1 text-slate-650 font-medium">
+                                          {parsedResearch.angles.map((angle: string, i: number) => (
+                                            <li key={i}>{angle}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {parsedResearch.painPoints && parsedResearch.painPoints.length > 0 && (
+                                      <div className="space-y-1">
+                                        <strong className="block text-[9.5px] font-extrabold text-amber-650 uppercase tracking-wide">🔥 Nỗi đau khách hàng:</strong>
+                                        <ul className="list-disc pl-4 space-y-1 text-slate-650">
+                                          {parsedResearch.painPoints.map((point: string, i: number) => (
+                                            <li key={i}>{point}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {parsedResearch.facts && parsedResearch.facts.length > 0 && (
+                                      <div className="space-y-1">
+                                        <strong className="block text-[9.5px] font-extrabold text-slate-550 uppercase tracking-wide">📋 Thông tin thương hiệu:</strong>
+                                        <ul className="list-disc pl-4 space-y-1 text-slate-650">
+                                          {parsedResearch.facts.map((fact: string, i: number) => (
+                                            <li key={i}>{fact}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-650">
+                                    {activeSlot.researchAnalysis.context}
+                                  </p>
+                                )}
+                              </div>
                               <span className="mt-2 inline-block text-[9px] font-semibold text-slate-450">
                                 {activeSlot.researchAnalysis.billedAt ? 'Đã ghi nhận chi phí' : 'Chưa ghi nhận chi phí'} · {activeSlot.researchAnalysis.cost.toFixed(2)} Credit
                               </span>
