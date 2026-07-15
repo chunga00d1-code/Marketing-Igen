@@ -1220,6 +1220,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           needs_attention: 'Cần chú ý',
         }}
         onRetrySlot={async (campaignId, slotId) => {
+          setCampaignDetail(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              slots: prev.slots.map(s => s._id === slotId ? { ...s, status: 'planned', errorMessage: undefined } : s)
+            };
+          });
           try {
             await marketingCampaignService.retrySlot(campaignId, slotId);
             toast.success('Đã đặt lại slot để thử lại.');
@@ -1244,6 +1251,15 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             const res = await marketingCampaignService.detail(selectedCampaignId);
             setCampaignDetail({ campaign: res.campaign, slots: res.slots as CampaignSlot[] });
           }
+        }}
+        onUpdateSlot={(slotId, updatedFields) => {
+          setCampaignDetail(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              slots: prev.slots.map(s => s._id === slotId ? { ...s, ...updatedFields } : s)
+            };
+          });
         }}
       />
 

@@ -88,6 +88,7 @@ interface CampaignDetailModalProps {
   onRetrySlot?: (campaignId: string, slotId: string) => Promise<void>;
   onRetryAll?: (campaignId: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
+  onUpdateSlot?: (slotId: string, updatedFields: Partial<CampaignSlot>) => void;
 }
 
 const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
@@ -178,6 +179,7 @@ export default function CampaignDetailModal({
   onRetrySlot,
   onRetryAll,
   onRefresh,
+  onUpdateSlot,
 }: CampaignDetailModalProps) {
   const [retryingSlotId, setRetryingSlotId] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
@@ -199,6 +201,7 @@ export default function CampaignDetailModal({
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
 
   const activeSlot = campaignDetail?.slots.find(s => s._id === selectedSlot?._id) || null;
+  const isEditable = activeSlot ? ['pending_approval', 'needs_attention', 'failed'].includes(activeSlot.status) : false;
 
   const parsedResearch = useMemo(() => {
     if (!activeSlot?.researchAnalysis?.context) return null;
@@ -236,6 +239,9 @@ export default function CampaignDetailModal({
   const handleApproveSlot = async () => {
     if (!campaignDetail || !activeSlot) return;
     setIsApproving(true);
+    if (onUpdateSlot) {
+      onUpdateSlot(activeSlot._id, { status: 'ready_to_publish' });
+    }
     try {
       await marketingCampaignService.approveSlot(campaignDetail.campaign._id, activeSlot._id);
       toast.success('Đã duyệt đăng bài thành công.');
@@ -244,6 +250,9 @@ export default function CampaignDetailModal({
       }
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể duyệt đăng bài.');
+      if (onRefresh) {
+        await onRefresh();
+      }
     } finally {
       setIsApproving(false);
     }
@@ -259,6 +268,9 @@ export default function CampaignDetailModal({
       return;
     }
     setIsRejecting(true);
+    if (onUpdateSlot) {
+      onUpdateSlot(activeSlot._id, { status: 'needs_attention', errorMessage: reason.trim() });
+    }
     try {
       await marketingCampaignService.rejectSlot(campaignDetail.campaign._id, activeSlot._id, reason.trim());
       toast.success('Đã từ chối đăng bài thành công.');
@@ -267,6 +279,9 @@ export default function CampaignDetailModal({
       }
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể từ chối đăng bài.');
+      if (onRefresh) {
+        await onRefresh();
+      }
     } finally {
       setIsRejecting(false);
     }
@@ -289,6 +304,15 @@ export default function CampaignDetailModal({
   const handleSaveContent = async () => {
     if (!campaignDetail || !activeSlot) return;
     setIsSavingContent(true);
+    if (onUpdateSlot && activeSlot.content) {
+      onUpdateSlot(activeSlot._id, {
+        content: {
+          ...activeSlot.content,
+          title: editTitle,
+          bodyText: editBody,
+        }
+      });
+    }
     try {
       await marketingCampaignService.updateSlotContent(campaignDetail.campaign._id, activeSlot._id, {
         title: editTitle,
@@ -300,6 +324,9 @@ export default function CampaignDetailModal({
       }
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể lưu nội dung bài viết.');
+      if (onRefresh) {
+        await onRefresh();
+      }
     } finally {
       setIsSavingContent(false);
     }
@@ -320,6 +347,14 @@ export default function CampaignDetailModal({
     reader.onload = async (evt) => {
       try {
         const base64Data = evt.target?.result as string;
+        if (onUpdateSlot && activeSlot.content) {
+          onUpdateSlot(activeSlot._id, {
+            content: {
+              ...activeSlot.content,
+              mediaUrls: [base64Data]
+            }
+          });
+        }
         await marketingCampaignService.replaceSlotImage(campaignDetail.campaign._id, activeSlot._id, base64Data);
         toast.success('Đã thay thế ảnh thành công.');
         if (onRefresh) {
@@ -327,6 +362,9 @@ export default function CampaignDetailModal({
         }
       } catch (error: unknown) {
         toast.error(error instanceof Error ? error.message : 'Không thể thay thế ảnh bài đăng.');
+        if (onRefresh) {
+          await onRefresh();
+        }
       } finally {
         setIsReplacingImage(false);
       }
@@ -662,26 +700,50 @@ export default function CampaignDetailModal({
                         </span>
                       </div>
 
-                      {activeSlot.status === 'pending_approval' && (
+                      {['pending_approval', 'needs_attention', 'failed'].includes(activeSlot.status) && (
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            disabled={isApproving || isRejecting}
+                            disabled={isApproving || isRejecting || retryingSlotId === activeSlot._id}
                             onClick={handleApproveSlot}
                             className="inline-flex items-center gap-1 bg-green-650 hover:bg-green-755 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
                           >
                             {isApproving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                             Duyệt
                           </button>
-                          <button
-                            type="button"
-                            disabled={isApproving || isRejecting}
-                            onClick={handleRejectSlot}
-                            className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
-                          >
-                            {isRejecting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
-                            Từ chối
-                          </button>
+                          {activeSlot.status === 'pending_approval' && (
+                            <button
+                              type="button"
+                              disabled={isApproving || isRejecting}
+                              onClick={handleRejectSlot}
+                              className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+                            >
+                              {isRejecting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                              Từ chối
+                            </button>
+                          )}
+                          {['needs_attention', 'failed'].includes(activeSlot.status) && onRetrySlot && campaignDetail?.campaign?.status === 'active' && (
+                            <button
+                              type="button"
+                              disabled={isApproving || isRejecting || retryingSlotId === activeSlot._id}
+                              onClick={async () => {
+                                setRetryingSlotId(activeSlot._id);
+                                if (onUpdateSlot) {
+                                  onUpdateSlot(activeSlot._id, { status: 'planned', errorMessage: undefined });
+                                }
+                                try {
+                                  await onRetrySlot(campaignDetail.campaign._id, activeSlot._id);
+                                  setSelectedSlot(null);
+                                } finally {
+                                  setRetryingSlotId(null);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+                            >
+                              {retryingSlotId === activeSlot._id ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                              Thử lại
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -698,6 +760,33 @@ export default function CampaignDetailModal({
                       </div>
                     )}
                   </div>
+
+                  {/* Warning/Error banners for needs_attention or failed */}
+                  {activeSlot.status === 'needs_attention' && activeSlot.errorMessage && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 leading-relaxed font-sans shadow-2xs">
+                      <div className="flex items-center gap-1.5 font-bold mb-1">
+                        <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                        <span>Yêu cầu chỉnh sửa / Lý do từ chối:</span>
+                      </div>
+                      <p className="whitespace-pre-wrap font-medium">{activeSlot.errorMessage}</p>
+                      <p className="mt-2 text-[10px] text-amber-600 font-semibold select-none">
+                        💡 Bạn có thể chỉnh sửa nội dung hoặc thay ảnh bên dưới rồi bấm <b>Duyệt</b> để áp dụng, hoặc bấm <b>Thử lại</b> để AI chạy lại bài đăng.
+                      </p>
+                    </div>
+                  )}
+
+                  {activeSlot.status === 'failed' && activeSlot.errorMessage && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-800 leading-relaxed font-sans shadow-2xs">
+                      <div className="flex items-center gap-1.5 font-bold mb-1">
+                        <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                        <span>Lỗi thực thi / đăng bài:</span>
+                      </div>
+                      <p className="whitespace-pre-wrap font-mono text-[11px] bg-white/60 p-2 rounded border border-red-100/50 mt-1 max-h-24 overflow-y-auto">{activeSlot.errorMessage}</p>
+                      <p className="mt-2 text-[10px] text-red-500 font-semibold select-none">
+                        💡 Bạn có thể chỉnh sửa nội dung/hình ảnh để tự sửa lỗi rồi bấm <b>Duyệt</b>, hoặc bấm <b>Thử lại</b> để thực hiện lại.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Tabs Selector */}
                   <div className="flex border-b border-slate-200 mb-2 select-none">
@@ -853,7 +942,7 @@ export default function CampaignDetailModal({
                                 type="text"
                                 value={editTitle}
                                 onChange={(e) => setEditTitle(e.target.value)}
-                                disabled={activeSlot.status !== 'pending_approval'}
+                                disabled={!isEditable}
                                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-800 disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs"
                                 placeholder="Nhập tiêu đề bài đăng..."
                               />
@@ -865,13 +954,13 @@ export default function CampaignDetailModal({
                                 rows={10}
                                 value={editBody}
                                 onChange={(e) => setEditBody(e.target.value)}
-                                disabled={activeSlot.status !== 'pending_approval'}
+                                disabled={!isEditable}
                                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-normal text-slate-850 leading-relaxed disabled:bg-slate-50 disabled:text-slate-500 shadow-2xs font-sans whitespace-pre-wrap"
                                 placeholder="Nhập nội dung bài đăng..."
                               />
                             </div>
 
-                            {activeSlot.status === 'pending_approval' && (
+                            {isEditable && (
                               <div className="flex justify-end pt-1">
                                 <button
                                   type="button"
@@ -1228,6 +1317,11 @@ export default function CampaignDetailModal({
                                     {slot.status === 'failed' && slot.errorMessage && (
                                       <p className="text-[9px] text-red-500 mt-1 max-w-[150px] truncate font-mono" title={slot.errorMessage}>
                                         Lỗi: {slot.errorMessage}
+                                      </p>
+                                    )}
+                                    {slot.status === 'needs_attention' && slot.errorMessage && (
+                                      <p className="text-[9px] text-amber-600 mt-1 max-w-[150px] truncate font-sans font-medium" title={slot.errorMessage}>
+                                        Lý do: {slot.errorMessage}
                                       </p>
                                     )}
                                   </td>

@@ -165,7 +165,7 @@ export class ApifyResearchService {
     const estimatedCostUsd = queries.length * 0.0045;
     const actorId = process.env.APIFY_GOOGLE_ACTOR_ID || "apify/google-search-scraper";
     const result = await this.runActor("google", actorId, {
-      queries,
+      queries: queries.join("\n"),
       maxPagesPerQuery: 1,
       resultsPerPage: resultsPerQuery,
       languageCode: "vi",
