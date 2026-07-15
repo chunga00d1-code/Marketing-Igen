@@ -302,6 +302,19 @@ export default function CampaignDetailModal({
     }
   };
 
+  // Handle Share Daily Review Link
+  const handleShareDailyReviewLink = async (dateString: string) => {
+    if (!campaignDetail) return;
+    try {
+      const response = await marketingCampaignService.getDailyShareLink(campaignDetail.campaign._id, dateString);
+      const shareLink = response.shareLink;
+      await navigator.clipboard.writeText(shareLink);
+      toast.success(`Đã sao chép link duyệt bài đăng ngày ${dateString} vào bộ nhớ tạm!`);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể lấy link chia sẻ.');
+    }
+  };
+
   // Handle Content Save
   const handleSaveContent = async () => {
     if (!campaignDetail || !activeSlot) return;
@@ -750,17 +763,31 @@ export default function CampaignDetailModal({
                       )}
                     </div>
 
-                    {activeSlot.status === 'pending_approval' && (
-                      <div className="border-t border-slate-100 pt-2 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => handleShareReviewLink(activeSlot._id)}
-                          className="text-[10px] font-bold text-indigo-650 hover:text-indigo-850 hover:underline transition cursor-pointer flex items-center gap-1"
-                        >
-                          Chia sẻ link duyệt cho người ngoài &rarr;
-                        </button>
-                      </div>
-                    )}
+                    {activeSlot.status === 'pending_approval' && (() => {
+                      const scheduledDate = new Date(activeSlot.scheduledAt);
+                      const localDateString = new Intl.DateTimeFormat('en-CA', {
+                        timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
+                        year: 'numeric', month: '2-digit', day: '2-digit'
+                      }).format(scheduledDate);
+                      return (
+                        <div className="border-t border-slate-100 pt-2 flex justify-between items-center w-full">
+                          <button
+                            type="button"
+                            onClick={() => handleShareReviewLink(activeSlot._id)}
+                            className="text-[10px] font-bold text-indigo-650 hover:text-indigo-850 hover:underline transition cursor-pointer flex items-center gap-1"
+                          >
+                            Chia sẻ link slot &rarr;
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleShareDailyReviewLink(localDateString)}
+                            className="text-[10px] font-bold text-indigo-650 hover:text-indigo-850 hover:underline transition cursor-pointer flex items-center gap-1"
+                          >
+                            Chia sẻ link ngày &rarr;
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Warning/Error banners for needs_attention or failed */}
@@ -1384,6 +1411,10 @@ export default function CampaignDetailModal({
                                 year: 'numeric', month: '2-digit', day: '2-digit',
                                 hour: '2-digit', minute: '2-digit', hour12: false
                               }).format(scheduledDate);
+                              const localDateString = new Intl.DateTimeFormat('en-CA', {
+                                timeZone: campaignDetail.campaign.timezone || 'Asia/Bangkok',
+                                year: 'numeric', month: '2-digit', day: '2-digit'
+                              }).format(scheduledDate);
 
                               const progress = getSlotProgress(slot.status);
 
@@ -1543,9 +1574,17 @@ export default function CampaignDetailModal({
                                               type="button"
                                               onClick={() => handleShareReviewLink(slot._id)}
                                               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-indigo-50 text-[9px] font-bold text-indigo-650 hover:bg-indigo-100 transition cursor-pointer"
-                                              title="Lấy link để gửi người ngoài duyệt"
+                                              title="Lấy link để gửi người ngoài duyệt slot này"
                                             >
-                                              Chia sẻ link
+                                              Chia sẻ slot
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleShareDailyReviewLink(localDateString)}
+                                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-indigo-50 text-[9px] font-bold text-indigo-650 hover:bg-indigo-100 transition cursor-pointer"
+                                              title="Lấy link để gửi người ngoài duyệt toàn bộ các bài đăng của ngày này"
+                                            >
+                                              Chia sẻ ngày
                                             </button>
                                           </div>
                                         );

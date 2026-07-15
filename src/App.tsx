@@ -17,6 +17,7 @@ const UserDataDeletion = lazy(() => import("./pages/UserDataDeletion"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const TikTokSandboxOAuth = lazy(() => import("./pages/TikTokSandboxOAuth"));
 const PublicSlotApproval = lazy(() => import("./pages/PublicSlotApproval"));
+const PublicDailySlotsApproval = lazy(() => import("./pages/PublicDailySlotsApproval"));
 
 function AppContent() {
   const { user, userProfile, loading } = useAuth();
@@ -28,8 +29,9 @@ function AppContent() {
   const isDeletionPage = currentPath === "/user-data-deletion" || currentPath === "/user-data-deletion.html";
   const isTiktokSandboxOauth = currentPath === "/tiktok-sandbox-oauth" || currentPath === "/tiktok-sandbox-oauth.html";
   const isSlotApprovalPage = currentPath === "/approve-post" || currentPath === "/approve-post.html";
+  const isDailyApprovalPage = currentPath === "/approve-posts-day" || currentPath === "/approve-posts-day.html";
   const isLegalPublicPage = isPrivacyPage || isTermsPage || isDeletionPage;
-  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isTiktokSandboxOauth || isSlotApprovalPage;
+  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isTiktokSandboxOauth || isSlotApprovalPage || isDailyApprovalPage;
 
   const { activeTab, setActiveTab } = useTabRouter({
     enabled: !isPublicPage && !loading && Boolean(user && userProfile),
@@ -68,6 +70,14 @@ function AppContent() {
     return (
       <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Đang tải trang phê duyệt...</div>}>
         <PublicSlotApproval />
+      </Suspense>
+    );
+  }
+
+  if (isDailyApprovalPage) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Đang tải trang phê duyệt ngày...</div>}>
+        <PublicDailySlotsApproval />
       </Suspense>
     );
   }
