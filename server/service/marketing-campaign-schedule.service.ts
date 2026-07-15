@@ -145,8 +145,8 @@ export function buildCampaignSchedule(input: {
       globalSlotIndex += 1;
       return {
         scheduledAt,
-        prepareAt: new Date(scheduledAt.getTime() - input.generationLeadMinutes * 60000),
-        verifyAt: new Date(scheduledAt.getTime() - input.verificationLeadMinutes * 60000),
+        prepareAt: zonedLocalTimeToUtc(date, '00:00', input.timezone),
+        verifyAt: zonedLocalTimeToUtc(date, '00:30', input.timezone),
         platform: input.platforms[currentSlotIndex % input.platforms.length],
         slotIndex: currentSlotIndex,
       };
