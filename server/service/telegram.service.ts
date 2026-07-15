@@ -19,6 +19,7 @@ const TELEGRAM_API_BASE_URL = process.env.TELEGRAM_API_BASE_URL || "https://api.
 
 let pollingActive = false;
 let lastOffset = 0;
+const campaignWizards = new Map<number, any>();
 
 /** Danh sách role được phép sử dụng lệnh quản trị */
 const ADMIN_ROLES = ["admin", "superadmin"];
@@ -152,6 +153,7 @@ function buildSessionHelpMessage(session: any): string {
     helpLines.push(
       "",
       "📣 <b>QUẢN LÝ CHIẾN DỊCH MARKETING (CAMPAIGNS)</b>",
+      "• <code>/create_campaign</code> - Khởi tạo chiến dịch Marketing mới từng bước ngay tại đây.",
       "Khi thiết lập chiến dịch trên Web ERP, bạn cấu hình theo các bước sau:",
       "• <b>Bước 1: Khởi tạo</b>: Định nghĩa chiến lược chung và thiết lập các slot bài đăng.",
       "• <b>Bước 2: Chọn nguồn ảnh/media</b>:",
@@ -178,6 +180,368 @@ function buildSessionHelpMessage(session: any): string {
 }
 
 export const telegramService = {
+  /**
+   * Tiến trình tương tác tạo chiến dịch Marketing từng bước qua Telegram
+   */
+  async processCampaignWizard(chatId: number, command: string, text: string, session: any): Promise<boolean> {
+    const wizard = campaignWizards.get(chatId);
+    if (!wizard) return false;
+
+    // Lệnh hủy bỏ luôn khả dụng trong wizard
+    if (command === "/cancel" || command === "/w_confirm_no") {
+      campaignWizards.delete(chatId);
+      await this.sendMessage(chatId, "❌ <b>Đã hủy bỏ tiến trình tạo chiến dịch.</b>");
+      return true;
+    }
+
+    const step = wizard.step;
+
+    if (step === "waiting_for_brief") {
+      const brief = text.trim();
+      if (!brief) {
+        await this.sendMessage(chatId, "⚠️ Định hướng chiến dịch không được để trống. Vui lòng nhập lại:");
+        return true;
+      }
+      wizard.brief = brief;
+      wizard.step = "waiting_for_media_mode";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessageWithCallbackButtons(
+        chatId,
+        [
+          `🖼️ <b>Bước 2/6: Chọn nguồn hình ảnh/media</b>`,
+          `Định hướng: <i>"${brief}"</i>`,
+          ``,
+          `Chọn nguồn ảnh/video minh họa cho chiến dịch của bạn:`
+        ].join("\n"),
+        [
+          [
+            { text: "🤖 Ảnh sinh tự động bằng AI", callbackData: "/w_media_ai" },
+            { text: "📁 Ảnh thật từ Google Drive", callbackData: "/w_media_drive" }
+          ],
+          [{ text: "❌ Hủy bỏ", callbackData: "/cancel" }]
+        ]
+      );
+      return true;
+    }
+
+    if (command === "/w_media_ai") {
+      wizard.imageMode = "ai";
+      wizard.step = "waiting_for_platform";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessageWithCallbackButtons(
+        chatId,
+        [
+          `📢 <b>Bước 3/6: Chọn nền tảng đăng bài</b>`,
+          `Nguồn media: <b>🤖 Ảnh sinh bằng AI</b>`,
+          ``,
+          `Chọn các nền tảng đăng bài:`
+        ].join("\n"),
+        [
+          [
+            { text: "🔵 Facebook Fanpage", callbackData: "/w_plat_fb" },
+            { text: "⚫ TikTok", callbackData: "/w_plat_tt" }
+          ],
+          [
+            { text: "🟣 Đăng cả hai (FB + TikTok)", callbackData: "/w_plat_both" }
+          ],
+          [{ text: "❌ Hủy", callbackData: "/cancel" }]
+        ]
+      );
+      return true;
+    }
+
+    if (command === "/w_media_drive") {
+      wizard.imageMode = "real";
+      wizard.step = "waiting_for_drive_url";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessage(
+        chatId,
+        [
+          `🔗 <b>Bước 2.5: Nhập link thư mục Google Drive</b>`,
+          `Nguồn media: <b>📁 Ảnh thật từ Drive</b>`,
+          ``,
+          `Vui lòng nhập đường dẫn thư mục Google Drive chứa ảnh/video (Hãy cấu hình thư mục ở chế độ <b>Công khai/Mọi người có liên kết đều xem được</b> để hệ thống truy cập).`,
+          `<i>Lưu ý: Tên file ảnh/video nên chứa số thứ tự tương ứng (ví dụ: post_1.png, 2.jpg...)</i>`,
+          ``,
+          `<i>(Gõ /cancel để hủy)</i>`
+        ].join("\n")
+      );
+      return true;
+    }
+
+    if (step === "waiting_for_drive_url") {
+      const url = text.trim();
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        await this.sendMessage(chatId, "⚠️ Đường dẫn không hợp lệ. Vui lòng nhập đầy đủ link Google Drive:");
+        return true;
+      }
+      wizard.googleDriveFolderUrl = url;
+      wizard.step = "waiting_for_platform";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessageWithCallbackButtons(
+        chatId,
+        [
+          `📢 <b>Bước 3/6: Chọn nền tảng đăng bài</b>`,
+          `Đường dẫn Drive: <code>${url}</code>`,
+          ``,
+          `Chọn nền tảng đăng bài:`
+        ].join("\n"),
+        [
+          [
+            { text: "🔵 Facebook Fanpage", callbackData: "/w_plat_fb" },
+            { text: "⚫ TikTok", callbackData: "/w_plat_tt" }
+          ],
+          [
+            { text: "🟣 Đăng cả hai (FB + TikTok)", callbackData: "/w_plat_both" }
+          ],
+          [{ text: "❌ Hủy", callbackData: "/cancel" }]
+        ]
+      );
+      return true;
+    }
+
+    if (command === "/w_plat_fb" || command === "/w_plat_tt" || command === "/w_plat_both") {
+      const chosenPlats: Array<"Facebook" | "TikTok"> = [];
+      if (command === "/w_plat_fb") chosenPlats.push("Facebook");
+      else if (command === "/w_plat_tt") chosenPlats.push("TikTok");
+      else {
+        chosenPlats.push("Facebook", "TikTok");
+      }
+
+      // Tự động kiểm tra liên kết của doanh nghiệp
+      try {
+        for (const platform of chosenPlats) {
+          const integration = await SocialIntegrationModel.findOne({
+            companyCode: session.companyCode,
+            platform,
+            isConnected: true
+          }).lean();
+          if (!integration) {
+            await this.sendMessage(
+              chatId,
+              `❌ <b>Không thể tiếp tục:</b> Doanh nghiệp chưa kết nối tài khoản <b>${platform}</b> trên Web ERP.\nVui lòng kết nối tài khoản trên giao diện web trước.`
+            );
+            campaignWizards.delete(chatId);
+            return true;
+          }
+          if (!wizard.integrationIds) wizard.integrationIds = {};
+          wizard.integrationIds[platform] = String(integration._id);
+        }
+      } catch (err: any) {
+        console.error("[Telegram Wizard] Lỗi kiểm tra liên kết mạng xã hội:", err);
+        await this.sendMessage(chatId, "❌ Lỗi kết nối hệ thống khi xác thực tài khoản liên kết.");
+        campaignWizards.delete(chatId);
+        return true;
+      }
+
+      wizard.platforms = chosenPlats;
+      wizard.step = "waiting_for_schedule_days";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessageWithCallbackButtons(
+        chatId,
+        [
+          `📅 <b>Bước 4/6: Thời gian chạy chiến dịch</b>`,
+          `Nền tảng đăng bài: <b>${chosenPlats.join(", ")}</b>`,
+          ``,
+          `Chọn số ngày muốn chạy chiến dịch (bắt đầu từ hôm nay):`
+        ].join("\n"),
+        [
+          [
+            { text: "⏱️ 3 ngày", callbackData: "/w_days_3" },
+            { text: "⏱️ 7 ngày", callbackData: "/w_days_7" }
+          ],
+          [
+            { text: "⏱️ 14 ngày", callbackData: "/w_days_14" }
+          ],
+          [{ text: "❌ Hủy", callbackData: "/cancel" }]
+        ]
+      );
+      return true;
+    }
+
+    if (command.startsWith("/w_days_") || step === "waiting_for_schedule_days") {
+      let days = 0;
+      if (command.startsWith("/w_days_")) {
+        days = parseInt(command.replace("/w_days_", ""), 10);
+      } else {
+        days = parseInt(text.trim(), 10);
+      }
+
+      if (isNaN(days) || days <= 0 || days > 30) {
+        await this.sendMessage(chatId, "⚠️ Số ngày chạy không hợp lệ (phải từ 1 đến 30). Vui lòng chọn hoặc nhập số ngày cụ thể:");
+        return true;
+      }
+
+      const formatZonedDate = (date: Date) => {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(date);
+      };
+
+      const now = new Date();
+      const startDate = formatZonedDate(now);
+      const end = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      const endDate = formatZonedDate(end);
+
+      wizard.days = days;
+      wizard.startDate = startDate;
+      wizard.endDate = endDate;
+      wizard.step = "waiting_for_posts_per_day";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessageWithCallbackButtons(
+        chatId,
+        [
+          `✍️ <b>Bước 5/6: Tần suất đăng bài hàng ngày</b>`,
+          `Thời gian: <b>${days} ngày</b> (Từ ${startDate} đến ${endDate})`,
+          ``,
+          `Chọn số lượng bài đăng mỗi ngày cho từng kênh:`
+        ].join("\n"),
+        [
+          [
+            { text: "📝 1 bài/ngày", callbackData: "/w_freq_1" },
+            { text: "📝 2 bài/ngày", callbackData: "/w_freq_2" }
+          ],
+          [{ text: "❌ Hủy", callbackData: "/cancel" }]
+        ]
+      );
+      return true;
+    }
+
+    if (command.startsWith("/w_freq_") || step === "waiting_for_posts_per_day") {
+      let freq = 0;
+      if (command.startsWith("/w_freq_")) {
+        freq = parseInt(command.replace("/w_freq_", ""), 10);
+      } else {
+        freq = parseInt(text.trim(), 10);
+      }
+
+      if (isNaN(freq) || freq <= 0 || freq > 5) {
+        await this.sendMessage(chatId, "⚠️ Tần suất không hợp lệ (từ 1 đến 5 bài/ngày). Vui lòng chọn hoặc nhập lại:");
+        return true;
+      }
+
+      wizard.postsPerDay = freq;
+      wizard.step = "waiting_for_posting_time";
+      campaignWizards.set(chatId, wizard);
+
+      await this.sendMessage(
+        chatId,
+        [
+          `⏰ <b>Bước 6/6: Thiết lập thời gian đăng bài hàng ngày</b>`,
+          `Tần suất: <b>${freq} bài/ngày</b>`,
+          ``,
+          `Vui lòng nhập giờ đăng bài hàng ngày.`,
+          freq === 1 
+            ? `👉 Nhập 1 khung giờ đăng (Ví dụ: <code>09:00</code> hoặc <code>21:00</code>)`
+            : `👉 Nhập ${freq} khung giờ đăng, cách nhau bằng dấu phẩy (Ví dụ: <code>09:00, 21:00</code>)`,
+          ``,
+          `<i>(Định dạng 24h: HH:MM)</i>`
+        ].join("\n")
+      );
+      return true;
+    }
+
+    if (step === "waiting_for_posting_time") {
+      const timeParts = text.split(",").map((t) => t.trim());
+      const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+      if (timeParts.length !== wizard.postsPerDay) {
+        await this.sendMessage(chatId, `⚠️ Số lượng giờ đăng không khớp. Hãy nhập đúng ${wizard.postsPerDay} khung giờ:`);
+        return true;
+      }
+
+      const invalidTime = timeParts.find((t) => !timeRegex.test(t));
+      if (invalidTime) {
+        await this.sendMessage(chatId, `⚠️ Khung giờ "${invalidTime}" không đúng định dạng HH:MM. Vui lòng nhập lại:`);
+        return true;
+      }
+
+      wizard.postingTimes = timeParts;
+      wizard.step = "confirm_creation";
+      campaignWizards.set(chatId, wizard);
+
+      const summaryText = [
+        `📝 <b>XÁC NHẬN TẠO CHIẾN DỊCH</b>`,
+        `=============================`,
+        `• <b>Định hướng chiến dịch:</b>`,
+        `  <i>"${wizard.brief}"</i>`,
+        `• <b>Nguồn ảnh/media:</b> <b>${wizard.imageMode === "ai" ? "Ảnh sinh bằng AI (Gemini)" : "Ảnh thật từ Google Drive"}</b>`,
+        wizard.imageMode === "real" ? `  Link Drive: <code>${wizard.googleDriveFolderUrl}</code>` : "",
+        `• <b>Nền tảng đăng:</b> <b>${wizard.platforms.join(", ")}</b>`,
+        `• <b>Khoảng thời gian:</b> Từ <code>${wizard.startDate}</code> đến <code>${wizard.endDate}</code> (${wizard.days} ngày)`,
+        `• <b>Tần suất:</b> ${wizard.postsPerDay} bài/ngày`,
+        `• <b>Giờ đăng bài:</b> <code>${wizard.postingTimes.join(", ")}</code>`,
+        `=============================`,
+        `Bấm nút xác nhận bên dưới để kích hoạt chiến dịch trên hệ thống ERP:`
+      ].filter(Boolean).join("\n");
+
+      await this.sendMessageWithCallbackButtons(
+        chatId,
+        summaryText,
+        [
+          [
+            { text: "✅ Xác nhận tạo", callbackData: "/w_confirm_yes" },
+            { text: "❌ Hủy bỏ", callbackData: "/w_confirm_no" }
+          ]
+        ]
+      );
+      return true;
+    }
+
+    if (command === "/w_confirm_yes") {
+      await this.sendMessage(chatId, "⏳ <b>Đang lập kế hoạch chiến dịch và cấu hình slots, vui lòng đợi...</b>");
+      try {
+        const { marketingCampaignService } = await import("./marketing-campaign.service");
+
+        const result = await marketingCampaignService.create(session.companyCode, session.email, {
+          sourceBrief: wizard.brief,
+          startDate: wizard.startDate,
+          endDate: wizard.endDate,
+          postsPerDay: wizard.postsPerDay,
+          postingTimes: wizard.postingTimes,
+          platforms: wizard.platforms,
+          integrationIds: wizard.integrationIds,
+          imageMode: wizard.imageMode,
+          googleDriveFolderUrl: wizard.googleDriveFolderUrl,
+          timezone: "Asia/Ho_Chi_Minh",
+          publishMode: "manual", // Duyệt trước qua Telegram cho an toàn
+          qualityMode: "premium",
+          apifySources: ["google"]
+        });
+
+        await this.sendMessage(
+          chatId,
+          [
+            `🎉 <b>KHỞI TẠO CHIẾN DỊCH THÀNH CÔNG!</b>`,
+            `=============================`,
+            `🏷️ Tên chiến dịch: <b>${result.campaign.title}</b>`,
+            `📦 Tổng số bài đăng đã lên lịch: <b>${result.slots.length} bài</b>`,
+            `⏱️ Trạng thái: <b>Đang hoạt động</b>`,
+            `=============================`,
+            `Hệ thống sẽ chuẩn bị bài viết và gửi thông báo phê duyệt qua Telegram trước giờ đăng 1 tiếng.`,
+            `Bạn có thể truy cập Web ERP để theo dõi chi tiết chiến dịch.`
+          ].join("\n")
+        );
+      } catch (err: any) {
+        console.error("[Telegram Wizard] Lỗi khởi tạo chiến dịch:", err);
+        await this.sendMessage(chatId, `❌ <b>Tạo chiến dịch thất bại:</b> ${err.message || err}`);
+      }
+      campaignWizards.delete(chatId);
+      return true;
+    }
+
+    return false;
+  },
+
   /**
    * Gửi thông báo chốt đơn thành công sang Telegram
    */
@@ -508,7 +872,7 @@ export const telegramService = {
               const telegramUserId = update.message.from?.id;
               const messageId = update.message.message_id;
 
-              if (text.startsWith("/")) {
+              if (text.startsWith("/") || campaignWizards.has(chatId)) {
                 // Xử lý tuần tự từng command để tránh race condition giữa /link và lệnh ngay sau đó như /help.
                 await this.handleCommand(chatId, chatType, telegramUserId, text, photo, document, replyToMessage, messageId);
               }
@@ -606,7 +970,14 @@ export const telegramService = {
       }
 
       try {
-        const linkToken = await TelegramLinkTokenModel.findOneAndDelete({ code: normalizedCode });
+        const existingSession = await TelegramSessionModel.findOne({
+          $or: [
+            { telegramChatId: chatId },
+            ...(telegramUserId ? [{ telegramUserId }] : []),
+          ],
+        }).lean();
+
+        const linkToken = await TelegramLinkTokenModel.findOne({ code: normalizedCode });
         logTelegramDebug("link:tokenLookup", {
           chatId,
           telegramUserId: telegramUserId ?? "none",
@@ -614,13 +985,20 @@ export const telegramService = {
           foundToken: !!linkToken,
           tokenUserId: linkToken?.userId ? String(linkToken.userId) : "none",
           tokenExpiresAt: linkToken?.expiresAt ? linkToken.expiresAt.toISOString() : "none",
+          hasExistingSession: !!existingSession,
         });
+
         if (!linkToken) {
+          if (existingSession) {
+            logTelegramDebug("link:duplicateRequestSilenced", { chatId });
+            return;
+          }
           await this.sendMessage(chatId, "❌ Mã liên kết không hợp lệ hoặc đã hết hạn. Hãy tạo mã mới từ web ERP.");
           return;
         }
 
         if (linkToken.expiresAt.getTime() <= Date.now()) {
+          await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id }).catch(() => undefined);
           await this.sendMessage(chatId, "⌛ Mã liên kết đã hết hạn. Hãy tạo mã mới từ web ERP.");
           return;
         }
@@ -630,6 +1008,8 @@ export const telegramService = {
           await this.sendMessage(chatId, "❌ Không tìm thấy tài khoản ERP tương ứng với mã liên kết.");
           return;
         }
+
+        await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id });
 
         await TelegramSessionModel.deleteMany({
           $or: [
@@ -775,8 +1155,11 @@ export const telegramService = {
               { text: "⏳ Bài chờ đăng", callbackData: "/queue" }
             ],
             [
-              { text: "ℹ️ Hướng dẫn lệnh", callbackData: "/help_text" },
+              { text: "✨ Tạo chiến dịch", callbackData: "/create_campaign" },
               { text: "🚪 Đăng xuất", callbackData: "/logout" }
+            ],
+            [
+              { text: "ℹ️ Hướng dẫn lệnh", callbackData: "/help_text" }
             ]
           ]);
         } else {
@@ -803,10 +1186,32 @@ export const telegramService = {
       return;
     }
 
+    // === XỬ LÝ CAMPAIGN WIZARD NẾU ĐANG CHẠY ===
+    if (campaignWizards.has(chatId)) {
+      const handled = await this.processCampaignWizard(chatId, command, text, session);
+      if (handled) return;
+    }
+
     // === KIỂM TRA QUYỀN QUẢN TRỊ CHO LỆNH NHẠY CẢM ===
-    const adminCommands = ["/stats", "/report", "/warning_stock", "/lowstock", "/queue", "/publish_fb", "/publish_tt"];
+    const adminCommands = ["/stats", "/report", "/warning_stock", "/lowstock", "/queue", "/publish_fb", "/publish_tt", "/create_campaign"];
     if (adminCommands.includes(command) && !ADMIN_ROLES.includes(session.role)) {
       await this.sendMessage(chatId, "⛔ Bạn không có quyền sử dụng lệnh này. Lệnh này chỉ dành cho quản trị viên.");
+      return;
+    }
+
+    if (command === "/create_campaign") {
+      campaignWizards.set(chatId, { step: "waiting_for_brief" });
+      await this.sendMessage(
+        chatId,
+        [
+          "✏️ <b>Bước 1/6: Nhập định hướng chiến dịch</b>",
+          "Vui lòng nhập định hướng chiến lược chung, chủ đề hoặc thông điệp chính của chiến dịch Marketing mới.",
+          "",
+          "<i>Ví dụ: Quảng bá thương hiệu trà sữa matcha tự nhiên mới khai trương, giảm giá 20% tuần đầu tiên.</i>",
+          "",
+          "(Gõ <code>/cancel</code> để hủy bỏ bất kỳ lúc nào)"
+        ].join("\n")
+      );
       return;
     }
 
