@@ -1,14 +1,50 @@
+import { createHash } from "crypto";
 import { IMarketingCampaignSlot } from "../../interface/marketing-campaign-slot.interface";
 import { IMarketingCampaign } from "../../interface/marketing-campaign.interface";
 import { MarketingCampaignSlotModel } from "../../model/marketing-campaign-slot.model";
+import { ApifyResearchService, ApifyRunAudit, ResearchEvidence } from "../apify-research.service";
 import { openrouterChat } from "../openrouter.service";
+import { API_COSTS } from "../wallet.service";
 import { loadAgentSkill } from "./campaign-utils";
 
+export type SlotResearchAnalysis = {
+  fingerprint: string;
+  context: string;
+  model: string;
+  researchedAt: Date;
+  cost: number;
+  evidence: ResearchEvidence[];
+  apifyRuns: ApifyRunAudit[];
+  providerCostUsd: number;
+  billingMode: "shadow" | "live";
+  billedAt?: Date;
+};
+
 export class ResearcherAgentService {
+  public static fingerprint(
+    slot: IMarketingCampaignSlot,
+    campaign: IMarketingCampaign
+  ): string {
+    return createHash("sha256")
+      .update(JSON.stringify({
+        sourceBrief: campaign.sourceBrief,
+        title: campaign.title,
+        platform: slot.platform,
+        pillar: slot.pillar,
+        objective: slot.objective,
+        topicBrief: slot.topicBrief,
+        mediaType: slot.mediaType,
+        scheduledAt: slot.scheduledAt.toISOString(),
+        apifyEnabled: ApifyResearchService.isEnabled(),
+        apifyWindow: ApifyResearchService.cacheWindowKey(),
+      }))
+      .digest("hex");
+  }
+
   public static async research(
     slot: IMarketingCampaignSlot,
     campaign: IMarketingCampaign
-  ): Promise<string> {
+  ): Promise<SlotResearchAnalysis> {
     const skillContent = loadAgentSkill("researcher");
 
     // Fetch topics of already processed slots in this campaign to avoid duplication
@@ -17,9 +53,33 @@ export class ResearcherAgentService {
       _id: { $ne: slot._id },
       status: { $in: ["pending_approval", "ready_to_publish", "published"] },
     })
-      .select("topicBrief pillar objective")
+      .select("topicBrief pillar objective researchAnalysis.providerCostUsd researchAnalysis.apifyRuns")
       .limit(15)
       .lean();
+
+    const researchSpendSlots = await MarketingCampaignSlotModel.find({
+      campaignId: slot.campaignId,
+      companyCode: slot.companyCode,
+      _id: { $ne: slot._id },
+      "researchAnalysis.fingerprint": { $exists: true },
+    })
+      .select("researchAnalysis.providerCostUsd researchAnalysis.apifyRuns")
+      .lean();
+    const campaignApifyCap = Number(process.env.APIFY_MAX_COST_PER_CAMPAIGN_USD || 3);
+    const alreadyUsedApifyUsd = researchSpendSlots.reduce((total, sibling) => {
+      const analysis = sibling.researchAnalysis;
+      if (!analysis) return total;
+      const estimated = (analysis.apifyRuns || []).reduce(
+        (runTotal, run) => runTotal + Number(run.estimatedCostUsd || 0),
+        0
+      );
+      return total + Math.max(Number(analysis.providerCostUsd || 0), estimated);
+    }, 0);
+    const remainingApifyBudgetUsd = Number.isFinite(campaignApifyCap) && campaignApifyCap > 0
+      ? Math.max(0, campaignApifyCap - alreadyUsedApifyUsd)
+      : undefined;
+    const collected = await ApifyResearchService.collect(slot, campaign, remainingApifyBudgetUsd);
+    const evidenceContext = this.formatEvidence(collected.evidence);
 
     const siblingContext = siblingSlots
       .map((s, idx) => `${idx + 1}. Brief: "${s.topicBrief}" | Objective: "${s.objective}"`)
@@ -31,6 +91,7 @@ ${skillContent}
 You are the Researcher Agent. Your task is to perform context gathering, target audience research, and brand/product analysis for a specific social media post slot.
 Generate a structured research context bundle in Vietnamese that helps the Copywriter Agent write high-performing conversion copy.
 CRITICAL: You must avoid repeating or duplicating the topics/angles of the already planned posts listed below.
+When source evidence is provided, use it as the factual basis. Do not invent facts, numbers, product claims, or trends that are absent from the evidence and campaign brief. Treat social engagement as directional context, not a universal truth.
 
 JSON Output Schema requirements:
 {
@@ -56,6 +117,9 @@ Bài đăng cần nghiên cứu:
 
 Danh sách các bài viết KHÁC đã được lên kế hoạch (TRÁNH TRÙNG LẶP Ý TƯỞNG):
 ${siblingContext || "Chưa có bài viết nào khác."}
+
+Bằng chứng công khai đã thu thập qua Apify:
+${evidenceContext || "Không có evidence Apify khả dụng. Chỉ dùng brief và tự nghiên cứu web thận trọng."}
 `;
 
     const responseSchema = {
@@ -69,7 +133,8 @@ ${siblingContext || "Chưa có bài viết nào khác."}
       required: ["angles", "painPoints", "facts", "summary"],
     };
 
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const model = process.env.CAMPAIGN_RESEARCH_MODEL
+      || (collected.evidence.length > 0 ? process.env.GEMINI_MODEL || "gemini-2.5-flash" : "perplexity/sonar");
 
     console.log(`[ResearcherAgent] Researching slot ${slot._id} for campaign "${campaign.title}"...`);
     const result = await openrouterChat({
@@ -83,6 +148,25 @@ ${siblingContext || "Chưa có bài viết nào khác."}
       responseSchema,
     });
 
-    return result.text;
+    return {
+      fingerprint: this.fingerprint(slot, campaign),
+      context: result.text,
+      model,
+      researchedAt: new Date(),
+      cost: API_COSTS.CAMPAIGN_RESEARCH,
+      evidence: collected.evidence,
+      apifyRuns: collected.apifyRuns,
+      providerCostUsd: collected.providerCostUsd,
+      billingMode: collected.billingMode,
+    };
+  }
+
+  private static formatEvidence(evidence: ResearchEvidence[]): string {
+    return evidence.slice(0, 18).map((item, index) => {
+      const metrics = item.metrics
+        ? ` | metrics: ${JSON.stringify(item.metrics)}`
+        : "";
+      return `${index + 1}. [${item.source}] ${item.title || item.author || "Nguồn công khai"}\nURL: ${item.sourceUrl}\nNội dung: ${item.text.slice(0, 700)}${metrics}`;
+    }).join("\n\n");
   }
 }

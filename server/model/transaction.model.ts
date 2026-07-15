@@ -9,6 +9,7 @@ export interface ITransaction extends Document {
   paymentLinkId?: string;
   checkoutUrl?: string;
   description?: string;
+  idempotencyKey?: string;
   createdAt: Date;
   completedAt?: Date;
 }
@@ -22,8 +23,14 @@ const TransactionSchema = new Schema<ITransaction>({
   paymentLinkId: { type: String },
   checkoutUrl: { type: String },
   description: { type: String },
+  idempotencyKey: { type: String, trim: true },
   createdAt: { type: Date, default: Date.now },
   completedAt: { type: Date },
 });
+
+TransactionSchema.index(
+  { idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: "string" } } }
+);
 
 export const TransactionModel = model<ITransaction>("Transaction", TransactionSchema);

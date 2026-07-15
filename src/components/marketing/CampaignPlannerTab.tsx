@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen } from 'lucide-react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -48,6 +48,21 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState('');
   const [drivePreviews, setDrivePreviews] = useState<DriveFileItem[]>([]);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
+  const [apifySources, setApifySources] = useState<string[]>(['google']);
+
+  const toggleApifySource = (source: string) => {
+    setApifySources((prev) => {
+      if (prev.includes(source)) {
+        return prev.filter((s) => s !== source);
+      } else {
+        if (prev.length >= 2) {
+          toast.warning('Chỉ được chọn tối đa 2 nguồn dữ liệu nghiên cứu.');
+          return prev;
+        }
+        return [...prev, source];
+      }
+    });
+  };
 
   // Cleanup customSchedule when date range changes
   useEffect(() => {
@@ -459,6 +474,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         mediaPolicy: 'auto',
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
+        apifySources: apifySources.length > 0 ? apifySources : undefined,
       });
       setCampaigns((current) => [result.campaign, ...current]);
       setPrompt('');
@@ -468,6 +484,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setGoogleDriveFolderUrl('');
       setDrivePreviews([]);
       setImageMode('ai');
+      setApifySources(['google']);
       setCustomSchedule({});
       setShowCustomSchedule(false);
       toast.success(`Đã khởi chạy chiến dịch “${result.campaign.title}” với ${result.campaign.statistics.totalSlots} slot.`);
@@ -696,6 +713,52 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             )}
           </div>
         )}
+
+        <div className="mt-4 border-t border-slate-150 pt-4">
+          <label className="mb-1 block text-xs font-bold text-slate-700">Nguồn nghiên cứu thị trường (Apify - Chọn tối đa 2)</label>
+          <p className="mb-3 text-[10px] text-slate-400">Chọn nguồn dữ liệu để AI tự động nghiên cứu và thu thập xu hướng trước khi viết bài.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { id: 'google', label: 'Google Search', icon: Globe, disabled: false },
+              { id: 'facebook', label: 'Facebook Pages', icon: Facebook, disabled: true, tooltip: 'Tạm thời khóa tính năng cào Facebook' },
+              { id: 'tiktok', label: 'TikTok Trends', icon: Sparkles, disabled: false }
+            ].map((source) => {
+              const isSelected = apifySources.includes(source.id);
+              const IconComp = source.icon;
+              return (
+                <button
+                  type="button"
+                  key={source.id}
+                  disabled={source.disabled}
+                  onClick={() => !source.disabled && toggleApifySource(source.id)}
+                  className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-all select-none relative ${
+                    source.disabled
+                      ? 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
+                      : isSelected
+                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-750 shadow-xs cursor-pointer'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer'
+                  }`}
+                  title={source.disabled ? source.tooltip : undefined}
+                >
+                  <div className={`rounded-lg p-1.5 ${source.disabled ? 'bg-slate-200 text-slate-450' : isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+                    <IconComp size={16} />
+                  </div>
+                  <span className={`text-xs font-bold ${source.disabled ? 'text-slate-400' : 'text-slate-850'}`}>{source.label}</span>
+                  {source.disabled && (
+                    <span className="ml-auto text-[9px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-md">
+                      Khóa
+                    </span>
+                  )}
+                  {isSelected && !source.disabled && (
+                    <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="mt-4 border-t border-slate-150 pt-4">
           <h3 className="text-xs font-bold text-slate-850 uppercase tracking-wider mb-3">Cấu hình lịch chạy</h3>

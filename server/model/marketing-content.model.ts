@@ -49,4 +49,9 @@ const MarketingContentSchema = new Schema<IMarketingContent>(
   { timestamps: false }
 );
 
+MarketingContentSchema.index(
+  { campaignSlotId: 1 },
+  { unique: true, partialFilterExpression: { campaignSlotId: { $type: "objectId" } } }
+);
+
 export const MarketingContentModel = model<IMarketingContent>("MarketingContent", MarketingContentSchema);

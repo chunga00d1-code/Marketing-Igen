@@ -21,6 +21,8 @@ export interface MarketingCampaignSummary {
     totalSlots: number;
     publishedSlots: number;
     failedSlots: number;
+    estimatedCost?: number;
+    actualCost?: number;
   };
   createdAt: string;
 }
@@ -38,6 +40,62 @@ export interface CampaignSlot {
   approvedBy?: string;
   approvedAt?: string;
   marketingContentId?: string;
+  ingestedMedia?: Array<{ sourceUrl: string; url: string; uploadedAt: string }>;
+  researchAnalysis?: {
+    fingerprint: string;
+    context: string;
+    model: string;
+    researchedAt: string;
+    cost: number;
+    evidence: Array<{
+      source: 'google' | 'facebook' | 'tiktok';
+      sourceUrl: string;
+      title?: string;
+      text: string;
+      author?: string;
+      publishedAt?: string;
+      collectedAt: string;
+      metrics?: { views?: number; likes?: number; comments?: number; shares?: number };
+    }>;
+    apifyRuns: Array<{
+      source: 'google' | 'facebook' | 'tiktok';
+      actorId: string;
+      runId?: string;
+      datasetId?: string;
+      status: 'succeeded' | 'failed' | 'skipped';
+      itemCount: number;
+      estimatedCostUsd: number;
+      providerCostUsd: number;
+      billingMode: 'shadow' | 'live';
+      executedAt: string;
+      error?: string;
+    }>;
+    providerCostUsd: number;
+    billingMode: 'shadow' | 'live';
+    billedAt?: string;
+  };
+  visualAnalysis?: {
+    fingerprint: string;
+    sourceUrls: string[];
+    summary: string;
+    subjects: string[];
+    visibleText: string[];
+    setting: string;
+    visualStyle: string;
+    mood: string;
+    factualDetails: string[];
+    marketingAngles: string[];
+    cautions: string[];
+    model: string;
+    analyzedAt: string;
+    cost: number;
+    billedAt?: string;
+  };
+  lastError?: {
+    type: string;
+    message: string;
+    occurredAt: string;
+  };
   content?: MarketingContent | null;
 }
 
@@ -91,6 +149,7 @@ export const marketingCampaignService = {
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     images?: string[];
     customSchedule?: Record<string, string[]>;
+    apifySources?: string[];
   }) {
     return request<{ campaign: MarketingCampaignSummary }>('/api/v1/marketing-campaigns', {
       method: 'POST',

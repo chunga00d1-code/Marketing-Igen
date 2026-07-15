@@ -36,6 +36,7 @@ export interface IMarketingCampaign extends Document {
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   researchReport?: string;
+  apifySources?: string[];
   statistics: {
     totalSlots: number;
     publishedSlots: number;
