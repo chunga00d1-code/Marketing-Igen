@@ -606,7 +606,14 @@ export const telegramService = {
       }
 
       try {
-        const linkToken = await TelegramLinkTokenModel.findOneAndDelete({ code: normalizedCode });
+        const existingSession = await TelegramSessionModel.findOne({
+          $or: [
+            { telegramChatId: chatId },
+            ...(telegramUserId ? [{ telegramUserId }] : []),
+          ],
+        }).lean();
+
+        const linkToken = await TelegramLinkTokenModel.findOne({ code: normalizedCode });
         logTelegramDebug("link:tokenLookup", {
           chatId,
           telegramUserId: telegramUserId ?? "none",
@@ -614,13 +621,20 @@ export const telegramService = {
           foundToken: !!linkToken,
           tokenUserId: linkToken?.userId ? String(linkToken.userId) : "none",
           tokenExpiresAt: linkToken?.expiresAt ? linkToken.expiresAt.toISOString() : "none",
+          hasExistingSession: !!existingSession,
         });
+
         if (!linkToken) {
+          if (existingSession) {
+            logTelegramDebug("link:duplicateRequestSilenced", { chatId });
+            return;
+          }
           await this.sendMessage(chatId, "❌ Mã liên kết không hợp lệ hoặc đã hết hạn. Hãy tạo mã mới từ web ERP.");
           return;
         }
 
         if (linkToken.expiresAt.getTime() <= Date.now()) {
+          await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id }).catch(() => undefined);
           await this.sendMessage(chatId, "⌛ Mã liên kết đã hết hạn. Hãy tạo mã mới từ web ERP.");
           return;
         }
@@ -630,6 +644,8 @@ export const telegramService = {
           await this.sendMessage(chatId, "❌ Không tìm thấy tài khoản ERP tương ứng với mã liên kết.");
           return;
         }
+
+        await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id });
 
         await TelegramSessionModel.deleteMany({
           $or: [
