@@ -32,6 +32,7 @@ interface CreateCampaignInput {
   imageMode?: "ai" | "real";
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
+  apifySources?: string[];
   rules?: {
     requiredCta?: string;
     requiredHashtags?: string[];
@@ -131,37 +132,64 @@ export const marketingCampaignService = {
       }
       
       const grouped = groupDriveFiles(files);
-      
-      researchReport = "Sử dụng kho ảnh thật từ thư mục Google Drive.";
-      strategy = {
-        campaignTitle: input.sourceBrief.trim() || `Chiến dịch ảnh thật - ${input.startDate}`,
-        contentPillars: ["Ảnh thật", "Sản phẩm", "Feedback"],
-        slots: schedule.map((scheduledSlot, index) => {
-          const postIndex = index + 1;
-          const postFiles = grouped[postIndex] || [];
-          
-          if (postFiles.length === 0) {
-            throw new Error(
-              `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
-            );
-          }
-          
-          const hasVideo = postFiles.some((f) => f.isVideo);
-          const mediaType = hasVideo ? "video" : "image";
-          
-          const realImageDriveUrls = postFiles.map((f) => `https://drive.google.com/file/d/${f.id}/view`);
-          const realImageDirectUrls = postFiles.map((f) => f.directUrl);
-          const topicBrief = `Bài đăng thứ ${postIndex} sử dụng tư liệu ảnh thật từ Drive`;
-          const customBodyText = ""; // AI Copywriter will generate caption based on prompt
+      const realMediaBySlot = schedule.map((_, index) => {
+        const postIndex = index + 1;
+        const postFiles = grouped[postIndex] || [];
 
+        if (postFiles.length === 0) {
+          throw new Error(
+            `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
+          );
+        }
+
+        const hasVideo = postFiles.some((file) => file.isVideo);
+        return {
+          mediaType: hasVideo ? "video" as const : "image" as const,
+          fileNames: postFiles.map((file) => file.name),
+          realImageDriveUrls: postFiles.map((file) => `https://drive.google.com/file/d/${file.id}/view`),
+          realImageDirectUrls: postFiles.map((file) => file.directUrl),
+        };
+      });
+
+      const planningPrompt = `${input.sourceBrief.trim()}
+
+YÊU CẦU LẬP BẢN PHÁC THẢO CHO CHIẾN DỊCH DÙNG ẢNH THẬT:
+- Mỗi topicBrief là bản phác thảo ý tưởng để người dùng xem trước: nêu thông điệp chính, góc khai thác và giá trị mang lại cho người xem.
+- Không viết caption/bài đăng hoàn chỉnh ở bước này.
+- Không dùng cách ghi chung chung như "Bài đăng thứ N sử dụng ảnh từ Google Drive".
+- Không khẳng định chi tiết sản phẩm chưa có trong brief; nội dung sẽ được Vision Agent đối chiếu với ảnh thật gần giờ đăng.
+- Các tệp media đã được gán sẵn theo từng slot như sau:
+${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.join(", ")}`).join("\n")}`;
+
+      const aiStrategy = await geminiService.generateScheduledCampaign({
+        prompt: planningPrompt,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        postsPerDay: input.postsPerDay,
+        postingTimes: input.postingTimes,
+        channels: input.platforms,
+        customSchedule: input.customSchedule,
+        rules: input.rules,
+      });
+
+      if (aiStrategy.slots.length !== schedule.length) {
+        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
+      }
+
+      researchReport = "Chiến dịch sử dụng ảnh thật; nghiên cứu và phân tích hình ảnh sẽ chạy theo từng slot gần giờ đăng.";
+      strategy = {
+        campaignTitle: aiStrategy.campaignTitle,
+        contentPillars: aiStrategy.contentPillars,
+        slots: aiStrategy.slots.map((brief, index) => {
+          const media = realMediaBySlot[index];
           return {
-            pillar: "Sản phẩm",
-            objective: "Brand Awareness",
-            topicBrief,
-            mediaType,
-            customBodyText,
-            realImageDriveUrls,
-            realImageDirectUrls,
+            pillar: brief.pillar,
+            objective: brief.objective,
+            topicBrief: brief.topicBrief,
+            mediaType: media.mediaType,
+            customBodyText: "",
+            realImageDriveUrls: media.realImageDriveUrls,
+            realImageDirectUrls: media.realImageDirectUrls,
           };
         }),
       };
@@ -192,15 +220,28 @@ export const marketingCampaignService = {
     }
 
     const isBudget = input.qualityMode === "budget";
-    const pPlan = imageMode === "real" ? 0 : API_COSTS.CAMPAIGN_STRATEGY;
+    const pPlan = API_COSTS.CAMPAIGN_STRATEGY;
     const pResearch = API_COSTS.CAMPAIGN_RESEARCH;
-    const pVision = imageMode === "real" ? API_COSTS.CAMPAIGN_VISION : 0;
-    
+
+    let totalResearchCost = 0;
+    let totalVisionCost = 0;
     let totalContentCost = 0;
     let totalMediaCost = 0;
 
     strategy.slots.forEach((brief) => {
       const type = brief.mediaType;
+      const requiresAiCopy = imageMode === "ai" || !brief.customBodyText;
+
+      if (requiresAiCopy) {
+        totalResearchCost += pResearch;
+      }
+      if (imageMode === "real" && requiresAiCopy) {
+        const imageCount = Math.max(
+          brief.realImageDriveUrls?.length || 0,
+          brief.realImageDirectUrls?.length || 0
+        );
+        totalVisionCost += Math.ceil(imageCount / 8) * API_COSTS.CAMPAIGN_VISION;
+      }
       
       // Calculate content write cost (only charge if AI Copywriter needs to generate copy)
       if (imageMode === "real") {
@@ -221,7 +262,7 @@ export const marketingCampaignService = {
       }
     });
 
-    const estimatedCost = pPlan + (schedule.length * (pResearch + pVision)) + totalContentCost + totalMediaCost;
+    const estimatedCost = pPlan + totalResearchCost + totalVisionCost + totalContentCost + totalMediaCost;
 
     const campaign = await MarketingCampaignModel.create({
       companyCode,
@@ -249,6 +290,7 @@ export const marketingCampaignService = {
       imageMode,
       googleDriveFolderUrl,
       customSchedule: input.customSchedule,
+      apifySources: input.apifySources || ["google"],
       rules: input.rules || {},
       statistics: { totalSlots: schedule.length, publishedSlots: 0, failedSlots: 0, estimatedCost, actualCost: 0 },
     });
@@ -328,6 +370,7 @@ export const marketingCampaignService = {
         mediaPrompt?: string;
         imageUrl?: string;
         videoUrl?: string;
+        mediaUrls?: string[];
         mediaType?: "image" | "video" | "human-video";
       } | null;
 
@@ -338,7 +381,9 @@ export const marketingCampaignService = {
             bodyText: contentDoc.bodyText,
             outline: contentDoc.outline,
             mediaPrompt: contentDoc.mediaPrompt,
-            mediaUrls: contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : []),
+            mediaUrls: contentDoc.mediaUrls?.length
+              ? contentDoc.mediaUrls
+              : (contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : [])),
             mediaType: contentDoc.mediaType,
           }
         : null;

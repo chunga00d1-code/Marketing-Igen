@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { MarketingCampaignModel } from "../../model/marketing-campaign.model";
 import { MarketingCampaignSlotModel } from "../../model/marketing-campaign-slot.model";
 import { MarketingContentModel } from "../../model/marketing-content.model";
@@ -11,6 +12,116 @@ import { cloudinaryService } from "../cloudinary.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { VisualAnalystAgentService } from "./visual-analyst-agent.service";
 
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  handler: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await handler(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function ingestRealMedia(
+  slot: InstanceType<typeof MarketingCampaignSlotModel>,
+  campaign: InstanceType<typeof MarketingCampaignModel>
+): Promise<string[]> {
+  const sourceUrls = (slot.realImageDirectUrls || []).filter(Boolean);
+  if (sourceUrls.length === 0) {
+    throw new Error("Slot ảnh thật không có media Google Drive để xử lý.");
+  }
+
+  const fingerprint = createHash("sha256").update(JSON.stringify(sourceUrls)).digest("hex");
+  if (
+    slot.mediaIngestionFingerprint === fingerprint &&
+    slot.ingestedMedia?.length === sourceUrls.length
+  ) {
+    return slot.ingestedMedia.map((item) => item.url);
+  }
+
+  const uploadedAt = new Date();
+  const ingestedMedia = await mapWithConcurrency(sourceUrls, 3, async (sourceUrl) => ({
+    sourceUrl,
+    url: await cloudinaryService.uploadMedia(sourceUrl, `campaign_${campaign._id}`),
+    uploadedAt,
+  }));
+
+  slot.mediaIngestionFingerprint = fingerprint;
+  slot.ingestedMedia = ingestedMedia;
+  slot.transitions.push({
+    from: slot.status,
+    to: slot.status,
+    reason: `Đã ingest ${ingestedMedia.length} media thật lên Cloudinary để dùng chung cho Vision và xuất bản.`,
+    at: new Date(),
+  });
+  await slot.save();
+  return ingestedMedia.map((item) => item.url);
+}
+
+async function billCampaignOperation(
+  campaign: InstanceType<typeof MarketingCampaignModel>,
+  slot: InstanceType<typeof MarketingCampaignSlotModel>,
+  operation: string,
+  amount: number,
+  description: string
+): Promise<void> {
+  const result = await walletService.deductBalance(
+    campaign.createdBy,
+    amount,
+    description,
+    `${campaign._id}:${slot._id}:${operation}`
+  );
+  if (result?.charged) {
+    await MarketingCampaignModel.updateOne(
+      { _id: campaign._id, companyCode: campaign.companyCode },
+      { $inc: { "statistics.actualCost": amount } }
+    );
+  }
+}
+
+async function getResearchContext(
+  slot: InstanceType<typeof MarketingCampaignSlotModel>,
+  campaign: InstanceType<typeof MarketingCampaignModel>
+): Promise<string> {
+  const fingerprint = ResearcherAgentService.fingerprint(slot, campaign);
+  let analysis = slot.researchAnalysis;
+
+  if (!analysis || analysis.fingerprint !== fingerprint) {
+    await walletService.checkBalance(campaign.createdBy, API_COSTS.CAMPAIGN_RESEARCH);
+    analysis = await ResearcherAgentService.research(slot, campaign);
+    slot.researchAnalysis = analysis;
+    slot.transitions.push({
+      from: slot.status,
+      to: slot.status,
+      reason: `Researcher Agent đã hoàn tất nghiên cứu web cho slot bằng ${analysis.model}.`,
+      at: new Date(),
+    });
+    await slot.save();
+  }
+
+  if (!analysis.billedAt) {
+    await billCampaignOperation(
+      campaign,
+      slot,
+      `research:${analysis.fingerprint}`,
+      analysis.cost,
+      `Researcher Agent for campaign slot ${slot._id}`
+    );
+    analysis.billedAt = new Date();
+    slot.researchAnalysis = analysis;
+    await slot.save();
+  }
+
+  return analysis.context;
+}
+
 async function getVisualContext(
   slot: InstanceType<typeof MarketingCampaignSlotModel>,
   campaign: InstanceType<typeof MarketingCampaignModel>
@@ -19,7 +130,9 @@ async function getVisualContext(
   let analysis = slot.visualAnalysis;
 
   if (!analysis || analysis.fingerprint !== fingerprint) {
-    await walletService.checkBalance(campaign.createdBy, API_COSTS.CAMPAIGN_VISION);
+    const imageCount = slot.ingestedMedia?.length || slot.realImageDirectUrls?.length || 0;
+    const expectedCost = API_COSTS.CAMPAIGN_VISION * Math.ceil(imageCount / 8);
+    await walletService.checkBalance(campaign.createdBy, expectedCost);
     analysis = await VisualAnalystAgentService.analyze(slot, campaign);
     slot.visualAnalysis = analysis;
     slot.transitions.push({
@@ -32,19 +145,16 @@ async function getVisualContext(
   }
 
   if (!analysis.billedAt) {
-    await walletService.checkBalance(campaign.createdBy, analysis.cost);
-    await walletService.deductBalance(
-      campaign.createdBy,
+    await billCampaignOperation(
+      campaign,
+      slot,
+      `vision:${analysis.fingerprint}`,
       analysis.cost,
       `Phân tích ảnh thật cho slot chiến dịch ${slot._id} (Vision Analyst Agent)`
     );
     analysis.billedAt = new Date();
     slot.visualAnalysis = analysis;
     await slot.save();
-    await MarketingCampaignModel.updateOne(
-      { _id: campaign._id, companyCode: campaign.companyCode },
-      { $inc: { "statistics.actualCost": analysis.cost } }
-    );
   }
 
   return VisualAnalystAgentService.formatForCopywriter(analysis);
@@ -89,10 +199,12 @@ export class CampaignOrchestratorService {
         });
         await slot.save();
 
+        await ingestRealMedia(slot, campaign);
+
         let researchContext = "";
         let visualContext = "";
         if (!slot.customBodyText) {
-          researchContext = await ResearcherAgentService.research(slot, campaign);
+          researchContext = await getResearchContext(slot, campaign);
           visualContext = await getVisualContext(slot, campaign);
         }
 
@@ -134,7 +246,7 @@ export class CampaignOrchestratorService {
         await slot.save();
 
         // Run Researcher Agent
-        const researchContext = await ResearcherAgentService.research(slot, campaign);
+        const researchContext = await getResearchContext(slot, campaign);
 
         // Step B: Move to "writing" status
         slot.status = "writing";
@@ -150,8 +262,23 @@ export class CampaignOrchestratorService {
         candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
       }
 
-      // Create Marketing Content
-      const content = await MarketingContentModel.create({
+      if (!slot.customBodyText) {
+        const contentCost = campaign.qualityMode === "budget"
+          ? API_COSTS.CAMPAIGN_CONTENT_BUDGET
+          : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
+        await billCampaignOperation(
+          campaign,
+          slot,
+          "content",
+          contentCost,
+          `Copywriter Agent for campaign slot ${slot._id}`
+        );
+      }
+
+      // Create Marketing Content once; retries reuse the record for this slot.
+      const content = await MarketingContentModel.findOneAndUpdate(
+        { campaignSlotId: slot._id },
+        { $setOnInsert: {
         companyCode: slot.companyCode,
         authorUid: campaign.createdBy,
         campaignId: String(campaign._id),
@@ -168,7 +295,9 @@ export class CampaignOrchestratorService {
         mediaType: slot.mediaType === "text" ? undefined : slot.mediaType === "image" ? "image" : slot.mediaType,
         generatedAt: new Date(),
         integrationId: slot.integrationId,
-      });
+        } },
+        { upsert: true, new: true }
+      );
 
       // Calculate next status
       const nextStatus = slot.mediaType === "text"
@@ -270,20 +399,9 @@ export class CampaignOrchestratorService {
           companyCode: slot.companyCode,
         });
         if (content) {
-          const directUrls = slot.realImageDirectUrls || [];
-          const uploadedUrls: string[] = [];
-          
-          for (let i = 0; i < directUrls.length; i++) {
-            const directUrl = directUrls[i];
-            try {
-              // Upload Drive file directly to Cloudinary
-              const uploadedUrl = await cloudinaryService.uploadMedia(directUrl, `campaign_${campaign._id}`);
-              uploadedUrls.push(uploadedUrl);
-            } catch (err) {
-              console.error(`[Orchestrator] Failed to upload drive file ${directUrl} to Cloudinary:`, err);
-              // Fallback to direct link itself
-              uploadedUrls.push(directUrl);
-            }
+          const uploadedUrls = (slot.ingestedMedia || []).map((item) => item.url);
+          if (uploadedUrls.length === 0) {
+            throw new Error("Media thật chưa được ingest lên Cloudinary.");
           }
           
           if (slot.mediaType === "video" || slot.mediaType === "human-video") {
