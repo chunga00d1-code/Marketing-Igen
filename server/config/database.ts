@@ -98,7 +98,7 @@ async function seedPermissions() {
  * Khởi tạo kết nối cơ sở dữ liệu MongoDB
  */
 export async function connectDB() {
-  const uri = process.env.MONGODB_URI || "mongodb://mongodb/igen-erp";
+  const uri = process.env.MONGODB_URI || "mongodb://mongodb/igen-marketing";
   const user = process.env.MONGODB_USER;
   const pass = process.env.MONGODB_PASSWORD;
   const authSource = process.env.MONGODB_AUTH_SOURCE || "admin";
