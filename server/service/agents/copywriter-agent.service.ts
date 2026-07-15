@@ -10,6 +10,14 @@ export class CopywriterAgentService {
     campaign: IMarketingCampaign,
     researchContext: string
   ) {
+    const existingCandidate = await MarketingCandidateModel.findOne({
+      slotId: slot._id,
+      selected: true,
+    }).sort({ createdAt: -1 });
+    if (existingCandidate) {
+      return existingCandidate;
+    }
+
     const copywritingSkill = loadAgentSkill("copywriter");
     const socialSkill = loadAgentSkill("social");
 

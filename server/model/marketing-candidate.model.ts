@@ -35,5 +35,6 @@ const MarketingCandidateSchema = new Schema<IMarketingCandidate>(
 
 MarketingCandidateSchema.index({ companyCode: 1, slotId: 1, score: -1 });
 MarketingCandidateSchema.index({ campaignId: 1, contentHash: 1 });
+MarketingCandidateSchema.index({ slotId: 1, variant: 1 }, { unique: true });
 
 export const MarketingCandidateModel = model<IMarketingCandidate>("MarketingCandidate", MarketingCandidateSchema);
