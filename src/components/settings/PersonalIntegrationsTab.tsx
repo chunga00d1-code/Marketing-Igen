@@ -558,7 +558,7 @@ export default function PersonalIntegrationsTab() {
                     type="button"
                     onClick={handleCreateTelegramCode}
                     disabled={creatingCode}
-                    className="rounded-xl bg-sky-550 hover:bg-sky-600 px-4 py-2.5 text-xs font-bold text-white transition-all cursor-pointer disabled:opacity-60"
+                    className="rounded-xl bg-sky-600 hover:bg-sky-700 px-4 py-2.5 text-xs font-bold text-white transition-all cursor-pointer disabled:opacity-60"
                   >
                     {creatingCode ? "Đang tạo..." : "Tạo mã liên kết nhanh"}
                   </button>
@@ -583,7 +583,7 @@ export default function PersonalIntegrationsTab() {
                       href={`https://t.me/${telegramStatus.botUsername}?start=${telegramStatus.pendingCode}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-sky-500 hover:bg-sky-605 px-4 py-2.5 text-xs font-bold text-white transition-all cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 px-4 py-2.5 text-xs font-bold text-white transition-all cursor-pointer"
                     >
                       <Send className="h-3.5 w-3.5" />
                       Kết nối trực tiếp trên Telegram
