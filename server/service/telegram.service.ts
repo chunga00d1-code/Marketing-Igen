@@ -139,24 +139,41 @@ function buildGuestHelpMessage(): string {
 function buildSessionHelpMessage(session: any): string {
   const isAdmin = ADMIN_ROLES.includes(session.role);
   const helpLines = [
-    `🤖 <b>Xin chào, ${session.displayName}!</b>`,
-    `📧 ${session.email} | 🔑 ${session.role}`,
+    `🤖 <b>HƯỚNG DẪN SỬ DỤNG IGEN BOT</b>`,
+    `📧 Tài khoản: ${session.email} | Vai trò: <b>${session.role.toUpperCase()}</b>`,
     "",
-    "📌 <b>Danh sách câu lệnh:</b>",
-    "• <code>/help</code> hoặc <code>/menu</code> - Hiển thị hướng dẫn sử dụng bot.",
-    "• <code>/image [mô tả]</code> - Sinh ảnh nghệ thuật AI.",
-    "• <code>/video [mô tả]</code> - Sinh video ngắn AI.",
+    "📌 <b>Các tính năng cơ bản:</b>",
+    "• <code>/menu</code> hoặc <code>/help</code> - Mở bảng nút bấm điều khiển nhanh.",
+    "• <code>/image [mô tả]</code> - Tạo ảnh nghệ thuật bằng AI (Gemini).",
+    "• <code>/video [mô tả]</code> - Tạo video ngắn bằng AI.",
   ];
 
   if (isAdmin) {
-    helpLines.push("• <code>/stats</code> hoặc <code>/report</code> - Báo cáo thống kê CRM và giao dịch.");
-    helpLines.push("• <code>/warning_stock</code> hoặc <code>/lowstock</code> - Kiểm tra sản phẩm sắp hết hàng.");
-    helpLines.push("• <code>/queue</code> - Xem nhanh các bài marketing đang chờ đăng của công ty.");
-    helpLines.push("• <code>/publish_fb [cardId]</code> - Đăng ngay 1 card Facebook đã duyệt.");
-    helpLines.push("• <code>/publish_tt [cardId]</code> - Đăng ngay 1 card TikTok đã duyệt.");
+    helpLines.push(
+      "",
+      "📣 <b>QUẢN LÝ CHIẾN DỊCH MARKETING (CAMPAIGNS)</b>",
+      "Khi thiết lập chiến dịch trên Web ERP, bạn cấu hình theo các bước sau:",
+      "• <b>Bước 1: Khởi tạo</b>: Định nghĩa chiến lược chung và thiết lập các slot bài đăng.",
+      "• <b>Bước 2: Chọn nguồn ảnh/media</b>:",
+      "  - <i>Ảnh AI (AI Gen)</i>: AI tự tạo ảnh/video minh họa tương ứng với nội dung bài viết.",
+      "  - <i>Ảnh thật từ Drive</i>: Cung cấp link thư mục Google Drive công khai, hệ thống sẽ tự động map ảnh vào slot và tải lên CDN Cloudinary (ví dụ đặt tên file: <code>1_1.jpg</code>, <code>2.png</code>,...).",
+      "• <b>Bước 3: Chọn nền tảng tìm dữ liệu</b>: Chọn các nền tảng (TikTok, Facebook, Google, v.v.) để AI Research Agent tiến hành phân tích xu hướng trước khi viết bài.",
+      "• <b>Bước 4: Thiết lập thời gian</b>: Lên lịch giờ đăng cụ thể (theo múi giờ mong muốn).",
+      "",
+      "🔔 <b>Quy trình phê duyệt & đăng bài qua Telegram:</b>",
+      "1. Khi bài viết và ảnh sẵn sàng, bot tự động gửi thông báo phê duyệt kèm nút bấm duyệt nhanh tới Telegram của bạn.",
+      "2. Bấm nút <b>⏳ Bài chờ đăng</b> hoặc gõ <code>/queue</code> để xem hàng chờ đăng của công ty.",
+      "3. Bạn có thể đăng bài thủ công ngay lập tức bằng lệnh:",
+      "   • <code>/publish_fb [mã_bài_viết]</code> - Đăng lên Facebook Fanpage.",
+      "   • <code>/publish_tt [mã_bài_viết]</code> - Đăng lên TikTok.",
+      "   <i>(Ví dụ: /publish_fb 654c12d4a5b6c7890123efab)</i>",
+      "",
+      "📊 <b>Kinh Doanh & CRM (Sales)</b>:",
+      "• Bấm nút <b>📊 Báo cáo CRM</b> hoặc gõ <code>/stats</code> để xem báo cáo doanh thu thanh toán hôm nay và số cơ hội kinh doanh (Leads)."
+    );
   }
 
-  helpLines.push("• <code>/logout</code> - Đăng xuất khỏi bot.");
+  helpLines.push("", "• <code>/logout</code> - Đăng xuất tài khoản khỏi bot Telegram.");
   return helpLines.join("\n");
 }
 
@@ -241,6 +258,112 @@ export const telegramService = {
       return response.json();
     } catch (err) {
       console.error("[Telegram Bot] Failed to execute sendMessage request:", err);
+    }
+  },
+
+  /**
+   * Helper gửi tin nhắn kèm Inline Keyboard (nút bấm URL)
+   */
+  async sendMessageWithInlineKeyboard(
+    chatId: string | number,
+    text: string,
+    buttons: Array<{ text: string; url: string }>
+  ): Promise<any> {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return;
+
+    try {
+      const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/sendMessage`;
+      const inlineKeyboard = buttons.map((btn) => [{ text: btn.text, url: btn.url }]);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: inlineKeyboard,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[Telegram Bot] sendMessageWithInlineKeyboard error: ${response.status} - ${errText}`);
+      }
+      return response.json();
+    } catch (err) {
+      console.error("[Telegram Bot] Failed to execute sendMessageWithInlineKeyboard request:", err);
+    }
+  },
+
+  /**
+   * Helper gửi tin nhắn kèm các nút bấm Callback (không phải URL)
+   */
+  async sendMessageWithCallbackButtons(
+    chatId: string | number,
+    text: string,
+    buttons: Array<Array<{ text: string; callbackData: string }>>
+  ): Promise<any> {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return;
+
+    try {
+      const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/sendMessage`;
+      const inlineKeyboard = buttons.map((row) =>
+        row.map((btn) => ({ text: btn.text, callback_data: btn.callbackData }))
+      );
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: text,
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: inlineKeyboard,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[Telegram Bot] sendMessageWithCallbackButtons error: ${response.status} - ${errText}`);
+      }
+      return response.json();
+    } catch (err) {
+      console.error("[Telegram Bot] Failed to execute sendMessageWithCallbackButtons request:", err);
+    }
+  },
+
+  /**
+   * Phản hồi callback query để tắt trạng thái loading trên nút bấm Telegram
+   */
+  async answerCallbackQuery(callbackQueryId: string, text?: string): Promise<any> {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    if (!botToken) return;
+
+    try {
+      const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/answerCallbackQuery`;
+      await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          callback_query_id: callbackQueryId,
+          text: text,
+        }),
+      });
+    } catch (err) {
+      console.error("[Telegram Bot] Failed to execute answerCallbackQuery request:", err);
     }
   },
 
@@ -388,6 +511,31 @@ export const telegramService = {
               if (text.startsWith("/")) {
                 // Xử lý tuần tự từng command để tránh race condition giữa /link và lệnh ngay sau đó như /help.
                 await this.handleCommand(chatId, chatType, telegramUserId, text, photo, document, replyToMessage, messageId);
+              }
+            }
+
+            if (update.callback_query) {
+              const callbackQuery = update.callback_query;
+              const chatId = callbackQuery.message?.chat?.id;
+              const telegramUserId = callbackQuery.from?.id;
+              const data = (callbackQuery.data || "").trim();
+              const messageId = callbackQuery.message?.message_id;
+
+              if (chatId && data) {
+                // Phản hồi callback query ngay lập tức để tắt trạng thái loading trên nút bấm
+                await this.answerCallbackQuery(callbackQuery.id);
+
+                // Thao tác như chạy câu lệnh thường
+                await this.handleCommand(
+                  chatId,
+                  String(callbackQuery.message?.chat?.type || "private").toLowerCase(),
+                  telegramUserId,
+                  data,
+                  undefined,
+                  undefined,
+                  undefined,
+                  messageId
+                );
               }
             }
           }
@@ -606,39 +754,46 @@ export const telegramService = {
       console.error("[Telegram Bot] Lỗi tra cứu session:", err);
     }
 
-    // === LỆNH CÔNG KHAI: /start, /help ===
-    if (command === "/start" || command === "/help") {
+    // === LỆNH CÔNG KHAI: /start, /help, /menu ===
+    if (command === "/start" || command === "/help" || command === "/menu") {
       if (!session) {
         // Chưa liên kết → hiển thị hướng dẫn liên kết
-        const guestHelp = [
-          "🤖 <b>Chào mừng bạn đến với iGEN ERP Bot!</b>",
-          "Để sử dụng bot, bạn hãy liên kết Telegram từ web ERP.",
-          "",
-          "📌 <b>Cách dùng nhanh:</b>",
-          "Web ERP > menu tài khoản > Telegram > mở bot từ link.",
-        ].join("\n");
         await this.sendMessage(chatId, buildGuestHelpMessage());
       } else {
         const isAdmin = ADMIN_ROLES.includes(session.role);
-        const helpLines = [
+        const welcomeText = [
           `🤖 <b>Xin chào, ${session.displayName}!</b>`,
-          `📧 ${session.email} | 🔑 ${session.role}`,
+          `📧 ${session.email} | 🔑 <b>${session.role.toUpperCase()}</b>`,
           "",
-          "📌 <b>Danh sách câu lệnh:</b>",
-          "• <code>/help</code> - Hiển thị hướng dẫn sử dụng bot.",
-          "• <code>/image [mô tả]</code> - Sinh ảnh nghệ thuật AI.",
-          "• <code>/video [mô tả]</code> - Sinh video ngắn AI.",
-        ];
+          "Chọn một trong các tính năng bên dưới để thao tác nhanh:",
+        ].join("\n");
+
         if (isAdmin) {
-          helpLines.push("• <code>/stats</code> hoặc <code>/report</code> - Báo cáo thống kê CRM và giao dịch.");
-          helpLines.push("• <code>/warning_stock</code> hoặc <code>/lowstock</code> - Kiểm tra sản phẩm sắp hết hàng.");
-          helpLines.push("• <code>/queue</code> - Xem nhanh các bài marketing đang chờ đăng của công ty.");
-          helpLines.push("• <code>/publish_fb [cardId]</code> - Đăng ngay 1 card Facebook đã duyệt.");
-          helpLines.push("• <code>/publish_tt [cardId]</code> - Đăng ngay 1 card TikTok đã duyệt.");
+          await this.sendMessageWithCallbackButtons(chatId, welcomeText, [
+            [
+              { text: "📊 Báo cáo CRM", callbackData: "/stats" },
+              { text: "⏳ Bài chờ đăng", callbackData: "/queue" }
+            ],
+            [
+              { text: "ℹ️ Hướng dẫn lệnh", callbackData: "/help_text" },
+              { text: "🚪 Đăng xuất", callbackData: "/logout" }
+            ]
+          ]);
+        } else {
+          await this.sendMessageWithCallbackButtons(chatId, welcomeText, [
+            [
+              { text: "ℹ️ Hướng dẫn lệnh", callbackData: "/help_text" },
+              { text: "🚪 Đăng xuất", callbackData: "/logout" }
+            ]
+          ]);
         }
-        helpLines.push("• <code>/logout</code> - Đăng xuất khỏi bot.");
-        await this.sendMessage(chatId, buildSessionHelpMessage(session));
       }
+      return;
+    }
+
+    if (command === "/help_text") {
+      if (!session) return;
+      await this.sendMessage(chatId, buildSessionHelpMessage(session));
       return;
     }
 

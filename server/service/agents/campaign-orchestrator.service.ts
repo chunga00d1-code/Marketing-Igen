@@ -11,6 +11,7 @@ import { releaseWithFailure } from "./campaign-utils";
 import { cloudinaryService } from "../cloudinary.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { VisualAnalystAgentService } from "./visual-analyst-agent.service";
+import { approvalNotifierService } from "../approval-notifier.service";
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -327,6 +328,11 @@ export class CampaignOrchestratorService {
       );
 
       console.log(`[Orchestrator] Slot ${slotId} prepare phase completed. Next status: ${nextStatus}`);
+
+      // Fire-and-forget: gửi thông báo phê duyệt qua Telegram nếu slot cần duyệt
+      if (nextStatus === "pending_approval") {
+        approvalNotifierService.notifyPendingApproval(slot, campaign).catch(() => undefined);
+      }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       const statusCode = typeof error === "object" && error !== null
@@ -436,6 +442,11 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} uploaded and linked real images from Drive/Cloudinary. Next status: ${nextStatus}`);
+
+        // Fire-and-forget: gửi thông báo phê duyệt qua Telegram nếu slot cần duyệt
+        if (nextStatus === "pending_approval") {
+          approvalNotifierService.notifyPendingApproval(slot, campaign).catch(() => undefined);
+        }
       } else {
         // Run Media Creator Agent (AI Generation)
         await MediaCreatorAgentService.createMedia(slot, campaign);
@@ -460,6 +471,11 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} media phase completed. Next status: ${nextStatus}`);
+
+        // Fire-and-forget: gửi thông báo phê duyệt qua Telegram nếu slot cần duyệt
+        if (nextStatus === "pending_approval") {
+          approvalNotifierService.notifyPendingApproval(slot, campaign).catch(() => undefined);
+        }
       }
     } catch (error: unknown) {
       console.error(`[Orchestrator] Error during slot ${slotId} media phase:`, error);
