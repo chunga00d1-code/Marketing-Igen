@@ -192,6 +192,7 @@ export default function CampaignDetailModal({
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
   const [detailTab, setDetailTab] = useState<'preview' | 'edit'>('preview');
+  const [aiLogTab, setAiLogTab] = useState<'research' | 'visual' | 'ops'>('research');
 
   // Pagination & selection states
   const [slotPage, setSlotPage] = useState(1);
@@ -231,6 +232,7 @@ export default function CampaignDetailModal({
       setEditBody('');
     }
     setDetailTab('preview');
+    setAiLogTab('research');
   }, [activeSlot?._id, activeSlot?.content, activeSlot?.content?.title, activeSlot?.content?.bodyText]);
 
   if (!isOpen) return null;
@@ -1013,27 +1015,69 @@ export default function CampaignDetailModal({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                        <div className="rounded-xl border border-slate-150 bg-white p-3">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-teal-650">Nghiên cứu web</span>
-                          {activeSlot.researchAnalysis ? (
-                            <>
-                              <p className="mt-1 text-[10px] text-slate-500">
-                                {activeSlot.researchAnalysis.model} · {new Date(activeSlot.researchAnalysis.researchedAt).toLocaleString('vi-VN')}
-                              </p>
-                              <div className="mt-2 max-h-60 overflow-y-auto pr-1 border-t border-slate-100/50 pt-2">
+                      {/* Tab buttons */}
+                      <div className="flex border-b border-slate-200 mb-3.5 select-none gap-4">
+                        <button
+                          type="button"
+                          onClick={() => setAiLogTab('research')}
+                          className={`pb-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                            aiLogTab === 'research'
+                              ? 'border-teal-500 text-teal-650'
+                              : 'border-transparent text-slate-400 hover:text-slate-655'
+                          }`}
+                        >
+                          🌐 Nghiên cứu Web
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAiLogTab('visual')}
+                          className={`pb-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                            aiLogTab === 'visual'
+                              ? 'border-violet-500 text-violet-655'
+                              : 'border-transparent text-slate-400 hover:text-slate-655'
+                          }`}
+                        >
+                          👁️ Phân tích hình ảnh
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAiLogTab('ops')}
+                          className={`pb-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
+                            aiLogTab === 'ops'
+                              ? 'border-blue-500 text-blue-655'
+                              : 'border-transparent text-slate-400 hover:text-slate-655'
+                          }`}
+                        >
+                          ⚙️ Vận hành & Lỗi
+                        </button>
+                      </div>
+
+                      {/* Tab contents */}
+                      <div>
+                        {aiLogTab === 'research' && (
+                          <div className="rounded-xl border border-slate-150 bg-white p-4 shadow-2xs">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+                              <span className="text-xs font-bold uppercase tracking-wider text-teal-650">Nghiên cứu web</span>
+                              {activeSlot.researchAnalysis && (
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {activeSlot.researchAnalysis.model} · {new Date(activeSlot.researchAnalysis.researchedAt).toLocaleString('vi-VN')}
+                                </span>
+                              )}
+                            </div>
+                            {activeSlot.researchAnalysis ? (
+                              <div className="space-y-4">
                                 {parsedResearch ? (
-                                  <div className="space-y-3.5 text-[11px] leading-relaxed text-slate-700 font-sans">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[11px] leading-relaxed text-slate-700 font-sans">
                                     {parsedResearch.summary && (
-                                      <div className="bg-slate-50 border border-slate-150 rounded-xl p-2.5 text-[10.5px] leading-normal text-slate-600 font-medium">
-                                        <p className="font-bold text-slate-800 mb-0.5 text-[10px] uppercase tracking-wide">💡 Định hướng nghiên cứu:</p>
+                                      <div className="md:col-span-2 bg-slate-50 border border-slate-150 rounded-xl p-3 text-[11px] leading-relaxed text-slate-600 font-medium">
+                                        <p className="font-bold text-slate-800 mb-1 text-[10px] uppercase tracking-wide">💡 Định hướng nghiên cứu:</p>
                                         {parsedResearch.summary}
                                       </div>
                                     )}
 
                                     {parsedResearch.angles && parsedResearch.angles.length > 0 && (
-                                      <div className="space-y-1">
-                                        <strong className="block text-[9.5px] font-extrabold text-teal-650 uppercase tracking-wide">📐 Góc tiếp cận bài viết:</strong>
+                                      <div className="space-y-1.5 bg-teal-50/30 border border-teal-100/50 rounded-xl p-3">
+                                        <strong className="block text-[10px] font-extrabold text-teal-650 uppercase tracking-wide">📐 Góc tiếp cận bài viết:</strong>
                                         <ul className="list-disc pl-4 space-y-1 text-slate-650 font-medium">
                                           {parsedResearch.angles.map((angle: string, i: number) => (
                                             <li key={i}>{angle}</li>
@@ -1043,8 +1087,8 @@ export default function CampaignDetailModal({
                                     )}
 
                                     {parsedResearch.painPoints && parsedResearch.painPoints.length > 0 && (
-                                      <div className="space-y-1">
-                                        <strong className="block text-[9.5px] font-extrabold text-amber-650 uppercase tracking-wide">🔥 Nỗi đau khách hàng:</strong>
+                                      <div className="space-y-1.5 bg-amber-50/30 border border-amber-100/50 rounded-xl p-3">
+                                        <strong className="block text-[10px] font-extrabold text-amber-655 uppercase tracking-wide">🔥 Nỗi đau khách hàng:</strong>
                                         <ul className="list-disc pl-4 space-y-1 text-slate-650">
                                           {parsedResearch.painPoints.map((point: string, i: number) => (
                                             <li key={i}>{point}</li>
@@ -1054,8 +1098,8 @@ export default function CampaignDetailModal({
                                     )}
 
                                     {parsedResearch.facts && parsedResearch.facts.length > 0 && (
-                                      <div className="space-y-1">
-                                        <strong className="block text-[9.5px] font-extrabold text-slate-550 uppercase tracking-wide">📋 Thông tin thương hiệu:</strong>
+                                      <div className="md:col-span-2 space-y-1.5 bg-slate-50/50 border border-slate-150 rounded-xl p-3">
+                                        <strong className="block text-[10px] font-extrabold text-slate-550 uppercase tracking-wide">📋 Thông tin thương hiệu:</strong>
                                         <ul className="list-disc pl-4 space-y-1 text-slate-650">
                                           {parsedResearch.facts.map((fact: string, i: number) => (
                                             <li key={i}>{fact}</li>
@@ -1065,80 +1109,162 @@ export default function CampaignDetailModal({
                                     )}
                                   </div>
                                 ) : (
-                                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-650">
+                                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-655 bg-slate-50 p-3 rounded-xl border border-slate-150">
                                     {activeSlot.researchAnalysis.context}
                                   </p>
                                 )}
+
+                                <div className="flex flex-wrap items-center justify-between border-t border-slate-100 pt-3 gap-2">
+                                  <span className="text-[10px] font-semibold text-slate-455">
+                                    {activeSlot.researchAnalysis.billedAt ? '🟢 Đã ghi nhận chi phí' : '⚪ Chưa ghi nhận chi phí'} · {activeSlot.researchAnalysis.cost.toFixed(2)} Credit
+                                  </span>
+                                  
+                                  {activeSlot.researchAnalysis.apifyRuns?.length > 0 && (
+                                    <div className="text-right">
+                                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                        Apify · {activeSlot.researchAnalysis.billingMode === 'shadow' ? 'Test shadow — không trừ ví' : 'Live'} · ${activeSlot.researchAnalysis.providerCostUsd.toFixed(4)}
+                                      </p>
+                                      <p className="text-[10px] text-slate-500 mt-0.5">
+                                        {activeSlot.researchAnalysis.apifyRuns.map((run) => `${run.source}: ${run.status} (${run.itemCount})`).join(' · ')}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {activeSlot.researchAnalysis.evidence?.length > 0 && (
+                                  <div className="border-t border-slate-100 pt-3 space-y-2">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-450">Nguồn dẫn chứng thu thập được</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      {activeSlot.researchAnalysis.evidence.map((item, idx) => (
+                                        <a
+                                          key={`${item.source}-${item.sourceUrl}-${idx}`}
+                                          href={item.sourceUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="flex items-center gap-1.5 p-2 rounded-lg border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition text-[11px] font-medium text-indigo-650 hover:text-indigo-850 hover:underline"
+                                        >
+                                          <ExternalLink size={12} className="shrink-0 text-slate-400" />
+                                          <span className="uppercase text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-700 shrink-0">{item.source}</span>
+                                          <span className="truncate">{item.title || item.author || item.sourceUrl}</span>
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                              <span className="mt-2 inline-block text-[9px] font-semibold text-slate-450">
-                                {activeSlot.researchAnalysis.billedAt ? 'Đã ghi nhận chi phí' : 'Chưa ghi nhận chi phí'} · {activeSlot.researchAnalysis.cost.toFixed(2)} Credit
-                              </span>
-                              {activeSlot.researchAnalysis.apifyRuns?.length > 0 && (
-                                <div className="mt-3 border-t border-slate-100 pt-2">
-                                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-450">
-                                    Apify · {activeSlot.researchAnalysis.billingMode === 'shadow' ? 'Test shadow — không trừ ví' : 'Live'} · ${activeSlot.researchAnalysis.providerCostUsd.toFixed(4)}
-                                  </p>
-                                  <p className="mt-1 text-[10px] text-slate-550">
-                                    {activeSlot.researchAnalysis.apifyRuns.map((run) => `${run.source}: ${run.status} (${run.itemCount})`).join(' · ')}
-                                  </p>
-                                </div>
-                              )}
-                              {activeSlot.researchAnalysis.evidence?.length > 0 && (
-                                <div className="mt-2 space-y-1.5">
-                                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-450">Nguồn đã dùng</p>
-                                  {activeSlot.researchAnalysis.evidence.slice(0, 3).map((item) => (
-                                    <a
-                                      key={`${item.source}-${item.sourceUrl}`}
-                                      href={item.sourceUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex items-center gap-1 text-[10px] font-medium text-indigo-650 hover:text-indigo-800 hover:underline"
-                                    >
-                                      <ExternalLink size={10} />
-                                      <span className="uppercase">{item.source}</span>
-                                      <span className="truncate">{item.title || item.author || item.sourceUrl}</span>
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                            </>
-                          ) : <p className="mt-2 text-[11px] text-slate-400">Chưa nghiên cứu.</p>}
-                        </div>
+                            ) : (
+                              <div className="text-center py-6 text-slate-400 text-xs">Không có dữ liệu nghiên cứu web cho slot này.</div>
+                            )}
+                          </div>
+                        )}
 
-                        <div className="rounded-xl border border-slate-150 bg-white p-3">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-violet-650">Phân tích hình ảnh</span>
-                          {activeSlot.visualAnalysis ? (
-                            <>
-                              <p className="mt-1 text-[10px] text-slate-500">
-                                {activeSlot.visualAnalysis.model} · {activeSlot.visualAnalysis.sourceUrls.length} ảnh · {new Date(activeSlot.visualAnalysis.analyzedAt).toLocaleString('vi-VN')}
-                              </p>
-                              <p className="mt-2 text-[11px] leading-relaxed text-slate-650">{activeSlot.visualAnalysis.summary}</p>
-                              {activeSlot.visualAnalysis.visibleText.length > 0 && (
-                                <p className="mt-2 text-[10px] text-slate-550"><strong>Chữ trong ảnh:</strong> {activeSlot.visualAnalysis.visibleText.join('; ')}</p>
+                        {aiLogTab === 'visual' && (
+                          <div className="rounded-xl border border-slate-150 bg-white p-4 shadow-2xs">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+                              <span className="text-xs font-bold uppercase tracking-wider text-violet-655">Phân tích hình ảnh</span>
+                              {activeSlot.visualAnalysis && (
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                  {activeSlot.visualAnalysis.model} · {activeSlot.visualAnalysis.sourceUrls.length} ảnh · {new Date(activeSlot.visualAnalysis.analyzedAt).toLocaleString('vi-VN')}
+                                </span>
                               )}
-                              {activeSlot.visualAnalysis.cautions.length > 0 && (
-                                <p className="mt-2 text-[10px] text-amber-700"><strong>Cần tránh:</strong> {activeSlot.visualAnalysis.cautions.join('; ')}</p>
-                              )}
-                              <span className="mt-2 inline-block text-[9px] font-semibold text-slate-450">
-                                {activeSlot.visualAnalysis.billedAt ? 'Đã ghi nhận chi phí' : 'Chưa ghi nhận chi phí'} · {activeSlot.visualAnalysis.cost.toFixed(2)} Credit
-                              </span>
-                            </>
-                          ) : <p className="mt-2 text-[11px] text-slate-400">Chưa phân tích ảnh.</p>}
-                        </div>
-
-                        <div className="rounded-xl border border-slate-150 bg-white p-3">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-blue-650">Vận hành</span>
-                          <p className="mt-2 text-[11px] text-slate-650">
-                            Media đã ingest: <strong>{activeSlot.ingestedMedia?.length || 0}</strong>
-                          </p>
-                          {activeSlot.lastError ? (
-                            <div className="mt-3 rounded-lg border border-red-100 bg-red-50 p-2.5">
-                              <p className="text-[10px] font-bold text-red-700">{activeSlot.lastError.type}</p>
-                              <p className="mt-1 text-[11px] leading-relaxed text-red-650">{activeSlot.lastError.message}</p>
-                              <p className="mt-1 text-[9px] text-red-450">{new Date(activeSlot.lastError.occurredAt).toLocaleString('vi-VN')}</p>
                             </div>
-                          ) : <p className="mt-2 text-[10px] text-emerald-650">Không có lỗi đang lưu.</p>}
-                        </div>
+                            {activeSlot.visualAnalysis ? (
+                              <div className="space-y-4">
+                                <div className="bg-slate-50 border border-slate-150 rounded-xl p-3 text-[11px] leading-relaxed text-slate-655">
+                                  <p className="font-bold text-slate-800 mb-1 text-[10px] uppercase tracking-wide">🔍 Kết quả phân tích tổng quan:</p>
+                                  {activeSlot.visualAnalysis.summary}
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+                                  {activeSlot.visualAnalysis.visibleText.length > 0 && (
+                                    <div className="bg-violet-50/20 border border-violet-100/50 rounded-xl p-3">
+                                      <strong className="block text-[10px] font-extrabold text-violet-750 uppercase tracking-wide mb-1.5">📝 Chữ xuất hiện trong ảnh:</strong>
+                                      <div className="flex flex-wrap gap-1">
+                                        {activeSlot.visualAnalysis.visibleText.map((t, idx) => (
+                                          <span key={idx} className="bg-white border border-violet-100 text-violet-750 px-2 py-0.5 rounded text-[10px] font-medium">{t}</span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {activeSlot.visualAnalysis.cautions.length > 0 && (
+                                    <div className="bg-amber-50/20 border border-amber-100/50 rounded-xl p-3">
+                                      <strong className="block text-[10px] font-extrabold text-amber-700 uppercase tracking-wide mb-1.5">⚠️ Lưu ý & Cần tránh:</strong>
+                                      <ul className="list-disc pl-4 space-y-1 text-amber-900 font-medium">
+                                        {activeSlot.visualAnalysis.cautions.map((caution, idx) => (
+                                          <li key={idx}>{caution}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="border-t border-slate-100 pt-3">
+                                  <span className="text-[10px] font-semibold text-slate-450">
+                                    {activeSlot.visualAnalysis.billedAt ? '🟢 Đã ghi nhận chi phí' : '⚪ Chưa ghi nhận chi phí'} · {activeSlot.visualAnalysis.cost.toFixed(2)} Credit
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-6 text-slate-400 text-xs">Không có dữ liệu phân tích hình ảnh cho slot này.</div>
+                            )}
+                          </div>
+                        )}
+
+                        {aiLogTab === 'ops' && (
+                          <div className="rounded-xl border border-slate-150 bg-white p-4 shadow-2xs">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+                              <span className="text-xs font-bold uppercase tracking-wider text-blue-655">Vận hành</span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                Media đã Ingest: <b>{activeSlot.ingestedMedia?.length || 0}</b>
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-[11px] text-slate-600 font-semibold mb-2">Ảnh / Video gốc đã Ingest lên CDN Cloudinary:</p>
+                                {activeSlot.ingestedMedia && activeSlot.ingestedMedia.length > 0 ? (
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {activeSlot.ingestedMedia.map((media, idx) => (
+                                      <div key={idx} className="relative group aspect-square rounded-lg border border-slate-150 bg-slate-950 overflow-hidden flex items-center justify-center">
+                                        <img src={media.url} alt={`Ingested Media ${idx + 1}`} className="w-full h-full object-cover" />
+                                        <a 
+                                          href={media.url} 
+                                          target="_blank" 
+                                          rel="noreferrer"
+                                          className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition text-white text-[10px] font-bold text-center"
+                                        >
+                                          Mở link CDN
+                                        </a>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-slate-400 italic">Không có media thật nào được ingest.</p>
+                                )}
+                              </div>
+
+                              {activeSlot.lastError ? (
+                                <div className="rounded-xl border border-red-155 bg-red-50/50 p-4">
+                                  <div className="flex items-center gap-1.5 text-red-755 font-bold text-xs border-b border-red-100 pb-2 mb-2">
+                                    <AlertTriangle size={14} className="shrink-0" />
+                                    <span>LỖI GẦN NHẤT</span>
+                                  </div>
+                                  <p className="text-[10px] font-bold text-red-800 font-mono">Type: {activeSlot.lastError.type}</p>
+                                  <p className="mt-1.5 text-[11px] leading-relaxed text-red-755 font-medium">{activeSlot.lastError.message}</p>
+                                  <p className="mt-2 text-[9px] text-red-450 font-semibold select-none">
+                                    🕒 Xảy ra lúc: {new Date(activeSlot.lastError.occurredAt).toLocaleString('vi-VN')}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-emerald-150 bg-emerald-50/30 p-3 text-xs text-emerald-700 font-medium flex items-center gap-1.5">
+                                  <span>🟢</span>
+                                  <span>Không ghi nhận lỗi vận hành nào tại thời điểm này.</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
