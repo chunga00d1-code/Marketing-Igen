@@ -197,12 +197,12 @@ export const crudService = {
     }
 
     const query: any = {};
-    if (userRole !== "superadmin" || (companyCode && companyCode !== "SYSTEM")) {
-      query.companyCode = companyCode;
-    }
-
     if (options.filters) {
       Object.assign(query, options.filters);
+    }
+
+    if (userRole !== "superadmin" || (companyCode && companyCode !== "SYSTEM")) {
+      query.companyCode = companyCode;
     }
 
     if (options.search) {
@@ -255,6 +255,11 @@ export const crudService = {
       companyCode,
     });
 
+    if (modelName === "users") {
+      delete payload.role;
+      delete payload.permissions;
+    }
+
     if (modelName === "social-integrations") {
       await validateSocialIntegrationPayload(payload);
     }
@@ -297,7 +302,14 @@ export const crudService = {
     }
 
     const { companyCode: _cCode, _id: _itemId, id: _plainId, ...rawUpdatePayload } = data;
-    const updatePayload = sanitizeMarketingPayload(modelName, sanitizeCatalogPayload(modelName, rawUpdatePayload));
+    let updatePayload = sanitizeMarketingPayload(modelName, sanitizeCatalogPayload(modelName, rawUpdatePayload));
+
+    if (modelName === "users") {
+      updatePayload = { ...updatePayload };
+      delete updatePayload.role;
+      delete updatePayload.permissions;
+      delete updatePayload.password;
+    }
 
     if (modelName === "social-integrations") {
       const existingItem = await model.findOne(query).lean();
