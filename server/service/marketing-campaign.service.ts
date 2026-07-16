@@ -359,6 +359,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode })
       .sort({ scheduledAt: 1 })
       .populate("marketingContentId")
+      .populate("selectedCandidateId")
       .lean();
 
     const transformedSlots = slots.map((slot) => {
@@ -372,6 +373,11 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         videoUrl?: string;
         mediaUrls?: string[];
         mediaType?: "image" | "video" | "human-video";
+      } | null;
+
+      const candidateDoc = slot.selectedCandidateId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        variant: string;
       } | null;
 
       const content = contentDoc
@@ -391,6 +397,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       return {
         ...slot,
         content,
+        variant: candidateDoc?.variant || null,
         errorMessage: slot.lastError?.message,
         publishedPostUrl: slot.publishedUrl,
       };
@@ -603,7 +610,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         _id: decoded.slotId,
         campaignId: decoded.campaignId,
         companyCode: decoded.companyCode,
-      });
+      }).populate("selectedCandidateId").lean();
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
 
       const campaign = await MarketingCampaignModel.findOne({
@@ -616,10 +623,20 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         content = await MarketingContentModel.findOne({
           _id: slot.marketingContentId,
           companyCode: decoded.companyCode,
-        });
+        }).lean();
       }
 
-      return { slot, content, campaign };
+      const candidateDoc = slot.selectedCandidateId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        variant: string;
+      } | null;
+
+      const transformedSlot = {
+        ...slot,
+        variant: candidateDoc?.variant || null
+      };
+
+      return { slot: transformedSlot, content, campaign };
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
     }
@@ -777,7 +794,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         campaignId: decoded.campaignId,
         companyCode: decoded.companyCode,
         scheduledAt: { $gte: startOfDay, $lt: endOfDay }
-      }).lean();
+      }).populate("selectedCandidateId").lean();
 
       const slotsWithContent = await Promise.all(slots.map(async (slot) => {
         let content = null;
@@ -787,7 +804,15 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
             companyCode: decoded.companyCode,
           }).lean();
         }
-        return { ...slot, content };
+        const candidateDoc = slot.selectedCandidateId as unknown as {
+          _id: mongoose.Types.ObjectId;
+          variant: string;
+        } | null;
+        return {
+          ...slot,
+          content,
+          variant: candidateDoc?.variant || null
+        };
       }));
 
       return { campaign, slots: slotsWithContent, date: decoded.date };

@@ -9,6 +9,37 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+function getFunnelStage(objective: string): { label: string; color: string } {
+  const obj = (objective || '').toLowerCase();
+  if (
+    obj.includes('nhận diện') ||
+    obj.includes('tiếp cận') ||
+    obj.includes('giới thiệu') ||
+    obj.includes('awareness') ||
+    obj.includes('discovery') ||
+    obj.includes('nhận biết') ||
+    obj.includes('thương hiệu')
+  ) {
+    return { label: 'TOFU: Nhận diện', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+  }
+  if (
+    obj.includes('chuyển đổi') ||
+    obj.includes('đăng ký') ||
+    obj.includes('mua') ||
+    obj.includes('bán') ||
+    obj.includes('deal') ||
+    obj.includes('ưu đãi') ||
+    obj.includes('sale') ||
+    obj.includes('action') ||
+    obj.includes('cta') ||
+    obj.includes('conversion') ||
+    obj.includes('khách hàng tiềm năng')
+  ) {
+    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+  }
+  return { label: 'MOFU: Cân nhắc', color: 'bg-amber-50 text-amber-700 border-amber-150' };
+}
+
 type SlotWithContent = CampaignSlot & { content: MarketingContent | null };
 
 const SLOT_STATUS_LABELS: Record<string, string> = {
@@ -232,9 +263,22 @@ export default function PublicDailySlotsApproval() {
                           {s.topicBrief}
                         </p>
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[9px] font-bold text-slate-450 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {s.pillar}
+                          <span className="text-[9px] font-bold text-indigo-755 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                            🏢 {s.pillar}
                           </span>
+                          {(() => {
+                            const funnel = getFunnelStage(s.objective || '');
+                            return (
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${funnel.color}`}>
+                                🎯 {funnel.label}
+                              </span>
+                            );
+                          })()}
+                          {s.variant && (
+                            <span className="text-[9px] font-bold text-purple-755 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded">
+                              📐 {s.variant}
+                            </span>
+                          )}
                         </div>
                       </div>
 
@@ -386,6 +430,44 @@ export default function PublicDailySlotsApproval() {
                     }`}>
                       {SLOT_STATUS_LABELS[activeSlot.status] || activeSlot.status}
                     </span>
+                  </div>
+
+                  {/* Strategic Details */}
+                  <div className="border-t border-slate-100 pt-3.5 space-y-3">
+                    <div>
+                      <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Trụ cột nội dung (Pillar)</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[10px] text-indigo-755 font-bold">
+                        🏢 {activeSlot.pillar}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Giai đoạn phễu (Funnel)</span>
+                      {(() => {
+                        const funnel = getFunnelStage(activeSlot.objective || '');
+                        return (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold ${funnel.color}`}>
+                            🎯 {funnel.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
+
+                    {activeSlot.variant && (
+                      <div>
+                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Góc sáng tạo (Creative Angle)</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-100 text-[10px] text-purple-755 font-bold">
+                          📐 {activeSlot.variant}
+                        </span>
+                      </div>
+                    )}
+
+                    {activeSlot.objective && (
+                      <div>
+                        <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Mục tiêu</span>
+                        <span className="text-[10px] text-slate-500 font-sans italic block leading-relaxed">{activeSlot.objective}</span>
+                      </div>
+                    )}
                   </div>
 
                   {activeSlot.status === 'needs_attention' && activeSlot.errorMessage && (

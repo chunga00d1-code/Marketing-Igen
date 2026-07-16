@@ -10,6 +10,8 @@ interface CampaignSlot {
   topicBrief: string;
   scheduledAt: string;
   status: string;
+  variant?: string;
+  platform?: string;
   errorMessage?: string;
   publishedPostUrl?: string;
   ingestedMedia?: Array<{ sourceUrl: string; url: string; uploadedAt: string }>;
@@ -89,6 +91,43 @@ interface CampaignDetailModalProps {
   onRetryAll?: (campaignId: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
   onUpdateSlot?: (slotId: string, updatedFields: Partial<CampaignSlot>) => void;
+}
+
+const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
+    <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.07-2.88-.49-4.13-1.24-.26-.15-.52-.33-.77-.51v7.6c.01 2.37-1.12 4.7-3.23 5.79-2.17 1.14-5.01.99-7.01-.41-2.09-1.42-3.13-4.09-2.58-6.54.51-2.45 2.59-4.43 5.09-4.66.08-.01.16-.01.24-.01v4.07c-.96.11-1.89.7-2.32 1.57-.61 1.15-.31 2.76.7 3.56 1 .8 2.53.64 3.32-.38.41-.5.59-1.14.59-1.78V.02z" />
+  </svg>
+);
+
+function getFunnelStage(objective: string): { label: string; color: string } {
+  const obj = (objective || '').toLowerCase();
+  if (
+    obj.includes('nhận diện') ||
+    obj.includes('tiếp cận') ||
+    obj.includes('giới thiệu') ||
+    obj.includes('awareness') ||
+    obj.includes('discovery') ||
+    obj.includes('nhận biết') ||
+    obj.includes('thương hiệu')
+  ) {
+    return { label: 'TOFU: Nhận diện', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+  }
+  if (
+    obj.includes('chuyển đổi') ||
+    obj.includes('đăng ký') ||
+    obj.includes('mua') ||
+    obj.includes('bán') ||
+    obj.includes('deal') ||
+    obj.includes('ưu đãi') ||
+    obj.includes('sale') ||
+    obj.includes('action') ||
+    obj.includes('cta') ||
+    obj.includes('conversion') ||
+    obj.includes('khách hàng tiềm năng')
+  ) {
+    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+  }
+  return { label: 'MOFU: Cân nhắc', color: 'bg-amber-50 text-amber-700 border-amber-150' };
 }
 
 const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
@@ -790,6 +829,38 @@ export default function CampaignDetailModal({
                     })()}
                   </div>
 
+                  {/* Strategic direction panel */}
+                  <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-4 space-y-3 font-sans shadow-3xs">
+                    <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest font-mono">Định hướng chiến lược</span>
+                    <div className="grid grid-cols-2 gap-3.5 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider mb-1 select-none font-mono">Trụ cột nội dung (Pillar)</span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-indigo-50 border border-indigo-100 text-indigo-755 font-bold">
+                          🏢 {activeSlot.pillar}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider mb-1 select-none font-mono">Giai đoạn phễu (Funnel)</span>
+                        {(() => {
+                          const funnel = getFunnelStage(activeSlot.objective || '');
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border font-bold ${funnel.color}`}>
+                              🎯 {funnel.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    {activeSlot.variant && (
+                      <div className="border-t border-slate-150/60 pt-2.5">
+                        <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider mb-1 select-none font-mono">Góc sáng tạo (Creative Angle)</span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-purple-50 border border-purple-100 text-purple-755 font-bold">
+                          📐 {activeSlot.variant}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Warning/Error banners for needs_attention or failed */}
                   {activeSlot.status === 'needs_attention' && activeSlot.errorMessage && (
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 leading-relaxed font-sans shadow-2xs">
@@ -1447,15 +1518,39 @@ export default function CampaignDetailModal({
                                   <td className="px-4 py-3.5 font-bold font-mono text-slate-400 select-none">{globalIndex}</td>
                                   <td className="px-4 py-3.5 font-semibold text-slate-700 whitespace-nowrap">{dateFormatted}</td>
                                   <td className="px-4 py-3.5 whitespace-nowrap">
-                                    <span className="inline-flex items-center gap-1 font-semibold text-slate-750 select-none">
-                                      <Facebook size={12} className="text-blue-600" />
-                                      Facebook
+                                    <span className="inline-flex items-center gap-1 font-semibold text-slate-750 select-none capitalize">
+                                      {slot.platform === 'TikTok' ? (
+                                        <>
+                                          <TikTokIcon className="h-3 w-3 text-slate-800 shrink-0" />
+                                          TikTok
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Facebook size={12} className="text-blue-600 shrink-0" />
+                                          Facebook
+                                        </>
+                                      )}
                                     </span>
                                   </td>
                                   <td className="px-4 py-3.5 max-w-[200px] sm:max-w-[300px] md:max-w-[400px] xl:max-w-[600px]">
-                                    <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-50 text-[10px] text-indigo-755 font-bold mb-1 select-none">
-                                      {slot.pillar}
-                                    </span>
+                                    <div className="flex flex-wrap gap-1.5 mb-1.5 select-none">
+                                      <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[9px] text-indigo-755 font-bold">
+                                        🏢 {slot.pillar}
+                                      </span>
+                                      {(() => {
+                                        const funnel = getFunnelStage(slot.objective || '');
+                                        return (
+                                          <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${funnel.color}`}>
+                                            🎯 {funnel.label}
+                                          </span>
+                                        );
+                                      })()}
+                                      {slot.variant && (
+                                        <span className="px-1.5 py-0.5 rounded bg-purple-50 border border-purple-100 text-[9px] text-purple-755 font-bold">
+                                          📐 Góc tiếp cận: {slot.variant}
+                                        </span>
+                                      )}
+                                    </div>
                                     <p className="text-slate-600 truncate leading-relaxed font-sans" title={slot.topicBrief}>
                                       {slot.topicBrief}
                                     </p>

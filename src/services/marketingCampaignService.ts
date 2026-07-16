@@ -34,6 +34,7 @@ export interface CampaignSlot {
   topicBrief: string;
   scheduledAt: string;
   status: string;
+  variant?: string;
   errorMessage?: string;
   publishedPostUrl?: string;
   platform?: string;
