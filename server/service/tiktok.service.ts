@@ -320,16 +320,16 @@ async function resolveDirectCredentials(
     const integration = await SocialIntegrationModel.findById(integrationId);
 
     if (!integration) {
-      throw new Error("Khong tim thay tai khoan ket noi TikTok tren he thong.");
+      throw new Error("Không tìm thấy tài khoản kết nối TikTok trên hệ thống.");
     }
     if (companyCode && integration.companyCode !== companyCode) {
-      throw new Error("Tai khoan ket noi khong thuoc pham vi cong ty cua ban.");
+      throw new Error("Tài khoản kết nối không thuộc phạm vi công ty của bạn.");
     }
     if (!integration.isConnected) {
-      throw new Error("Tai khoan ket noi TikTok dang bi vo hieu hoa.");
+      throw new Error("Tài khoản kết nối TikTok đang bị vô hiệu hóa.");
     }
     if (integration.platform !== "TikTok") {
-      throw new Error("Tai khoan ket noi duoc chon khong phai TikTok.");
+      throw new Error("Tài khoản kết nối được chọn không phải TikTok.");
     }
     if (!integration.accessToken) {
       throw new Error("Tai khoan TikTok nay chua co access token de dang bai.");
@@ -341,7 +341,7 @@ async function resolveDirectCredentials(
       try {
         resolvedAccessToken = await refreshCompanyTikTokToken(integrationId, integration);
       } catch (err: any) {
-        console.warn(`[TikTok Service] Tu dong refresh company token gap loi: ${err.message}. Su dung token cu.`);
+        console.warn(`[TikTok Service] Tự động refresh company token gặp lỗi: ${err.message}. Sử dụng token cũ.`);
         resolvedAccessToken = integration.accessToken;
 
         // Gửi cảnh báo về Telegram và đánh dấu ngắt kết nối
@@ -396,7 +396,7 @@ async function resolveDirectCredentials(
   }
 
   if (!resolvedAccessToken) {
-    throw new Error("Thieu accessToken TikTok. Hay ket noi TikTok sandbox hoac truyen integrationId hop le.");
+    throw new Error("Thiếu accessToken TikTok. Hãy kết nối TikTok sandbox hoặc truyền integrationId hợp lệ.");
   }
 
   return {
