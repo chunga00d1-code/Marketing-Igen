@@ -193,7 +193,7 @@ export default function SettingsTab() {
                   ? "bg-amber-50 border-amber-200 text-amber-600"
                   : "bg-slate-50 border-slate-200 text-slate-600"
                 }`}>
-                Quyền hạn: {userProfile?.role === "superadmin" ? "SiÃªu Admin" : userProfile?.role === "admin" ? "Admin" : "ThÃ nh viÃªn"}
+                Quyền hạn: {userProfile?.role === "superadmin" ? "Super Admin" : userProfile?.role === "admin" ? "Admin" : "Thành viên"}
               </span>
             </div>
           </div>

@@ -600,8 +600,10 @@ async function saveCompanyTikTokOAuthIntegration(params: {
   clientKey?: string;
   clientSecret?: string;
 }) {
-  if (!params.companyCode) {
-    throw new Error("Tai khoan hien tai chua co companyCode de luu kenh TikTok doanh nghiep.");
+  let resolvedCompanyCode = params.companyCode;
+  if (!resolvedCompanyCode) {
+    const user = await UserModel.findById(params.userId).lean();
+    resolvedCompanyCode = user?.companyCode || "SYSTEM";
   }
 
   let existingAppSecret = "";
@@ -612,7 +614,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
     if (!existing) {
       throw new Error("Khong tim thay kenh TikTok doanh nghiep de cap nhat.");
     }
-    if (existing.companyCode !== params.companyCode) {
+    if (existing.companyCode !== resolvedCompanyCode) {
       throw new Error("Ban khong co quyen cap nhat kenh TikTok cua doanh nghiep khac.");
     }
     existingAppSecret = String(existing.appSecret || "").trim();
@@ -624,7 +626,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
     : undefined;
 
   const payload = {
-    companyCode: params.companyCode,
+    companyCode: resolvedCompanyCode,
     platform: "TikTok" as const,
     displayName: params.creatorInfo.data.creatorNickname || params.creatorInfo.data.creatorUsername || "TikTok Company",
     username: params.creatorInfo.data.creatorUsername || "",
@@ -649,7 +651,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
 
   await SocialIntegrationModel.findOneAndUpdate(
     {
-      companyCode: params.companyCode,
+      companyCode: resolvedCompanyCode,
       platform: "TikTok",
       username: payload.username,
     },
