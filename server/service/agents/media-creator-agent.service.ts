@@ -39,7 +39,7 @@ export class MediaCreatorAgentService {
 
         const model = process.env.GEMINI_VIDEO_MODEL || "veo31-video-fast-audio";
         console.log(`[MediaCreatorAgent] Generating video for slot ${slot._id} (Prompt: "${content.mediaPrompt}", Model: ${model})...`);
-        
+
         const videoResult = await piapiService.generateVideo(
           content.mediaPrompt,
           model,
