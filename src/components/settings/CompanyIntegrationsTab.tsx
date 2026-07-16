@@ -156,7 +156,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
     companyUsers.forEach((u) => {
       const name = u.displayName || u.email || "Thành viên";
-      
+
       if (u.facebookIntegration?.isConnected) {
         list.push({
           userId: u._id || u.uid,
@@ -787,8 +787,8 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                         <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
                         <div className="absolute bottom-0 left-0 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
 
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                          <div className="space-y-1 max-w-[280px]">
+                        <div className="flex flex-col gap-4">
+                          <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-lg bg-black border border-slate-850 flex items-center justify-center text-rose-500 shadow-md">
                                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
@@ -809,7 +809,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                             type="button"
                             onClick={() => handleTikTokOAuth()}
                             disabled={connectingTikTokOAuth || !canStartCompanyTikTokOAuth}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-100 text-slate-950 px-4 py-3 text-xs font-black transition-all shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer w-full sm:w-auto self-end sm:self-center shrink-0 border border-slate-300"
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-100 text-slate-950 px-4 py-2.5 text-xs font-black transition-all shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer w-full border border-slate-300"
                           >
                             <svg className="h-3.5 w-3.5 text-black" viewBox="0 0 24 24" fill="currentColor">
                               <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.17-2.89-.6-4.09-1.51-.71-.53-1.3-1.22-1.77-1.97v7.08c0 1.28-.21 2.6-.9 3.67-.84 1.37-2.28 2.37-3.86 2.66-1.49.27-3.11.14-4.5-.48-1.57-.71-2.77-2.15-3.23-3.78-.54-1.87-.22-3.99.88-5.6 1.11-1.64 2.99-2.58 4.96-2.55.07 1.34.02 2.69.04 4.04-1.21-.05-2.5.47-3.14 1.5-.47.74-.52 1.69-.32 2.53.25.96.99 1.76 1.91 2.1 1 .37 2.16.21 3-.38.77-.54 1.16-1.45 1.15-2.39V.02z" />
@@ -817,7 +817,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                             <span>{connectingTikTokOAuth ? "Đang kết nối..." : "Kết nối TikTok"}</span>
                           </button>
                         </div>
-                        
+
                         <p className="text-[9px] text-slate-500 mt-3 border-t border-slate-900 pt-2 leading-relaxed">
                           * Hệ thống tự động đồng bộ <b>Tên hiển thị</b>, <b>Username</b> và <b>Access Token</b> từ tài khoản sau khi đăng nhập thành công. Không cần nhập thủ công.
                         </p>
@@ -1051,26 +1051,26 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                 (compPlatform === "Facebook" && fbConnectMode === "oauth" && !editingIntegrationId) ||
                 (compPlatform === "TikTok" && !editingIntegrationId)
               ) && (
-                <div className="pt-2 flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={submittingIntegration}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
-                  >
-                    <Save className="h-4 w-4" />
-                    <span>{submittingIntegration ? "Đang lưu..." : editingIntegrationId ? "Cập nhật" : "Lưu liên kết"}</span>
-                  </button>
-                  {editingIntegrationId && (
+                  <div className="pt-2 flex gap-2">
                     <button
-                      type="button"
-                      onClick={resetCompForm}
-                      className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all border border-gray-200 cursor-pointer"
+                      type="submit"
+                      disabled={submittingIntegration}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
                     >
-                      Hủy
+                      <Save className="h-4 w-4" />
+                      <span>{submittingIntegration ? "Đang lưu..." : editingIntegrationId ? "Cập nhật" : "Lưu liên kết"}</span>
                     </button>
-                  )}
-                </div>
-              )}
+                    {editingIntegrationId && (
+                      <button
+                        type="button"
+                        onClick={resetCompForm}
+                        className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all border border-gray-200 cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                    )}
+                  </div>
+                )}
             </form>
           </div>
 
@@ -1213,8 +1213,8 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     key={item._id}
                     className={`border rounded-2xl p-4 bg-white shadow-2xs flex flex-col justify-between gap-4 transition-all hover:shadow-xs ${editingIntegrationId === item._id ? "border-indigo-500 ring-2 ring-indigo-500/10" : "border-gray-200"}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex gap-3">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="flex gap-3 min-w-0">
                         {/* Platform Icon */}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 font-bold ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
                           }`}>
@@ -1352,11 +1352,10 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                       key={`${item.userId}-${item.platform}-${idx}`}
                       className="border border-gray-200 rounded-2xl p-4 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-3"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex gap-2.5">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 font-bold text-xs ${
-                            item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
-                          }`}>
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="flex gap-2.5 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 font-bold text-xs ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
+                            }`}>
                             {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
                           </div>
                           <div className="text-left min-w-0">

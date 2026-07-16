@@ -97,9 +97,9 @@ JSON Output Schema:
 
     const rulesSection = campaign.rules
       ? `\n\nQUY TẮC CHIẾN DỊCH BẮT BUỘC (Hãy kiểm tra nghiêm ngặt, nếu vi phạm, đặt passed thành false và nêu rõ lý do):\n` +
-        (campaign.rules.requiredCta ? `- Kêu gọi hành động (CTA) bắt buộc: ${campaign.rules.requiredCta}\n` : "") +
-        (campaign.rules.requiredHashtags?.length ? `- Hashtags bắt buộc (bài viết phải chứa các hashtag này): ${campaign.rules.requiredHashtags.join(", ")}\n` : "") +
-        (campaign.rules.forbiddenTerms?.length ? `- Các từ ngữ cấm sử dụng (không được xuất hiện trong bài viết): ${campaign.rules.forbiddenTerms.join(", ")}\n` : "")
+      (campaign.rules.requiredCta ? `- Kêu gọi hành động (CTA) bắt buộc: ${campaign.rules.requiredCta}\n` : "") +
+      (campaign.rules.requiredHashtags?.length ? `- Hashtags bắt buộc (bài viết phải chứa các hashtag này): ${campaign.rules.requiredHashtags.join(", ")}\n` : "") +
+      (campaign.rules.forbiddenTerms?.length ? `- Các từ ngữ cấm sử dụng (không được xuất hiện trong bài viết): ${campaign.rules.forbiddenTerms.join(", ")}\n` : "")
       : "";
 
     const userPrompt = `
