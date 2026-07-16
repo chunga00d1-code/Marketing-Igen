@@ -14,6 +14,7 @@ import { tiktokController } from "./server/controller/tiktok.controller";
 import { buildDocumentTitle, getSeoForPath, resolveSeoUrl } from "./src/seo/seo-config";
 import { BRAND_NAME, BRAND_TAGLINE, BRAND_LOGO_URL, SERVICE_WEBSITE_URL } from "./src/config/brand";
 import { telegramService } from "./server/service/telegram.service";
+import { initCampaignWorkers } from "./server/queue/campaign-workers";
 
 dotenv.config();
 
@@ -197,6 +198,9 @@ async function startServer() {
 
   // Khởi động hàng đợi xử lý Remotion
   remotionQueueService.initWorker();
+
+  // Khởi động hàng đợi xử lý Campaign
+  initCampaignWorkers();
 
 
 
