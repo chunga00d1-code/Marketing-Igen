@@ -78,6 +78,29 @@ export interface CampaignListItem {
   endDate: string;
 }
 
+export interface PostMetricItem {
+  _id: string;
+  platform: string;
+  postId: string;
+  postUrl?: string;
+  likes: number;
+  comments: number;
+  shares: number;
+  views: number;
+  reach: number;
+  impressions: number;
+  clicks: number;
+  syncedAt: string;
+  slotId?: {
+    _id: string;
+    topicBrief: string;
+    pillar: string;
+    scheduledAt: string;
+    mediaType: string;
+    status: string;
+  };
+}
+
 export interface AnalyticsResponse {
   overview: AnalyticsOverview;
   platformMetrics: PlatformMetrics;
@@ -87,6 +110,7 @@ export interface AnalyticsResponse {
   byPillar: PillarBreakdown[];
   topErrors: TopErrorItem[];
   campaigns: CampaignListItem[];
+  posts: PostMetricItem[];
 }
 
 export const marketingAnalyticsService = {

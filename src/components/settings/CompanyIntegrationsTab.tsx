@@ -24,7 +24,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
   const [loadingZaloDiagnostics, setLoadingZaloDiagnostics] = useState(false);
   const [zaloDiagnostics, setZaloDiagnostics] = useState<any | null>(null);
   const [connectingTikTokOAuth, setConnectingTikTokOAuth] = useState(false);
-  const [showTTOauthModal, setShowTTOauthModal] = useState(false);
 
   // Company members integrations state
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
@@ -129,23 +128,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         return;
       }
 
-      if (payload.profile?.username === "igen_marketing_sandbox") {
-        try {
-          await socialIntegrationService.createIntegration({
-            platform: "TikTok",
-            displayName: payload.profile.displayName,
-            username: payload.profile.username,
-            accessToken: "mock_sandbox_access_token",
-            refreshToken: "mock_sandbox_refresh_token",
-            isConnected: true,
-            isMock: true,
-            createdBy: userProfile?.email || "system",
-          });
-        } catch (e: any) {
-          console.error("Lỗi lưu mock TikTok integration:", e);
-        }
-      }
-
       await fetchCompanyIntegrations();
       toast.success(`Đã kết nối TikTok doanh nghiệp: ${payload.profile?.displayName || payload.profile?.username || "TikTok"}`);
     };
@@ -209,23 +191,18 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     return list;
   }, [companyUsers]);
 
-  const handleTikTokOAuth = async (mode: "real" | "sandbox" = "real") => {
+  const handleTikTokOAuth = async () => {
     setConnectingTikTokOAuth(true);
     try {
       localStorage.removeItem("tt_oauth_result");
-      let authUrl = "";
-      if (mode === "sandbox") {
-        authUrl = `/tiktok-sandbox-oauth?target=company`;
-      } else {
-        authUrl = await socialIntegrationService.getTikTokOAuthUrl(
-          "company",
-          compPlatform === "TikTok" && editingIntegrationId ? editingIntegrationId : undefined,
-          compVerifyToken.trim() || undefined,
-          compAppSecret.trim() || undefined
-        );
-      }
+      const authUrl = await socialIntegrationService.getTikTokOAuthUrl(
+        "company",
+        compPlatform === "TikTok" && editingIntegrationId ? editingIntegrationId : undefined,
+        compVerifyToken.trim() || undefined,
+        compAppSecret.trim() || undefined
+      );
       if (!authUrl) {
-        throw new Error("Khong tao duoc link dang nhap TikTok.");
+        throw new Error("Không tạo được link đăng nhập TikTok.");
       }
 
       const width = 620;
@@ -239,7 +216,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       );
 
       if (!oauthWindow) {
-        throw new Error("Trinh duyet dang chan popup TikTok.");
+        throw new Error("Trình duyệt đang chặn popup TikTok.");
       }
 
       const checkInterval = setInterval(() => {
@@ -250,25 +227,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
           try {
             const payload = JSON.parse(rawResult);
             if (payload?.target === "company" && payload?.ok) {
-              if (payload.profile?.username === "igen_marketing_sandbox") {
-                // Đây là tài khoản mock/sandbox, tự gọi lưu trực tiếp
-                socialIntegrationService.createIntegration({
-                  platform: "TikTok",
-                  displayName: payload.profile.displayName,
-                  username: payload.profile.username,
-                  accessToken: "mock_sandbox_access_token",
-                  refreshToken: "mock_sandbox_refresh_token",
-                  isConnected: true,
-                  isMock: true,
-                  createdBy: userProfile?.email || "system",
-                }).then(() => {
-                  void fetchCompanyIntegrations();
-                }).catch(e => {
-                  console.error("Lỗi lưu mock TikTok integration:", e);
-                });
-              } else {
-                void fetchCompanyIntegrations();
-              }
+              void fetchCompanyIntegrations();
               toast.success(`Đã kết nối TikTok doanh nghiệp: ${payload.profile?.displayName || payload.profile?.username || "TikTok"}`);
             } else if (payload?.ok === false) {
               toast.error(payload.error || "Kết nối TikTok thất bại.");
@@ -823,17 +782,17 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                         <div>
                           <p className="text-[11px] font-bold uppercase tracking-wider text-slate-200">TikTok OAuth</p>
                           <p className="mt-1 text-[10px] leading-relaxed text-slate-300">
-                            Kết nối trực tiếp với TikTok để hệ thống tự lấy access token và refresh token cho kênh doanh nghiệp.
+                            Kết nối trực tiếp với TikTok để hệ thống tự động liên kết các tài khoản TikTok doanh nghiệp và đồng bộ bài viết.
                           </p>
                           <p className="mt-1 text-[10px] leading-relaxed text-slate-450">
-                            Bấm kết nối trực tiếp bằng tài khoản hệ thống (hoặc điền Client Key và Client Secret riêng bên dưới nếu muốn dùng ứng dụng riêng).
+                            Một tài khoản có thể liên kết nhiều kênh TikTok. Bấm kết nối trực tiếp bằng tài khoản hệ thống (hoặc điền Client Key và Client Secret riêng bên dưới nếu muốn dùng ứng dụng riêng).
                           </p>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setShowTTOauthModal(true)}
+                          onClick={() => handleTikTokOAuth()}
                           disabled={connectingTikTokOAuth || !canStartCompanyTikTokOAuth}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-slate-900 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-slate-900 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                         >
                           <Globe className="h-3.5 w-3.5" />
                           <span>{connectingTikTokOAuth ? "Đang kết nối..." : editingIntegrationId ? "Kết nối lại" : "Kết nối TikTok"}</span>
@@ -1331,70 +1290,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
           </div>
         </div>
       </div>
-
-      {showTTOauthModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 text-left">
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <Globe className="h-5 w-5 text-indigo-650" />
-              Kết nối kênh TikTok Doanh nghiệp
-            </h3>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              Vui lòng chọn phương thức kết nối. Chế độ Sandbox hỗ trợ đầy đủ các tính năng Đăng bài, Inbox tự động và Trả lời bình luận để phục vụ cho việc quay video kiểm duyệt (TikTok App Review).
-            </p>
-            
-            <div className="mt-5 space-y-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTTOauthModal(false);
-                  void handleTikTokOAuth("sandbox");
-                }}
-                className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-600 hover:bg-slate-50 transition-all text-left flex items-start gap-3 cursor-pointer group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center shrink-0">
-                  <span className="font-extrabold text-xs">SB</span>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600">Cổng Sandbox / Mockup (Khuyên dùng)</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
-                    Mô phỏng toàn bộ luồng ủy quyền chính thức từ TikTok. Tự động kết nối và tạo dữ liệu test để quay video duyệt app.
-                  </p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTTOauthModal(false);
-                  void handleTikTokOAuth("real");
-                }}
-                className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-600 hover:bg-slate-50 transition-all text-left flex items-start gap-3 cursor-pointer group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                  <Globe className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600">TikTok API Thật (Production)</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
-                    Kết nối tài khoản TikTok thật bằng các thông tin Client Key & Client Secret cấu hình bên dưới.
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowTTOauthModal(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-250 text-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer border border-gray-200"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
