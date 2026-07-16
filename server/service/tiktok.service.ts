@@ -851,6 +851,24 @@ export const tiktokService = {
   ) {
     void scheduledTime;
 
+    if (String(process.env.TIKTOK_MOCK_PUBLISH).trim().toLowerCase() === "true") {
+      console.log("[TikTok Service] TIKTOK_MOCK_PUBLISH is active. Bypassing real API posting.");
+      const mockPostId = "v_" + Math.random().toString(36).substring(2, 15);
+      const mockShareUrl = `https://www.tiktok.com/@${username || "user"}/video/${mockPostId}`;
+      return {
+        status: "success",
+        message: "Dang video len TikTok thanh cong (MOCK/DEMO)",
+        provider: "tiktok_direct",
+        data: {
+          publishId: "pub_" + Math.random().toString(36).substring(2, 15),
+          postId: mockPostId,
+          shareUrl: mockShareUrl,
+          publishStatus: "PUBLISH_COMPLETE",
+          success: true,
+        },
+      };
+    }
+
     let userId: string | undefined = undefined;
     const card = cardId ? await MarketingContentModel.findById(cardId) : null;
     if (card?.authorUid) {
