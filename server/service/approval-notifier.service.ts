@@ -8,6 +8,7 @@
 import jwt from "jsonwebtoken";
 import { TelegramSessionModel } from "../model/telegram-session.model";
 import { telegramService } from "./telegram.service";
+import { MarketingContentModel } from "../model/marketing-content.model";
 
 const ADMIN_ROLES = ["admin", "superadmin"];
 
@@ -57,23 +58,51 @@ function formatScheduledTime(time?: Date | string): string {
   }).format(date);
 }
 
-function buildNotificationMessage(slot: SlotInfo, campaign: CampaignInfo): string {
+function truncateText(value: string, maxLength: number): string {
+  const normalized = String(value || "").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function buildNotificationMessage(slot: SlotInfo, campaign: CampaignInfo, content: any, excludeMediaLinks?: boolean): string {
   const campaignTitle = campaign.title || "Chiến dịch Marketing";
   const platform = slot.platform || "Không xác định";
   const pillar = slot.pillar || "—";
   const topicBrief = slot.topicBrief || "Không có chủ đề";
-  const scheduledDisplay = formatScheduledTime(slot.scheduledTime);
+  const scheduledDisplay = formatScheduledTime(slot.scheduledTime || (slot as any).scheduledAt);
 
-  return [
+  const messageLines = [
     "📋 <b>BÀI ĐĂNG CẦN PHÊ DUYỆT</b>",
     "",
     `🏷️ Chiến dịch: <b>${campaignTitle}</b>`,
     `📱 Kênh: <b>${platform}</b> | Pillar: <b>${pillar}</b>`,
     `📅 Lịch đăng: <b>${scheduledDisplay}</b>`,
     `💡 Chủ đề: <i>${topicBrief}</i>`,
+  ];
+
+  if (content) {
+    const truncatedBody = content.bodyText ? truncateText(content.bodyText, 400) : "";
+    messageLines.push(
+      "",
+      "✍️ <b>Bản nháp nội dung:</b>",
+      `<b>Tiêu đề:</b> ${content.title || "—"}`,
+      `<i>${truncatedBody || "Chưa có nội dung"}</i>`
+    );
+    if (!excludeMediaLinks) {
+      if (content.imageUrl) {
+        messageLines.push(`🖼️ <a href="${content.imageUrl}">Ảnh đính kèm</a>`);
+      } else if (content.videoUrl) {
+        messageLines.push(`🎬 <a href="${content.videoUrl}">Video đính kèm</a>`);
+      }
+    }
+  }
+
+  messageLines.push(
     "",
-    "Bấm nút bên dưới để xem chi tiết và phê duyệt bài viết.",
-  ].join("\n");
+    "Bấm nút dưới đây để duyệt nhanh từ Telegram hoặc mở trang web chi tiết."
+  );
+
+  return messageLines.join("\n");
 }
 
 export const approvalNotifierService = {
@@ -100,6 +129,9 @@ export const approvalNotifierService = {
         return;
       }
 
+      // Tìm content bản nháp
+      const content = await MarketingContentModel.findOne({ campaignSlotId: slot._id }).lean();
+
       // Tạo link phê duyệt
       const approvalLink = buildApprovalLink(
         String(slot._id),
@@ -107,16 +139,75 @@ export const approvalNotifierService = {
         companyCode
       );
 
-      // Xây nội dung thông báo
-      const message = buildNotificationMessage(slot, campaign);
+      // Xác định xem có media để gửi xem trước không
+      let targetImageUrl = "";
+      let targetVideoUrl = "";
+      if (content) {
+        targetImageUrl = content.imageUrl || "";
+        targetVideoUrl = content.videoUrl || "";
+
+        if (!targetImageUrl && !targetVideoUrl && content.mediaUrls && content.mediaUrls.length > 0) {
+          const firstMedia = content.mediaUrls[0];
+          const isVideo = /\.(mp4|mov|avi|mkv|webm)/i.test(firstMedia) || firstMedia.includes("video");
+          if (isVideo) {
+            targetVideoUrl = firstMedia;
+          } else {
+            targetImageUrl = firstMedia;
+          }
+        }
+      }
+
+      // Nút bấm
+      const buttons = [
+        [
+          { text: "✅ Phê duyệt", callbackData: `/slot_approve ${slot._id}` },
+          { text: "✏️ Sửa", callbackData: `/slot_edit ${slot._id}` },
+          { text: "❌ Từ chối", callbackData: `/slot_reject ${slot._id}` }
+        ],
+        [
+          { text: "🔗 Chi tiết trên Web", url: approvalLink }
+        ]
+      ];
+
+      const captionMessage = buildNotificationMessage(slot, campaign, content, true);
+      const textMessage = buildNotificationMessage(slot, campaign, content, false);
 
       // Gửi tới từng giám đốc
       const sendPromises = adminSessions.map(async (session) => {
         try {
-          await telegramService.sendMessageWithInlineKeyboard(
+          if (targetVideoUrl) {
+            try {
+              await telegramService.sendVideoWithSlotApprovalButtons(
+                session.telegramChatId,
+                targetVideoUrl,
+                captionMessage,
+                buttons
+              );
+              console.log(`[ApprovalNotifier] Đã gửi thông báo video phê duyệt slot ${slot._id} tới Telegram chatId=${session.telegramChatId}`);
+              return;
+            } catch (mediaErr) {
+              console.warn(`[ApprovalNotifier] Không thể gửi video tới chatId=${session.telegramChatId}, chuyển sang gửi text fallback:`, mediaErr);
+            }
+          } else if (targetImageUrl) {
+            try {
+              await telegramService.sendPhotoWithSlotApprovalButtons(
+                session.telegramChatId,
+                targetImageUrl,
+                captionMessage,
+                buttons
+              );
+              console.log(`[ApprovalNotifier] Đã gửi thông báo ảnh phê duyệt slot ${slot._id} tới Telegram chatId=${session.telegramChatId}`);
+              return;
+            } catch (mediaErr) {
+              console.warn(`[ApprovalNotifier] Không thể gửi ảnh tới chatId=${session.telegramChatId}, chuyển sang gửi text fallback:`, mediaErr);
+            }
+          }
+
+          // Fallback
+          await telegramService.sendMessageWithSlotApprovalButtons(
             session.telegramChatId,
-            message,
-            [{ text: "🔗 Mở trang phê duyệt", url: approvalLink }]
+            textMessage,
+            buttons
           );
           console.log(`[ApprovalNotifier] Đã gửi thông báo phê duyệt slot ${slot._id} tới Telegram chatId=${session.telegramChatId} (${session.displayName || session.email}).`);
         } catch (sendErr: any) {

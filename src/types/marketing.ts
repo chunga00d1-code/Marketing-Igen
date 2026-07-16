@@ -1,4 +1,4 @@
-export type MarketingSubTabType = "LÊN Ý TƯỞNG AI" | "TẠO CHIẾN DỊCH" | "DUYỆT NỘI DUNG" | "LỊCH ĐĂNG CONTENT" | "XƯỞNG NỘI DUNG";
+export type MarketingSubTabType = "LÊN Ý TƯỞNG AI" | "TẠO CHIẾN DỊCH" | "DUYỆT NỘI DUNG" | "LỊCH ĐĂNG CONTENT" | "XƯỞNG NỘI DUNG" | "BÁO CÁO";
 
 export interface MarketingConcept {
   title: string;

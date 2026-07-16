@@ -18,6 +18,7 @@ const LandingPage = lazy(() => import("./pages/LandingPage"));
 const TikTokSandboxOAuth = lazy(() => import("./pages/TikTokSandboxOAuth"));
 const PublicSlotApproval = lazy(() => import("./pages/PublicSlotApproval"));
 const PublicDailySlotsApproval = lazy(() => import("./pages/PublicDailySlotsApproval"));
+const PublicMonthlyApproval = lazy(() => import("./pages/PublicMonthlyApproval"));
 
 function AppContent() {
   const { user, userProfile, loading } = useAuth();
@@ -30,8 +31,9 @@ function AppContent() {
   const isTiktokSandboxOauth = currentPath === "/tiktok-sandbox-oauth" || currentPath === "/tiktok-sandbox-oauth.html";
   const isSlotApprovalPage = currentPath === "/approve-post" || currentPath === "/approve-post.html";
   const isDailyApprovalPage = currentPath === "/approve-posts-day" || currentPath === "/approve-posts-day.html";
+  const isMonthlyApprovalPage = currentPath === "/approve-posts-month" || currentPath === "/approve-posts-month.html";
   const isLegalPublicPage = isPrivacyPage || isTermsPage || isDeletionPage;
-  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isTiktokSandboxOauth || isSlotApprovalPage || isDailyApprovalPage;
+  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isTiktokSandboxOauth || isSlotApprovalPage || isDailyApprovalPage || isMonthlyApprovalPage;
 
   const { activeTab, setActiveTab } = useTabRouter({
     enabled: !isPublicPage && !loading && Boolean(user && userProfile),
@@ -78,6 +80,14 @@ function AppContent() {
     return (
       <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Đang tải trang phê duyệt ngày...</div>}>
         <PublicDailySlotsApproval />
+      </Suspense>
+    );
+  }
+
+  if (isMonthlyApprovalPage) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-500">Đang tải trang phê duyệt tháng...</div>}>
+        <PublicMonthlyApproval />
       </Suspense>
     );
   }
