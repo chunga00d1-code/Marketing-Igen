@@ -10,6 +10,37 @@ const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+function getFunnelStage(objective: string): { label: string; color: string } {
+  const obj = (objective || '').toLowerCase();
+  if (
+    obj.includes('nhận diện') ||
+    obj.includes('tiếp cận') ||
+    obj.includes('giới thiệu') ||
+    obj.includes('awareness') ||
+    obj.includes('discovery') ||
+    obj.includes('nhận biết') ||
+    obj.includes('thương hiệu')
+  ) {
+    return { label: 'TOFU: Nhận diện', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+  }
+  if (
+    obj.includes('chuyển đổi') ||
+    obj.includes('đăng ký') ||
+    obj.includes('mua') ||
+    obj.includes('bán') ||
+    obj.includes('deal') ||
+    obj.includes('ưu đãi') ||
+    obj.includes('sale') ||
+    obj.includes('action') ||
+    obj.includes('cta') ||
+    obj.includes('conversion') ||
+    obj.includes('khách hàng tiềm năng')
+  ) {
+    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+  }
+  return { label: 'MOFU: Cân nhắc', color: 'bg-amber-50 text-amber-700 border-amber-150' };
+}
+
 export default function PublicSlotApproval() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,7 +220,7 @@ export default function PublicSlotApproval() {
               </p>
             </div>
 
-            <div className="border-t border-slate-100 pt-4 space-y-3 text-xs">
+            <div className="border-t border-slate-100 pt-4 space-y-3.5 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-medium">Lịch đăng:</span>
                 <span className="font-semibold text-slate-800 flex items-center gap-1">
@@ -215,14 +246,39 @@ export default function PublicSlotApproval() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500 font-medium">Pillar:</span>
-                <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[10px]">
-                  {slot?.pillar}
+                <span className="font-bold text-indigo-755 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded text-[10px]">
+                  🏢 {slot?.pillar}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-slate-500 font-medium shrink-0">Chủ đề:</span>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-medium">Phễu (Funnel):</span>
+                {(() => {
+                  const funnel = getFunnelStage(slot?.objective || '');
+                  return (
+                    <span className={`font-bold px-2 py-0.5 rounded text-[10px] border ${funnel.color}`}>
+                      🎯 {funnel.label}
+                    </span>
+                  );
+                })()}
+              </div>
+              {slot?.variant && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Góc tiếp cận:</span>
+                  <span className="font-bold text-purple-755 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded text-[10px]">
+                    📐 {slot.variant}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-start justify-between gap-4 border-t border-slate-100/60 pt-3">
+                <span className="text-slate-500 font-medium shrink-0 font-sans">Chủ đề bài đăng:</span>
                 <span className="font-medium text-slate-700 text-right leading-relaxed font-sans">{slot?.topicBrief}</span>
               </div>
+              {slot?.objective && (
+                <div className="flex items-start justify-between gap-4">
+                  <span className="text-slate-500 font-medium shrink-0 font-sans">Mục tiêu:</span>
+                  <span className="text-xs text-slate-400 italic text-right font-sans">{slot.objective}</span>
+                </div>
+              )}
             </div>
 
             {/* Approval Decisions */}

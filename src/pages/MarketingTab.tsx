@@ -29,6 +29,7 @@ const ContentStudioWorkspace = lazy(() =>
     default: module.ContentStudioWorkspace,
   }))
 );
+const AnalyticsDashboard = lazy(() => import("../components/marketing/AnalyticsDashboard"));
 
 export default function MarketingTab() {
   const { userProfile } = useAuth();
@@ -39,6 +40,7 @@ export default function MarketingTab() {
     { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
+    { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
   const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
 
@@ -752,18 +754,21 @@ export default function MarketingTab() {
       {/* Sub Tabs control header switcher */}
       <div className="border-b border-gray-200 bg-gray-50/50 p-2 text-xs flex justify-between shrink-0" id="marketing_sub_tabs_switch">
         <div className="flex gap-2">
-          {["LÊN Ý TƯỞNG AI", "TẠO CHIẾN DỊCH", "DUYỆT NỘI DUNG", "LỊCH ĐĂNG CONTENT", "XƯỞNG NỘI DUNG"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setSubTab(tab as MarketingSubTabType)}
-              className={`px-4 py-2 rounded-lg border font-bold uppercase transition-all tracking-wide ${subTab === tab
-                ? "bg-slate-800 text-white border-slate-800 shadow-xs"
-                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
-                }`}
-            >
-              {tab}
-            </button>
-          ))}
+          {MARKETING_SUB_TAB_ROUTES.map((tabRoute) => {
+            const tab = tabRoute.value;
+            return (
+              <button
+                key={tab}
+                onClick={() => setSubTab(tab)}
+                className={`px-4 py-2 rounded-lg border font-bold uppercase transition-all tracking-wide ${subTab === tab
+                  ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
+                  }`}
+              >
+                {tab}
+              </button>
+            );
+          })}
         </div>
 
       </div>
@@ -832,6 +837,11 @@ export default function MarketingTab() {
               onClearParams={() => setContentStudioParams(null)}
               onMediaSaved={handleMediaSaved}
             />
+          )}
+
+          {/* SUB TAB 5: BÁO CÁO */}
+          {subTab === "BÁO CÁO" && (
+            <AnalyticsDashboard />
           )}
         </Suspense>
       </div>

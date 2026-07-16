@@ -91,12 +91,7 @@ function normalizeMetrics(item: Record<string, unknown>) {
     : { views, likes, comments, shares };
 }
 
-function configuredFacebookPages(): string[] {
-  return (process.env.APIFY_FACEBOOK_PAGE_URLS || "")
-    .split(",")
-    .map((url) => asHttpsUrl(url))
-    .filter((url): url is string => Boolean(url));
-}
+
 
 export class ApifyResearchService {
   public static isEnabled(): boolean {
@@ -136,8 +131,8 @@ export class ApifyResearchService {
     if (sources.includes("google")) {
       await collect((remaining) => this.collectGoogle(queries, billingMode, remaining));
     }
-    if (sources.includes("facebook") && configuredFacebookPages().length > 0) {
-      await collect((remaining) => this.collectFacebook(configuredFacebookPages(), billingMode, remaining));
+    if (sources.includes("facebook")) {
+      await collect((remaining) => this.collectFacebook(queries, billingMode, remaining));
     }
     if (sources.includes("tiktok")) {
       await collect((remaining) => this.collectTikTok(queries, billingMode, remaining));
@@ -169,7 +164,7 @@ export class ApifyResearchService {
       maxPagesPerQuery: 1,
       resultsPerPage: resultsPerQuery,
       languageCode: "vi",
-      countryCode: "VN",
+      countryCode: "vn",
     }, estimatedCostUsd, billingMode, remainingBudgetUsd);
 
     return {
@@ -189,13 +184,18 @@ export class ApifyResearchService {
     };
   }
 
-  private static async collectFacebook(pageUrls: string[], billingMode: "shadow" | "live", remainingBudgetUsd?: number): Promise<CollectorResult> {
-    const maxResults = parsePositiveInt(process.env.APIFY_FACEBOOK_MAX_RESULTS, 20, MAX_RESULTS_PER_SOURCE);
-    const actorId = process.env.APIFY_FACEBOOK_ACTOR_ID || "apify/facebook-posts-scraper";
+  private static async collectFacebook(queries: string[], billingMode: "shadow" | "live", remainingBudgetUsd?: number): Promise<CollectorResult> {
+    const maxResults = Math.max(
+      10,
+      parsePositiveInt(process.env.APIFY_FACEBOOK_MAX_RESULTS, 10, MAX_RESULTS_PER_SOURCE)
+    );
+    const actorId = process.env.APIFY_FACEBOOK_ACTOR_ID || "powerai/facebook-post-search-scraper";
+    const query = queries[0] || "marketing";
     const result = await this.runActor("facebook", actorId, {
-      startUrls: pageUrls.map((url) => ({ url })),
-      resultsLimit: maxResults,
-    }, maxResults * 0.002, billingMode, remainingBudgetUsd);
+      query,
+      maxResults,
+      recent_posts: true,
+    }, maxResults * 0.01, billingMode, remainingBudgetUsd);
 
     return {
       audit: result.audit,

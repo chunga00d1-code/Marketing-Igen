@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe } from 'lucide-react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, LucideIcon } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -55,8 +55,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       if (prev.includes(source)) {
         return prev.filter((s) => s !== source);
       } else {
-        if (prev.length >= 2) {
-          toast.warning('Chỉ được chọn tối đa 2 nguồn dữ liệu nghiên cứu.');
+        if (prev.length >= 3) {
+          toast.warning('Chỉ được chọn tối đa 3 nguồn dữ liệu nghiên cứu.');
           return prev;
         }
         return [...prev, source];
@@ -715,14 +715,14 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         )}
 
         <div className="mt-4 border-t border-slate-150 pt-4">
-          <label className="mb-1 block text-xs font-bold text-slate-700">Nguồn nghiên cứu thị trường (Apify - Chọn tối đa 2)</label>
+          <label className="mb-1 block text-xs font-bold text-slate-700">Nguồn nghiên cứu thị trường (Apify - Chọn tối đa 3)</label>
           <p className="mb-3 text-[10px] text-slate-400">Chọn nguồn dữ liệu để AI tự động nghiên cứu và thu thập xu hướng trước khi viết bài.</p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { id: 'google', label: 'Google Search', icon: Globe, disabled: false },
-              { id: 'facebook', label: 'Facebook Pages', icon: Facebook, disabled: true, tooltip: 'Tạm thời khóa tính năng cào Facebook' },
+              { id: 'facebook', label: 'Facebook Search', icon: Facebook, disabled: false },
               { id: 'tiktok', label: 'TikTok Trends', icon: Sparkles, disabled: false }
-            ].map((source) => {
+            ].map((source: { id: string; label: string; icon: LucideIcon; disabled: boolean; tooltip?: string }) => {
               const isSelected = apifySources.includes(source.id);
               const IconComp = source.icon;
               return (

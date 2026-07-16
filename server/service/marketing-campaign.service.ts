@@ -359,6 +359,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode })
       .sort({ scheduledAt: 1 })
       .populate("marketingContentId")
+      .populate("selectedCandidateId")
       .lean();
 
     const transformedSlots = slots.map((slot) => {
@@ -372,6 +373,11 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         videoUrl?: string;
         mediaUrls?: string[];
         mediaType?: "image" | "video" | "human-video";
+      } | null;
+
+      const candidateDoc = slot.selectedCandidateId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        variant: string;
       } | null;
 
       const content = contentDoc
@@ -391,6 +397,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       return {
         ...slot,
         content,
+        variant: candidateDoc?.variant || null,
         errorMessage: slot.lastError?.message,
         publishedPostUrl: slot.publishedUrl,
       };
@@ -603,7 +610,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         _id: decoded.slotId,
         campaignId: decoded.campaignId,
         companyCode: decoded.companyCode,
-      });
+      }).populate("selectedCandidateId").lean();
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
 
       const campaign = await MarketingCampaignModel.findOne({
@@ -616,10 +623,20 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         content = await MarketingContentModel.findOne({
           _id: slot.marketingContentId,
           companyCode: decoded.companyCode,
-        });
+        }).lean();
       }
 
-      return { slot, content, campaign };
+      const candidateDoc = slot.selectedCandidateId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        variant: string;
+      } | null;
+
+      const transformedSlot = {
+        ...slot,
+        variant: candidateDoc?.variant || null
+      };
+
+      return { slot: transformedSlot, content, campaign };
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
     }
@@ -777,7 +794,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         campaignId: decoded.campaignId,
         companyCode: decoded.companyCode,
         scheduledAt: { $gte: startOfDay, $lt: endOfDay }
-      }).lean();
+      }).populate("selectedCandidateId").lean();
 
       const slotsWithContent = await Promise.all(slots.map(async (slot) => {
         let content = null;
@@ -787,7 +804,15 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
             companyCode: decoded.companyCode,
           }).lean();
         }
-        return { ...slot, content };
+        const candidateDoc = slot.selectedCandidateId as unknown as {
+          _id: mongoose.Types.ObjectId;
+          variant: string;
+        } | null;
+        return {
+          ...slot,
+          content,
+          variant: candidateDoc?.variant || null
+        };
       }));
 
       return { campaign, slots: slotsWithContent, date: decoded.date };
@@ -915,5 +940,265 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Cập nhật nội dung thất bại.");
     }
+  },
+
+  async generateMonthlyShareLink(companyCode: string, campaignId: string, startDate: string, endDate: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      throw new Error("ID chiến dịch không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode });
+    if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+    // Sign token valid for 30 days
+    const token = jwt.sign(
+      { campaignId, startDate, endDate, companyCode },
+      process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key",
+      { expiresIn: "30d" }
+    );
+
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    if (baseUrl.endsWith("/")) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+
+    return { shareLink: `${baseUrl}/approve-posts-month?token=${token}` };
+  },
+
+  async getPublicMonthlySlotsDetail(token: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; startDate: string; endDate: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.startDate || !decoded.endDate || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      const campaign = await MarketingCampaignModel.findOne({
+        _id: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+      // Calculate start and end boundary in campaign's timezone
+      const startDateTime = zonedLocalTimeToUtc(decoded.startDate, "00:00", campaign.timezone || "Asia/Ho_Chi_Minh");
+      const endDateTime = zonedLocalTimeToUtc(decoded.endDate, "23:59", campaign.timezone || "Asia/Ho_Chi_Minh");
+
+      const slots = await MarketingCampaignSlotModel.find({
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+        scheduledAt: { $gte: startDateTime, $lte: endDateTime }
+      }).populate("selectedCandidateId").lean();
+
+      const slotsWithContent = await Promise.all(slots.map(async (slot) => {
+        let content = null;
+        if (slot.marketingContentId) {
+          content = await MarketingContentModel.findOne({
+            _id: slot.marketingContentId,
+            companyCode: decoded.companyCode,
+          }).lean();
+        }
+        const candidateDoc = slot.selectedCandidateId as unknown as {
+          _id: mongoose.Types.ObjectId;
+          variant: string;
+        } | null;
+        return {
+          ...slot,
+          content,
+          variant: candidateDoc?.variant || null
+        };
+      }));
+
+      return { campaign, slots: slotsWithContent, startDate: decoded.startDate, endDate: decoded.endDate };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
+    }
+  },
+
+  async executePublicMonthlySlotAction(token: string, slotId: string, action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; startDate: string; endDate: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.startDate || !decoded.endDate || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(slotId)) {
+        throw new Error("ID slot không hợp lệ.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (slot.status !== "pending_approval") {
+        throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
+      }
+
+      if (action === "approve") {
+        slot.status = "ready_to_publish";
+        slot.approvedBy = "External Reviewer (Monthly)";
+        slot.approvedAt = new Date();
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "ready_to_publish",
+          reason: "Approved by external reviewer via public monthly link",
+          at: new Date(),
+        });
+      } else if (action === "reject") {
+        if (!reason || !reason.trim()) {
+          throw new Error("Vui lòng nhập lý do từ chối bài viết.");
+        }
+        slot.status = "needs_attention";
+        slot.lastError = {
+          type: "validation",
+          message: reason.trim(),
+          occurredAt: new Date(),
+        };
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "needs_attention",
+          reason: `Rejected by external reviewer via monthly link: ${reason.trim()}`,
+          at: new Date(),
+        });
+      } else {
+        throw new Error("Thao tác không hợp lệ.");
+      }
+
+      await slot.save();
+      return slot;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác phê duyệt thất bại.");
+    }
+  },
+
+  async executePublicMonthlyBulkAction(token: string, slotIds: string[], action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; startDate: string; endDate: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.startDate || !decoded.endDate || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!Array.isArray(slotIds) || slotIds.length === 0) {
+        throw new Error("Danh sách slot không hợp lệ.");
+      }
+
+      if (action === "reject" && (!reason || !reason.trim())) {
+        throw new Error("Vui lòng nhập lý do từ chối hàng loạt bài viết.");
+      }
+
+      const slots = await MarketingCampaignSlotModel.find({
+        _id: { $in: slotIds },
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+
+      let processed = 0;
+      let skipped = 0;
+
+      for (const slot of slots) {
+        if (slot.status !== "pending_approval") {
+          skipped++;
+          continue;
+        }
+
+        if (action === "approve") {
+          slot.status = "ready_to_publish";
+          slot.approvedBy = "External Reviewer (Monthly Bulk)";
+          slot.approvedAt = new Date();
+          slot.transitions.push({
+            from: "pending_approval",
+            to: "ready_to_publish",
+            reason: "Approved by external reviewer via monthly bulk action",
+            at: new Date(),
+          });
+        } else if (action === "reject") {
+          slot.status = "needs_attention";
+          slot.lastError = {
+            type: "validation",
+            message: reason!.trim(),
+            occurredAt: new Date(),
+          };
+          slot.transitions.push({
+            from: "pending_approval",
+            to: "needs_attention",
+            reason: `Rejected by external reviewer via monthly bulk action: ${reason!.trim()}`,
+            at: new Date(),
+          });
+        }
+        await slot.save();
+        processed++;
+      }
+
+      return { processed, skipped };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác hàng loạt thất bại.");
+    }
+  },
+
+  async batchPrepareMonth(companyCode: string, campaignId: string, startDate: string, endDate: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      throw new Error("ID chiến dịch không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode });
+    if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+    // Calculate start and end boundary in campaign's timezone
+    const startDateTime = zonedLocalTimeToUtc(startDate, "00:00", campaign.timezone || "Asia/Ho_Chi_Minh");
+    const endDateTime = zonedLocalTimeToUtc(endDate, "23:59", campaign.timezone || "Asia/Ho_Chi_Minh");
+
+    const slots = await MarketingCampaignSlotModel.find({
+      campaignId,
+      companyCode,
+      scheduledAt: { $gte: startDateTime, $lte: endDateTime },
+      status: { $in: ["planned", "retrying", "failed", "needs_attention"] }
+    });
+
+    let enqueued = 0;
+    const now = new Date();
+
+    for (const slot of slots) {
+      slot.prepareAt = now;
+      slot.status = "planned";
+      slot.attemptCount = 0;
+      slot.lockId = null;
+      slot.lockedAt = null;
+      slot.lockExpiresAt = null;
+      slot.lastError = undefined;
+      slot.transitions.push({
+        from: slot.status,
+        to: "planned",
+        reason: "Reset slot for batch generation by marketer",
+        at: now,
+      });
+      await slot.save();
+      enqueued++;
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { campaignQueueService } = require("../queue/campaign-queue");
+      const hasRedis = await campaignQueueService.checkRedis();
+      if (hasRedis) {
+        for (const slot of slots) {
+          await campaignQueueService.addPrepareJob(String(slot._id));
+        }
+      }
+    } catch (e) {
+      console.warn("[Batch Prepare] BullMQ not initialized or failed, slots will be picked up by legacy worker polling.", e);
+    }
+
+    return { enqueued, skipped: 0 };
   }
 };

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Check, X, Loader2, Facebook, Calendar, AlertCircle, MessageSquare, Clock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Check, X, Loader2, Facebook, Calendar, AlertCircle, MessageSquare, Clock, ChevronDown, ChevronRight } from 'lucide-react';
 import { marketingCampaignService, CampaignSlot, MarketingContent, MarketingCampaignSummary } from '../services/marketingCampaignService';
 import { BRAND_LOGO_PATH, BRAND_NAME } from '../config/brand';
 
@@ -67,18 +67,32 @@ const SLOT_STATUS_COLORS: Record<string, string> = {
   planned: 'bg-slate-50 text-slate-650 border-slate-200',
 };
 
-export default function PublicDailySlotsApproval() {
+export default function PublicMonthlyApproval() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [slots, setSlots] = useState<SlotWithContent[]>([]);
   const [campaign, setCampaign] = useState<MarketingCampaignSummary | null>(null);
-  const [dateStr, setDateStr] = useState<string>('');
+  const [startDateStr, setStartDateStr] = useState<string>('');
+  const [endDateStr, setEndDateStr] = useState<string>('');
   const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
 
+  // Selection state for bulk actions
+  const [selectedSlotIds, setSelectedSlotIds] = useState<Set<string>>(new Set());
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
+
+  // Action states
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+
+  // Bulk action states
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
+  const [bulkRejectReason, setBulkRejectReason] = useState('');
+
+  // Filter state
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending_approval' | 'approved' | 'rejected'>('all');
 
   const token = new URLSearchParams(window.location.search).get('token');
 
@@ -89,14 +103,17 @@ export default function PublicDailySlotsApproval() {
       return;
     }
 
-    async function fetchDailySlots() {
+    async function fetchMonthlySlots() {
       try {
-        const data = await marketingCampaignService.getPublicDailySlots(token!);
+        const data = await marketingCampaignService.getPublicMonthlySlots(token!);
         setSlots(data.slots);
         setCampaign(data.campaign);
-        setDateStr(data.date);
+        setStartDateStr(data.startDate);
+        setEndDateStr(data.endDate);
         if (data.slots.length > 0) {
-          setActiveSlotId(data.slots[0]._id);
+          // Find first pending_approval slot to activate
+          const firstPending = data.slots.find(s => s.status === 'pending_approval');
+          setActiveSlotId(firstPending ? firstPending._id : data.slots[0]._id);
         }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Không thể tải thông tin chiến dịch. Vui lòng kiểm tra lại liên kết.');
@@ -105,7 +122,7 @@ export default function PublicDailySlotsApproval() {
       }
     }
 
-    fetchDailySlots();
+    fetchMonthlySlots();
   }, [token]);
 
   const activeSlot = slots.find(s => s._id === activeSlotId) || null;
@@ -115,12 +132,94 @@ export default function PublicDailySlotsApproval() {
     setRejectReason('');
   }, [activeSlotId]);
 
+
+  // Filter slots to show
+  const filteredSlots = useMemo(() => {
+    return slots.filter(slot => {
+      if (statusFilter === 'all') return true;
+      if (statusFilter === 'pending_approval') return slot.status === 'pending_approval';
+      if (statusFilter === 'approved') return slot.status === 'ready_to_publish' || slot.status === 'published';
+      if (statusFilter === 'rejected') return slot.status === 'needs_attention';
+      return true;
+    });
+  }, [slots, statusFilter]);
+
+  const filteredGroupedSlots = useMemo(() => {
+    const groups: Record<string, SlotWithContent[]> = {};
+    filteredSlots.forEach(slot => {
+      const dateStr = new Date(slot.scheduledAt).toISOString().split('T')[0];
+      if (!groups[dateStr]) {
+        groups[dateStr] = [];
+      }
+      groups[dateStr].push(slot);
+    });
+    return groups;
+  }, [filteredSlots]);
+
+  // Checkable slots (only those in pending_approval state)
+  const checkableSlots = useMemo(() => {
+    return filteredSlots.filter(s => s.status === 'pending_approval');
+  }, [filteredSlots]);
+
+  const isAllSelected = useMemo(() => {
+    if (checkableSlots.length === 0) return false;
+    return checkableSlots.every(s => selectedSlotIds.has(s._id));
+  }, [checkableSlots, selectedSlotIds]);
+
+  const handleSelectAll = () => {
+    if (isAllSelected) {
+      // Deselect all
+      setSelectedSlotIds(prev => {
+        const next = new Set(prev);
+        checkableSlots.forEach(s => next.delete(s._id));
+        return next;
+      });
+    } else {
+      // Select all checkable
+      setSelectedSlotIds(prev => {
+        const next = new Set(prev);
+        checkableSlots.forEach(s => next.add(s._id));
+        return next;
+      });
+    }
+  };
+
+  const handleSelectSlot = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedSlotIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleDateCollapse = (date: string) => {
+    setCollapsedDates(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) {
+        next.delete(date);
+      } else {
+        next.add(date);
+      }
+      return next;
+    });
+  };
+
   const handleApprove = async () => {
     if (!token || !activeSlot || isApproving || isRejecting) return;
     setIsApproving(true);
     try {
-      await marketingCampaignService.publicDailySlotAction(token, activeSlot._id, 'approve');
+      await marketingCampaignService.publicMonthlySlotAction(token, activeSlot._id, 'approve');
       setSlots(prev => prev.map(s => s._id === activeSlot._id ? { ...s, status: 'ready_to_publish' } : s));
+      setSelectedSlotIds(prev => {
+        const next = new Set(prev);
+        next.delete(activeSlot._id);
+        return next;
+      });
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Duyệt bài viết thất bại.');
     } finally {
@@ -137,8 +236,13 @@ export default function PublicDailySlotsApproval() {
     }
     setIsRejecting(true);
     try {
-      await marketingCampaignService.publicDailySlotAction(token, activeSlot._id, 'reject', rejectReason.trim());
+      await marketingCampaignService.publicMonthlySlotAction(token, activeSlot._id, 'reject', rejectReason.trim());
       setSlots(prev => prev.map(s => s._id === activeSlot._id ? { ...s, status: 'needs_attention', errorMessage: rejectReason.trim() } : s));
+      setSelectedSlotIds(prev => {
+        const next = new Set(prev);
+        next.delete(activeSlot._id);
+        return next;
+      });
       setShowRejectForm(false);
       setRejectReason('');
     } catch (err: unknown) {
@@ -148,12 +252,55 @@ export default function PublicDailySlotsApproval() {
     }
   };
 
+  const handleBulkApprove = async () => {
+    if (!token || selectedSlotIds.size === 0 || isBulkProcessing) return;
+    const confirmApprove = window.confirm(`Bạn có chắc chắn muốn duyệt ${selectedSlotIds.size} bài viết đã chọn?`);
+    if (!confirmApprove) return;
+
+    setIsBulkProcessing(true);
+    const idsToProcess = Array.from(selectedSlotIds);
+    try {
+      await marketingCampaignService.publicMonthlyBulkAction(token, idsToProcess, 'approve');
+      setSlots(prev => prev.map(s => idsToProcess.includes(s._id) ? { ...s, status: 'ready_to_publish' } : s));
+      setSelectedSlotIds(new Set());
+      alert('Duyệt hàng loạt thành công!');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Duyệt hàng loạt thất bại.');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  const handleBulkRejectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || selectedSlotIds.size === 0 || isBulkProcessing) return;
+    if (!bulkRejectReason.trim()) {
+      alert('Vui lòng nhập lý do từ chối hàng loạt.');
+      return;
+    }
+
+    setIsBulkProcessing(true);
+    const idsToProcess = Array.from(selectedSlotIds);
+    try {
+      await marketingCampaignService.publicMonthlyBulkAction(token, idsToProcess, 'reject', bulkRejectReason.trim());
+      setSlots(prev => prev.map(s => idsToProcess.includes(s._id) ? { ...s, status: 'needs_attention', errorMessage: bulkRejectReason.trim() } : s));
+      setSelectedSlotIds(new Set());
+      setShowBulkRejectModal(false);
+      setBulkRejectReason('');
+      alert('Đã từ chối hàng loạt bài viết thành công.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Từ chối hàng loạt thất bại.');
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f6f8fd] text-slate-800 flex flex-col items-center justify-center font-sans">
         <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
         <p className="text-sm font-semibold tracking-wider text-slate-500 animate-pulse uppercase">
-          ĐANG TẢI BÀI VIẾT THEO NGÀY...
+          ĐANG TẢI BÀI VIẾT THEO THÁNG...
         </p>
       </div>
     );
@@ -174,33 +321,119 @@ export default function PublicDailySlotsApproval() {
     );
   }
 
-  const formattedDate = dateStr
-    ? new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    : '';
+  const formatDateRange = () => {
+    if (!startDateStr || !endDateStr) return '';
+    const start = new Date(startDateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+    const end = new Date(endDateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    return `${start} - ${end}`;
+  };
+
+  // Stats calculation
+  const totalPending = slots.filter(s => s.status === 'pending_approval').length;
+  const totalApproved = slots.filter(s => s.status === 'ready_to_publish' || s.status === 'published').length;
+  const totalRejected = slots.filter(s => s.status === 'needs_attention').length;
 
   return (
-    <div className="min-h-screen bg-[#f6f8fd] text-slate-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-[#f6f8fd] text-slate-800 flex flex-col font-sans h-screen overflow-hidden">
       {/* Top Header */}
-      <header className="border-b border-slate-200 bg-white/85 backdrop-blur-md px-6 py-4 flex items-center justify-between select-none shrink-0 shadow-sm">
+      <header className="border-b border-slate-200 bg-white/85 backdrop-blur-md px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 select-none shrink-0 shadow-sm z-10">
         <div className="flex items-center gap-3">
           <img src={BRAND_LOGO_PATH} alt={BRAND_NAME} className="h-9 w-9 rounded-xl border border-slate-200/60 object-cover shadow-md" />
           <div>
             <h1 className="text-sm font-black tracking-wide text-slate-900 uppercase">{BRAND_NAME}</h1>
-            <p className="text-[10px] text-slate-500 font-bold tracking-wider">CỔNG DUYỆT BÀI ĐĂNG HÀNG NGÀY</p>
+            <p className="text-[10px] text-slate-500 font-bold tracking-wider">CỔNG DUYỆT BÀI ĐĂNG THEO THÁNG</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3.5 py-1.5 rounded-xl">
-          <Calendar size={13} className="text-indigo-650" />
-          <span className="text-xs font-bold text-indigo-755 font-mono">
-            {formattedDate}
-          </span>
+        
+        {/* Statistics Bar */}
+        <div className="flex items-center gap-4 flex-wrap text-xs">
+          <div className="flex items-center gap-1.5 bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-100 font-bold">
+            Chờ duyệt: {totalPending}
+          </div>
+          <div className="flex items-center gap-1.5 bg-green-50 text-green-700 px-2.5 py-1 rounded-lg border border-green-100 font-bold">
+            Đã duyệt: {totalApproved}
+          </div>
+          <div className="flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-1 rounded-lg border border-rose-100 font-bold">
+            Cần sửa: {totalRejected}
+          </div>
+          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-xl">
+            <Calendar size={13} className="text-indigo-650" />
+            <span className="font-bold text-indigo-755 font-mono">
+              {formatDateRange()}
+            </span>
+          </div>
         </div>
       </header>
 
+      {/* Bulk Action and Filtering Toolbar */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 select-none shrink-0 shadow-sm z-10">
+        {/* Filters */}
+        <div className="flex items-center gap-1 flex-wrap">
+          <span className="text-xs font-bold text-slate-400 mr-2 uppercase tracking-wider font-mono">Lọc trạng thái:</span>
+          {(['all', 'pending_approval', 'approved', 'rejected'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setStatusFilter(f)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                statusFilter === f
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/10'
+                  : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200'
+              }`}
+            >
+              {f === 'all' && `Tất cả (${slots.length})`}
+              {f === 'pending_approval' && `Chờ duyệt (${totalPending})`}
+              {f === 'approved' && `Đã duyệt (${totalApproved})`}
+              {f === 'rejected' && `Cần sửa (${totalRejected})`}
+            </button>
+          ))}
+        </div>
+
+        {/* Bulk Actions */}
+        <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-2 md:pt-0">
+          <div className="flex items-center gap-2">
+            {checkableSlots.length > 0 && (
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-650 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  onChange={handleSelectAll}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                Chọn tất cả chờ duyệt ({checkableSlots.length})
+              </label>
+            )}
+          </div>
+
+          {selectedSlotIds.size > 0 && (
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1.5 rounded-lg border border-indigo-150">
+                Đã chọn: {selectedSlotIds.size}
+              </span>
+              <button
+                onClick={handleBulkApprove}
+                disabled={isBulkProcessing}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                {isBulkProcessing ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                Duyệt đã chọn
+              </button>
+              <button
+                onClick={() => setShowBulkRejectModal(true)}
+                disabled={isBulkProcessing}
+                className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <X size={12} />
+                Từ chối đã chọn
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Main Container */}
-      <div className="flex-grow flex flex-col lg:flex-row overflow-hidden max-w-[1600px] w-full mx-auto p-4 md:p-6 gap-6">
+      <div className="flex-grow flex flex-col lg:flex-row overflow-hidden w-full max-w-[1700px] mx-auto p-4 md:p-6 gap-6 h-[calc(100vh-130px)]">
         
-        {/* Left Side: Campaign Info & Slots List */}
+        {/* Left Side: Slots Grouped by Date */}
         <div className="w-full lg:w-[32%] flex flex-col gap-4 overflow-hidden h-full">
           {/* Campaign details */}
           <div className="bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none shrink-0">
@@ -211,84 +444,126 @@ export default function PublicDailySlotsApproval() {
             </p>
           </div>
 
-          {/* Slots Table/List */}
-          <div className="flex-1 bg-white border border-slate-250/70 rounded-2xl shadow-sm flex flex-col overflow-hidden min-h-[300px]">
+          {/* Date-Grouped list */}
+          <div className="flex-grow bg-white border border-slate-250/70 rounded-2xl shadow-sm flex flex-col overflow-hidden min-h-[300px]">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between select-none">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Bài đăng trong ngày ({slots.length})</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
+                Lịch trình tháng ({filteredSlots.length} bài)
+              </span>
             </div>
 
-            <div className="flex-grow overflow-y-auto divide-y divide-slate-100">
-              {slots.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 text-xs">Không có bài viết nào được lên lịch trong ngày này.</div>
+            <div className="flex-grow overflow-y-auto">
+              {Object.keys(filteredGroupedSlots).length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-xs">Không tìm thấy bài viết nào khớp với bộ lọc.</div>
               ) : (
-                slots.map((s, _idx) => {
-                  const scheduledTime = new Date(s.scheduledAt);
-                  const displayTime = new Intl.DateTimeFormat('vi-VN', {
-                    timeZone: campaign?.timezone || 'Asia/Bangkok',
-                    hour: '2-digit', minute: '2-digit', hour12: false
-                  }).format(scheduledTime);
-
-                  const isActive = s._id === activeSlotId;
-                  const isTikTok = s.platform === 'TikTok';
-
+                Object.keys(filteredGroupedSlots).sort().map(dateKey => {
+                  const daySlots = filteredGroupedSlots[dateKey];
+                  const isCollapsed = collapsedDates.has(dateKey);
+                  const displayDate = new Date(dateKey).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' });
+                  
                   return (
-                    <div
-                      key={s._id}
-                      onClick={() => {
-                        setActiveSlotId(s._id);
-                        setShowRejectForm(false);
-                        setRejectReason('');
-                      }}
-                      className={`p-4 cursor-pointer transition-all flex items-start justify-between gap-3 ${
-                        isActive ? 'bg-indigo-50/40 hover:bg-indigo-50/50 border-l-4 border-indigo-600' : 'hover:bg-slate-50/50 border-l-4 border-transparent'
-                      }`}
-                    >
-                      <div className="space-y-1.5 min-w-0 flex-1">
+                    <div key={dateKey} className="border-b border-slate-100 last:border-0">
+                      {/* Date Header */}
+                      <div
+                        onClick={() => toggleDateCollapse(dateKey)}
+                        className="bg-slate-50/70 hover:bg-slate-100/70 px-4 py-2 flex items-center justify-between cursor-pointer select-none transition"
+                      >
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-700 text-xs flex items-center gap-1 shrink-0 font-mono">
-                            <Clock size={11} className="text-slate-400" />
-                            {displayTime}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-bold shrink-0">·</span>
-                          <span className="font-semibold text-slate-600 text-xs flex items-center gap-1 capitalize shrink-0 select-none">
-                            {isTikTok ? (
-                              <TikTokIcon className="h-3 w-3 text-slate-800" />
-                            ) : (
-                              <Facebook size={12} className="text-blue-600 fill-blue-500/10" />
-                            )}
-                            {s.platform || 'Facebook'}
-                          </span>
+                          {isCollapsed ? <ChevronRight size={14} className="text-slate-400" /> : <ChevronDown size={14} className="text-slate-400" />}
+                          <span className="text-xs font-extrabold text-slate-700 capitalize">{displayDate}</span>
                         </div>
-                        <p className={`text-xs font-medium truncate ${isActive ? 'text-slate-900 font-bold' : 'text-slate-655'}`}>
-                          {s.topicBrief}
-                        </p>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[9px] font-bold text-indigo-755 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
-                            🏢 {s.pillar}
-                          </span>
-                          {(() => {
-                            const funnel = getFunnelStage(s.objective || '');
-                            return (
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${funnel.color}`}>
-                                🎯 {funnel.label}
-                              </span>
-                            );
-                          })()}
-                          {s.variant && (
-                            <span className="text-[9px] font-bold text-purple-755 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded">
-                              📐 {s.variant}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 pt-0.5 select-none">
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[9px] font-bold ${
-                          SLOT_STATUS_COLORS[s.status] || 'bg-slate-50 text-slate-500 border-slate-200'
-                        }`}>
-                          {SLOT_STATUS_LABELS[s.status] || s.status}
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full font-mono">
+                          {daySlots.length} bài
                         </span>
                       </div>
+
+                      {/* Day Slots List */}
+                      {!isCollapsed && (
+                        <div className="divide-y divide-slate-50">
+                          {daySlots.map(s => {
+                            const scheduledTime = new Date(s.scheduledAt);
+                            const displayTime = new Intl.DateTimeFormat('vi-VN', {
+                              timeZone: campaign?.timezone || 'Asia/Bangkok',
+                              hour: '2-digit', minute: '2-digit', hour12: false
+                            }).format(scheduledTime);
+
+                            const isActive = s._id === activeSlotId;
+                            const isTikTok = s.platform === 'TikTok';
+                            const isChecked = selectedSlotIds.has(s._id);
+                            const isCheckable = s.status === 'pending_approval';
+
+                            return (
+                              <div
+                                key={s._id}
+                                onClick={() => {
+                                  setActiveSlotId(s._id);
+                                  setShowRejectForm(false);
+                                  setRejectReason('');
+                                }}
+                                className={`p-3 cursor-pointer transition-all flex items-start gap-2.5 ${
+                                  isActive ? 'bg-indigo-50/40 hover:bg-indigo-50/50 border-l-4 border-indigo-600' : 'hover:bg-slate-50/30 border-l-4 border-transparent'
+                                }`}
+                              >
+                                {/* Checkbox for bulk actions */}
+                                {isCheckable && (
+                                  <div className="pt-0.5" onClick={(e) => handleSelectSlot(s._id, e)}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      readOnly
+                                      className="h-3.5 w-3.5 rounded border-slate-350 text-indigo-650 focus:ring-indigo-500 cursor-pointer"
+                                    />
+                                  </div>
+                                )}
+                                
+                                <div className="space-y-1 min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-650 text-[10px] flex items-center gap-0.5 shrink-0 font-mono">
+                                      <Clock size={10} className="text-slate-400" />
+                                      {displayTime}
+                                    </span>
+                                    <span className="text-[9px] text-slate-350 font-bold shrink-0">·</span>
+                                    <span className="font-semibold text-slate-550 text-[10px] flex items-center gap-0.5 capitalize shrink-0 select-none">
+                                      {isTikTok ? (
+                                        <TikTokIcon className="h-2.5 w-2.5 text-slate-800" />
+                                      ) : (
+                                        <Facebook size={10} className="text-blue-600 fill-blue-500/10" />
+                                      )}
+                                      {s.platform || 'Facebook'}
+                                    </span>
+                                  </div>
+                                  <p className={`text-xs font-semibold truncate ${isActive ? 'text-slate-900 font-bold' : 'text-slate-600'}`}>
+                                    {s.topicBrief}
+                                  </p>
+                                  
+                                  {/* Badges row */}
+                                  <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                                    <span className="text-[8px] font-bold text-indigo-755 bg-indigo-50 border border-indigo-100 px-1 py-0.2 rounded shrink-0">
+                                      🏢 {s.pillar?.slice(0, 15)}
+                                    </span>
+                                    {(() => {
+                                      const funnel = getFunnelStage(s.objective || '');
+                                      return (
+                                        <span className={`text-[8px] font-bold px-1 py-0.2 rounded border shrink-0 ${funnel.color}`}>
+                                          🎯 {funnel.label?.split(':')[0]}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0 pt-0.5 select-none">
+                                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full border text-[8px] font-bold ${
+                                    SLOT_STATUS_COLORS[s.status] || 'bg-slate-50 text-slate-500 border-slate-200'
+                                  }`}>
+                                    {SLOT_STATUS_LABELS[s.status] || s.status}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -400,7 +675,7 @@ export default function PublicDailySlotsApproval() {
                       </div>
                     )}
 
-                    <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 text-[9px] text-slate-450 font-semibold">
+                    <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 text-[9px] text-slate-455 font-semibold">
                       <div className="flex items-center gap-1">
                         <span className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[7px] font-bold">👍</span>
                         <span>0 thích</span>
@@ -422,7 +697,7 @@ export default function PublicDailySlotsApproval() {
 
               {/* Action Column for the active slot */}
               <div className="w-full lg:w-[240px] shrink-0 flex flex-col gap-4 justify-between h-full bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none">
-                <div className="space-y-4">
+                <div className="space-y-4 overflow-y-auto">
                   <div>
                     <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Trạng thái hiện tại</span>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[9px] font-bold ${
@@ -436,7 +711,7 @@ export default function PublicDailySlotsApproval() {
                   <div className="border-t border-slate-100 pt-3.5 space-y-3">
                     <div>
                       <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Trụ cột nội dung (Pillar)</span>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[10px] text-indigo-755 font-bold">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[10px] text-indigo-755 font-bold leading-normal whitespace-normal break-words">
                         🏢 {activeSlot.pillar}
                       </span>
                     </div>
@@ -456,7 +731,7 @@ export default function PublicDailySlotsApproval() {
                     {activeSlot.variant && (
                       <div>
                         <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Góc sáng tạo (Creative Angle)</span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-100 text-[10px] text-purple-755 font-bold">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-100 text-[10px] text-purple-755 font-bold leading-normal whitespace-normal break-words">
                           📐 {activeSlot.variant}
                         </span>
                       </div>
@@ -501,7 +776,7 @@ export default function PublicDailySlotsApproval() {
                         className="w-full bg-rose-50 border border-rose-250 hover:bg-rose-100 text-rose-700 font-extrabold py-2.5 px-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <X size={13} />
-                        Từ chối
+                        Từ chối bài này
                       </button>
                     </div>
                   )}
@@ -509,12 +784,12 @@ export default function PublicDailySlotsApproval() {
                   {showRejectForm && (
                     <form onSubmit={handleReject} className="space-y-3 pt-2">
                       <div>
-                        <label htmlFor="daily_reason" className="block text-[8px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1 font-mono">
+                        <label htmlFor="monthly_reason" className="block text-[8px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1 font-mono">
                           <MessageSquare size={9} />
-                          Lý do từ chối
+                          Lý do từ chối (Bắt buộc)
                         </label>
                         <textarea
-                          id="daily_reason"
+                          id="monthly_reason"
                           required
                           value={rejectReason}
                           onChange={(e) => setRejectReason(e.target.value)}
@@ -546,7 +821,7 @@ export default function PublicDailySlotsApproval() {
                   )}
                 </div>
 
-                <div className="text-[10px] text-slate-400 text-center leading-relaxed">
+                <div className="text-[10px] text-slate-400 text-center leading-relaxed shrink-0 pt-2 border-t border-slate-100">
                   Quyết định phê duyệt sẽ được cập nhật ngay lập tức vào lịch trình đăng bài của chiến dịch.
                 </div>
               </div>
@@ -559,6 +834,65 @@ export default function PublicDailySlotsApproval() {
         </div>
 
       </div>
+
+      {/* Bulk Reject Modal */}
+      {showBulkRejectModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full shadow-2xl p-6 select-none animate-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-black text-slate-900 uppercase">Từ chối hàng loạt bài đăng</h3>
+              <button
+                onClick={() => setShowBulkRejectModal(false)}
+                className="text-slate-400 hover:text-slate-650 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleBulkRejectSubmit} className="space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Bạn đang từ chối <span className="font-bold text-rose-600">{selectedSlotIds.size}</span> bài viết đã chọn. Hãy nhập lý do bắt buộc để người tạo chiến dịch nắm bắt và chỉnh sửa.
+              </p>
+
+              <div>
+                <label htmlFor="bulk_reason" className="block text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1 font-mono">
+                  <MessageSquare size={10} />
+                  Lý do từ chối (Bắt buộc)
+                </label>
+                <textarea
+                  id="bulk_reason"
+                  required
+                  value={bulkRejectReason}
+                  onChange={(e) => setBulkRejectReason(e.target.value)}
+                  placeholder="Ghi rõ yêu cầu sửa đổi cho các bài viết đã chọn..."
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none min-h-[100px] font-sans resize-y leading-relaxed"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowBulkRejectModal(false);
+                    setBulkRejectReason('');
+                  }}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isBulkProcessing || !bulkRejectReason.trim()}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-extrabold px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-1 shadow-md shadow-rose-650/10 cursor-pointer disabled:opacity-50"
+                >
+                  {isBulkProcessing ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
+                  Xác nhận từ chối hàng loạt
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
