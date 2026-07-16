@@ -37,7 +37,7 @@ export const tiktokController = {
       console.error("[tiktokController.startOAuth] Error:", error);
       return res.status(400).json({
         status: "error",
-        message: error.message || "Khong the khoi tao ket noi TikTok.",
+        message: error.message || "Không thể khởi tạo kết nối TikTok.",
       });
     }
   },
@@ -59,7 +59,7 @@ export const tiktokController = {
       return res.status(200).send(
         tiktokService.renderOAuthPopupPage({
           ok: false,
-          error: error.message || "Khong the hoan tat ket noi TikTok.",
+          error: error.message || "Không thể hoàn tất kết nối TikTok.",
         })
       );
     }
