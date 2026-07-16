@@ -146,7 +146,7 @@ export default function MarketingTab() {
       }
     });
 
-    if (list.length === 0 && platform && platform !== "TikTok") {
+    if (list.length === 0 && platform) {
       list.push({
         id: "mock_" + platform.toLowerCase() + "_personal",
         displayName: `${platform} Demo Account (Video)`,
@@ -154,6 +154,7 @@ export default function MarketingTab() {
         accessToken: "mock_token",
         isMock: true,
         platform: platform,
+        privacyLevel: "PUBLIC_TO_EVERYONE",
       });
     }
 
@@ -237,7 +238,15 @@ export default function MarketingTab() {
         integrationId: companyTikTokIntegration._id,
         source: "company" as const,
       }
-      : null;
+      : {
+        isConnected: true,
+        username: "igen_tiktok_demo",
+        displayName: "TikTok Demo Account (Video)",
+        accessToken: "mock_token",
+        privacyLevel: "PUBLIC_TO_EVERYONE",
+        isMock: true,
+        source: "personal" as const,
+      };
 
   // Load integrations dynamically when a card is selected for scheduling
   useEffect(() => {
@@ -1108,7 +1117,7 @@ export default function MarketingTab() {
                   type="button"
                   disabled={isScheduling || getPublishingAccounts().length === 0}
                   onClick={handleConfirmPublishOrSchedule}
-                  className="flex-1 py-3 bg-blue-650 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all duration-250 shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none"
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all duration-250 shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none"
                 >
                   {isScheduling ? (
                     <>

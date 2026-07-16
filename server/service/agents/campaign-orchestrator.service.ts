@@ -279,24 +279,26 @@ export class CampaignOrchestratorService {
       // Create Marketing Content once; retries reuse the record for this slot.
       const content = await MarketingContentModel.findOneAndUpdate(
         { campaignSlotId: slot._id },
-        { $setOnInsert: {
-        companyCode: slot.companyCode,
-        authorUid: campaign.createdBy,
-        campaignId: String(campaign._id),
-        campaignTitle: campaign.title,
-        campaignSlotId: slot._id,
-        title: candidate.title,
-        channel: slot.platform,
-        contentType: slot.platform === "TikTok" ? "Video ngắn" : "Bài viết chiến dịch",
-        status: "pending",
-        bodyText: candidate.bodyText,
-        outline: candidate.outline,
-        mediaPrompt: candidate.mediaPrompt,
-        voiceScript: candidate.voiceScript,
-        mediaType: slot.mediaType === "text" ? undefined : slot.mediaType === "image" ? "image" : slot.mediaType,
-        generatedAt: new Date(),
-        integrationId: slot.integrationId,
-        } },
+        {
+          $setOnInsert: {
+            companyCode: slot.companyCode,
+            authorUid: campaign.createdBy,
+            campaignId: String(campaign._id),
+            campaignTitle: campaign.title,
+            campaignSlotId: slot._id,
+            title: candidate.title,
+            channel: slot.platform,
+            contentType: slot.platform === "TikTok" ? "Video ngắn" : "Bài viết chiến dịch",
+            status: "pending",
+            bodyText: candidate.bodyText,
+            outline: candidate.outline,
+            mediaPrompt: candidate.mediaPrompt,
+            voiceScript: candidate.voiceScript,
+            mediaType: slot.mediaType === "text" ? undefined : slot.mediaType === "image" ? "image" : slot.mediaType,
+            generatedAt: new Date(),
+            integrationId: slot.integrationId,
+          }
+        },
         { upsert: true, new: true }
       );
 
@@ -409,7 +411,7 @@ export class CampaignOrchestratorService {
           if (uploadedUrls.length === 0) {
             throw new Error("Media thật chưa được ingest lên Cloudinary.");
           }
-          
+
           if (slot.mediaType === "video" || slot.mediaType === "human-video") {
             content.videoUrl = uploadedUrls[0] || "";
             content.mediaUrls = uploadedUrls;
