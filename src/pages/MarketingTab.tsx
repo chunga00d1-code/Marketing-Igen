@@ -89,6 +89,7 @@ export default function MarketingTab() {
       accessToken?: string;
       isMock?: boolean;
       platform: string;
+      privacyLevel?: string;
     }> = [];
 
     const platform = schedulingCard?.channel || "";
@@ -113,6 +114,7 @@ export default function MarketingTab() {
           accessToken: userProfile.tiktokIntegration.accessToken,
           isMock: !!userProfile.tiktokIntegration.isMock,
           platform: "TikTok",
+          privacyLevel: userProfile.tiktokIntegration.privacyLevel || "PUBLIC_TO_EVERYONE",
         });
       }
     } else if (platform === "Zalo") {
@@ -138,12 +140,13 @@ export default function MarketingTab() {
             accessToken: item.accessToken,
             isMock: !!item.isMock,
             platform: platform,
+            privacyLevel: "PUBLIC_TO_EVERYONE",
           });
         }
       }
     });
 
-    if (list.length === 0 && platform) {
+    if (list.length === 0 && platform && platform !== "TikTok") {
       list.push({
         id: "mock_" + platform.toLowerCase() + "_personal",
         displayName: `${platform} Demo Account (Video)`,
@@ -229,7 +232,7 @@ export default function MarketingTab() {
         username: companyTikTokIntegration.username || "",
         displayName: companyTikTokIntegration.displayName,
         accessToken: companyTikTokIntegration.accessToken,
-        privacyLevel: "SELF_ONLY",
+        privacyLevel: "PUBLIC_TO_EVERYONE",
         isMock: companyTikTokIntegration.isMock,
         integrationId: companyTikTokIntegration._id,
         source: "company" as const,
@@ -330,8 +333,8 @@ export default function MarketingTab() {
             schedulingCard.id,
             caption,
             schedulingCard.videoUrl,
-            selectedAcc.isMock ?? false,
-            "SELF_ONLY",
+            false,
+            selectedAcc.privacyLevel || "PUBLIC_TO_EVERYONE",
             {
               integrationId: selectedAcc.id === "personal" ? undefined : selectedAcc.id,
               accessToken: selectedAcc.accessToken,
@@ -353,6 +356,7 @@ export default function MarketingTab() {
               )
             );
             toast.success("Đã gửi video sang TikTok. Hệ thống đang chờ TikTok xử lý.");
+            return;
           } else {
             setApprovalCards((prev) =>
               prev.map((item) =>
@@ -367,7 +371,7 @@ export default function MarketingTab() {
                   : item
               )
             );
-            toast.success(`Đã đăng video lên TikTok thành công! ${selectedAcc.isMock ? '(Demo)' : ''} ID: ${String(publishResult.postId || "").slice(-8)}`);
+            toast.success(`Đã đăng video lên TikTok thành công! ID: ${String(publishResult.postId || "").slice(-8)}`);
           }
         } else {
           toast.error(`Kênh "${schedulingCard.channel}" chưa hỗ trợ đăng tải trực tiếp.`);
@@ -469,32 +473,7 @@ export default function MarketingTab() {
   const handlePublishToTikTok = async (card: ContentApprovalCard) => {
     const tiktok = effectiveTikTokIntegration;
     if (!tiktok?.isConnected) {
-      const confirmMock = window.confirm("Bạn chưa liên kết TikTok. Bạn có muốn đăng thử nghiệm bằng tài khoản TikTok Demo để quay video không?");
-      if (confirmMock) {
-        setPublishingTikTokId(card.id);
-        try {
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          const mockPostId = `tiktok_mock_${Date.now()}`;
-          await marketingService.updateCard(card.id, {
-            status: 'published',
-            publishedAt: new Date().toISOString(),
-            tiktokPostId: mockPostId,
-            tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
-          });
-          setApprovalCards(prev => prev.map(c => c.id === card.id ? {
-            ...c,
-            status: "published",
-            publishedAt: new Date().toISOString(),
-            tiktokPostId: mockPostId,
-            tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
-          } : c));
-          toast.success(`Đã đăng video lên TikTok thành công! (Demo) ID: ${mockPostId.slice(-8)}`);
-        } catch (e) {
-          toast.error("Đăng bài demo thất bại.");
-        } finally {
-          setPublishingTikTokId(null);
-        }
-      }
+      toast.error("Bạn chưa liên kết tài khoản TikTok. Vui lòng kết nối tài khoản TikTok trước khi đăng bài.");
       return;
     }
     if (!card.videoUrl) {
@@ -511,7 +490,7 @@ export default function MarketingTab() {
         card.id,
         caption,
         card.videoUrl,
-        tiktok.isMock ?? false,
+        false,
         tiktok.privacyLevel ?? 'SELF_ONLY',
         {
           integrationId,
@@ -550,7 +529,7 @@ export default function MarketingTab() {
             : item
         )
       );
-      toast.success(`Đã đăng video lên TikTok thành công! ${(tiktok.isMock ?? false) ? '(Demo)' : ''} ID: ${postId.slice(-8)}`);
+      toast.success(`Đã đăng video lên TikTok thành công! ID: ${postId.slice(-8)}`);
     } catch (e: any) {
       console.error("Lỗi đăng TikTok:", e);
       toast.error(parseFirebaseError(e, "Không thể đăng bài lên TikTok. Vui lòng thử lại."));

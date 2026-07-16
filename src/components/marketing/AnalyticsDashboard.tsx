@@ -22,7 +22,6 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import {
-  Calendar,
   Download,
   RefreshCw,
   TrendingUp,
@@ -43,6 +42,100 @@ import {
 import { toast } from "../../pages/Toast";
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#ec4899"];
+
+function MetricCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+  tone,
+  progress,
+}: {
+  title: string;
+  value: string | number;
+  description: string;
+  icon: React.ElementType;
+  tone: string;
+  progress?: number;
+}) {
+  const isPink = tone.includes("pink") || tone.includes("rose");
+  const isViolet = tone.includes("purple") || tone.includes("indigo") || tone.includes("violet");
+  const isEmerald = tone.includes("emerald") || tone.includes("teal") || tone.includes("green");
+  const isSky = tone.includes("blue") || tone.includes("cyan") || tone.includes("sky");
+  const isAmber = tone.includes("amber") || tone.includes("orange");
+
+  let iconBg = "bg-slate-50 text-slate-500";
+  let glowColor = "rgba(148, 163, 184, 0.1)";
+  let progressBg = "bg-slate-100";
+  let progressBar = "bg-slate-400";
+  
+  if (isPink) {
+    iconBg = "bg-pink-500/10 text-pink-650";
+    glowColor = "rgba(244, 63, 94, 0.12)";
+    progressBg = "bg-pink-100/50";
+    progressBar = "bg-gradient-to-r from-pink-500 to-rose-500";
+  } else if (isViolet) {
+    iconBg = "bg-violet-500/10 text-violet-600";
+    glowColor = "rgba(139, 92, 246, 0.12)";
+    progressBg = "bg-violet-100/50";
+    progressBar = "bg-gradient-to-r from-violet-500 to-indigo-500";
+  } else if (isEmerald) {
+    iconBg = "bg-emerald-500/10 text-emerald-600";
+    glowColor = "rgba(16, 185, 129, 0.12)";
+    progressBg = "bg-emerald-100/50";
+    progressBar = "bg-gradient-to-r from-emerald-500 to-teal-500";
+  } else if (isSky) {
+    iconBg = "bg-sky-500/10 text-sky-655";
+    glowColor = "rgba(14, 165, 233, 0.12)";
+    progressBg = "bg-sky-100/50";
+    progressBar = "bg-gradient-to-r from-sky-500 to-cyan-500";
+  } else if (isAmber) {
+    iconBg = "bg-amber-500/10 text-amber-600";
+    glowColor = "rgba(245, 158, 11, 0.12)";
+    progressBg = "bg-amber-100/50";
+    progressBar = "bg-gradient-to-r from-amber-500 to-orange-500";
+  }
+
+  return (
+    <div className="group relative bg-white/70 backdrop-blur-md border border-slate-100/80 rounded-3xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.015)] hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)] hover:-translate-y-1 hover:border-slate-200/50 transition-all duration-300 overflow-hidden flex flex-col justify-between min-h-[145px]">
+      <div 
+        className="absolute -bottom-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-15 pointer-events-none transition-all duration-500 group-hover:scale-125" 
+        style={{ backgroundColor: glowColor }} 
+      />
+      <div className={`absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r ${tone}`} />
+      
+      <div className="flex justify-between items-start">
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{title}</span>
+        <span className={`p-2.5 rounded-2xl ${iconBg} flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 shadow-xs`}>
+          <Icon className="h-4.5 w-4.5" />
+        </span>
+      </div>
+      
+      <div className="mt-2.5">
+        <h4 className="text-3.5xl font-black text-slate-800 tracking-tight leading-none transition-colors group-hover:text-slate-900">{value}</h4>
+        
+        {progress !== undefined && (
+          <div className="mt-3.5 space-y-1.5">
+            <div className={`w-full h-1 rounded-full ${progressBg} overflow-hidden`}>
+              <div 
+                className={`h-full rounded-full transition-all duration-500 ${progressBar}`}
+                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-slate-400 font-bold">
+              <span>{description}</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+          </div>
+        )}
+        
+        {progress === undefined && (
+          <p className="text-xs text-slate-400 mt-2 font-semibold">{description}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
@@ -184,100 +277,98 @@ export default function AnalyticsDashboard() {
 
   return (
     <div className="space-y-5 animate-fadeIn">
-      {/* Header Dashboard */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-        <div>
-          <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2">
-            BÁO CÁO HIỆU SUẤT ĐĂNG TẢI
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-0.5">Phân tích đa chiều chiến dịch, tương tác và chất lượng nội dung AI</p>
+      {/* Header & Controls Toolbar */}
+      <div className="flex flex-col gap-4 border-b border-slate-100 pb-4">
+        {/* Dòng 1: Tiêu đề */}
+        <div className="flex justify-between items-start">
+          <div>
+            <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2 animate-fadeIn">
+              BÁO CÁO HIỆU SUẤT ĐĂNG TẢI
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">Phân tích đa chiều chiến dịch, tương tác và chất lượng nội dung AI</p>
+          </div>
         </div>
 
-        {/* Nút xuất excel */}
-        <button
-          onClick={handleExportExcel}
-          disabled={!data || data.overview.totalSlots === 0}
-          className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-xs px-3.5 py-2 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md"
-        >
-          <Download className="h-3.5 w-3.5" />
-          XUẤT FILE EXCEL
-        </button>
-      </div>
+        {/* Dòng 2: Bộ lọc dạng Tag & Xuất báo cáo */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Bộ lọc Chiến dịch */}
+            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1.5 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Chiến dịch:</span>
+              <select
+                value={campaignId}
+                onChange={(e) => setCampaignId(e.target.value)}
+                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs"
+              >
+                <option value="">Tất cả</option>
+                {data?.campaigns.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-      {/* 1. Thanh điều hướng bộ lọc (Glassmorphic) */}
-      <div className="bg-white border border-slate-100 rounded-xl p-3.5 flex flex-wrap gap-4 items-end justify-between shadow-xs">
-        <div className="flex flex-wrap gap-3 items-end">
-          {/* Chiến dịch */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Chiến dịch</span>
-            <select
-              value={campaignId}
-              onChange={(e) => setCampaignId(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none min-w-[180px] hover:bg-slate-100/50 transition-all cursor-pointer"
-            >
-              <option value="">Tất cả chiến dịch</option>
-              {data?.campaigns.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-          </div>
+            {/* Bộ lọc Nền tảng */}
+            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1.5 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Nền tảng:</span>
+              <select
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value)}
+                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs"
+              >
+                <option value="">Tất cả</option>
+                <option value="Facebook">Facebook Page</option>
+                <option value="TikTok">TikTok Channel</option>
+              </select>
+            </div>
 
-          {/* Kênh */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nền tảng</span>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none min-w-[120px] hover:bg-slate-100/50 transition-all cursor-pointer"
-            >
-              <option value="">Tất cả kênh</option>
-              <option value="Facebook">Facebook Page</option>
-              <option value="TikTok">TikTok Channel</option>
-            </select>
-          </div>
-
-          {/* Khoảng ngày */}
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Từ ngày</span>
-            <div className="relative">
+            {/* Từ ngày */}
+            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1 text-slate-500 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Từ:</span>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs py-0.5"
               />
-              <Calendar className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             </div>
-          </div>
 
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Đến ngày</span>
-            <div className="relative">
+            {/* Đến ngày */}
+            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1 text-slate-500 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Đến:</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs py-0.5"
               />
-              <Calendar className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
             </div>
+
+            {/* Đặt lại bộ lọc */}
+            {(campaignId || platform || startDate || endDate) && (
+              <button
+                onClick={clearFilters}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 text-xs font-bold transition-all border border-transparent hover:border-rose-100 shadow-xs"
+              >
+                Đặt lại
+              </button>
+            )}
           </div>
 
-          {/* Reset Filters */}
-          {(campaignId || platform || startDate || endDate) && (
-            <button
-              onClick={clearFilters}
-              className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-all"
-            >
-              Đặt lại
-            </button>
-          )}
+          {/* Nút xuất excel */}
+          <button
+            onClick={handleExportExcel}
+            disabled={!data || data.overview.totalSlots === 0}
+            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Download className="h-3.5 w-3.5" />
+            XUẤT EXCEL
+          </button>
         </div>
       </div>
 
@@ -286,100 +377,64 @@ export default function AnalyticsDashboard() {
           {/* 2. Styled KPI Cards from reference image */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             {/* Tổng bài viết */}
-            <div className="relative bg-white border border-slate-100 rounded-3xl p-4.5 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between min-h-[135px]">
-              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-pink-500 to-rose-500" />
-              <div className="flex justify-between items-start">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TỔNG BÀI MARKETING</span>
-                <span className="p-2 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                  <Megaphone className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <div className="mt-3">
-                <h4 className="text-3xl font-black text-slate-800 tracking-tight leading-none">{data.overview.totalSlots}</h4>
-                <p className="text-xs text-slate-400 mt-2 font-semibold">{data.overview.publishedSlots} đã xuất bản</p>
-              </div>
-            </div>
+            <MetricCard
+              title="TỔNG BÀI MARKETING"
+              value={data.overview.totalSlots}
+              description={`${data.overview.publishedSlots} đã xuất bản`}
+              icon={Megaphone}
+              tone="from-pink-500 to-rose-500"
+              progress={data.overview.totalSlots > 0 ? (data.overview.publishedSlots / data.overview.totalSlots) * 100 : 0}
+            />
 
             {/* Đã xuất bản */}
-            <div className="relative bg-white border border-slate-100 rounded-3xl p-4.5 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between min-h-[135px]">
-              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-emerald-400 to-teal-500" />
-              <div className="flex justify-between items-start">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ĐÃ XUẤT BẢN</span>
-                <span className="p-2 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                  <CheckCircle className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <div className="mt-3">
-                <h4 className="text-3xl font-black text-slate-800 tracking-tight leading-none">{data.overview.publishedSlots}</h4>
-                <p className="text-xs text-slate-400 mt-2 font-semibold">Bài đăng hoạt động</p>
-              </div>
-            </div>
+            <MetricCard
+              title="ĐÃ XUẤT BẢN"
+              value={data.overview.publishedSlots}
+              description="Bài đăng hoạt động"
+              icon={CheckCircle}
+              tone="from-emerald-400 to-teal-500"
+              progress={data.overview.totalSlots > 0 ? (data.overview.publishedSlots / data.overview.totalSlots) * 100 : 0}
+            />
 
             {/* Xử lý / Chờ duyệt */}
-            <div className="relative bg-white border border-slate-100 rounded-3xl p-4.5 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between min-h-[135px]">
-              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-purple-500 to-indigo-500" />
-              <div className="flex justify-between items-start">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">XỬ LÝ / CHỜ DUYỆT</span>
-                <span className="p-2 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                  <Sparkles className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <div className="mt-3">
-                <h4 className="text-3xl font-black text-slate-800 tracking-tight leading-none">{data.overview.pendingApprovalSlots}</h4>
-                <p className="text-xs text-slate-400 mt-2 font-semibold">Đang pending/xử lý</p>
-              </div>
-            </div>
+            <MetricCard
+              title="XỬ LÝ / CHỜ DUYỆT"
+              value={data.overview.pendingApprovalSlots}
+              description="Đang pending/xử lý"
+              icon={Sparkles}
+              tone="from-purple-500 to-indigo-500"
+              progress={data.overview.totalSlots > 0 ? (data.overview.pendingApprovalSlots / data.overview.totalSlots) * 100 : 0}
+            />
 
             {/* Tỷ lệ thành công */}
-            <div className="relative bg-white border border-slate-100 rounded-3xl p-4.5 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between min-h-[135px]">
-              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-blue-500 to-cyan-500" />
-              <div className="flex justify-between items-start">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">TỶ LỆ THÀNH CÔNG</span>
-                <span className="p-2 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                  <Percent className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <div className="mt-3">
-                <h4 className="text-3xl font-black text-slate-800 tracking-tight leading-none">{data.overview.successRate}%</h4>
-                <p className="text-xs text-slate-400 mt-2 font-semibold">Tỷ lệ xuất bản đạt</p>
-              </div>
-            </div>
+            <MetricCard
+              title="TỶ LỆ THÀNH CÔNG"
+              value={`${data.overview.successRate}%`}
+              description="Tỷ lệ xuất bản đạt"
+              icon={Percent}
+              tone="from-blue-500 to-cyan-500"
+              progress={data.overview.successRate}
+            />
 
             {/* Lượt tiếp cận */}
-            <div className="relative bg-white border border-slate-100 rounded-3xl p-4.5 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between min-h-[135px]">
-              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-purple-500 to-rose-500" />
-              <div className="flex justify-between items-start">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LƯỢT TIẾP CẬN</span>
-                <span className="p-2 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                  <Target className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <div className="mt-3">
-                <h4 className="text-3xl font-black text-slate-800 tracking-tight leading-none">
-                  {data.platformMetrics.totalReach >= 1000
-                    ? `${(data.platformMetrics.totalReach / 1000).toFixed(1)}k`
-                    : data.platformMetrics.totalReach}
-                </h4>
-                <p className="text-xs text-slate-400 mt-2 font-semibold">Lượt reach độc giả</p>
-              </div>
-            </div>
+            <MetricCard
+              title="LƯỢT TIẾP CẬN"
+              value={data.platformMetrics.totalReach >= 1000
+                ? `${(data.platformMetrics.totalReach / 1000).toFixed(1)}k`
+                : data.platformMetrics.totalReach}
+              description="Lượt reach độc giả"
+              icon={Target}
+              tone="from-purple-500 to-rose-500"
+            />
 
             {/* Lượt tương tác */}
-            <div className="relative bg-white border border-slate-100 rounded-3xl p-4.5 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between min-h-[135px]">
-              <div className="absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r from-amber-500 to-orange-500" />
-              <div className="flex justify-between items-start">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LƯỢT TƯƠNG TÁC</span>
-                <span className="p-2 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0">
-                  <Heart className="h-4.5 w-4.5" />
-                </span>
-              </div>
-              <div className="mt-3">
-                <h4 className="text-3xl font-black text-slate-800 tracking-tight leading-none">
-                  {data.platformMetrics.totalLikes + data.platformMetrics.totalComments + data.platformMetrics.totalShares}
-                </h4>
-                <p className="text-xs text-slate-400 mt-2 font-semibold">Likes, bình luận, share</p>
-              </div>
-            </div>
+            <MetricCard
+              title="LƯỢT TƯƠNG TÁC"
+              value={data.platformMetrics.totalLikes + data.platformMetrics.totalComments + data.platformMetrics.totalShares}
+              description="Likes, bình luận, share"
+              icon={Heart}
+              tone="from-amber-500 to-orange-500"
+            />
           </div>
 
           {/* 3. Bento Grid Layout (Optimized structure) */}
@@ -417,24 +472,38 @@ export default function AnalyticsDashboard() {
                     activeChartTab === "posts" ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={data.byDate} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <defs>
+                            <linearGradient id="colorPublished" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0.15}/>
+                            </linearGradient>
+                            <linearGradient id="colorPlanned" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.15}/>
+                            </linearGradient>
+                            <linearGradient id="colorFailed" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.15}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(226, 232, 240, 0.3)" />
                           <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} />
                           <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: '#f1f5f9' }} />
+                          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid rgba(226, 232, 240, 0.8)', backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }} />
                           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 10 }} />
-                          <Bar name="Đăng thành công" dataKey="published" fill="#10b981" radius={[3, 3, 0, 0]} />
-                          <Bar name="Lên lịch" dataKey="planned" fill="#6366f1" radius={[3, 3, 0, 0]} />
-                          <Bar name="Thất bại" dataKey="failed" fill="#f43f5e" radius={[3, 3, 0, 0]} />
+                          <Bar name="Đăng thành công" dataKey="published" fill="url(#colorPublished)" radius={[3, 3, 0, 0]} />
+                          <Bar name="Lên lịch" dataKey="planned" fill="url(#colorPlanned)" radius={[3, 3, 0, 0]} />
+                          <Bar name="Thất bại" dataKey="failed" fill="url(#colorFailed)" radius={[3, 3, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={data.byDate} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(226, 232, 240, 0.3)" />
                           <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94a3b8' }} />
                           <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#94a3b8' }} />
                           <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, borderColor: '#f1f5f9' }} />
+                          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid rgba(226, 232, 240, 0.8)', backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }} />
                           <Legend wrapperStyle={{ fontSize: 10, paddingTop: 10 }} />
                           <Line
                             yAxisId="left"
@@ -482,12 +551,22 @@ export default function AnalyticsDashboard() {
                           layout="vertical"
                           margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
                         >
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                          <defs>
+                            <linearGradient id="colorTotal" x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.15}/>
+                            </linearGradient>
+                            <linearGradient id="colorLikes" x1="0" y1="0" x2="1" y2="0">
+                              <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.15}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(226, 232, 240, 0.3)" />
                           <XAxis type="number" tick={{ fontSize: 9, fill: '#94a3b8' }} />
                           <YAxis type="category" dataKey="pillar" tick={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} width={80} />
-                          <Tooltip contentStyle={{ fontSize: 10, borderRadius: 8 }} />
-                          <Bar name="Tổng số bài" dataKey="total" fill="#6366f1" radius={[0, 3, 3, 0]} barSize={10} />
-                          <Bar name="Thích" dataKey="likes" fill="#f43f5e" radius={[0, 3, 3, 0]} barSize={10} />
+                          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid rgba(226, 232, 240, 0.8)', backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }} />
+                          <Bar name="Tổng số bài" dataKey="total" fill="url(#colorTotal)" radius={[0, 3, 3, 0]} barSize={10} />
+                          <Bar name="Thích" dataKey="likes" fill="url(#colorLikes)" radius={[0, 3, 3, 0]} barSize={10} />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
@@ -516,7 +595,7 @@ export default function AnalyticsDashboard() {
                             dataKey="A"
                             stroke="#6366f1"
                             fill="#818cf8"
-                            fillOpacity={0.4}
+                            fillOpacity={0.25}
                           />
                         </RadarChart>
                       </ResponsiveContainer>
@@ -623,6 +702,115 @@ export default function AnalyticsDashboard() {
                 </div>
               </div>
 
+            </div>
+          </div>
+
+          {/* 4. Danh sách chi tiết hiệu suất từng bài viết */}
+          <div className="bg-white border border-slate-100 rounded-2xl p-4.5 shadow-xs mt-5">
+            <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-3.5">
+              <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <Layers className="h-4 w-4 text-indigo-500" />
+                CHI TIẾT HIỆU SUẤT TỪNG BÀI VIẾT
+              </h3>
+              <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-md">
+                Hiển thị {data.posts?.length || 0} bài gần đây nhất
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              {data.posts && data.posts.length > 0 ? (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <th className="py-2.5 px-3">Bài viết</th>
+                      <th className="py-2.5 px-3">Kênh</th>
+                      <th className="py-2.5 px-3">Pillar</th>
+                      <th className="py-2.5 px-3 text-right">Reach (Tiếp cận)</th>
+                      <th className="py-2.5 px-3 text-right">Impressions (Hiển thị)</th>
+                      <th className="py-2.5 px-3 text-right">Tương tác</th>
+                      <th className="py-2.5 px-3 text-right">Clicks</th>
+                      <th className="py-2.5 px-3 text-center">Liên kết</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-bold">
+                    {data.posts.map((post) => {
+                      const totalEngagements = post.likes + post.comments + post.shares;
+                      const dateStr = post.slotId?.scheduledAt
+                        ? new Date(post.slotId.scheduledAt).toLocaleDateString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "Chưa xác định";
+
+                      return (
+                        <tr key={post._id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="py-3 px-3 max-w-[280px]">
+                            <p className="text-slate-800 font-bold truncate" title={post.slotId?.topicBrief}>
+                              {post.slotId?.topicBrief || "Bài viết không tên / Content tự động"}
+                            </p>
+                            <span className="text-[10px] font-semibold text-slate-400">
+                              Lên lịch: {dateStr}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              post.platform === "Facebook"
+                                ? "bg-blue-50 text-blue-600"
+                                : "bg-zinc-950 text-white"
+                            }`}>
+                              {post.platform}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="text-slate-500 font-semibold">
+                              {post.slotId?.pillar || "Khác"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-slate-700">
+                            {post.reach.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-slate-700">
+                            {post.impressions.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex flex-col items-end">
+                              <span className="font-black text-slate-700">{totalEngagements.toLocaleString()}</span>
+                              <span className="text-[9px] font-semibold text-slate-400">
+                                {post.likes} L / {post.comments} C / {post.shares} S
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-right font-black text-slate-700">
+                            {post.clicks.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {post.postUrl ? (
+                              <a
+                                href={post.postUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-bold"
+                              >
+                                Xem bài gốc
+                              </a>
+                            ) : (
+                              <span className="text-slate-300 font-semibold">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                  <Layers className="h-8 w-8 text-slate-300 animate-pulse" />
+                  <span className="text-xs font-semibold">Không tìm thấy bài viết nào phù hợp với bộ lọc</span>
+                </div>
+              )}
             </div>
           </div>
         </>

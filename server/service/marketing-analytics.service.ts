@@ -61,6 +61,7 @@ export class MarketingAnalyticsService {
       byPillar,
       topErrors,
       campaigns,
+      posts,
     ] = await Promise.all([
       // Aggregation 1: Tổng quan slot (Total, Published, Failed, AI Cost)
       MarketingCampaignSlotModel.aggregate([
@@ -378,6 +379,13 @@ export class MarketingAnalyticsService {
         .select("_id title status startDate endDate")
         .sort({ createdAt: -1 })
         .lean(),
+
+      // Aggregation 9: Danh sách các bài đăng chi tiết kèm metrics thực tế từ mạng xã hội
+      SocialPostMetricModel.find(metricMatch)
+        .populate("slotId", "topicBrief pillar scheduledAt mediaType status")
+        .sort({ syncedAt: -1 })
+        .limit(100)
+        .lean(),
     ]);
 
     // 3. Chuẩn hóa dữ liệu trả về
@@ -419,10 +427,12 @@ export class MarketingAnalyticsService {
 
     const avgEngagementPerPost =
       ov.publishedSlots > 0
-        ? parseFloat(
-            ((pm.totalLikes + pm.totalComments + pm.totalShares) / ov.publishedSlots).toFixed(2)
-          )
-        : 0;
+          ? parseFloat(
+              ((pm.totalLikes + pm.totalComments + pm.totalShares) / ov.publishedSlots).toFixed(2)
+            )
+          : 0;
+
+    const postList = posts || [];
 
     return {
       overview: {
@@ -461,6 +471,7 @@ export class MarketingAnalyticsService {
       byPillar,
       topErrors,
       campaigns,
+      posts: postList,
     };
   }
 }
