@@ -202,19 +202,7 @@ async function refreshCompanyTikTokToken(integrationId: string, integration: any
 
   console.log(`[TikTok Service] Refreshing company token for integration ID: ${integrationId}`);
 
-  if (integration.isMock) {
-    const mockAccessToken = `mock_access_token_refreshed_${Date.now()}`;
-    const mockRefreshToken = `mock_refresh_token_refreshed_${Date.now()}`;
-    const expiresAt = new Date(Date.now() + 86400 * 1000); // 24h
-    await SocialIntegrationModel.findByIdAndUpdate(integrationId, {
-      $set: {
-        accessToken: mockAccessToken,
-        refreshToken: mockRefreshToken,
-        tokenExpiredAt: expiresAt,
-      }
-    });
-    return mockAccessToken;
-  }
+
 
   const bodyParams = new URLSearchParams();
   bodyParams.set("client_key", clientKey);
@@ -271,19 +259,7 @@ async function refreshUserTikTokToken(userId: string, integration: any): Promise
 
   console.log(`[TikTok Service] Refreshing user token for user ID: ${userId}`);
 
-  if (integration.isMock) {
-    const mockAccessToken = `mock_access_token_refreshed_${Date.now()}`;
-    const mockRefreshToken = `mock_refresh_token_refreshed_${Date.now()}`;
-    const expiresAt = new Date(Date.now() + 86400 * 1000); // 24h
-    await UserModel.findByIdAndUpdate(userId, {
-      $set: {
-        "tiktokIntegration.accessToken": mockAccessToken,
-        "tiktokIntegration.refreshToken": mockRefreshToken,
-        "tiktokIntegration.tokenExpiredAt": expiresAt,
-      }
-    });
-    return mockAccessToken;
-  }
+
 
   const bodyParams = new URLSearchParams();
   bodyParams.set("client_key", clientKey);
@@ -603,7 +579,11 @@ async function savePersonalTikTokOAuthIntegration(params: {
           .filter(Boolean),
         connectedAt: new Date(),
         privacyLevel:
-          params.creatorInfo.data.privacyLevelOptions?.includes("SELF_ONLY") ? "SELF_ONLY" : "MUTUAL_FOLLOW_FRIENDS",
+          params.creatorInfo.data.privacyLevelOptions?.includes("PUBLIC_TO_EVERYONE")
+            ? "PUBLIC_TO_EVERYONE"
+            : params.creatorInfo.data.privacyLevelOptions?.includes("MUTUAL_FOLLOW_FRIENDS")
+            ? "MUTUAL_FOLLOW_FRIENDS"
+            : "SELF_ONLY",
         isMock: false,
       },
     },

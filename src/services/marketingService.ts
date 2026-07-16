@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { getAccessToken } from "./authService";
 import { ContentApprovalCard } from "../types";
 import { geminiApi } from "../api/gemini";
@@ -514,22 +514,7 @@ export const marketingService = {
       username?: string;
     }
   ): Promise<{ postId: string; status: "success" | "pending"; shareUrl?: string }> {
-    if (isMock) {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const mockPostId = `tiktok_mock_${Date.now()}`;
-      await this.updateCard(id, {
-        status: 'published',
-        publishedAt: new Date().toISOString(),
-        tiktokPostId: mockPostId,
-        tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
-      });
-      console.log(`[iGen Marketing TikTok (MOCK)]: Đã đăng video thành công. ID: ${mockPostId}`);
-      return {
-        postId: mockPostId,
-        status: "success",
-        shareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
-      };
-    }
+
 
     const response = await fetch('/api/v1/tiktok/publish', {
       method: 'POST',
