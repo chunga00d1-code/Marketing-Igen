@@ -252,7 +252,48 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     }
   };
 
-  // Lưu Fanpage Facebook sau khi lấy được token từ OAuth
+  // Lưu danh sách Fanpage Facebook sau khi hoàn tất OAuth
+  const handleFacebookPagesSelected = async (pages: any[]) => {
+    console.log("[Facebook OAuth] Bắt đầu xử lý danh sách Fanpages:", pages);
+    if (!pages || pages.length === 0) {
+      toast.error("Không tìm thấy Fanpage nào được cấp quyền.");
+      return;
+    }
+
+    toast.info(`Đang kết nối ${pages.length} Fanpage đã chọn...`);
+    let successCount = 0;
+
+    for (const page of pages) {
+      if (!page.id || !page.access_token) {
+        console.warn("[Facebook OAuth] Bỏ qua Fanpage không hợp lệ:", page);
+        continue;
+      }
+      try {
+        console.log(`[Facebook OAuth] Đang lưu Fanpage: ${page.name} (ID: ${page.id})`);
+        await socialIntegrationService.createIntegration({
+          platform: "Facebook",
+          displayName: page.name || `Fanpage ${page.id}`,
+          username: page.id,
+          accessToken: page.access_token,
+          isConnected: true,
+          createdBy: userProfile?.email || "system",
+        });
+        successCount++;
+      } catch (err: any) {
+        console.error(`[Facebook OAuth] Lỗi kết nối Fanpage ${page.name || page.id}:`, err);
+        toast.error(`Không thể kết nối Trang ${page.name || page.id}: ${err.message || "Lỗi không xác định"}`);
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`✅ Đã kết nối thành công ${successCount}/${pages.length} Fanpage!`);
+      void fetchCompanyIntegrations();
+    } else {
+      toast.error("Không kết nối được Fanpage nào. Vui lòng kiểm tra lại quyền ứng dụng.");
+    }
+  };
+
+  // Lưu Fanpage Facebook sau khi lấy được token từ OAuth (Fallback đơn lẻ)
   const handleFacebookPageSelected = async (page: any) => {
     if (!page || !page.id || !page.access_token) {
       toast.error("Dữ liệu Fanpage trả về không hợp lệ.");
@@ -299,10 +340,11 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list`;
 
       const width = 600;
-      const height = 650;
+      const height = 800;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
 
+      console.log("[Facebook OAuth] Đang mở popup với redirectUri:", redirectUri);
       const oauthWindow = window.open(
         oauthUrl,
         "FacebookOAuthPopup",
@@ -313,12 +355,15 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       const checkInterval = setInterval(() => {
         const rawResult = localStorage.getItem("fb_oauth_result");
         if (rawResult) {
+          console.log("[Facebook OAuth] Phát hiện kết quả trong localStorage:", rawResult);
           clearInterval(checkInterval);
           localStorage.removeItem("fb_oauth_result");
           try {
             const result = JSON.parse(rawResult);
             if (result.type === "FACEBOOK_PAGE_SELECTED" && result.page) {
               handleFacebookPageSelected(result.page);
+            } else if (result.type === "FACEBOOK_PAGES_SELECTED" && result.pages) {
+              handleFacebookPagesSelected(result.pages);
             } else if (result.type === "FACEBOOK_OAUTH_FAILED") {
               toast.error(`Kết nối Facebook thất bại: ${result.error || "Lỗi không xác định"}`);
             }
@@ -328,9 +373,10 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         }
 
         if (oauthWindow && oauthWindow.closed) {
+          console.log("[Facebook OAuth] Cửa sổ popup đã đóng. Dừng checkInterval.");
           clearInterval(checkInterval);
         }
-      }, 800);
+      }, 400); // Tăng tần suất kiểm tra lên 400ms để tránh race condition
     } catch (err: any) {
       console.error("Lỗi mở Facebook OAuth:", err);
       toast.error("Không thể mở cửa sổ đăng nhập Facebook.");
@@ -340,11 +386,18 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
   // Lắng nghe sự kiện callback từ cửa sổ popup gửi về
   useEffect(() => {
     const handleOAuthMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+      console.log("[Facebook OAuth] Nhận event.data từ message listener:", event.data);
+      if (event.origin !== window.location.origin) {
+        console.warn("[Facebook OAuth] Bỏ qua message do sai origin:", event.origin, "vs", window.location.origin);
+        return;
+      }
 
       if (event.data && event.data.type === "FACEBOOK_PAGE_SELECTED") {
         const page = event.data.page;
         handleFacebookPageSelected(page);
+      } else if (event.data && event.data.type === "FACEBOOK_PAGES_SELECTED") {
+        const pages = event.data.pages;
+        handleFacebookPagesSelected(pages);
       } else if (event.data && event.data.type === "FACEBOOK_OAUTH_FAILED") {
         toast.error(`Kết nối Facebook thất bại: ${event.data.error || "Lỗi không xác định"}`);
       }
