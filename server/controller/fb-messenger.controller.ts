@@ -1,8 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import { fbMessengerService } from "../service/fb-messenger.service";
 import { UserModel } from "../model/user.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
+import { SocialIntegrationModel } from "../model/social-integration.model";
 
 async function getFacebookPageConfig(userId: string, requestedPageId?: string): Promise<{ isConnected: boolean; pageId?: string }> {
   const dbUser = await UserModel.findById(userId).lean();
@@ -24,7 +25,7 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
     }
 
     // 2. Check company integrations
-    const { SocialIntegrationModel } = require("../model/social-integration.model");
+
     const companyIntegration = await SocialIntegrationModel.findOne({
       companyCode: dbUser.companyCode,
       platform: "Facebook",
@@ -44,7 +45,7 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
     return { isConnected: true, pageId: dbUser.facebookIntegration.pageId };
   }
 
-  const { SocialIntegrationModel } = require("../model/social-integration.model");
+
   const companyIntegration = await SocialIntegrationModel.findOne({
     companyCode: dbUser.companyCode,
     platform: "Facebook",

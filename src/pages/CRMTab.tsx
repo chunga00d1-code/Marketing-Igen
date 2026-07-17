@@ -121,15 +121,6 @@ export default function CRMTab() {
       }
     });
 
-    if (list.length === 0) {
-      list.push({
-        _id: "mock_fb_page_1",
-        displayName: "iGen Marketing Fanpage (Demo)",
-        username: "igen_marketing_demo",
-        isMock: true,
-      });
-    }
-
     return list;
   }, [userProfile, companySocialIntegrations]);
 
@@ -159,15 +150,6 @@ export default function CRMTab() {
         });
       }
     });
-
-    if (list.length === 0) {
-      list.push({
-        _id: "mock_zalo_acc_1",
-        displayName: "iGen Marketing Zalo OA (Demo)",
-        username: "igen_zalo_demo",
-        isMock: true,
-      });
-    }
 
     return list;
   }, [userProfile, companySocialIntegrations]);
@@ -541,120 +523,10 @@ export default function CRMTab() {
     try {
       let result;
       if (conversationId.startsWith("mock_")) {
-        if (conversationId === "mock_fb_conv_1") {
-          result = {
-            data: [
-              {
-                _id: "msg_fb_1",
-                direction: "inbound",
-                text: "Chào shop, bên mình đang cung cấp giải pháp Marketing tự động đúng không?",
-                timestamp: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_fb_2",
-                direction: "outbound",
-                text: "Dạ đúng rồi ạ. iGen cung cấp bộ giải pháp thu hút khách hàng đa kênh tự động, bao gồm trả lời comment, gửi tin nhắn inbox và lên lịch đăng bài hàng loạt.",
-                timestamp: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_fb_3",
-                direction: "inbound",
-                text: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
-                timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-                conversationId,
-              }
-            ],
-            pagination: { limit: 20, hasMore: false, nextBefore: null }
-          };
-        } else if (conversationId === "mock_fb_conv_2") {
-          result = {
-            data: [
-              {
-                _id: "msg_fb_4",
-                direction: "inbound",
-                text: "Chào ad, mình muốn xin tài liệu hướng dẫn tối ưu quảng cáo Facebook.",
-                timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_fb_5",
-                direction: "outbound",
-                text: "Chào bạn, cẩm nang tối ưu quảng cáo Facebook 2026 đã được gửi đính kèm. Bạn có thể download trực tiếp nhé!",
-                timestamp: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_fb_6",
-                direction: "inbound",
-                text: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
-                timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-                conversationId,
-              }
-            ],
-            pagination: { limit: 20, hasMore: false, nextBefore: null }
-          };
-        } else if (conversationId === "mock_zalo_conv_1") {
-          result = {
-            data: [
-              {
-                _id: "msg_zalo_1",
-                direction: "inbound",
-                text: "Xin chào, tôi muốn hỏi về chính sách hợp tác đại lý dịch vụ ERP.",
-                timestamp: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_zalo_2",
-                direction: "outbound",
-                text: "Chào anh/chị, iGen hỗ trợ chính sách chiết khấu lên đến 35% cho đại lý ERP cấp 1. Hỗ trợ đào tạo nhân sự và kỹ thuật miễn phí.",
-                timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_zalo_3",
-                direction: "inbound",
-                text: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
-                timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-                conversationId,
-              }
-            ],
-            pagination: { limit: 20, hasMore: false, nextBefore: null }
-          };
-        } else if (conversationId === "mock_zalo_conv_2") {
-          result = {
-            data: [
-              {
-                _id: "msg_zalo_4",
-                direction: "inbound",
-                text: "Chào bạn, báo giá dịch vụ gửi hôm trước mình đã nhận được.",
-                timestamp: new Date(Date.now() - 50 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_zalo_5",
-                direction: "outbound",
-                text: "Dạ vâng ạ, không biết sếp bên mình có phản hồi hay cần điều chỉnh gì thêm trong báo giá không anh?",
-                timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-                conversationId,
-              },
-              {
-                _id: "msg_zalo_6",
-                direction: "inbound",
-                text: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
-                timestamp: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-                conversationId,
-              }
-            ],
-            pagination: { limit: 20, hasMore: false, nextBefore: null }
-          };
-        } else {
-          result = {
-            data: [],
-            pagination: { limit: 20, hasMore: false, nextBefore: null }
-          };
-        }
+        result = {
+          data: [],
+          pagination: { limit: 20, hasMore: false, nextBefore: null }
+        };
       } else {
         result = targetChannel === "zalo"
           ? await zaloMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
@@ -755,29 +627,7 @@ export default function CRMTab() {
       if (isFbConnected) {
         const isMockFb = selectedFacebookPageId === "igen_marketing_demo" || selectedFacebookPageId?.includes("mock");
         if (isMockFb) {
-          fbConvs = [
-            {
-              _id: "mock_fb_conv_1",
-              recipientId: "mock_fb_user_1",
-              senderName: "Phạm Minh Hoàng (Facebook)",
-              avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
-              lastMessageAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-              unreadCount: 1,
-              tags: ["Khách Nóng", "Cần tư vấn"],
-              isVip: true,
-            },
-            {
-              _id: "mock_fb_conv_2",
-              recipientId: "mock_fb_user_2",
-              senderName: "Hoàng Thanh Mai (Facebook)",
-              avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
-              lastMessageAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-              unreadCount: 0,
-              tags: ["Khách Lạnh", "Tương tác tốt"],
-            }
-          ];
+          fbConvs = [];
         } else {
           try {
             fbConvs = await fbMessengerService.getConversations({
@@ -786,56 +636,9 @@ export default function CRMTab() {
               limit,
               skip: currentSkip
             });
-            if (fbConvs.length === 0) {
-              fbConvs = [
-                {
-                  _id: "mock_fb_conv_1",
-                  recipientId: "mock_fb_user_1",
-                  senderName: "Phạm Minh Hoàng (Facebook)",
-                  avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
-                  lastMessageAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-                  unreadCount: 1,
-                  tags: ["Khách Nóng", "Cần tư vấn"],
-                  isVip: true,
-                },
-                {
-                  _id: "mock_fb_conv_2",
-                  recipientId: "mock_fb_user_2",
-                  senderName: "Hoàng Thanh Mai (Facebook)",
-                  avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
-                  lastMessageAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-                  unreadCount: 0,
-                  tags: ["Khách Lạnh", "Tương tác tốt"],
-                }
-              ];
-            }
           } catch (err) {
-            console.error("Lỗi lấy hội thoại Facebook, fallback sang mock:", err);
-            fbConvs = [
-              {
-                _id: "mock_fb_conv_1",
-                recipientId: "mock_fb_user_1",
-                senderName: "Phạm Minh Hoàng (Facebook)",
-                avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Tư vấn giúp em gói phần mềm Marketing tự động với ạ.",
-                lastMessageAt: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-                unreadCount: 1,
-                tags: ["Khách Nóng", "Cần tư vấn"],
-                isVip: true,
-              },
-              {
-                _id: "mock_fb_conv_2",
-                recipientId: "mock_fb_user_2",
-                senderName: "Hoàng Thanh Mai (Facebook)",
-                avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Cảm ơn ad, tài liệu hướng dẫn rất chi tiết!",
-                lastMessageAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-                unreadCount: 0,
-                tags: ["Khách Lạnh", "Tương tác tốt"],
-              }
-            ];
+            console.error("Lỗi lấy hội thoại Facebook:", err);
+            fbConvs = [];
           }
         }
       }
@@ -843,82 +646,16 @@ export default function CRMTab() {
       if (isZaloConnected) {
         const isMockZalo = selectedZaloAccountId === "igen_zalo_demo" || selectedZaloAccountId?.includes("mock");
         if (isMockZalo) {
-          zaloConvs = [
-            {
-              _id: "mock_zalo_conv_1",
-              recipientId: "mock_zalo_user_1",
-              senderName: "Lê Nguyễn Anh Thư (Zalo)",
-              avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
-              lastMessageAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-              unreadCount: 2,
-              tags: ["Hỏi dịch vụ", "Khách ẩn"],
-            },
-            {
-              _id: "mock_zalo_conv_2",
-              recipientId: "mock_zalo_user_2",
-              senderName: "Nguyễn Tuấn Kiệt (Zalo)",
-              avatarUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100&auto=format&fit=crop&q=80",
-              lastMessageText: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
-              lastMessageAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-              unreadCount: 0,
-              tags: ["Khách ẩn"],
-            }
-          ];
+          zaloConvs = [];
         } else {
           try {
             zaloConvs = await zaloMessengerService.getConversations({
               limit,
               skip: currentSkip
             });
-            if (zaloConvs.length === 0) {
-              zaloConvs = [
-                {
-                  _id: "mock_zalo_conv_1",
-                  recipientId: "mock_zalo_user_1",
-                  senderName: "Lê Nguyễn Anh Thư (Zalo)",
-                  avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
-                  lastMessageAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-                  unreadCount: 2,
-                  tags: ["Hỏi dịch vụ", "Khách ẩn"],
-                },
-                {
-                  _id: "mock_zalo_conv_2",
-                  recipientId: "mock_zalo_user_2",
-                  senderName: "Nguyễn Tuấn Kiệt (Zalo)",
-                  avatarUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100&auto=format&fit=crop&q=80",
-                  lastMessageText: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
-                  lastMessageAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-                  unreadCount: 0,
-                  tags: ["Khách ẩn"],
-                }
-              ];
-            }
           } catch (err) {
-            console.error("Lỗi lấy hội thoại Zalo, fallback sang mock:", err);
-            zaloConvs = [
-              {
-                _id: "mock_zalo_conv_1",
-                recipientId: "mock_zalo_user_1",
-                senderName: "Lê Nguyễn Anh Thư (Zalo)",
-                avatarUrl: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Bên mình có xuất hoá đơn đỏ cho doanh nghiệp không?",
-                lastMessageAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-                unreadCount: 2,
-                tags: ["Hỏi dịch vụ", "Khách ẩn"],
-              },
-              {
-                _id: "mock_zalo_conv_2",
-                recipientId: "mock_zalo_user_2",
-                senderName: "Nguyễn Tuấn Kiệt (Zalo)",
-                avatarUrl: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=100&auto=format&fit=crop&q=80",
-                lastMessageText: "Vâng, để em bàn bạc thêm với sếp rồi phản hồi shop.",
-                lastMessageAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
-                unreadCount: 0,
-                tags: ["Khách ẩn"],
-              }
-            ];
+            console.error("Lỗi lấy hội thoại Zalo:", err);
+            zaloConvs = [];
           }
         }
       }

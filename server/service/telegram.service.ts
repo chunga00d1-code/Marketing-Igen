@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ICRMTicket } from "../interface/crm-ticket.interface";
 import { geminiService } from "./gemini.service";
 import { cloudinaryService } from "./cloudinary.service";
