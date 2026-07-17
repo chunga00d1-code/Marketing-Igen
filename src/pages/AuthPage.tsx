@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Mail, Lock, RefreshCw, ArrowRight, Eye, EyeOff, AlertCircle, ArrowLeft } from "lucide-react";
@@ -9,7 +9,7 @@ import {
   TERMS_OF_SERVICE_URL,
   USER_DATA_DELETION_URL,
 } from "../config/brand";
-import { parseFirebaseError } from "../utils/firebaseErrorParser";
+import { parseAppError } from "../utils/errorParser";
 
 export default function AuthPage() {
   const { loginWithEmail } = useAuth();
@@ -61,7 +61,7 @@ export default function AuthPage() {
       await loginWithEmail(email.trim(), password.trim(), rememberMe);
     } catch (err: any) {
       console.error(err);
-      const msg = parseFirebaseError(err, "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
+      const msg = parseAppError(err, "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
       setError(msg);
     } finally {
       setLoading(false);

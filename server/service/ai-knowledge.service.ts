@@ -2,7 +2,6 @@
 import crypto from "crypto";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../model/ai-knowledge.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
-import { ProductModel } from "../model/product.model";
 
 const EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_TOP_K = 5;
@@ -226,11 +225,68 @@ function cosineSimilarity(a: number[], b: number[]) {
   return score;
 }
 
+/**
+ * Phát hiện nội dung dạng bảng sản phẩm từ Excel (output của extractWorkbookText).
+ * Dạng: "Sản phẩm 1: Tên SP ..." hoặc "Dòng 1: ..."
+ */
+const PRODUCT_LINE_PATTERN = /^(Sản phẩm|Dong|Dòng)\s+\d+\s*:/i;
+const SHEET_HEADER_PATTERN = /^Sheet:\s+/i;
+const COLUMN_HEADER_PATTERN = /^Tiêu đề cột:\s+/i;
+
+function chunkProductTable(paragraphs: string[]) {
+  // Tách header (Sheet + Tiêu đề cột) và các dòng sản phẩm
+  const headerLines: string[] = [];
+  const productLines: string[] = [];
+
+  for (const p of paragraphs) {
+    if (SHEET_HEADER_PATTERN.test(p) || COLUMN_HEADER_PATTERN.test(p)) {
+      headerLines.push(p);
+    } else {
+      productLines.push(p);
+    }
+  }
+
+  const headerText = headerLines.join("\n");
+  const headerLen = headerText.length;
+
+  // Chunk sản phẩm theo nhóm, mỗi chunk kèm header để giữ ngữ cảnh cột
+  const maxChars = 1800; // Cho phép lớn hơn vì dữ liệu bảng cần đầy đủ
+  const chunks: string[] = [];
+  let currentProducts: string[] = [];
+  let currentLen = headerLen;
+
+  for (const line of productLines) {
+    const lineLen = line.length + 2; // +2 cho "\n\n"
+    if (currentProducts.length > 0 && currentLen + lineLen > maxChars) {
+      chunks.push([headerText, ...currentProducts].filter(Boolean).join("\n\n"));
+      currentProducts = [line];
+      currentLen = headerLen + lineLen;
+    } else {
+      currentProducts.push(line);
+      currentLen += lineLen;
+    }
+  }
+
+  if (currentProducts.length > 0) {
+    chunks.push([headerText, ...currentProducts].filter(Boolean).join("\n\n"));
+  }
+
+  return chunks;
+}
+
 function chunkText(text: string) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
 
   const paragraphs = normalized.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+
+  // Phát hiện nội dung dạng bảng sản phẩm Excel: nếu >= 3 dòng khớp pattern sản phẩm
+  const productLineCount = paragraphs.filter((p) => PRODUCT_LINE_PATTERN.test(p)).length;
+  if (productLineCount >= 3) {
+    return chunkProductTable(paragraphs);
+  }
+
+  // Chunking thông thường cho tài liệu dạng văn bản
   const chunks: string[] = [];
   let current = "";
   const maxChars = 1200;
@@ -342,96 +398,45 @@ export const aiKnowledgeService = {
     const queryVector = embedText(normalizedQuery);
     const rawQueryTokens = tokenize(normalizedQuery);
     const queryTokens = rawQueryTokens.filter((token) => !CANDIDATE_STOPWORDS.has(token));
-    const topK = params.topK || DEFAULT_TOP_K;
     const channel = params.channel || "facebook";
 
-    // 1. Tìm các sản phẩm khớp từ database thực tế của công ty
-    let matchedProducts: any[] = [];
-    if (queryTokens.length > 0) {
-      try {
-        const allProducts = await ProductModel.find({ companyCode, status: "Active" }).lean();
-        const productScores = allProducts.map((p) => {
-          const productText = `${p.name} ${p.sku} ${p.brand || ""} ${p.category} ${p.description || ""}`.toLowerCase();
-          let matches = 0;
-          for (const token of queryTokens) {
-            if (productText.includes(token.toLowerCase())) {
-              matches += 1;
-            }
-          }
-          const score = matches / queryTokens.length;
-          return { product: p, score };
-        });
-
-        matchedProducts = productScores
-          .filter((ps) => ps.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 8)
-          .map((ps) => ps.product);
-      } catch (err) {
-        console.error("[AI Knowledge Service] Loi khi tim kiem san pham tu DB:", err);
-      }
-    }
-
     const hasCommerceIntent = /\b(san pham|mua|ban|xem hang|xem san pham|danh sach|catalog|bang gia|bao gia|gia|bao nhieu|co gi|con gi|loai nao|mau nao|size nao|model nao|con hang|het hang|lay|dat hang|ship|gui)\b/.test(normalizedQuery);
-    const isProductQuery = hasCommerceIntent || matchedProducts.length > 0;
+    const isProductQuery = hasCommerceIntent;
 
-    if (matchedProducts.length === 0 && isProductQuery) {
-      try {
-        matchedProducts = await ProductModel.find({ companyCode, status: "Active" })
-          .sort({ stock: -1 })
-          .limit(10)
-          .lean();
-      } catch (err) {
-        console.error("[AI Knowledge Service] Loi khi tai danh sach san pham mac dinh tu DB:", err);
-      }
-    }
-
-    const productStrings: string[] = [];
-    if (matchedProducts.length > 0) {
-      productStrings.push("[DANH SÁCH SẢN PHẨM THỰC TẾ TRONG KHO HÀNG CỦA CÔNG TY]");
-      for (const p of matchedProducts) {
-        productStrings.push(
-          `- Tên sản phẩm: ${p.name}\n` +
-          `  SKU: ${p.sku}\n` +
-          `  Danh mục: ${p.category}\n` +
-          `  Thương hiệu: ${p.brand || "N/A"}\n` +
-          `  Đơn vị tính: ${p.unit || "Cái"}\n` +
-          `  Giá bán: ${p.price.toLocaleString("vi-VN")} VND\n` +
-          `  Tồn kho thực tế: ${p.stock}\n` +
-          `  Mô tả: ${p.description || "Chưa có mô tả"}`
-        );
-      }
-    }
+    // Câu hỏi sản phẩm cần nhiều chunk hơn vì dữ liệu bảng Excel được chia theo nhóm sản phẩm
+    const topK = isProductQuery
+      ? Math.max(params.topK || DEFAULT_TOP_K, 8)
+      : (params.topK || DEFAULT_TOP_K);
+    const maxContextChars = isProductQuery ? 6500 : MAX_CONTEXT_CHARS;
 
     let chunks: any[] = [];
 
-    if (!isProductQuery) {
-      const filter: any = {
+    // Luôn luôn tìm kiếm ngữ cảnh tài liệu RAG trong mọi trường hợp (kể cả câu hỏi về sản phẩm)
+    const filter: any = {
+      companyCode,
+      channelScope: { $in: ["all", channel] },
+    };
+
+    if (queryTokens.length > 0) {
+      filter.$or = queryTokens.map((token) => ({
+        text: { $regex: token, $options: "i" },
+      }));
+    }
+
+    chunks = await AIKnowledgeChunkModel.find(filter as any)
+      .sort({ updatedAt: -1 })
+      .limit(MAX_CHUNKS_TO_RANK)
+      .lean();
+
+    if (chunks.length === 0 && queryTokens.length > 0) {
+      const fallbackFilter = {
         companyCode,
         channelScope: { $in: ["all", channel] },
       };
-
-      if (queryTokens.length > 0) {
-        filter.$or = queryTokens.map((token) => ({
-          text: { $regex: token, $options: "i" },
-        }));
-      }
-
-      chunks = await AIKnowledgeChunkModel.find(filter as any)
+      chunks = await AIKnowledgeChunkModel.find(fallbackFilter as any)
         .sort({ updatedAt: -1 })
         .limit(MAX_CHUNKS_TO_RANK)
         .lean();
-
-      if (chunks.length === 0 && queryTokens.length > 0) {
-        const fallbackFilter = {
-          companyCode,
-          channelScope: { $in: ["all", channel] },
-        };
-        chunks = await AIKnowledgeChunkModel.find(fallbackFilter as any)
-          .sort({ updatedAt: -1 })
-          .limit(MAX_CHUNKS_TO_RANK)
-          .lean();
-      }
     }
 
     const documentIds = Array.from(new Set(chunks.map((chunk) => String(chunk.documentId))));
@@ -472,16 +477,10 @@ export const aiKnowledgeService = {
     let usedChars = 0;
     const selected: string[] = [];
 
-    if (productStrings.length > 0) {
-      const dbProductContext = productStrings.join("\n\n");
-      selected.push(dbProductContext);
-      usedChars += dbProductContext.length;
-    }
-
     for (const item of finalRanked) {
-      if (usedChars + item.text.length > MAX_CONTEXT_CHARS) break;
+      if (usedChars + item.text.length > maxContextChars) break;
       const labeledText = `[Tai lieu] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`;
-      if (usedChars + labeledText.length > MAX_CONTEXT_CHARS) break;
+      if (usedChars + labeledText.length > maxContextChars) break;
       selected.push(labeledText);
       usedChars += labeledText.length;
     }
@@ -499,25 +498,18 @@ export const aiKnowledgeService = {
           )
         : [];
 
-    const dbProductNames = matchedProducts.map((p) => p.name);
-    const combinedProductCandidateNames = Array.from(new Set([...productCandidateNames, ...dbProductNames])).slice(0, 5);
-
     const shouldAskProductConfirmation =
       isProductQuery &&
-      combinedProductCandidateNames.length > 0 &&
-      bestScore < 1.2 &&
-      matchedProducts.length === 0;
+      productCandidateNames.length > 0 &&
+      bestScore < 1.2;
 
     return {
       contextText: selected.map((text, index) => {
-        if (text.startsWith("[DANH SÁCH SẢN PHẨM")) {
-          return text;
-        }
         return `[Nguon ${index}]\n${text}`;
       }).join("\n\n---\n\n"),
       matches: finalRanked.length,
       bestScore,
-      productCandidateNames: combinedProductCandidateNames,
+      productCandidateNames,
       shouldAskProductConfirmation,
       debugQueryTokens: queryTokens,
       debugRawQueryTokens: rawQueryTokens,
