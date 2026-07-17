@@ -252,45 +252,16 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     }
   };
 
-  // Lưu danh sách Fanpage Facebook sau khi hoàn tất OAuth
+  // Backend đã lưu trực tiếp vào DB khi OAuth callback — chỉ cần refresh UI
   const handleFacebookPagesSelected = async (pages: any[]) => {
-    console.log("[Facebook OAuth] Bắt đầu xử lý danh sách Fanpages:", pages);
-    if (!pages || pages.length === 0) {
-      toast.error("Không tìm thấy Fanpage nào được cấp quyền.");
-      return;
+    console.log("[Facebook OAuth] Backend đã lưu DB, refresh UI với", pages?.length, "pages.");
+    const count = pages?.length || 0;
+    if (count > 0) {
+      toast.success(`✅ Đã kết nối thành công ${count} Fanpage! Đang cập nhật danh sách...`);
     }
-
-    toast.info(`Đang kết nối ${pages.length} Fanpage đã chọn...`);
-    let successCount = 0;
-
-    for (const page of pages) {
-      if (!page.id || !page.access_token) {
-        console.warn("[Facebook OAuth] Bỏ qua Fanpage không hợp lệ:", page);
-        continue;
-      }
-      try {
-        console.log(`[Facebook OAuth] Đang lưu Fanpage: ${page.name} (ID: ${page.id})`);
-        await socialIntegrationService.createIntegration({
-          platform: "Facebook",
-          displayName: page.name || `Fanpage ${page.id}`,
-          username: page.id,
-          accessToken: page.access_token,
-          isConnected: true,
-          createdBy: userProfile?.email || "system",
-        });
-        successCount++;
-      } catch (err: any) {
-        console.error(`[Facebook OAuth] Lỗi kết nối Fanpage ${page.name || page.id}:`, err);
-        toast.error(`Không thể kết nối Trang ${page.name || page.id}: ${err.message || "Lỗi không xác định"}`);
-      }
-    }
-
-    if (successCount > 0) {
-      toast.success(`✅ Đã kết nối thành công ${successCount}/${pages.length} Fanpage!`);
-      void fetchCompanyIntegrations();
-    } else {
-      toast.error("Không kết nối được Fanpage nào. Vui lòng kiểm tra lại quyền ứng dụng.");
-    }
+    // Backend đã upsert tất cả pages vào DB trong oauthCallback
+    // Chỉ cần gọi lại API để lấy danh sách mới nhất và cập nhật UI
+    await fetchCompanyIntegrations();
   };
 
   // Lưu Fanpage Facebook sau khi lấy được token từ OAuth (Fallback đơn lẻ)
@@ -361,36 +332,37 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
       );
 
-      // Định kỳ kiểm tra localStorage phòng trường hợp cửa sổ popup bị mất liên kết window.opener
+      // Theo dõi popup: khi đóng thì refresh UI
+      // Backend đã lưu DB trong callback, không cần frontend tạo lại
+      let alreadyRefreshed = false;
       const checkInterval = setInterval(() => {
+        // Dọn localStorage nếu có (dữ liệu đã được lưu bởi backend)
         const rawResult = localStorage.getItem("fb_oauth_result");
-        if (rawResult) {
-          console.log("[Facebook OAuth] Phát hiện kết quả trong localStorage:", rawResult);
-          clearInterval(checkInterval);
+        if (rawResult && !alreadyRefreshed) {
+          console.log("[Facebook OAuth] Phát hiện tín hiệu hoàn thành trong localStorage.");
           localStorage.removeItem("fb_oauth_result");
           try {
             const result = JSON.parse(rawResult);
-            if (result.type === "FACEBOOK_PAGE_SELECTED" && result.page) {
-              handleFacebookPageSelected(result.page);
-            } else if (result.type === "FACEBOOK_PAGES_SELECTED" && result.pages) {
-              handleFacebookPagesSelected(result.pages);
-            } else if (result.type === "FACEBOOK_OAUTH_FAILED") {
+            if (result.type === "FACEBOOK_OAUTH_FAILED") {
               toast.error(`Kết nối Facebook thất bại: ${result.error || "Lỗi không xác định"}`);
+              clearInterval(checkInterval);
+              alreadyRefreshed = true;
             }
-          } catch (err) {
-            console.error("Lỗi đọc kết quả đăng nhập Facebook:", err);
-          }
+          } catch (_) { /* bỏ qua lỗi parse */ }
         }
 
         if (oauthWindow && oauthWindow.closed) {
-          console.log("[Facebook OAuth] Cửa sổ popup đã đóng. Dừng checkInterval và làm mới danh sách.");
           clearInterval(checkInterval);
-          // Fallback kích hoạt tải lại danh sách sau khi popup đóng để đảm bảo hiển thị trang vừa kết nối
-          setTimeout(() => {
-            void fetchCompanyIntegrations();
-          }, 800);
+          if (!alreadyRefreshed) {
+            alreadyRefreshed = true;
+            console.log("[Facebook OAuth] Popup đóng → refresh danh sách tích hợp.");
+            // Delay nhỏ để đảm bảo DB write trên server đã hoàn tất
+            setTimeout(() => {
+              void fetchCompanyIntegrations();
+            }, 500);
+          }
         }
-      }, 400); // Tăng tần suất kiểm tra lên 400ms để tránh race condition
+      }, 300);
     } catch (err: any) {
       console.error("Lỗi mở Facebook OAuth:", err);
       toast.error("Không thể mở cửa sổ đăng nhập Facebook.");
@@ -406,12 +378,13 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         return;
       }
 
-      if (event.data && event.data.type === "FACEBOOK_PAGE_SELECTED") {
+      if (event.data && event.data.type === "FACEBOOK_PAGES_SELECTED") {
+        // Backend đã lưu DB — chỉ refresh UI
+        console.log("[Facebook OAuth] Nhận postMessage PAGES_SELECTED, refresh UI.");
+        void fetchCompanyIntegrations();
+      } else if (event.data && event.data.type === "FACEBOOK_PAGE_SELECTED") {
         const page = event.data.page;
         handleFacebookPageSelected(page);
-      } else if (event.data && event.data.type === "FACEBOOK_PAGES_SELECTED") {
-        const pages = event.data.pages;
-        handleFacebookPagesSelected(pages);
       } else if (event.data && event.data.type === "FACEBOOK_OAUTH_FAILED") {
         toast.error(`Kết nối Facebook thất bại: ${event.data.error || "Lỗi không xác định"}`);
       }
