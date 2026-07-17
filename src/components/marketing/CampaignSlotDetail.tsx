@@ -700,19 +700,45 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
             {aiLogTab === 'research' && (
               <div className="space-y-3.5">
                 {parsedEvidence ? (
-                  <div className="rounded-xl border border-teal-150 bg-white p-3.5 text-xs text-slate-700 leading-relaxed shadow-3xs">
-                    <span className="block text-[10px] font-bold text-teal-600 uppercase tracking-wide mb-1.5 font-mono">Bối cảnh tổng hợp từ web:</span>
-                    <p className="whitespace-pre-wrap font-sans text-slate-700 bg-teal-50/30 p-2.5 rounded-lg border border-teal-50">{parsedEvidence.contextSummary}</p>
-                    {parsedEvidence.topKeywords && (
-                      <div className="mt-3.5 pt-3.5 border-t border-slate-100">
-                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 font-mono">Từ khóa nổi bật / Xu hướng:</span>
+                  <div className="rounded-xl border border-teal-150 bg-white p-3.5 text-xs text-slate-700 leading-relaxed shadow-3xs space-y-3">
+                    <div>
+                      <span className="block text-[10px] font-bold text-teal-600 uppercase tracking-wide mb-1.5 font-mono">Bối cảnh tổng hợp từ web:</span>
+                      <p className="whitespace-pre-wrap font-sans text-slate-700 bg-teal-50/30 p-2.5 rounded-lg border border-teal-50">{parsedEvidence.summary || parsedEvidence.contextSummary}</p>
+                    </div>
+                    {(parsedEvidence.topKeywords || parsedEvidence.keywords) && (
+                      <div>
+                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-mono">Từ khóa nổi bật / Xu hướng:</span>
                         <div className="flex flex-wrap gap-1.5">
-                          {parsedEvidence.topKeywords.map((kw: string, i: number) => (
+                          {(parsedEvidence.topKeywords || parsedEvidence.keywords || []).map((kw: string, i: number) => (
                             <span key={i} className="bg-teal-50/50 text-teal-700 text-[10px] font-bold px-2 py-0.5 rounded border border-teal-100/50">
                               #{kw}
                             </span>
                           ))}
                         </div>
+                      </div>
+                    )}
+                    {parsedEvidence.angles && parsedEvidence.angles.length > 0 && (
+                      <div>
+                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-mono">Góc tiếp cận đề xuất:</span>
+                        <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                          {parsedEvidence.angles.map((a: string, i: number) => <li key={i}>{a}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {parsedEvidence.painPoints && parsedEvidence.painPoints.length > 0 && (
+                      <div>
+                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-mono">Nỗi đau khách hàng:</span>
+                        <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                          {parsedEvidence.painPoints.map((p: string, i: number) => <li key={i}>{p}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {parsedEvidence.facts && parsedEvidence.facts.length > 0 && (
+                      <div>
+                        <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1 font-mono">Thông tin thực tế cần nhấn mạnh:</span>
+                        <ul className="list-disc pl-4 space-y-0.5 text-slate-600">
+                          {parsedEvidence.facts.map((f: string, i: number) => <li key={i}>{f}</li>)}
+                        </ul>
                       </div>
                     )}
                   </div>

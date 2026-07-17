@@ -110,6 +110,89 @@ export default function CampaignDetailModal({
   const [retryingAll, setRetryingAll] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<CampaignSlot | null>(null);
   const [isBatchPreparing, setIsBatchPreparing] = useState(false);
+  const [campaignResearchTab, setCampaignResearchTab] = useState<'summary' | 'evidence'>('summary');
+
+  // 1. Gather all unique research evidence items from all slots in the campaign
+  const allResearchEvidence = React.useMemo(() => {
+    if (!campaignDetail?.slots) return [];
+    const seenUrls = new Set<string>();
+    const list: Array<{
+      source: 'google' | 'facebook' | 'tiktok';
+      sourceUrl: string;
+      title?: string;
+      text: string;
+      author?: string;
+      publishedAt?: string;
+      collectedAt: string;
+      metrics?: { views?: number; likes?: number; comments?: number; shares?: number };
+    }> = [];
+    for (const slot of campaignDetail.slots) {
+      if (slot.researchAnalysis?.evidence) {
+        for (const ev of slot.researchAnalysis.evidence) {
+          const url = ev.sourceUrl?.toLowerCase().trim();
+          if (url && !seenUrls.has(url)) {
+            seenUrls.add(url);
+            list.push(ev);
+          }
+        }
+      }
+    }
+    return list;
+  }, [campaignDetail?.slots]);
+
+  // 2. Parse the aggregated research summary & keywords from the slots
+  const parsedEvidenceSummary = React.useMemo(() => {
+    if (!campaignDetail?.slots) return null;
+    let summaryText = '';
+    const keywordsSet = new Set<string>();
+    const anglesList: string[] = [];
+    const painPointsList: string[] = [];
+    const factsList: string[] = [];
+
+    for (const slot of campaignDetail.slots) {
+      if (slot.researchAnalysis?.context) {
+        try {
+          const parsed = JSON.parse(slot.researchAnalysis.context);
+          if (parsed && typeof parsed === 'object') {
+            if (!summaryText && (parsed.summary || parsed.contextSummary)) {
+              summaryText = parsed.summary || parsed.contextSummary;
+            }
+            if (Array.isArray(parsed.topKeywords || parsed.keywords)) {
+              const kws = parsed.topKeywords || parsed.keywords;
+              kws.forEach((k: string) => {
+                if (k) keywordsSet.add(k);
+              });
+            }
+            if (Array.isArray(parsed.angles)) {
+              parsed.angles.forEach((a: string) => {
+                if (a && !anglesList.includes(a)) anglesList.push(a);
+              });
+            }
+            if (Array.isArray(parsed.painPoints)) {
+              parsed.painPoints.forEach((p: string) => {
+                if (p && !painPointsList.includes(p)) painPointsList.push(p);
+              });
+            }
+            if (Array.isArray(parsed.facts)) {
+              parsed.facts.forEach((f: string) => {
+                if (f && !factsList.includes(f)) factsList.push(f);
+              });
+            }
+          }
+        } catch {
+          // not JSON
+        }
+      }
+    }
+
+    return {
+      summary: summaryText,
+      topKeywords: Array.from(keywordsSet),
+      angles: anglesList.slice(0, 8),
+      painPoints: painPointsList.slice(0, 8),
+      facts: factsList.slice(0, 8),
+    };
+  }, [campaignDetail?.slots]);
 
   // Derive current active slot detail from fresh api data if available
   const activeSlot = campaignDetail?.slots.find(s => s._id === selectedSlot?._id) || null;
@@ -300,6 +383,134 @@ export default function CampaignDetailModal({
                           </span>
                         ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Web & Social Research Card */}
+                  {(allResearchEvidence.length > 0 || parsedEvidenceSummary?.summary) && (
+                    <div className="rounded-xl border border-teal-150 bg-teal-50/5 p-4.5 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-teal-655 font-bold text-sm">🌐 Nghiên cứu Web, TikTok, Facebook</span>
+                          <span className="text-[10px] text-teal-600 bg-teal-50 border border-teal-100 font-bold px-2 py-0.5 rounded-full">
+                            Thu thập {allResearchEvidence.length} tài liệu
+                          </span>
+                        </div>
+                        {/* Tab buttons for this section */}
+                        <div className="flex gap-2 text-xs font-bold">
+                          <button
+                            type="button"
+                            onClick={() => setCampaignResearchTab('summary')}
+                            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                              campaignResearchTab === 'summary'
+                                ? 'bg-teal-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            Tổng hợp bối cảnh
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCampaignResearchTab('evidence')}
+                            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                              campaignResearchTab === 'evidence'
+                                ? 'bg-teal-600 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            Tài liệu thu thập
+                          </button>
+                        </div>
+                      </div>
+
+                      {campaignResearchTab === 'summary' ? (
+                        <div className="space-y-4 text-xs">
+                          {parsedEvidenceSummary?.summary ? (
+                            <div className="bg-white border border-teal-100/50 rounded-xl p-3.5 leading-relaxed text-slate-700">
+                              <span className="block text-[10px] font-bold text-teal-600 uppercase tracking-wide mb-1.5 font-mono">Bối cảnh tổng hợp:</span>
+                              <p className="whitespace-pre-wrap font-sans text-slate-700">{parsedEvidenceSummary.summary}</p>
+                            </div>
+                          ) : (
+                            <div className="text-center py-6 text-slate-400 font-medium">Chưa có bối cảnh tổng hợp.</div>
+                          )}
+
+                          {/* Keywords */}
+                          {parsedEvidenceSummary?.topKeywords && parsedEvidenceSummary.topKeywords.length > 0 && (
+                            <div>
+                              <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2 font-mono">Từ khóa nổi bật:</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {parsedEvidenceSummary.topKeywords.map((kw, i) => (
+                                  <span key={i} className="bg-teal-50/50 text-teal-700 text-[10px] font-bold px-2 py-0.5 rounded border border-teal-100/50">
+                                    #{kw}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Extra info: painPoints, facts, angles */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2">
+                            {parsedEvidenceSummary?.angles && parsedEvidenceSummary.angles.length > 0 && (
+                              <div className="bg-white border border-slate-100 rounded-xl p-3">
+                                <span className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2 font-mono">Góc tiếp cận đề xuất</span>
+                                <ul className="list-disc pl-4 space-y-1 text-slate-700 font-sans leading-relaxed">
+                                  {parsedEvidenceSummary.angles.map((item, idx) => (
+                                    <li key={idx}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {parsedEvidenceSummary?.painPoints && parsedEvidenceSummary.painPoints.length > 0 && (
+                              <div className="bg-white border border-slate-100 rounded-xl p-3">
+                                <span className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2 font-mono">Nỗi đau khách hàng</span>
+                                <ul className="list-disc pl-4 space-y-1 text-slate-700 font-sans leading-relaxed">
+                                  {parsedEvidenceSummary.painPoints.map((item, idx) => (
+                                    <li key={idx}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {parsedEvidenceSummary?.facts && parsedEvidenceSummary.facts.length > 0 && (
+                              <div className="bg-white border border-slate-100 rounded-xl p-3">
+                                <span className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider mb-2 font-mono">Thông tin thực tế cần nhấn mạnh</span>
+                                <ul className="list-disc pl-4 space-y-1 text-slate-700 font-sans leading-relaxed">
+                                  {parsedEvidenceSummary.facts.map((item, idx) => (
+                                    <li key={idx}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 max-h-[350px] overflow-y-auto pr-1">
+                          {allResearchEvidence.map((ev, idx) => (
+                            <div key={idx} className="rounded-xl border border-slate-150 bg-white p-3.5 space-y-2 shadow-2xs text-xs flex flex-col justify-between">
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
+                                  <span className="font-bold text-slate-800 truncate flex items-center gap-1.5 max-w-[220px]" title={ev.title || ev.sourceUrl}>
+                                    {ev.source === 'facebook' ? '🔵' : ev.source === 'tiktok' ? '⚫' : '🔴'} {ev.title || 'Bài viết tham khảo'}
+                                  </span>
+                                  {ev.sourceUrl && (
+                                    <a href={ev.sourceUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-650 hover:underline shrink-0 font-bold">
+                                      Chi tiết &rarr;
+                                    </a>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 leading-relaxed italic line-clamp-4">&ldquo;{ev.text}&rdquo;</p>
+                              </div>
+                              {ev.metrics && (
+                                <div className="flex gap-2 text-[9px] text-slate-400 pt-1.5 border-t border-slate-50 font-mono font-bold select-none">
+                                  {ev.metrics.views !== undefined && <span>👁️ {ev.metrics.views.toLocaleString('vi-VN')}</span>}
+                                  {ev.metrics.likes !== undefined && <span>❤️ {ev.metrics.likes.toLocaleString('vi-VN')}</span>}
+                                  {ev.metrics.comments !== undefined && <span>💬 {ev.metrics.comments.toLocaleString('vi-VN')}</span>}
+                                  {ev.metrics.shares !== undefined && <span>➡️ {ev.metrics.shares.toLocaleString('vi-VN')}</span>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div> {/* Close Left Column */}
