@@ -42,6 +42,17 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     googleDriveFolderUrl: { type: String },
     customSchedule: { type: Schema.Types.Map, of: [String] },
     researchReport: { type: String },
+    apifySources: {
+      type: [String],
+      enum: ["google", "facebook", "tiktok"],
+      validate: {
+        validator: function (val: string[]) {
+          return val.length <= 2;
+        },
+        message: "Chỉ được chọn tối đa 2 nguồn dữ liệu Apify."
+      },
+      default: ["google"],
+    },
     statistics: {
       totalSlots: { type: Number, default: 0 },
       publishedSlots: { type: Number, default: 0 },

@@ -74,14 +74,42 @@ export const walletService = {
   /**
    * Khau tru so du vi nguoi dung sau khi API thuc hien thanh cong
    */
-  async deductBalance(userId: string, amount: number, description: string): Promise<any> {
+  async deductBalance(
+    userId: string,
+    amount: number,
+    description: string,
+    idempotencyKey?: string
+  ): Promise<any> {
     if (amount <= 0) return null;
 
+    if (idempotencyKey) {
+      const existingTransaction = await TransactionModel.findOne({
+        idempotencyKey,
+        userId,
+        type: "payment",
+        status: "success",
+      });
+      if (existingTransaction) {
+        const wallet = await this.getOrCreateWallet(userId);
+        return { wallet, transaction: existingTransaction, charged: false };
+      }
+    }
+
+    await this.getOrCreateWallet(userId);
+
     const wallet = await WalletModel.findOneAndUpdate(
-      { userId },
+      { userId, balance: { $gte: amount } },
       { $inc: { balance: -amount }, $set: { updatedAt: new Date() } },
-      { upsert: true, returnDocument: "after" }
+      { returnDocument: "after" }
     );
+
+    if (!wallet) {
+      const error: any = new Error(
+        "Số dư ví không đủ. Vui lòng nạp thêm tiền vào ví để tiếp tục sử dụng dịch vụ."
+      );
+      error.statusCode = 402;
+      throw error;
+    }
 
     let orderCode: number;
     let existing: any;
@@ -97,15 +125,33 @@ export const walletService = {
       type: "payment",
       status: "success",
       description,
+      idempotencyKey,
       createdAt: new Date(),
       completedAt: new Date(),
     });
-    await transaction.save();
+    try {
+      await transaction.save();
+    } catch (error: any) {
+      if (idempotencyKey && error?.code === 11000 && error?.keyPattern?.idempotencyKey) {
+        await WalletModel.updateOne(
+          { userId },
+          { $inc: { balance: amount }, $set: { updatedAt: new Date() } }
+        );
+        const existingTransaction = await TransactionModel.findOne({ idempotencyKey });
+        const currentWallet = await this.getOrCreateWallet(userId);
+        return { wallet: currentWallet, transaction: existingTransaction, charged: false };
+      }
+      await WalletModel.updateOne(
+        { userId },
+        { $inc: { balance: amount }, $set: { updatedAt: new Date() } }
+      );
+      throw error;
+    }
 
     console.log(
       `[Wallet Service] Trừ thành công ${amount} Credit từ User ID: ${userId} (${description}). Số dư mới: ${wallet.balance} Credit.`
     );
-    return { wallet, transaction };
+    return { wallet, transaction, charged: true };
   },
 
   async getAdminBalanceList(filters: AdminBalanceFilters = {}) {

@@ -21,6 +21,8 @@ export interface MarketingCampaignSummary {
     totalSlots: number;
     publishedSlots: number;
     failedSlots: number;
+    estimatedCost?: number;
+    actualCost?: number;
   };
   createdAt: string;
 }
@@ -32,12 +34,69 @@ export interface CampaignSlot {
   topicBrief: string;
   scheduledAt: string;
   status: string;
+  variant?: string;
   errorMessage?: string;
   publishedPostUrl?: string;
   platform?: string;
   approvedBy?: string;
   approvedAt?: string;
   marketingContentId?: string;
+  ingestedMedia?: Array<{ sourceUrl: string; url: string; uploadedAt: string }>;
+  researchAnalysis?: {
+    fingerprint: string;
+    context: string;
+    model: string;
+    researchedAt: string;
+    cost: number;
+    evidence: Array<{
+      source: 'google' | 'facebook' | 'tiktok';
+      sourceUrl: string;
+      title?: string;
+      text: string;
+      author?: string;
+      publishedAt?: string;
+      collectedAt: string;
+      metrics?: { views?: number; likes?: number; comments?: number; shares?: number };
+    }>;
+    apifyRuns: Array<{
+      source: 'google' | 'facebook' | 'tiktok';
+      actorId: string;
+      runId?: string;
+      datasetId?: string;
+      status: 'succeeded' | 'failed' | 'skipped';
+      itemCount: number;
+      estimatedCostUsd: number;
+      providerCostUsd: number;
+      billingMode: 'shadow' | 'live';
+      executedAt: string;
+      error?: string;
+    }>;
+    providerCostUsd: number;
+    billingMode: 'shadow' | 'live';
+    billedAt?: string;
+  };
+  visualAnalysis?: {
+    fingerprint: string;
+    sourceUrls: string[];
+    summary: string;
+    subjects: string[];
+    visibleText: string[];
+    setting: string;
+    visualStyle: string;
+    mood: string;
+    factualDetails: string[];
+    marketingAngles: string[];
+    cautions: string[];
+    model: string;
+    analyzedAt: string;
+    cost: number;
+    billedAt?: string;
+  };
+  lastError?: {
+    type: string;
+    message: string;
+    occurredAt: string;
+  };
   content?: MarketingContent | null;
 }
 
@@ -91,6 +150,7 @@ export const marketingCampaignService = {
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     images?: string[];
     customSchedule?: Record<string, string[]>;
+    apifySources?: string[];
   }) {
     return request<{ campaign: MarketingCampaignSummary }>('/api/v1/marketing-campaigns', {
       method: 'POST',
@@ -161,6 +221,87 @@ export const marketingCampaignService = {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.message || 'Không thể xử lý phê duyệt bài viết.');
     return result.data;
+  },
+
+  getDailyShareLink(campaignId: string, date: string) {
+    return request<{ shareLink: string }>(`/api/v1/marketing-campaigns/${campaignId}/dates/${date}/share-link`);
+  },
+
+  async getPublicDailySlots(token: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/dates/${token}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể lấy danh sách bài viết theo ngày.');
+    return result.data as { campaign: MarketingCampaignSummary; slots: (CampaignSlot & { content: MarketingContent | null })[]; date: string };
+  },
+
+  async publicDailySlotAction(token: string, slotId: string, action: 'approve' | 'reject', reason?: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/dates/${token}/slots/${slotId}/${action}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể xử lý phê duyệt bài viết.');
+    return result.data;
+  },
+
+  async updatePublicDailySlotContent(token: string, slotId: string, updates: { title?: string; bodyText?: string }) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/dates/${token}/slots/${slotId}/content`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updates),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể lưu chỉnh sửa bài viết.');
+    return result.data as { slot: CampaignSlot; content: MarketingContent | null };
+  },
+
+  getMonthlyShareLink(campaignId: string, startDate: string, endDate: string) {
+    return request<{ shareLink: string }>(`/api/v1/marketing-campaigns/${campaignId}/monthly/${startDate}/${endDate}/share-link`);
+  },
+
+  async getPublicMonthlySlots(token: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/monthly/${token}`);
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể lấy danh sách bài viết theo tháng.');
+    return result.data as { campaign: MarketingCampaignSummary; slots: (CampaignSlot & { content: MarketingContent | null })[]; startDate: string; endDate: string };
+  },
+
+  async publicMonthlySlotAction(token: string, slotId: string, action: 'approve' | 'reject', reason?: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/monthly/${token}/slots/${slotId}/${action}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ reason }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể xử lý phê duyệt bài viết.');
+    return result.data;
+  },
+
+  async publicMonthlyBulkAction(token: string, slotIds: string[], action: 'approve' | 'reject', reason?: string) {
+    const response = await fetch(`/api/v1/marketing-campaigns/public/monthly/${token}/bulk-action`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ slotIds, action, reason }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Không thể xử lý phê duyệt hàng loạt bài viết.');
+    return result.data;
+  },
+
+  batchPrepare(campaignId: string, startDate: string, endDate: string) {
+    return request<{ enqueued: number; skipped: number }>(`/api/v1/marketing-campaigns/${campaignId}/batch-prepare`, {
+      method: 'POST',
+      body: JSON.stringify({ startDate, endDate }),
+    });
   },
 
   previewDrive(googleDriveFolderUrl: string) {

@@ -56,13 +56,21 @@ marketingCampaignRouter.post("/internal/prepare", marketingCampaignController.pr
 marketingCampaignRouter.post("/internal/media", marketingCampaignController.mediaWorker as never);
 marketingCampaignRouter.post("/internal/verify", marketingCampaignController.verifyWorker as never);
 marketingCampaignRouter.post("/internal/publish", marketingCampaignController.publishWorker as never);
+marketingCampaignRouter.post("/internal/sync-metrics", marketingCampaignController.syncMetricsWorker as never);
 
 // Public endpoints (no auth required)
 marketingCampaignRouter.get("/public/slots/:token", marketingCampaignController.getPublicSlot as never);
 marketingCampaignRouter.post("/public/slots/:token/:action", marketingCampaignController.publicSlotAction as never);
+marketingCampaignRouter.get("/public/dates/:token", marketingCampaignController.getPublicDailySlots as never);
+marketingCampaignRouter.post("/public/dates/:token/slots/:slotId/:action", marketingCampaignController.publicDailySlotAction as never);
+marketingCampaignRouter.patch("/public/dates/:token/slots/:slotId/content", marketingCampaignController.publicDailySlotUpdateContent as never);
+marketingCampaignRouter.get("/public/monthly/:token", marketingCampaignController.getPublicMonthlySlots as never);
+marketingCampaignRouter.post("/public/monthly/:token/slots/:slotId/:action", marketingCampaignController.publicMonthlySlotAction as never);
+marketingCampaignRouter.post("/public/monthly/:token/bulk-action", marketingCampaignController.publicMonthlyBulkAction as never);
 
 marketingCampaignRouter.use(requireAuth as never, requirePermission("marketing:post") as never);
 marketingCampaignRouter.post("/preview-drive", marketingCampaignController.previewDrive as never);
+marketingCampaignRouter.get("/analytics", marketingCampaignController.getAnalytics as never);
 marketingCampaignRouter.post("/", validateRequest(createSchema), marketingCampaignController.create as never);
 marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
@@ -71,6 +79,9 @@ marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignContro
 marketingCampaignRouter.post("/:id/slots/:slotId/approve", marketingCampaignController.approveSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/reject", marketingCampaignController.rejectSlot as never);
 marketingCampaignRouter.get("/:id/slots/:slotId/share-link", marketingCampaignController.getShareLink as never);
+marketingCampaignRouter.get("/:id/dates/:date/share-link", marketingCampaignController.getDailyShareLink as never);
+marketingCampaignRouter.get("/:id/monthly/:startDate/:endDate/share-link", marketingCampaignController.getMonthlyShareLink as never);
+marketingCampaignRouter.post("/:id/batch-prepare", marketingCampaignController.batchPrepare as never);
 marketingCampaignRouter.patch("/:id/slots/:slotId/content", validateRequest(updateContentSchema), marketingCampaignController.updateSlotContent as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/replace-image", validateRequest(replaceImageSchema), marketingCampaignController.replaceSlotImage as never);
 marketingCampaignRouter.post("/:id/:action", (req, res, next) => {

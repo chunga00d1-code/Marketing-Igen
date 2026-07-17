@@ -12,7 +12,6 @@ import { useSubTabRouter } from "../hooks/useSubTabRouter";
 const ProfileTab = lazy(() => import("../components/settings/ProfileTab"));
 const SecurityTab = lazy(() => import("../components/settings/SecurityTab"));
 const ErpConfigTab = lazy(() => import("../components/settings/ErpConfigTab"));
-const PersonalIntegrationsTab = lazy(() => import("../components/settings/PersonalIntegrationsTab"));
 const CompanyIntegrationsTab = lazy(() => import("../components/settings/CompanyIntegrationsTab"));
 
 export default function SettingsTab() {
@@ -28,10 +27,9 @@ export default function SettingsTab() {
     { slug: "ho-so", value: "profile" as const },
     { slug: "bao-mat", value: "security" as const },
     { slug: "cau-hinh", value: "erp" as const },
-    { slug: "mxh-ca-nhan", value: "personal-integrations" as const },
     { slug: "dong-bo", value: "company-integrations" as const },
   ] as const;
-  const [activeSubTab, setActiveSubTab] = useSubTabRouter<"profile" | "security" | "erp" | "personal-integrations" | "company-integrations">(SETTINGS_SUB_TAB_ROUTES, "profile");
+  const [activeSubTab, setActiveSubTab] = useSubTabRouter<"profile" | "security" | "erp" | "company-integrations">(SETTINGS_SUB_TAB_ROUTES, "profile");
 
   // Synchronize display name and photo url from context if it updates
   React.useEffect(() => {
@@ -139,15 +137,6 @@ export default function SettingsTab() {
             Cấu hình hệ thống
           </button>
           <button
-            onClick={() => setActiveSubTab("personal-integrations")}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeSubTab === "personal-integrations"
-              ? "bg-white text-gray-800 shadow-xs"
-              : "text-gray-500 hover:text-gray-700"
-              }`}
-          >
-            MXH Cá nhân
-          </button>
-          <button
             onClick={() => setActiveSubTab("company-integrations")}
             className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${activeSubTab === "company-integrations"
               ? "bg-white text-gray-800 shadow-xs"
@@ -204,7 +193,7 @@ export default function SettingsTab() {
                   ? "bg-amber-50 border-amber-200 text-amber-600"
                   : "bg-slate-50 border-slate-200 text-slate-600"
                 }`}>
-                Quyền hạn: {userProfile?.role === "superadmin" ? "SiÃªu Admin" : userProfile?.role === "admin" ? "Admin" : "ThÃ nh viÃªn"}
+                Quyền hạn: {userProfile?.role === "superadmin" ? "Super Admin" : userProfile?.role === "admin" ? "Admin" : "Thành viên"}
               </span>
             </div>
           </div>
@@ -226,7 +215,6 @@ export default function SettingsTab() {
             {activeSubTab === "profile" && <ProfileTab />}
             {activeSubTab === "security" && <SecurityTab />}
             {activeSubTab === "erp" && <ErpConfigTab />}
-            {activeSubTab === "personal-integrations" && <PersonalIntegrationsTab />}
             {activeSubTab === "company-integrations" && <CompanyIntegrationsTab userProfile={userProfile} />}
           </Suspense>
         </div>

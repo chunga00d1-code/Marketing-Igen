@@ -37,6 +37,8 @@
     "pdf-parse": "^2.4.5",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-is": "^19.2.7",
+    "recharts": "^3.9.2",
     "remotion": "^4.0.476",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",

@@ -82,7 +82,9 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
   };
 
   if (jsonMode || responseSchema) {
-    body.response_format = { type: "json_object" };
+    if (!mappedModel.includes("perplexity")) {
+      body.response_format = { type: "json_object" };
+    }
   }
 
   let lastError: any;

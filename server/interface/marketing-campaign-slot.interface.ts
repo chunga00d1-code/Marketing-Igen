@@ -43,6 +43,12 @@ export interface IMarketingCampaignSlot extends Document {
   marketingContentId?: Types.ObjectId;
   realImageDriveUrls?: string[];
   realImageDirectUrls?: string[];
+  mediaIngestionFingerprint?: string;
+  ingestedMedia?: Array<{
+    sourceUrl: string;
+    url: string;
+    uploadedAt: Date;
+  }>;
   visualAnalysis?: {
     fingerprint: string;
     sourceUrls: string[];
@@ -58,6 +64,44 @@ export interface IMarketingCampaignSlot extends Document {
     model: string;
     analyzedAt: Date;
     cost: number;
+    billedAt?: Date;
+  };
+  researchAnalysis?: {
+    fingerprint: string;
+    context: string;
+    model: string;
+    researchedAt: Date;
+    cost: number;
+    evidence: Array<{
+      source: "google" | "facebook" | "tiktok";
+      sourceUrl: string;
+      title?: string;
+      text: string;
+      author?: string;
+      publishedAt?: Date;
+      collectedAt: Date;
+      metrics?: {
+        views?: number;
+        likes?: number;
+        comments?: number;
+        shares?: number;
+      };
+    }>;
+    apifyRuns: Array<{
+      source: "google" | "facebook" | "tiktok";
+      actorId: string;
+      runId?: string;
+      datasetId?: string;
+      status: "succeeded" | "failed" | "skipped";
+      itemCount: number;
+      estimatedCostUsd: number;
+      providerCostUsd: number;
+      billingMode: "shadow" | "live";
+      executedAt: Date;
+      error?: string;
+    }>;
+    providerCostUsd: number;
+    billingMode: "shadow" | "live";
     billedAt?: Date;
   };
   customBodyText?: string;

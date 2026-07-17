@@ -29,6 +29,7 @@ const ContentStudioWorkspace = lazy(() =>
     default: module.ContentStudioWorkspace,
   }))
 );
+const AnalyticsDashboard = lazy(() => import("../components/marketing/AnalyticsDashboard"));
 
 export default function MarketingTab() {
   const { userProfile } = useAuth();
@@ -39,6 +40,7 @@ export default function MarketingTab() {
     { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
+    { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
   const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
 
@@ -87,6 +89,7 @@ export default function MarketingTab() {
       accessToken?: string;
       isMock?: boolean;
       platform: string;
+      privacyLevel?: string;
     }> = [];
 
     const platform = schedulingCard?.channel || "";
@@ -111,6 +114,7 @@ export default function MarketingTab() {
           accessToken: userProfile.tiktokIntegration.accessToken,
           isMock: !!userProfile.tiktokIntegration.isMock,
           platform: "TikTok",
+          privacyLevel: userProfile.tiktokIntegration.privacyLevel || "PUBLIC_TO_EVERYONE",
         });
       }
     } else if (platform === "Zalo") {
@@ -136,6 +140,7 @@ export default function MarketingTab() {
             accessToken: item.accessToken,
             isMock: !!item.isMock,
             platform: platform,
+            privacyLevel: "PUBLIC_TO_EVERYONE",
           });
         }
       }
@@ -149,6 +154,7 @@ export default function MarketingTab() {
         accessToken: "mock_token",
         isMock: true,
         platform: platform,
+        privacyLevel: "PUBLIC_TO_EVERYONE",
       });
     }
 
@@ -227,12 +233,20 @@ export default function MarketingTab() {
         username: companyTikTokIntegration.username || "",
         displayName: companyTikTokIntegration.displayName,
         accessToken: companyTikTokIntegration.accessToken,
-        privacyLevel: "SELF_ONLY",
+        privacyLevel: "PUBLIC_TO_EVERYONE",
         isMock: companyTikTokIntegration.isMock,
         integrationId: companyTikTokIntegration._id,
         source: "company" as const,
       }
-      : null;
+      : {
+        isConnected: true,
+        username: "igen_tiktok_demo",
+        displayName: "TikTok Demo Account (Video)",
+        accessToken: "mock_token",
+        privacyLevel: "PUBLIC_TO_EVERYONE",
+        isMock: true,
+        source: "personal" as const,
+      };
 
   // Load integrations dynamically when a card is selected for scheduling
   useEffect(() => {
@@ -328,8 +342,8 @@ export default function MarketingTab() {
             schedulingCard.id,
             caption,
             schedulingCard.videoUrl,
-            selectedAcc.isMock ?? false,
-            "SELF_ONLY",
+            false,
+            selectedAcc.privacyLevel || "PUBLIC_TO_EVERYONE",
             {
               integrationId: selectedAcc.id === "personal" ? undefined : selectedAcc.id,
               accessToken: selectedAcc.accessToken,
@@ -351,6 +365,7 @@ export default function MarketingTab() {
               )
             );
             toast.success("Đã gửi video sang TikTok. Hệ thống đang chờ TikTok xử lý.");
+            return;
           } else {
             setApprovalCards((prev) =>
               prev.map((item) =>
@@ -365,7 +380,7 @@ export default function MarketingTab() {
                   : item
               )
             );
-            toast.success(`Đã đăng video lên TikTok thành công! ${selectedAcc.isMock ? '(Demo)' : ''} ID: ${String(publishResult.postId || "").slice(-8)}`);
+            toast.success(`Đã đăng video lên TikTok thành công! ID: ${String(publishResult.postId || "").slice(-8)}`);
           }
         } else {
           toast.error(`Kênh "${schedulingCard.channel}" chưa hỗ trợ đăng tải trực tiếp.`);
@@ -467,32 +482,7 @@ export default function MarketingTab() {
   const handlePublishToTikTok = async (card: ContentApprovalCard) => {
     const tiktok = effectiveTikTokIntegration;
     if (!tiktok?.isConnected) {
-      const confirmMock = window.confirm("Bạn chưa liên kết TikTok. Bạn có muốn đăng thử nghiệm bằng tài khoản TikTok Demo để quay video không?");
-      if (confirmMock) {
-        setPublishingTikTokId(card.id);
-        try {
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          const mockPostId = `tiktok_mock_${Date.now()}`;
-          await marketingService.updateCard(card.id, {
-            status: 'published',
-            publishedAt: new Date().toISOString(),
-            tiktokPostId: mockPostId,
-            tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
-          });
-          setApprovalCards(prev => prev.map(c => c.id === card.id ? {
-            ...c,
-            status: "published",
-            publishedAt: new Date().toISOString(),
-            tiktokPostId: mockPostId,
-            tiktokShareUrl: `https://www.tiktok.com/@demo/video/${mockPostId}`
-          } : c));
-          toast.success(`Đã đăng video lên TikTok thành công! (Demo) ID: ${mockPostId.slice(-8)}`);
-        } catch (e) {
-          toast.error("Đăng bài demo thất bại.");
-        } finally {
-          setPublishingTikTokId(null);
-        }
-      }
+      toast.error("Bạn chưa liên kết tài khoản TikTok. Vui lòng kết nối tài khoản TikTok trước khi đăng bài.");
       return;
     }
     if (!card.videoUrl) {
@@ -509,7 +499,7 @@ export default function MarketingTab() {
         card.id,
         caption,
         card.videoUrl,
-        tiktok.isMock ?? false,
+        false,
         tiktok.privacyLevel ?? 'SELF_ONLY',
         {
           integrationId,
@@ -548,7 +538,7 @@ export default function MarketingTab() {
             : item
         )
       );
-      toast.success(`Đã đăng video lên TikTok thành công! ${(tiktok.isMock ?? false) ? '(Demo)' : ''} ID: ${postId.slice(-8)}`);
+      toast.success(`Đã đăng video lên TikTok thành công! ID: ${postId.slice(-8)}`);
     } catch (e: any) {
       console.error("Lỗi đăng TikTok:", e);
       toast.error(parseFirebaseError(e, "Không thể đăng bài lên TikTok. Vui lòng thử lại."));
@@ -752,18 +742,21 @@ export default function MarketingTab() {
       {/* Sub Tabs control header switcher */}
       <div className="border-b border-gray-200 bg-gray-50/50 p-2 text-xs flex justify-between shrink-0" id="marketing_sub_tabs_switch">
         <div className="flex gap-2">
-          {["LÊN Ý TƯỞNG AI", "TẠO CHIẾN DỊCH", "DUYỆT NỘI DUNG", "LỊCH ĐĂNG CONTENT", "XƯỞNG NỘI DUNG"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setSubTab(tab as MarketingSubTabType)}
-              className={`px-4 py-2 rounded-lg border font-bold uppercase transition-all tracking-wide ${subTab === tab
-                ? "bg-slate-800 text-white border-slate-800 shadow-xs"
-                : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
-                }`}
-            >
-              {tab}
-            </button>
-          ))}
+          {MARKETING_SUB_TAB_ROUTES.map((tabRoute) => {
+            const tab = tabRoute.value;
+            return (
+              <button
+                key={tab}
+                onClick={() => setSubTab(tab)}
+                className={`px-4 py-2 rounded-lg border font-bold uppercase transition-all tracking-wide ${subTab === tab
+                  ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
+                  }`}
+              >
+                {tab}
+              </button>
+            );
+          })}
         </div>
 
       </div>
@@ -832,6 +825,11 @@ export default function MarketingTab() {
               onClearParams={() => setContentStudioParams(null)}
               onMediaSaved={handleMediaSaved}
             />
+          )}
+
+          {/* SUB TAB 5: BÁO CÁO */}
+          {subTab === "BÁO CÁO" && (
+            <AnalyticsDashboard />
           )}
         </Suspense>
       </div>
@@ -1119,7 +1117,7 @@ export default function MarketingTab() {
                   type="button"
                   disabled={isScheduling || getPublishingAccounts().length === 0}
                   onClick={handleConfirmPublishOrSchedule}
-                  className="flex-1 py-3 bg-blue-650 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all duration-250 shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none"
+                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all duration-250 shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer disabled:bg-slate-300 disabled:text-slate-400 disabled:cursor-not-allowed disabled:shadow-none"
                 >
                   {isScheduling ? (
                     <>

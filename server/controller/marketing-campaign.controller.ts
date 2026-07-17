@@ -5,6 +5,8 @@ import { walletService, API_COSTS } from "../service/wallet.service";
 import { marketingCampaignWorkerService } from "../service/marketing-campaign-worker.service";
 import { marketingCampaignFacebookWorkerService } from "../service/marketing-campaign-facebook-worker.service";
 import { cloudinaryService } from "../service/cloudinary.service";
+import { MetricsSyncService } from "../service/metrics-sync.service";
+import { MarketingAnalyticsService } from "../service/marketing-analytics.service";
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
@@ -229,6 +231,158 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data: files });
     } catch (error: unknown) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải trước ảnh từ thư mục Google Drive." });
+    }
+  },
+
+  async getDailyShareLink(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const { date } = req.params;
+      if (!date) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp ngày." });
+      }
+      const result = await marketingCampaignService.generateDailyShareLink(companyCode, req.params.id, date);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tạo link chia sẻ theo ngày." });
+    }
+  },
+
+  async getPublicDailySlots(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token } = req.params;
+      if (!token) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp mã xác thực." });
+      }
+      const data = await marketingCampaignService.getPublicDailySlotsDetail(token);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể lấy danh sách bài viết theo ngày." });
+    }
+  },
+
+  async publicDailySlotAction(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token, slotId, action } = req.params;
+      const { reason } = req.body;
+      if (!token || !slotId || !["approve", "reject"].includes(action)) {
+        return res.status(400).json({ status: "error", message: "Thao tác không hợp lệ." });
+      }
+      const data = await marketingCampaignService.executePublicDailySlotAction(token, slotId, action as "approve" | "reject", reason);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thực hiện phê duyệt bài viết." });
+    }
+  },
+
+  async publicDailySlotUpdateContent(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token, slotId } = req.params;
+      const { title, bodyText } = req.body;
+      if (!token || !slotId) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp đầy đủ thông tin." });
+      }
+      const data = await marketingCampaignService.updatePublicDailySlotContent(token, slotId, { title, bodyText });
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật nội dung bài viết." });
+    }
+  },
+
+  async getMonthlyShareLink(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const { startDate, endDate } = req.params;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp ngày bắt đầu và kết thúc." });
+      }
+      const result = await marketingCampaignService.generateMonthlyShareLink(companyCode, req.params.id, startDate, endDate);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tạo link chia sẻ theo tháng." });
+    }
+  },
+
+  async getPublicMonthlySlots(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token } = req.params;
+      if (!token) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp mã xác thực." });
+      }
+      const data = await marketingCampaignService.getPublicMonthlySlotsDetail(token);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể lấy danh sách bài viết theo tháng." });
+    }
+  },
+
+  async publicMonthlySlotAction(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token, slotId, action } = req.params;
+      const { reason } = req.body;
+      if (!token || !slotId || !["approve", "reject"].includes(action)) {
+        return res.status(400).json({ status: "error", message: "Thao tác không hợp lệ." });
+      }
+      const data = await marketingCampaignService.executePublicMonthlySlotAction(token, slotId, action as "approve" | "reject", reason);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thực hiện phê duyệt bài viết." });
+    }
+  },
+
+  async publicMonthlyBulkAction(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { token } = req.params;
+      const { slotIds, action, reason } = req.body;
+      if (!token || !Array.isArray(slotIds) || !["approve", "reject"].includes(action)) {
+        return res.status(400).json({ status: "error", message: "Thao tác không hợp lệ." });
+      }
+      const data = await marketingCampaignService.executePublicMonthlyBulkAction(token, slotIds, action as "approve" | "reject", reason);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thực hiện phê duyệt hàng loạt bài viết." });
+    }
+  },
+
+  async batchPrepare(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const { startDate, endDate } = req.body;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ status: "error", message: "Yêu cầu cung cấp ngày bắt đầu và ngày kết thúc." });
+      }
+      const result = await marketingCampaignService.batchPrepareMonth(companyCode, req.params.id, startDate, endDate);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Chuẩn bị nội dung hàng loạt thất bại." });
+    }
+  },
+
+  async syncMetricsWorker(req: AuthenticatedRequest, res: Response) {
+    try {
+      assertWorkerSecret(req);
+      const limit = Number(req.body?.limit || 20);
+      const result = await MetricsSyncService.syncFacebookMetrics(limit);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Sync metrics worker thất bại.";
+      return res.status(message.includes("token") ? 401 : 500).json({ status: "error", message });
+    }
+  },
+
+  async getAnalytics(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const { campaignId, platform, startDate, endDate } = req.query;
+      const result = await MarketingAnalyticsService.getCampaignAnalytics(companyCode, {
+        campaignId: campaignId as string,
+        platform: platform as string,
+        startDate: startDate as string,
+        endDate: endDate as string,
+      });
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể lấy dữ liệu báo cáo." });
     }
   },
 };

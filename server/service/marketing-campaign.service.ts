@@ -6,7 +6,7 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
 import { MarketingCampaignStatus, MarketingCampaignPlatform } from "../interface/marketing-campaign.interface";
 import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
-import { buildCampaignSchedule } from "./marketing-campaign-schedule.service";
+import { buildCampaignSchedule, zonedLocalTimeToUtc } from "./marketing-campaign-schedule.service";
 import { geminiService } from "./gemini.service";
 import { API_COSTS } from "./wallet.service";
 import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
@@ -32,6 +32,7 @@ interface CreateCampaignInput {
   imageMode?: "ai" | "real";
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
+  apifySources?: string[];
   rules?: {
     requiredCta?: string;
     requiredHashtags?: string[];
@@ -131,37 +132,64 @@ export const marketingCampaignService = {
       }
       
       const grouped = groupDriveFiles(files);
-      
-      researchReport = "Sử dụng kho ảnh thật từ thư mục Google Drive.";
-      strategy = {
-        campaignTitle: input.sourceBrief.trim() || `Chiến dịch ảnh thật - ${input.startDate}`,
-        contentPillars: ["Ảnh thật", "Sản phẩm", "Feedback"],
-        slots: schedule.map((scheduledSlot, index) => {
-          const postIndex = index + 1;
-          const postFiles = grouped[postIndex] || [];
-          
-          if (postFiles.length === 0) {
-            throw new Error(
-              `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
-            );
-          }
-          
-          const hasVideo = postFiles.some((f) => f.isVideo);
-          const mediaType = hasVideo ? "video" : "image";
-          
-          const realImageDriveUrls = postFiles.map((f) => `https://drive.google.com/file/d/${f.id}/view`);
-          const realImageDirectUrls = postFiles.map((f) => f.directUrl);
-          const topicBrief = `Bài đăng thứ ${postIndex} sử dụng tư liệu ảnh thật từ Drive`;
-          const customBodyText = ""; // AI Copywriter will generate caption based on prompt
+      const realMediaBySlot = schedule.map((_, index) => {
+        const postIndex = index + 1;
+        const postFiles = grouped[postIndex] || [];
 
+        if (postFiles.length === 0) {
+          throw new Error(
+            `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
+          );
+        }
+
+        const hasVideo = postFiles.some((file) => file.isVideo);
+        return {
+          mediaType: hasVideo ? "video" as const : "image" as const,
+          fileNames: postFiles.map((file) => file.name),
+          realImageDriveUrls: postFiles.map((file) => `https://drive.google.com/file/d/${file.id}/view`),
+          realImageDirectUrls: postFiles.map((file) => file.directUrl),
+        };
+      });
+
+      const planningPrompt = `${input.sourceBrief.trim()}
+
+YÊU CẦU LẬP BẢN PHÁC THẢO CHO CHIẾN DỊCH DÙNG ẢNH THẬT:
+- Mỗi topicBrief là bản phác thảo ý tưởng để người dùng xem trước: nêu thông điệp chính, góc khai thác và giá trị mang lại cho người xem.
+- Không viết caption/bài đăng hoàn chỉnh ở bước này.
+- Không dùng cách ghi chung chung như "Bài đăng thứ N sử dụng ảnh từ Google Drive".
+- Không khẳng định chi tiết sản phẩm chưa có trong brief; nội dung sẽ được Vision Agent đối chiếu với ảnh thật gần giờ đăng.
+- Các tệp media đã được gán sẵn theo từng slot như sau:
+${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.join(", ")}`).join("\n")}`;
+
+      const aiStrategy = await geminiService.generateScheduledCampaign({
+        prompt: planningPrompt,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        postsPerDay: input.postsPerDay,
+        postingTimes: input.postingTimes,
+        channels: input.platforms,
+        customSchedule: input.customSchedule,
+        rules: input.rules,
+      });
+
+      if (aiStrategy.slots.length !== schedule.length) {
+        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
+      }
+
+      researchReport = "Chiến dịch sử dụng ảnh thật; nghiên cứu và phân tích hình ảnh sẽ chạy theo từng slot gần giờ đăng.";
+      strategy = {
+        campaignTitle: aiStrategy.campaignTitle,
+        contentPillars: aiStrategy.contentPillars,
+        slots: aiStrategy.slots.map((brief, index) => {
+          const media = realMediaBySlot[index];
           return {
-            pillar: "Sản phẩm",
-            objective: "Brand Awareness",
-            topicBrief,
-            mediaType,
-            customBodyText,
-            realImageDriveUrls,
-            realImageDirectUrls,
+            pillar: brief.pillar,
+            objective: brief.objective,
+            topicBrief: brief.topicBrief,
+            mediaType: media.mediaType,
+            customBodyText: "",
+            realImageDriveUrls: media.realImageDriveUrls,
+            realImageDirectUrls: media.realImageDirectUrls,
           };
         }),
       };
@@ -192,15 +220,28 @@ export const marketingCampaignService = {
     }
 
     const isBudget = input.qualityMode === "budget";
-    const pPlan = imageMode === "real" ? 0 : API_COSTS.CAMPAIGN_STRATEGY;
+    const pPlan = API_COSTS.CAMPAIGN_STRATEGY;
     const pResearch = API_COSTS.CAMPAIGN_RESEARCH;
-    const pVision = imageMode === "real" ? API_COSTS.CAMPAIGN_VISION : 0;
-    
+
+    let totalResearchCost = 0;
+    let totalVisionCost = 0;
     let totalContentCost = 0;
     let totalMediaCost = 0;
 
     strategy.slots.forEach((brief) => {
       const type = brief.mediaType;
+      const requiresAiCopy = imageMode === "ai" || !brief.customBodyText;
+
+      if (requiresAiCopy) {
+        totalResearchCost += pResearch;
+      }
+      if (imageMode === "real" && requiresAiCopy) {
+        const imageCount = Math.max(
+          brief.realImageDriveUrls?.length || 0,
+          brief.realImageDirectUrls?.length || 0
+        );
+        totalVisionCost += Math.ceil(imageCount / 8) * API_COSTS.CAMPAIGN_VISION;
+      }
       
       // Calculate content write cost (only charge if AI Copywriter needs to generate copy)
       if (imageMode === "real") {
@@ -221,7 +262,7 @@ export const marketingCampaignService = {
       }
     });
 
-    const estimatedCost = pPlan + (schedule.length * (pResearch + pVision)) + totalContentCost + totalMediaCost;
+    const estimatedCost = pPlan + totalResearchCost + totalVisionCost + totalContentCost + totalMediaCost;
 
     const campaign = await MarketingCampaignModel.create({
       companyCode,
@@ -249,6 +290,7 @@ export const marketingCampaignService = {
       imageMode,
       googleDriveFolderUrl,
       customSchedule: input.customSchedule,
+      apifySources: input.apifySources || ["google"],
       rules: input.rules || {},
       statistics: { totalSlots: schedule.length, publishedSlots: 0, failedSlots: 0, estimatedCost, actualCost: 0 },
     });
@@ -317,6 +359,7 @@ export const marketingCampaignService = {
     const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode })
       .sort({ scheduledAt: 1 })
       .populate("marketingContentId")
+      .populate("selectedCandidateId")
       .lean();
 
     const transformedSlots = slots.map((slot) => {
@@ -328,7 +371,13 @@ export const marketingCampaignService = {
         mediaPrompt?: string;
         imageUrl?: string;
         videoUrl?: string;
+        mediaUrls?: string[];
         mediaType?: "image" | "video" | "human-video";
+      } | null;
+
+      const candidateDoc = slot.selectedCandidateId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        variant: string;
       } | null;
 
       const content = contentDoc
@@ -338,7 +387,9 @@ export const marketingCampaignService = {
             bodyText: contentDoc.bodyText,
             outline: contentDoc.outline,
             mediaPrompt: contentDoc.mediaPrompt,
-            mediaUrls: contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : []),
+            mediaUrls: contentDoc.mediaUrls?.length
+              ? contentDoc.mediaUrls
+              : (contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : [])),
             mediaType: contentDoc.mediaType,
           }
         : null;
@@ -346,6 +397,7 @@ export const marketingCampaignService = {
       return {
         ...slot,
         content,
+        variant: candidateDoc?.variant || null,
         errorMessage: slot.lastError?.message,
         publishedPostUrl: slot.publishedUrl,
       };
@@ -419,15 +471,17 @@ export const marketingCampaignService = {
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    if (slot.status !== "pending_approval") {
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể được duyệt ở trạng thái này: ${slot.status}`);
     }
 
+    const previousStatus = slot.status;
     slot.status = "ready_to_publish";
     slot.approvedBy = approvedBy;
     slot.approvedAt = new Date();
     slot.transitions.push({
-      from: "pending_approval",
+      from: previousStatus,
       to: "ready_to_publish",
       reason: `Approved manually by ${approvedBy}`,
       at: new Date()
@@ -453,8 +507,9 @@ export const marketingCampaignService = {
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    if (slot.status !== "pending_approval") {
-      throw new Error("Chỉ có thể chỉnh sửa nội dung khi bài viết đang chờ duyệt.");
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    if (!allowedStatuses.includes(slot.status)) {
+      throw new Error("Chỉ có thể chỉnh sửa nội dung khi bài viết đang chờ duyệt, cần kiểm tra hoặc lỗi.");
     }
     if (!slot.marketingContentId) {
       throw new Error("Không tìm thấy nội dung bài viết liên kết với slot này.");
@@ -466,6 +521,19 @@ export const marketingCampaignService = {
       { new: true }
     );
     if (!content) throw new Error("Không tìm thấy nội dung bài viết.");
+
+    if (slot.status === "needs_attention") {
+      slot.status = "pending_approval";
+      slot.lastError = undefined;
+      slot.transitions.push({
+        from: "needs_attention",
+        to: "pending_approval",
+        reason: "Content updated by internal user after rejection.",
+        at: new Date()
+      });
+      await slot.save();
+    }
+
     return content;
   },
 
@@ -475,8 +543,9 @@ export const marketingCampaignService = {
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    if (slot.status !== "pending_approval") {
-      throw new Error("Chỉ có thể thay ảnh khi bài viết đang chờ duyệt.");
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    if (!allowedStatuses.includes(slot.status)) {
+      throw new Error("Chỉ có thể thay ảnh khi bài viết đang chờ duyệt, cần kiểm tra hoặc lỗi.");
     }
     if (!slot.marketingContentId) {
       throw new Error("Không tìm thấy nội dung bài viết liên kết với slot này.");
@@ -488,6 +557,19 @@ export const marketingCampaignService = {
       { new: true }
     );
     if (!content) throw new Error("Không tìm thấy nội dung bài viết.");
+
+    if (slot.status === "needs_attention") {
+      slot.status = "pending_approval";
+      slot.lastError = undefined;
+      slot.transitions.push({
+        from: "needs_attention",
+        to: "pending_approval",
+        reason: "Image replaced by internal user after rejection.",
+        at: new Date()
+      });
+      await slot.save();
+    }
+
     return content;
   },
 
@@ -528,7 +610,7 @@ export const marketingCampaignService = {
         _id: decoded.slotId,
         campaignId: decoded.campaignId,
         companyCode: decoded.companyCode,
-      });
+      }).populate("selectedCandidateId").lean();
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
 
       const campaign = await MarketingCampaignModel.findOne({
@@ -541,10 +623,20 @@ export const marketingCampaignService = {
         content = await MarketingContentModel.findOne({
           _id: slot.marketingContentId,
           companyCode: decoded.companyCode,
-        });
+        }).lean();
       }
 
-      return { slot, content, campaign };
+      const candidateDoc = slot.selectedCandidateId as unknown as {
+        _id: mongoose.Types.ObjectId;
+        variant: string;
+      } | null;
+
+      const transformedSlot = {
+        ...slot,
+        variant: candidateDoc?.variant || null
+      };
+
+      return { slot: transformedSlot, content, campaign };
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
     }
@@ -653,5 +745,460 @@ export const marketingCampaignService = {
           isVideo,
         };
       });
+  },
+
+  async generateDailyShareLink(companyCode: string, campaignId: string, date: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      throw new Error("ID chiến dịch không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode });
+    if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+    // Sign token valid for 30 days
+    const token = jwt.sign(
+      { campaignId, date, companyCode },
+      process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key",
+      { expiresIn: "30d" }
+    );
+
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    if (baseUrl.endsWith("/")) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+
+    return { shareLink: `${baseUrl}/approve-posts-day?token=${token}` };
+  },
+
+  async getPublicDailySlotsDetail(token: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; date: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.date || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      const campaign = await MarketingCampaignModel.findOne({
+        _id: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+      // Calculate start and end of date in campaign's timezone
+      const startOfDay = zonedLocalTimeToUtc(decoded.date, "00:00", campaign.timezone || "Asia/Ho_Chi_Minh");
+      const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+
+      const slots = await MarketingCampaignSlotModel.find({
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+        scheduledAt: { $gte: startOfDay, $lt: endOfDay }
+      }).populate("selectedCandidateId").lean();
+
+      const slotsWithContent = await Promise.all(slots.map(async (slot) => {
+        let content = null;
+        if (slot.marketingContentId) {
+          content = await MarketingContentModel.findOne({
+            _id: slot.marketingContentId,
+            companyCode: decoded.companyCode,
+          }).lean();
+        }
+        const candidateDoc = slot.selectedCandidateId as unknown as {
+          _id: mongoose.Types.ObjectId;
+          variant: string;
+        } | null;
+        return {
+          ...slot,
+          content,
+          variant: candidateDoc?.variant || null
+        };
+      }));
+
+      return { campaign, slots: slotsWithContent, date: decoded.date };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
+    }
+  },
+
+  async executePublicDailySlotAction(token: string, slotId: string, action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; date: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.date || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(slotId)) {
+        throw new Error("ID slot không hợp lệ.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (slot.status !== "pending_approval") {
+        throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
+      }
+
+      if (action === "approve") {
+        slot.status = "ready_to_publish";
+        slot.approvedBy = "External Reviewer (Daily)";
+        slot.approvedAt = new Date();
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "ready_to_publish",
+          reason: "Approved by external reviewer via public daily link",
+          at: new Date(),
+        });
+      } else if (action === "reject") {
+        slot.status = "needs_attention";
+        slot.lastError = {
+          type: "validation",
+          message: reason || "Từ chối bởi người duyệt bên ngoài (Daily).",
+          occurredAt: new Date(),
+        };
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "needs_attention",
+          reason: `Rejected by external reviewer via daily link: ${reason || "Không có lý do."}`,
+          at: new Date(),
+        });
+      } else {
+        throw new Error("Thao tác không hợp lệ.");
+      }
+
+      await slot.save();
+      return slot;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác phê duyệt thất bại.");
+    }
+  },
+
+  async updatePublicDailySlotContent(token: string, slotId: string, updates: { title?: string; bodyText?: string }) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; date: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.date || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(slotId)) {
+        throw new Error("ID slot không hợp lệ.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (!["pending_approval", "needs_attention", "failed"].includes(slot.status)) {
+        throw new Error(`Không thể chỉnh sửa nội dung ở trạng thái hiện tại (${slot.status}).`);
+      }
+
+      let content = null;
+      if (slot.marketingContentId) {
+        content = await MarketingContentModel.findOne({
+          _id: slot.marketingContentId,
+          companyCode: decoded.companyCode,
+        });
+      }
+
+      if (!content) {
+        content = new MarketingContentModel({
+          campaignId: decoded.campaignId,
+          companyCode: decoded.companyCode,
+          mediaType: slot.platform === "TikTok" ? "video" : "image",
+          mediaUrls: [],
+          createdAt: new Date(),
+        });
+        await content.save();
+        slot.marketingContentId = content._id;
+        await slot.save();
+      }
+
+      if (updates.title !== undefined) {
+        content.title = updates.title;
+      }
+      if (updates.bodyText !== undefined) {
+        content.bodyText = updates.bodyText;
+      }
+      await content.save();
+
+      return { slot, content };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Cập nhật nội dung thất bại.");
+    }
+  },
+
+  async generateMonthlyShareLink(companyCode: string, campaignId: string, startDate: string, endDate: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      throw new Error("ID chiến dịch không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode });
+    if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+    // Sign token valid for 30 days
+    const token = jwt.sign(
+      { campaignId, startDate, endDate, companyCode },
+      process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key",
+      { expiresIn: "30d" }
+    );
+
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    if (baseUrl.endsWith("/")) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+
+    return { shareLink: `${baseUrl}/approve-posts-month?token=${token}` };
+  },
+
+  async getPublicMonthlySlotsDetail(token: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; startDate: string; endDate: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.startDate || !decoded.endDate || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      const campaign = await MarketingCampaignModel.findOne({
+        _id: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+      // Calculate start and end boundary in campaign's timezone
+      const startDateTime = zonedLocalTimeToUtc(decoded.startDate, "00:00", campaign.timezone || "Asia/Ho_Chi_Minh");
+      const endDateTime = zonedLocalTimeToUtc(decoded.endDate, "23:59", campaign.timezone || "Asia/Ho_Chi_Minh");
+
+      const slots = await MarketingCampaignSlotModel.find({
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+        scheduledAt: { $gte: startDateTime, $lte: endDateTime }
+      }).populate("selectedCandidateId").lean();
+
+      const slotsWithContent = await Promise.all(slots.map(async (slot) => {
+        let content = null;
+        if (slot.marketingContentId) {
+          content = await MarketingContentModel.findOne({
+            _id: slot.marketingContentId,
+            companyCode: decoded.companyCode,
+          }).lean();
+        }
+        const candidateDoc = slot.selectedCandidateId as unknown as {
+          _id: mongoose.Types.ObjectId;
+          variant: string;
+        } | null;
+        return {
+          ...slot,
+          content,
+          variant: candidateDoc?.variant || null
+        };
+      }));
+
+      return { campaign, slots: slotsWithContent, startDate: decoded.startDate, endDate: decoded.endDate };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Token không hợp lệ hoặc đã hết hạn.");
+    }
+  },
+
+  async executePublicMonthlySlotAction(token: string, slotId: string, action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; startDate: string; endDate: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.startDate || !decoded.endDate || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(slotId)) {
+        throw new Error("ID slot không hợp lệ.");
+      }
+
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: slotId,
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+      if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+      if (slot.status !== "pending_approval") {
+        throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
+      }
+
+      if (action === "approve") {
+        slot.status = "ready_to_publish";
+        slot.approvedBy = "External Reviewer (Monthly)";
+        slot.approvedAt = new Date();
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "ready_to_publish",
+          reason: "Approved by external reviewer via public monthly link",
+          at: new Date(),
+        });
+      } else if (action === "reject") {
+        if (!reason || !reason.trim()) {
+          throw new Error("Vui lòng nhập lý do từ chối bài viết.");
+        }
+        slot.status = "needs_attention";
+        slot.lastError = {
+          type: "validation",
+          message: reason.trim(),
+          occurredAt: new Date(),
+        };
+        slot.transitions.push({
+          from: "pending_approval",
+          to: "needs_attention",
+          reason: `Rejected by external reviewer via monthly link: ${reason.trim()}`,
+          at: new Date(),
+        });
+      } else {
+        throw new Error("Thao tác không hợp lệ.");
+      }
+
+      await slot.save();
+      return slot;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác phê duyệt thất bại.");
+    }
+  },
+
+  async executePublicMonthlyBulkAction(token: string, slotIds: string[], action: "approve" | "reject", reason?: string) {
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key"
+      ) as { campaignId: string; startDate: string; endDate: string; companyCode: string };
+
+      if (!decoded.campaignId || !decoded.startDate || !decoded.endDate || !decoded.companyCode) {
+        throw new Error("Token không chứa đầy đủ thông tin.");
+      }
+
+      if (!Array.isArray(slotIds) || slotIds.length === 0) {
+        throw new Error("Danh sách slot không hợp lệ.");
+      }
+
+      if (action === "reject" && (!reason || !reason.trim())) {
+        throw new Error("Vui lòng nhập lý do từ chối hàng loạt bài viết.");
+      }
+
+      const slots = await MarketingCampaignSlotModel.find({
+        _id: { $in: slotIds },
+        campaignId: decoded.campaignId,
+        companyCode: decoded.companyCode,
+      });
+
+      let processed = 0;
+      let skipped = 0;
+
+      for (const slot of slots) {
+        if (slot.status !== "pending_approval") {
+          skipped++;
+          continue;
+        }
+
+        if (action === "approve") {
+          slot.status = "ready_to_publish";
+          slot.approvedBy = "External Reviewer (Monthly Bulk)";
+          slot.approvedAt = new Date();
+          slot.transitions.push({
+            from: "pending_approval",
+            to: "ready_to_publish",
+            reason: "Approved by external reviewer via monthly bulk action",
+            at: new Date(),
+          });
+        } else if (action === "reject") {
+          slot.status = "needs_attention";
+          slot.lastError = {
+            type: "validation",
+            message: reason!.trim(),
+            occurredAt: new Date(),
+          };
+          slot.transitions.push({
+            from: "pending_approval",
+            to: "needs_attention",
+            reason: `Rejected by external reviewer via monthly bulk action: ${reason!.trim()}`,
+            at: new Date(),
+          });
+        }
+        await slot.save();
+        processed++;
+      }
+
+      return { processed, skipped };
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : "Thao tác hàng loạt thất bại.");
+    }
+  },
+
+  async batchPrepareMonth(companyCode: string, campaignId: string, startDate: string, endDate: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) {
+      throw new Error("ID chiến dịch không hợp lệ.");
+    }
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode });
+    if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
+
+    // Calculate start and end boundary in campaign's timezone
+    const startDateTime = zonedLocalTimeToUtc(startDate, "00:00", campaign.timezone || "Asia/Ho_Chi_Minh");
+    const endDateTime = zonedLocalTimeToUtc(endDate, "23:59", campaign.timezone || "Asia/Ho_Chi_Minh");
+
+    const slots = await MarketingCampaignSlotModel.find({
+      campaignId,
+      companyCode,
+      scheduledAt: { $gte: startDateTime, $lte: endDateTime },
+      status: { $in: ["planned", "retrying", "failed", "needs_attention"] }
+    });
+
+    let enqueued = 0;
+    const now = new Date();
+
+    for (const slot of slots) {
+      slot.prepareAt = now;
+      slot.status = "planned";
+      slot.attemptCount = 0;
+      slot.lockId = null;
+      slot.lockedAt = null;
+      slot.lockExpiresAt = null;
+      slot.lastError = undefined;
+      slot.transitions.push({
+        from: slot.status,
+        to: "planned",
+        reason: "Reset slot for batch generation by marketer",
+        at: now,
+      });
+      await slot.save();
+      enqueued++;
+    }
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { campaignQueueService } = require("../queue/campaign-queue");
+      const hasRedis = await campaignQueueService.checkRedis();
+      if (hasRedis) {
+        for (const slot of slots) {
+          await campaignQueueService.addPrepareJob(String(slot._id));
+        }
+      }
+    } catch (e) {
+      console.warn("[Batch Prepare] BullMQ not initialized or failed, slots will be picked up by legacy worker polling.", e);
+    }
+
+    return { enqueued, skipped: 0 };
   }
 };

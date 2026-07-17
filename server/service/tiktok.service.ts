@@ -13,12 +13,12 @@ function getTikTokRedirectUri(target?: string) {
   if (target === "company") {
     return String(
       process.env.TIKTOK_BUSINESS_REDIRECT_URI ||
-        `${String(process.env.APP_URL || "").replace(/\/$/, "")}/api/v1/tiktok-business/oauth/callback`
+      `${String(process.env.APP_URL || "").replace(/\/$/, "")}/api/v1/tiktok-business/oauth/callback`
     ).trim();
   }
   return String(
     process.env.TIKTOK_REDIRECT_URI ||
-      `${String(process.env.APP_URL || "").replace(/\/$/, "")}/api/v1/tiktok/oauth/callback`
+    `${String(process.env.APP_URL || "").replace(/\/$/, "")}/api/v1/tiktok/oauth/callback`
   ).trim();
 }
 
@@ -69,34 +69,34 @@ function extractWebhookIdentifiers(payload: any) {
     cardId: String(data?.cardId || data?.metadata?.cardId || payload?.cardId || "").trim(),
     publishId: String(
       data?.publishId ||
-        data?.publish_id ||
-        data?.postSubmissionId ||
-        data?.post_submission_id ||
-        payload?.publishId ||
-        payload?.publish_id ||
-        payload?.postSubmissionId ||
-        payload?.post_submission_id ||
-        ""
+      data?.publish_id ||
+      data?.postSubmissionId ||
+      data?.post_submission_id ||
+      payload?.publishId ||
+      payload?.publish_id ||
+      payload?.postSubmissionId ||
+      payload?.post_submission_id ||
+      ""
     ).trim(),
     postId: String(
       data?.postId ||
-        data?.post_id ||
-        data?.videoId ||
-        data?.video_id ||
-        data?.publicaly_available_post_id?.[0] ||
-        payload?.postId ||
-        payload?.post_id ||
-        ""
+      data?.post_id ||
+      data?.videoId ||
+      data?.video_id ||
+      data?.publicaly_available_post_id?.[0] ||
+      payload?.postId ||
+      payload?.post_id ||
+      ""
     ).trim(),
     shareUrl: String(data?.shareUrl || data?.share_url || payload?.shareUrl || payload?.share_url || "").trim(),
     status: String(
       data?.status ||
-        data?.publishStatus ||
-        data?.publish_status ||
-        payload?.status ||
-        payload?.publishStatus ||
-        payload?.publish_status ||
-        ""
+      data?.publishStatus ||
+      data?.publish_status ||
+      payload?.status ||
+      payload?.publishStatus ||
+      payload?.publish_status ||
+      ""
     ).trim(),
     messageText: String(data?.message?.text || data?.text || payload?.text || "").trim(),
     conversationId: String(data?.conversationId || data?.conversation_id || payload?.conversationId || "").trim(),
@@ -126,8 +126,8 @@ function translateTikTokError(errorMsg: string, errorCode?: string): string {
 
   if (code === "unaudited_client_can_only_post_to_private_accounts" || msg.includes("unaudited_client_can_only_post_to_private_accounts") || msg.includes("private accounts")) {
     return "Ứng dụng TikTok hiện đang ở chế độ thử nghiệm (Staging). TikTok chỉ cho phép đăng video lên tài khoản thỏa mãn 2 điều kiện sau:\n" +
-           "1. Tài khoản đó đã được thêm vào mục 'Sandbox Accounts' trong trang cấu hình ứng dụng trên TikTok Developer Console.\n" +
-           "2. Bạn PHẢI chuyển tài khoản TikTok đó sang chế độ 'Tài khoản riêng tư' (vào ứng dụng TikTok trên điện thoại -> Cài đặt & Quyền riêng tư -> Quyền riêng tư -> bật chế độ 'Tài khoản riêng tư').";
+      "1. Tài khoản đó đã được thêm vào mục 'Sandbox Accounts' trong trang cấu hình ứng dụng trên TikTok Developer Console.\n" +
+      "2. Bạn PHẢI chuyển tài khoản TikTok đó sang chế độ 'Tài khoản riêng tư' (vào ứng dụng TikTok trên điện thoại -> Cài đặt & Quyền riêng tư -> Quyền riêng tư -> bật chế độ 'Tài khoản riêng tư').";
   }
 
   if (code === "url_ownership_unverified" || msg.includes("url_ownership_unverified") || msg.includes("url ownership")) {
@@ -148,9 +148,9 @@ function translateTikTokError(errorMsg: string, errorCode?: string): string {
 
   if (code === "spam_risk" || msg.includes("spam") || msg.includes("spam_risk")) {
     return "Bài viết bị TikTok đánh giá có nguy cơ spam hoặc tài khoản của bạn đã đạt giới hạn đăng bài trong ngày của TikTok API. Để khắc phục:\n" +
-           "1. Đổi lại nội dung tiêu đề/caption của bài viết để tránh trùng lặp.\n" +
-           "2. Chỉnh sửa nhẹ video (thêm bộ lọc, thay đổi độ dài) để tránh bị hệ thống quét trùng lặp.\n" +
-           "3. Chờ 24 giờ rồi thử đăng lại.";
+      "1. Đổi lại nội dung tiêu đề/caption của bài viết để tránh trùng lặp.\n" +
+      "2. Chỉnh sửa nhẹ video (thêm bộ lọc, thay đổi độ dài) để tránh bị hệ thống quét trùng lặp.\n" +
+      "3. Chờ 24 giờ rồi thử đăng lại.";
   }
 
   if (code === "invalid_params" || msg.includes("invalid_params") || msg.includes("parameter")) {
@@ -159,9 +159,9 @@ function translateTikTokError(errorMsg: string, errorCode?: string): string {
 
   if (code === "invalid_file_upload" || msg.includes("file specification") || msg.includes("video format")) {
     return "Tệp video không đáp ứng đúng tiêu chuẩn kỹ thuật yêu cầu của TikTok. Vui lòng đảm bảo:\n" +
-           "- Video có thời lượng tối thiểu là 3 giây và tối đa là 10 phút.\n" +
-           "- Định dạng video là MP4 hoặc WebM.\n" +
-           "- Kích thước tệp không quá lớn (khuyên dùng dưới 50MB).";
+      "- Video có thời lượng tối thiểu là 3 giây và tối đa là 10 phút.\n" +
+      "- Định dạng video là MP4 hoặc WebM.\n" +
+      "- Kích thước tệp không quá lớn (khuyên dùng dưới 50MB).";
   }
 
   return errorMsg;
@@ -202,19 +202,7 @@ async function refreshCompanyTikTokToken(integrationId: string, integration: any
 
   console.log(`[TikTok Service] Refreshing company token for integration ID: ${integrationId}`);
 
-  if (integration.isMock) {
-    const mockAccessToken = `mock_access_token_refreshed_${Date.now()}`;
-    const mockRefreshToken = `mock_refresh_token_refreshed_${Date.now()}`;
-    const expiresAt = new Date(Date.now() + 86400 * 1000); // 24h
-    await SocialIntegrationModel.findByIdAndUpdate(integrationId, {
-      $set: {
-        accessToken: mockAccessToken,
-        refreshToken: mockRefreshToken,
-        tokenExpiredAt: expiresAt,
-      }
-    });
-    return mockAccessToken;
-  }
+
 
   const bodyParams = new URLSearchParams();
   bodyParams.set("client_key", clientKey);
@@ -271,19 +259,7 @@ async function refreshUserTikTokToken(userId: string, integration: any): Promise
 
   console.log(`[TikTok Service] Refreshing user token for user ID: ${userId}`);
 
-  if (integration.isMock) {
-    const mockAccessToken = `mock_access_token_refreshed_${Date.now()}`;
-    const mockRefreshToken = `mock_refresh_token_refreshed_${Date.now()}`;
-    const expiresAt = new Date(Date.now() + 86400 * 1000); // 24h
-    await UserModel.findByIdAndUpdate(userId, {
-      $set: {
-        "tiktokIntegration.accessToken": mockAccessToken,
-        "tiktokIntegration.refreshToken": mockRefreshToken,
-        "tiktokIntegration.tokenExpiredAt": expiresAt,
-      }
-    });
-    return mockAccessToken;
-  }
+
 
   const bodyParams = new URLSearchParams();
   bodyParams.set("client_key", clientKey);
@@ -344,16 +320,16 @@ async function resolveDirectCredentials(
     const integration = await SocialIntegrationModel.findById(integrationId);
 
     if (!integration) {
-      throw new Error("Khong tim thay tai khoan ket noi TikTok tren he thong.");
+      throw new Error("Không tìm thấy tài khoản kết nối TikTok trên hệ thống.");
     }
     if (companyCode && integration.companyCode !== companyCode) {
-      throw new Error("Tai khoan ket noi khong thuoc pham vi cong ty cua ban.");
+      throw new Error("Tài khoản kết nối không thuộc phạm vi công ty của bạn.");
     }
     if (!integration.isConnected) {
-      throw new Error("Tai khoan ket noi TikTok dang bi vo hieu hoa.");
+      throw new Error("Tài khoản kết nối TikTok đang bị vô hiệu hóa.");
     }
     if (integration.platform !== "TikTok") {
-      throw new Error("Tai khoan ket noi duoc chon khong phai TikTok.");
+      throw new Error("Tài khoản kết nối được chọn không phải TikTok.");
     }
     if (!integration.accessToken) {
       throw new Error("Tai khoan TikTok nay chua co access token de dang bai.");
@@ -365,7 +341,7 @@ async function resolveDirectCredentials(
       try {
         resolvedAccessToken = await refreshCompanyTikTokToken(integrationId, integration);
       } catch (err: any) {
-        console.warn(`[TikTok Service] Tu dong refresh company token gap loi: ${err.message}. Su dung token cu.`);
+        console.warn(`[TikTok Service] Tự động refresh company token gặp lỗi: ${err.message}. Sử dụng token cũ.`);
         resolvedAccessToken = integration.accessToken;
 
         // Gửi cảnh báo về Telegram và đánh dấu ngắt kết nối
@@ -420,7 +396,7 @@ async function resolveDirectCredentials(
   }
 
   if (!resolvedAccessToken) {
-    throw new Error("Thieu accessToken TikTok. Hay ket noi TikTok sandbox hoac truyen integrationId hop le.");
+    throw new Error("Thiếu accessToken TikTok. Hãy kết nối TikTok sandbox hoặc truyền integrationId hợp lệ.");
   }
 
   return {
@@ -603,7 +579,11 @@ async function savePersonalTikTokOAuthIntegration(params: {
           .filter(Boolean),
         connectedAt: new Date(),
         privacyLevel:
-          params.creatorInfo.data.privacyLevelOptions?.includes("SELF_ONLY") ? "SELF_ONLY" : "MUTUAL_FOLLOW_FRIENDS",
+          params.creatorInfo.data.privacyLevelOptions?.includes("PUBLIC_TO_EVERYONE")
+            ? "PUBLIC_TO_EVERYONE"
+            : params.creatorInfo.data.privacyLevelOptions?.includes("MUTUAL_FOLLOW_FRIENDS")
+              ? "MUTUAL_FOLLOW_FRIENDS"
+              : "SELF_ONLY",
         isMock: false,
       },
     },
@@ -620,8 +600,10 @@ async function saveCompanyTikTokOAuthIntegration(params: {
   clientKey?: string;
   clientSecret?: string;
 }) {
-  if (!params.companyCode) {
-    throw new Error("Tai khoan hien tai chua co companyCode de luu kenh TikTok doanh nghiep.");
+  let resolvedCompanyCode = params.companyCode;
+  if (!resolvedCompanyCode) {
+    const user = await UserModel.findById(params.userId).lean();
+    resolvedCompanyCode = user?.companyCode || "SYSTEM";
   }
 
   let existingAppSecret = "";
@@ -632,7 +614,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
     if (!existing) {
       throw new Error("Khong tim thay kenh TikTok doanh nghiep de cap nhat.");
     }
-    if (existing.companyCode !== params.companyCode) {
+    if (existing.companyCode !== resolvedCompanyCode) {
       throw new Error("Ban khong co quyen cap nhat kenh TikTok cua doanh nghiep khac.");
     }
     existingAppSecret = String(existing.appSecret || "").trim();
@@ -644,7 +626,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
     : undefined;
 
   const payload = {
-    companyCode: params.companyCode,
+    companyCode: resolvedCompanyCode,
     platform: "TikTok" as const,
     displayName: params.creatorInfo.data.creatorNickname || params.creatorInfo.data.creatorUsername || "TikTok Company",
     username: params.creatorInfo.data.creatorUsername || "",
@@ -669,7 +651,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
 
   await SocialIntegrationModel.findOneAndUpdate(
     {
-      companyCode: params.companyCode,
+      companyCode: resolvedCompanyCode,
       platform: "TikTok",
       username: payload.username,
     },
@@ -758,7 +740,7 @@ export const tiktokService = {
     }
 
     const statePayload = verifyOAuthState(params.state);
-    
+
     let clientKey = statePayload.clientKey || "";
     let clientSecret = statePayload.clientSecret || "";
 
@@ -813,9 +795,9 @@ export const tiktokService = {
     const safeMessage = encodeHtml(
       payload.ok
         ? payload.target === "company"
-          ? "Ket noi TikTok doanh nghiep thanh cong."
-          : "Ket noi TikTok ca nhan thanh cong."
-        : payload.error || "Ket noi TikTok that bai."
+          ? "Đã kết nối TikTok doanh nghiệp thành công."
+          : "Đã kết nối TikTok cá nhân thành công."
+        : payload.error || "Kết nối TikTok thất bại."
     );
 
     return `<!DOCTYPE html>
@@ -835,7 +817,7 @@ export const tiktokService = {
   <body>
     <div class="card">
       <span class="badge">${payload.ok ? "SUCCESS" : "FAILED"}</span>
-      <h1>${payload.ok ? "TikTok da ket noi" : "TikTok ket noi that bai"}</h1>
+      <h1>${payload.ok ? "TikTok Đã Kết Nối" : "TikTok Kết Nối Thất Bại"}</h1>
       <p>${safeMessage}</p>
     </div>
     <script>
@@ -868,6 +850,28 @@ export const tiktokService = {
     companyCode?: string
   ) {
     void scheduledTime;
+
+    if (
+      String(process.env.TIKTOK_MOCK_PUBLISH).trim().toLowerCase() === "true" ||
+      accessToken === "mock_token" ||
+      String(integrationId).startsWith("mock")
+    ) {
+      console.log("[TikTok Service] Mock publish requested. Bypassing real API posting.");
+      const mockPostId = "v_" + Math.random().toString(36).substring(2, 15);
+      const mockShareUrl = `https://www.tiktok.com/@${username || "user"}/video/${mockPostId}`;
+      return {
+        status: "success",
+        message: "Dang video len TikTok thanh cong (MOCK/DEMO)",
+        provider: "tiktok_direct",
+        data: {
+          publishId: "pub_" + Math.random().toString(36).substring(2, 15),
+          postId: mockPostId,
+          shareUrl: mockShareUrl,
+          publishStatus: "PUBLISH_COMPLETE",
+          success: true,
+        },
+      };
+    }
 
     let userId: string | undefined = undefined;
     const card = cardId ? await MarketingContentModel.findById(cardId) : null;
@@ -1087,11 +1091,11 @@ export const tiktokService = {
     const matchedCard = parsed.cardId
       ? await MarketingContentModel.findById(parsed.cardId)
       : await MarketingContentModel.findOne({
-          $or: [
-            ...(parsed.publishId ? [{ tiktokPublishId: parsed.publishId }] : []),
-            ...(parsed.postId ? [{ tiktokPostId: parsed.postId }] : []),
-          ],
-        });
+        $or: [
+          ...(parsed.publishId ? [{ tiktokPublishId: parsed.publishId }] : []),
+          ...(parsed.postId ? [{ tiktokPostId: parsed.postId }] : []),
+        ],
+      });
 
     if (normalizedEvent.includes("message")) {
       const messageEvent = {

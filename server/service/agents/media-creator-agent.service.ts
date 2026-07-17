@@ -1,6 +1,7 @@
 import { IMarketingCampaignSlot } from "../../interface/marketing-campaign-slot.interface";
 import { IMarketingCampaign } from "../../interface/marketing-campaign.interface";
 import { MarketingContentModel } from "../../model/marketing-content.model";
+import { MarketingCampaignModel } from "../../model/marketing-campaign.model";
 import { geminiService } from "../gemini.service";
 import { piapiService } from "../piapi.service";
 import { API_COSTS, walletService } from "../wallet.service";
@@ -23,6 +24,10 @@ export class MediaCreatorAgentService {
       throw new Error("Thiếu nội dung bài đăng hoặc Visual Prompt để tạo media.");
     }
 
+    if (content.videoUrl || content.imageUrl) {
+      return content.videoUrl || content.imageUrl || "";
+    }
+
     const isBudget = campaign.qualityMode === "budget";
 
     if (slot.mediaType === "video" || slot.mediaType === "human-video") {
@@ -34,7 +39,7 @@ export class MediaCreatorAgentService {
 
         const model = process.env.GEMINI_VIDEO_MODEL || "veo31-video-fast-audio";
         console.log(`[MediaCreatorAgent] Generating video for slot ${slot._id} (Prompt: "${content.mediaPrompt}", Model: ${model})...`);
-        
+
         const videoResult = await piapiService.generateVideo(
           content.mediaPrompt,
           model,
@@ -47,7 +52,18 @@ export class MediaCreatorAgentService {
         }
 
         // Deduct balance
-        await walletService.deductBalance(campaign.createdBy, videoCost, "Tạo video cho chiến dịch tự động (MediaCreatorAgent)");
+        const billing = await walletService.deductBalance(
+          campaign.createdBy,
+          videoCost,
+          "Tạo video cho chiến dịch tự động (MediaCreatorAgent)",
+          `${campaign._id}:${slot._id}:media:video`
+        );
+        if (billing?.charged) {
+          await MarketingCampaignModel.updateOne(
+            { _id: campaign._id, companyCode: campaign.companyCode },
+            { $inc: { "statistics.actualCost": videoCost } }
+          );
+        }
 
         content.videoUrl = videoResult.url;
         await content.save();
@@ -82,7 +98,18 @@ export class MediaCreatorAgentService {
         }
 
         // Deduct balance
-        await walletService.deductBalance(campaign.createdBy, imageCost, "Tạo ảnh cho chiến dịch tự động (MediaCreatorAgent)");
+        const billing = await walletService.deductBalance(
+          campaign.createdBy,
+          imageCost,
+          "Tạo ảnh cho chiến dịch tự động (MediaCreatorAgent)",
+          `${campaign._id}:${slot._id}:media:image`
+        );
+        if (billing?.charged) {
+          await MarketingCampaignModel.updateOne(
+            { _id: campaign._id, companyCode: campaign.companyCode },
+            { $inc: { "statistics.actualCost": imageCost } }
+          );
+        }
 
         content.imageUrl = image.url;
         await content.save();

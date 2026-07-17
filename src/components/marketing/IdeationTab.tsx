@@ -703,7 +703,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               caption,
               updatedCard.videoUrl,
               !!integration?.isMock,
-              "SELF_ONLY",
+              integration?.privacyLevel || "PUBLIC_TO_EVERYONE",
               {
                 integrationId: integration?._id,
                 accessToken: integration?.accessToken,

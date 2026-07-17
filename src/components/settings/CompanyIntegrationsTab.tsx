@@ -24,7 +24,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
   const [loadingZaloDiagnostics, setLoadingZaloDiagnostics] = useState(false);
   const [zaloDiagnostics, setZaloDiagnostics] = useState<any | null>(null);
   const [connectingTikTokOAuth, setConnectingTikTokOAuth] = useState(false);
-  const [showTTOauthModal, setShowTTOauthModal] = useState(false);
+  const [showAdvancedTikTok, setShowAdvancedTikTok] = useState(false);
 
   // Company members integrations state
   const [companyUsers, setCompanyUsers] = useState<any[]>([]);
@@ -129,23 +129,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         return;
       }
 
-      if (payload.profile?.username === "igen_marketing_sandbox") {
-        try {
-          await socialIntegrationService.createIntegration({
-            platform: "TikTok",
-            displayName: payload.profile.displayName,
-            username: payload.profile.username,
-            accessToken: "mock_sandbox_access_token",
-            refreshToken: "mock_sandbox_refresh_token",
-            isConnected: true,
-            isMock: true,
-            createdBy: userProfile?.email || "system",
-          });
-        } catch (e: any) {
-          console.error("Lỗi lưu mock TikTok integration:", e);
-        }
-      }
-
       await fetchCompanyIntegrations();
       toast.success(`Đã kết nối TikTok doanh nghiệp: ${payload.profile?.displayName || payload.profile?.username || "TikTok"}`);
     };
@@ -173,7 +156,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
     companyUsers.forEach((u) => {
       const name = u.displayName || u.email || "Thành viên";
-      
+
       if (u.facebookIntegration?.isConnected) {
         list.push({
           userId: u._id || u.uid,
@@ -209,23 +192,18 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     return list;
   }, [companyUsers]);
 
-  const handleTikTokOAuth = async (mode: "real" | "sandbox" = "real") => {
+  const handleTikTokOAuth = async () => {
     setConnectingTikTokOAuth(true);
     try {
       localStorage.removeItem("tt_oauth_result");
-      let authUrl = "";
-      if (mode === "sandbox") {
-        authUrl = `/tiktok-sandbox-oauth?target=company`;
-      } else {
-        authUrl = await socialIntegrationService.getTikTokOAuthUrl(
-          "company",
-          compPlatform === "TikTok" && editingIntegrationId ? editingIntegrationId : undefined,
-          compVerifyToken.trim() || undefined,
-          compAppSecret.trim() || undefined
-        );
-      }
+      const authUrl = await socialIntegrationService.getTikTokOAuthUrl(
+        "company",
+        compPlatform === "TikTok" && editingIntegrationId ? editingIntegrationId : undefined,
+        compVerifyToken.trim() || undefined,
+        compAppSecret.trim() || undefined
+      );
       if (!authUrl) {
-        throw new Error("Khong tao duoc link dang nhap TikTok.");
+        throw new Error("Không tạo được link đăng nhập TikTok.");
       }
 
       const width = 620;
@@ -239,7 +217,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       );
 
       if (!oauthWindow) {
-        throw new Error("Trinh duyet dang chan popup TikTok.");
+        throw new Error("Trình duyệt đang chặn popup TikTok.");
       }
 
       const checkInterval = setInterval(() => {
@@ -250,25 +228,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
           try {
             const payload = JSON.parse(rawResult);
             if (payload?.target === "company" && payload?.ok) {
-              if (payload.profile?.username === "igen_marketing_sandbox") {
-                // Đây là tài khoản mock/sandbox, tự gọi lưu trực tiếp
-                socialIntegrationService.createIntegration({
-                  platform: "TikTok",
-                  displayName: payload.profile.displayName,
-                  username: payload.profile.username,
-                  accessToken: "mock_sandbox_access_token",
-                  refreshToken: "mock_sandbox_refresh_token",
-                  isConnected: true,
-                  isMock: true,
-                  createdBy: userProfile?.email || "system",
-                }).then(() => {
-                  void fetchCompanyIntegrations();
-                }).catch(e => {
-                  console.error("Lỗi lưu mock TikTok integration:", e);
-                });
-              } else {
-                void fetchCompanyIntegrations();
-              }
+              void fetchCompanyIntegrations();
               toast.success(`Đã kết nối TikTok doanh nghiệp: ${payload.profile?.displayName || payload.profile?.username || "TikTok"}`);
             } else if (payload?.ok === false) {
               toast.error(payload.error || "Kết nối TikTok thất bại.");
@@ -292,7 +252,48 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     }
   };
 
-  // Lưu Fanpage Facebook sau khi lấy được token từ OAuth
+  // Lưu danh sách Fanpage Facebook sau khi hoàn tất OAuth
+  const handleFacebookPagesSelected = async (pages: any[]) => {
+    console.log("[Facebook OAuth] Bắt đầu xử lý danh sách Fanpages:", pages);
+    if (!pages || pages.length === 0) {
+      toast.error("Không tìm thấy Fanpage nào được cấp quyền.");
+      return;
+    }
+
+    toast.info(`Đang kết nối ${pages.length} Fanpage đã chọn...`);
+    let successCount = 0;
+
+    for (const page of pages) {
+      if (!page.id || !page.access_token) {
+        console.warn("[Facebook OAuth] Bỏ qua Fanpage không hợp lệ:", page);
+        continue;
+      }
+      try {
+        console.log(`[Facebook OAuth] Đang lưu Fanpage: ${page.name} (ID: ${page.id})`);
+        await socialIntegrationService.createIntegration({
+          platform: "Facebook",
+          displayName: page.name || `Fanpage ${page.id}`,
+          username: page.id,
+          accessToken: page.access_token,
+          isConnected: true,
+          createdBy: userProfile?.email || "system",
+        });
+        successCount++;
+      } catch (err: any) {
+        console.error(`[Facebook OAuth] Lỗi kết nối Fanpage ${page.name || page.id}:`, err);
+        toast.error(`Không thể kết nối Trang ${page.name || page.id}: ${err.message || "Lỗi không xác định"}`);
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`✅ Đã kết nối thành công ${successCount}/${pages.length} Fanpage!`);
+      void fetchCompanyIntegrations();
+    } else {
+      toast.error("Không kết nối được Fanpage nào. Vui lòng kiểm tra lại quyền ứng dụng.");
+    }
+  };
+
+  // Lưu Fanpage Facebook sau khi lấy được token từ OAuth (Fallback đơn lẻ)
   const handleFacebookPageSelected = async (page: any) => {
     if (!page || !page.id || !page.access_token) {
       toast.error("Dữ liệu Fanpage trả về không hợp lệ.");
@@ -323,26 +324,37 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       // Xóa kết quả cũ trong localStorage
       localStorage.removeItem("fb_oauth_result");
 
-      // Lấy App ID từ server (lưu trong .env của VPS, không cần user nhập)
+      // Lấy App ID và thông tin tổ chức từ server
       const configRes = await fetch("/api/v1/facebook/config", {
         headers: { "Authorization": `Bearer ${getAccessToken()}` }
       });
       const configData = await configRes.json().catch(() => ({}));
       const appId = configData.appId;
+      const companyCode = configData.companyCode || "default";
+      const createdBy = configData.createdBy || "system";
 
       if (!appId) {
         toast.error("Hệ thống chưa cấu hình Facebook App ID. Liên hệ quản trị viên.");
         return;
       }
 
+      // Tạo state JSON mã hóa để gửi sang Facebook (tránh mất thông tin doanh nghiệp khi redirect về callback)
+      const stateObj = {
+        companyCode,
+        createdBy,
+        integrationId: ""
+      };
+      const stateStr = encodeURIComponent(JSON.stringify(stateObj));
+
       const redirectUri = `${window.location.origin}/api/v1/facebook/oauth-callback`;
-      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list`;
+      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_messaging,pages_manage_engagement,read_insights&state=${stateStr}`;
 
       const width = 600;
-      const height = 650;
+      const height = 800;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
 
+      console.log("[Facebook OAuth] Đang mở popup với redirectUri:", redirectUri, "và state:", stateObj);
       const oauthWindow = window.open(
         oauthUrl,
         "FacebookOAuthPopup",
@@ -353,12 +365,15 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       const checkInterval = setInterval(() => {
         const rawResult = localStorage.getItem("fb_oauth_result");
         if (rawResult) {
+          console.log("[Facebook OAuth] Phát hiện kết quả trong localStorage:", rawResult);
           clearInterval(checkInterval);
           localStorage.removeItem("fb_oauth_result");
           try {
             const result = JSON.parse(rawResult);
             if (result.type === "FACEBOOK_PAGE_SELECTED" && result.page) {
               handleFacebookPageSelected(result.page);
+            } else if (result.type === "FACEBOOK_PAGES_SELECTED" && result.pages) {
+              handleFacebookPagesSelected(result.pages);
             } else if (result.type === "FACEBOOK_OAUTH_FAILED") {
               toast.error(`Kết nối Facebook thất bại: ${result.error || "Lỗi không xác định"}`);
             }
@@ -368,9 +383,14 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         }
 
         if (oauthWindow && oauthWindow.closed) {
+          console.log("[Facebook OAuth] Cửa sổ popup đã đóng. Dừng checkInterval và làm mới danh sách.");
           clearInterval(checkInterval);
+          // Fallback kích hoạt tải lại danh sách sau khi popup đóng để đảm bảo hiển thị trang vừa kết nối
+          setTimeout(() => {
+            void fetchCompanyIntegrations();
+          }, 800);
         }
-      }, 800);
+      }, 400); // Tăng tần suất kiểm tra lên 400ms để tránh race condition
     } catch (err: any) {
       console.error("Lỗi mở Facebook OAuth:", err);
       toast.error("Không thể mở cửa sổ đăng nhập Facebook.");
@@ -380,11 +400,18 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
   // Lắng nghe sự kiện callback từ cửa sổ popup gửi về
   useEffect(() => {
     const handleOAuthMessage = async (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+      console.log("[Facebook OAuth] Nhận event.data từ message listener:", event.data);
+      if (event.origin !== window.location.origin) {
+        console.warn("[Facebook OAuth] Bỏ qua message do sai origin:", event.origin, "vs", window.location.origin);
+        return;
+      }
 
       if (event.data && event.data.type === "FACEBOOK_PAGE_SELECTED") {
         const page = event.data.page;
         handleFacebookPageSelected(page);
+      } else if (event.data && event.data.type === "FACEBOOK_PAGES_SELECTED") {
+        const pages = event.data.pages;
+        handleFacebookPagesSelected(pages);
       } else if (event.data && event.data.type === "FACEBOOK_OAUTH_FAILED") {
         toast.error(`Kết nối Facebook thất bại: ${event.data.error || "Lỗi không xác định"}`);
       }
@@ -685,17 +712,19 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
               </div>
 
               {/* Display Name */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Tên hiển thị kênh *</label>
-                <input
-                  type="text"
-                  required
-                  value={compDisplayName}
-                  onChange={(e) => setCompDisplayName(e.target.value)}
-                  placeholder={currentPlatformMeta.displayPlaceholder}
-                  className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
-                />
-              </div>
+              {!(compPlatform === "TikTok" && !editingIntegrationId) && (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Tên hiển thị kênh *</label>
+                  <input
+                    type="text"
+                    required
+                    value={compDisplayName}
+                    onChange={(e) => setCompDisplayName(e.target.value)}
+                    placeholder={currentPlatformMeta.displayPlaceholder}
+                    className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
+                  />
+                </div>
+              )}
 
               {/* Facebook Connection Mode Selector */}
               {compPlatform === "Facebook" && (
@@ -817,57 +846,152 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
               {/* Standard Platform Fields (Visible when NOT in Facebook OAuth/Credentials mode) */}
               {!(compPlatform === "Facebook" && (fbConnectMode === "oauth" || fbConnectMode === "credentials")) && (
                 <>
-                  {compPlatform === "TikTok" && (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-950 p-4 text-left text-white">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-200">TikTok OAuth</p>
-                          <p className="mt-1 text-[10px] leading-relaxed text-slate-300">
-                            Kết nối trực tiếp với TikTok để hệ thống tự lấy access token và refresh token cho kênh doanh nghiệp.
-                          </p>
-                          <p className="mt-1 text-[10px] leading-relaxed text-slate-450">
-                            Bấm kết nối trực tiếp bằng tài khoản hệ thống (hoặc điền Client Key và Client Secret riêng bên dưới nếu muốn dùng ứng dụng riêng).
-                          </p>
+                  {compPlatform === "TikTok" && !editingIntegrationId && (
+                    <div className="space-y-4 pt-2">
+                      {/* Premium TikTok Branded Connect Card */}
+                      <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-black p-5 text-left text-white shadow-xl relative overflow-hidden">
+                        {/* Background glowing decorations */}
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+                        <div className="absolute bottom-0 left-0 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl pointer-events-none" />
+
+                        <div className="flex flex-col gap-4">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-black border border-slate-850 flex items-center justify-center text-rose-500 shadow-md">
+                                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.17-2.89-.6-4.09-1.51-.71-.53-1.3-1.22-1.77-1.97v7.08c0 1.28-.21 2.6-.9 3.67-.84 1.37-2.28 2.37-3.86 2.66-1.49.27-3.11.14-4.5-.48-1.57-.71-2.77-2.15-3.23-3.78-.54-1.87-.22-3.99.88-5.6 1.11-1.64 2.99-2.58 4.96-2.55.07 1.34.02 2.69.04 4.04-1.21-.05-2.5.47-3.14 1.5-.47.74-.52 1.69-.32 2.53.25.96.99 1.76 1.91 2.1 1 .37 2.16.21 3-.38.77-.54 1.16-1.45 1.15-2.39V.02z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-200">TikTok OAuth</h4>
+                                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-md font-medium border border-slate-700">Official API</span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-slate-400 mt-2">
+                              Kết nối trực tiếp tài khoản TikTok Doanh nghiệp để tự động liên kết kênh và đồng bộ các bài viết.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTikTokOAuth()}
+                            disabled={connectingTikTokOAuth || !canStartCompanyTikTokOAuth}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-100 text-slate-950 px-4 py-2.5 text-xs font-black transition-all shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer w-full border border-slate-300"
+                          >
+                            <svg className="h-3.5 w-3.5 text-black" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.17-2.89-.6-4.09-1.51-.71-.53-1.3-1.22-1.77-1.97v7.08c0 1.28-.21 2.6-.9 3.67-.84 1.37-2.28 2.37-3.86 2.66-1.49.27-3.11.14-4.5-.48-1.57-.71-2.77-2.15-3.23-3.78-.54-1.87-.22-3.99.88-5.6 1.11-1.64 2.99-2.58 4.96-2.55.07 1.34.02 2.69.04 4.04-1.21-.05-2.5.47-3.14 1.5-.47.74-.52 1.69-.32 2.53.25.96.99 1.76 1.91 2.1 1 .37 2.16.21 3-.38.77-.54 1.16-1.45 1.15-2.39V.02z" />
+                            </svg>
+                            <span>{connectingTikTokOAuth ? "Đang kết nối..." : "Kết nối TikTok"}</span>
+                          </button>
                         </div>
+
+                        <p className="text-[9px] text-slate-500 mt-3 border-t border-slate-900 pt-2 leading-relaxed">
+                          * Hệ thống tự động đồng bộ <b>Tên hiển thị</b>, <b>Username</b> và <b>Access Token</b> từ tài khoản sau khi đăng nhập thành công. Không cần nhập thủ công.
+                        </p>
+                      </div>
+
+                      {/* Toggle button for custom client application credentials */}
+                      <div className="text-right">
                         <button
                           type="button"
-                          onClick={() => setShowTTOauthModal(true)}
-                          disabled={connectingTikTokOAuth || !canStartCompanyTikTokOAuth}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-2 text-[11px] font-bold text-slate-900 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={() => setShowAdvancedTikTok(!showAdvancedTikTok)}
+                          className="text-[10px] font-bold text-gray-500 hover:text-indigo-650 transition-colors inline-flex items-center gap-1 cursor-pointer"
                         >
-                          <Globe className="h-3.5 w-3.5" />
-                          <span>{connectingTikTokOAuth ? "Đang kết nối..." : editingIntegrationId ? "Kết nối lại" : "Kết nối TikTok"}</span>
+                          <Key className="h-3 w-3" />
+                          <span>{showAdvancedTikTok ? "Ẩn cấu hình Client App nâng cao" : "Cấu hình Client App riêng (Tùy chọn)"}</span>
                         </button>
                       </div>
+
+                      {showAdvancedTikTok && (
+                        <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Cấu hình Custom App (Tùy chọn)</p>
+                            <p className="mt-1 text-[9px] leading-relaxed text-gray-400">
+                              Nếu doanh nghiệp muốn sử dụng Client Key và Client Secret của ứng dụng riêng đã đăng ký trên TikTok Developer Portal. Bỏ trống để dùng mặc định của hệ thống.
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">TikTok Client Key</label>
+                            <input
+                              type="text"
+                              value={compVerifyToken}
+                              onChange={(e) => setCompVerifyToken(e.target.value)}
+                              placeholder="Nhập TikTok Client Key (Bỏ trống để dùng mặc định)"
+                              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">TikTok Client Secret</label>
+                            <input
+                              type={showCompToken ? "text" : "password"}
+                              value={compAppSecret}
+                              onChange={(e) => setCompAppSecret(e.target.value)}
+                              placeholder="Nhập TikTok Client Secret (Bỏ trống để dùng mặc định)"
+                              className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {compPlatform === "TikTok" && (
-                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  {compPlatform === "TikTok" && editingIntegrationId && (
+                    <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-xs text-left">
                       <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Cấu hình app TikTok</p>
-                        <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                          Chỉ cần điền nếu doanh nghiệp muốn dùng Client Key và Client Secret của ứng dụng riêng. Bỏ trống để dùng mặc định hệ thống.
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Chỉnh sửa cấu hình TikTok</p>
+                        <p className="mt-1 text-[9px] leading-relaxed text-gray-400">
+                          Cập nhật các mã khóa ứng dụng hoặc Access Token/Refresh Token thủ công.
                         </p>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-700">TikTok Client Key (tùy chọn)</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Tên hiển thị kênh *</label>
+                        <input
+                          type="text"
+                          required
+                          value={compDisplayName}
+                          onChange={(e) => setCompDisplayName(e.target.value)}
+                          placeholder="Ví dụ: TikTok Công ty"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">TikTok Client Key (Verify Token)</label>
                         <input
                           type="text"
                           value={compVerifyToken}
                           onChange={(e) => setCompVerifyToken(e.target.value)}
-                          placeholder="Nhap TikTok Client Key (Bỏ trống để dùng mặc định)"
-                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-800 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                          placeholder="Nhập TikTok Client Key"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-700">TikTok Client Secret (tùy chọn)</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">TikTok Client Secret (App Secret)</label>
                         <input
                           type={showCompToken ? "text" : "password"}
                           value={compAppSecret}
                           onChange={(e) => setCompAppSecret(e.target.value)}
-                          placeholder="Nhap TikTok Client Secret (Bỏ trống để dùng mặc định)"
-                          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] text-gray-800 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                          placeholder="Nhập TikTok Client Secret"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Access Token</label>
+                        <input
+                          type={showCompToken ? "text" : "password"}
+                          value={compAccessToken}
+                          onChange={(e) => setCompAccessToken(e.target.value)}
+                          placeholder="Nhập Access Token"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Refresh Token</label>
+                        <input
+                          type={showCompToken ? "text" : "password"}
+                          value={compRefreshToken}
+                          onChange={(e) => setCompRefreshToken(e.target.value)}
+                          placeholder="Nhập Refresh Token"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs text-gray-800 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition-all"
                         />
                       </div>
                     </div>
@@ -990,27 +1114,30 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
               )}
 
               {/* Action Buttons */}
-              {!(compPlatform === "Facebook" && fbConnectMode === "oauth" && !editingIntegrationId) && (
-                <div className="pt-2 flex gap-2">
-                  <button
-                    type="submit"
-                    disabled={submittingIntegration}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
-                  >
-                    <Save className="h-4 w-4" />
-                    <span>{submittingIntegration ? "Đang lưu..." : editingIntegrationId ? "Cập nhật" : "Lưu liên kết"}</span>
-                  </button>
-                  {editingIntegrationId && (
+              {!(
+                (compPlatform === "Facebook" && fbConnectMode === "oauth" && !editingIntegrationId) ||
+                (compPlatform === "TikTok" && !editingIntegrationId)
+              ) && (
+                  <div className="pt-2 flex gap-2">
                     <button
-                      type="button"
-                      onClick={resetCompForm}
-                      className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all border border-gray-200 cursor-pointer"
+                      type="submit"
+                      disabled={submittingIntegration}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
                     >
-                      Hủy
+                      <Save className="h-4 w-4" />
+                      <span>{submittingIntegration ? "Đang lưu..." : editingIntegrationId ? "Cập nhật" : "Lưu liên kết"}</span>
                     </button>
-                  )}
-                </div>
-              )}
+                    {editingIntegrationId && (
+                      <button
+                        type="button"
+                        onClick={resetCompForm}
+                        className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all border border-gray-200 cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                    )}
+                  </div>
+                )}
             </form>
           </div>
 
@@ -1153,8 +1280,8 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     key={item._id}
                     className={`border rounded-2xl p-4 bg-white shadow-2xs flex flex-col justify-between gap-4 transition-all hover:shadow-xs ${editingIntegrationId === item._id ? "border-indigo-500 ring-2 ring-indigo-500/10" : "border-gray-200"}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex gap-3">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="flex gap-3 min-w-0">
                         {/* Platform Icon */}
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 font-bold ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
                           }`}>
@@ -1292,11 +1419,10 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                       key={`${item.userId}-${item.platform}-${idx}`}
                       className="border border-gray-200 rounded-2xl p-4 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-3"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex gap-2.5">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 font-bold text-xs ${
-                            item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
-                          }`}>
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="flex gap-2.5 min-w-0">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 font-bold text-xs ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
+                            }`}>
                             {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
                           </div>
                           <div className="text-left min-w-0">
@@ -1331,70 +1457,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
           </div>
         </div>
       </div>
-
-      {showTTOauthModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100 text-left">
-            <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
-              <Globe className="h-5 w-5 text-indigo-650" />
-              Kết nối kênh TikTok Doanh nghiệp
-            </h3>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              Vui lòng chọn phương thức kết nối. Chế độ Sandbox hỗ trợ đầy đủ các tính năng Đăng bài, Inbox tự động và Trả lời bình luận để phục vụ cho việc quay video kiểm duyệt (TikTok App Review).
-            </p>
-            
-            <div className="mt-5 space-y-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTTOauthModal(false);
-                  void handleTikTokOAuth("sandbox");
-                }}
-                className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-600 hover:bg-slate-50 transition-all text-left flex items-start gap-3 cursor-pointer group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-black text-white flex items-center justify-center shrink-0">
-                  <span className="font-extrabold text-xs">SB</span>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600">Cổng Sandbox / Mockup (Khuyên dùng)</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
-                    Mô phỏng toàn bộ luồng ủy quyền chính thức từ TikTok. Tự động kết nối và tạo dữ liệu test để quay video duyệt app.
-                  </p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowTTOauthModal(false);
-                  void handleTikTokOAuth("real");
-                }}
-                className="w-full p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-600 hover:bg-slate-50 transition-all text-left flex items-start gap-3 cursor-pointer group"
-              >
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
-                  <Globe className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 group-hover:text-indigo-600">TikTok API Thật (Production)</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5 leading-normal">
-                    Kết nối tài khoản TikTok thật bằng các thông tin Client Key & Client Secret cấu hình bên dưới.
-                  </p>
-                </div>
-              </button>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowTTOauthModal(false)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-250 text-gray-700 rounded-xl text-xs font-bold transition-all cursor-pointer border border-gray-200"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

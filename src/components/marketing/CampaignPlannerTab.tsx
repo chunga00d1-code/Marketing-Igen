@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen } from 'lucide-react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, LucideIcon } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -48,6 +48,21 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState('');
   const [drivePreviews, setDrivePreviews] = useState<DriveFileItem[]>([]);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
+  const [apifySources, setApifySources] = useState<string[]>(['google']);
+
+  const toggleApifySource = (source: string) => {
+    setApifySources((prev) => {
+      if (prev.includes(source)) {
+        return prev.filter((s) => s !== source);
+      } else {
+        if (prev.length >= 3) {
+          toast.warning('Chỉ được chọn tối đa 3 nguồn dữ liệu nghiên cứu.');
+          return prev;
+        }
+        return [...prev, source];
+      }
+    });
+  };
 
   // Cleanup customSchedule when date range changes
   useEffect(() => {
@@ -102,7 +117,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const filteredCampaigns = useMemo(() => {
@@ -376,7 +391,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     const start = new Date(`${startDate}T00:00:00`);
     const end = new Date(`${endDate}T00:00:00`);
     if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return [];
-    
+
     const dates: string[] = [];
     const temp = new Date(start);
     while (temp <= end) {
@@ -459,6 +474,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         mediaPolicy: 'auto',
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
+        apifySources: apifySources.length > 0 ? apifySources : undefined,
       });
       setCampaigns((current) => [result.campaign, ...current]);
       setPrompt('');
@@ -468,6 +484,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setGoogleDriveFolderUrl('');
       setDrivePreviews([]);
       setImageMode('ai');
+      setApifySources(['google']);
       setCustomSchedule({});
       setShowCustomSchedule(false);
       toast.success(`Đã khởi chạy chiến dịch “${result.campaign.title}” với ${result.campaign.statistics.totalSlots} slot.`);
@@ -531,11 +548,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               onClick={() => {
                 setImageMode('ai');
               }}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
-                imageMode === 'ai'
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${imageMode === 'ai'
                   ? 'bg-white text-slate-850 shadow-xs'
                   : 'text-slate-500 hover:text-slate-850'
-              }`}
+                }`}
             >
               <Sparkles size={13} className={imageMode === 'ai' ? 'text-indigo-600' : ''} />
               <span>Hình ảnh sinh từ AI</span>
@@ -545,11 +561,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               onClick={() => {
                 setImageMode('real');
               }}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
-                imageMode === 'real'
+              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${imageMode === 'real'
                   ? 'bg-white text-slate-850 shadow-xs'
                   : 'text-slate-500 hover:text-slate-850'
-              }`}
+                }`}
             >
               <FolderOpen size={13} className={imageMode === 'real' ? 'text-indigo-600' : ''} />
               <span>Kho Ảnh thật (Drive)</span>
@@ -632,16 +647,15 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     Xóa xem trước
                   </button>
                 </div>
-                
+
                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200">
                   {drivePreviews.map((file) => {
                     const hasNumber = /\d+/.test(file.name);
                     return (
                       <div
                         key={file.id}
-                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white group shadow-xs ${
-                          hasNumber ? "border-slate-200" : "border-red-300 ring-1 ring-red-300"
-                        }`}
+                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white group shadow-xs ${hasNumber ? "border-slate-200" : "border-red-300 ring-1 ring-red-300"
+                          }`}
                       >
                         {file.isVideo ? (
                           <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 text-white select-none">
@@ -698,6 +712,51 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         )}
 
         <div className="mt-4 border-t border-slate-150 pt-4">
+          <label className="mb-1 block text-xs font-bold text-slate-700">Nguồn nghiên cứu thị trường </label>
+          <p className="mb-3 text-[10px] text-slate-400">Chọn nguồn dữ liệu để AI tự động nghiên cứu và thu thập xu hướng trước khi viết bài.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { id: 'google', label: 'Google Search', icon: Globe, disabled: false },
+              { id: 'facebook', label: 'Facebook Search', icon: Facebook, disabled: false },
+              { id: 'tiktok', label: 'TikTok Trends', icon: Sparkles, disabled: false }
+            ].map((source: { id: string; label: string; icon: LucideIcon; disabled: boolean; tooltip?: string }) => {
+              const isSelected = apifySources.includes(source.id);
+              const IconComp = source.icon;
+              return (
+                <button
+                  type="button"
+                  key={source.id}
+                  disabled={source.disabled}
+                  onClick={() => !source.disabled && toggleApifySource(source.id)}
+                  className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-all select-none relative ${source.disabled
+                      ? 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
+                      : isSelected
+                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-750 shadow-xs cursor-pointer'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer'
+                    }`}
+                  title={source.disabled ? source.tooltip : undefined}
+                >
+                  <div className={`rounded-lg p-1.5 ${source.disabled ? 'bg-slate-200 text-slate-450' : isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+                    <IconComp size={16} />
+                  </div>
+                  <span className={`text-xs font-bold ${source.disabled ? 'text-slate-400' : 'text-slate-850'}`}>{source.label}</span>
+                  {source.disabled && (
+                    <span className="ml-auto text-[9px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-md">
+                      Khóa
+                    </span>
+                  )}
+                  {isSelected && !source.disabled && (
+                    <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 border-t border-slate-150 pt-4">
           <h3 className="text-xs font-bold text-slate-850 uppercase tracking-wider mb-3">Cấu hình lịch chạy</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Left Column: Dates & Count & Channel */}
@@ -733,11 +792,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       type="button"
                       key={value}
                       onClick={() => changePostsPerDay(value)}
-                      className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                        postsPerDay === value
+                      className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${postsPerDay === value
                           ? 'border-indigo-600 bg-indigo-600 text-white'
                           : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                      }`}
+                        }`}
                     >
                       {value}
                     </button>
@@ -771,14 +829,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 <button
                   type="button"
                   onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
-                    publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
-                  }`}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
+                    }`}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${
-                      publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
-                    }`}
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
+                      }`}
                   />
                 </button>
               </div>
@@ -855,7 +911,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   .map((date) => {
                     const isCustomized = !!customSchedule[date];
                     const times = customSchedule[date] || postingTimes;
-                    
+
                     // Format date string nicely: e.g. "Thứ Hai, 13/07/2026"
                     const formattedDate = new Intl.DateTimeFormat('vi-VN', {
                       weekday: 'long',
@@ -936,12 +992,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                               />
                             </div>
                           ))}
-                          
+
                           {isCustomized && times.length < 5 && (
                             <button
                               type="button"
                               onClick={() => {
-                                const nextHour = times.length > 0 
+                                const nextHour = times.length > 0
                                   ? String(parseInt(times[times.length - 1].split(':')[0]) + 2).padStart(2, '0') + ':00'
                                   : '09:00';
                                 const validatedHour = parseInt(nextHour.split(':')[0]) >= 24 ? '23:00' : nextHour;
@@ -1039,11 +1095,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   type="button"
                   key={tab.value}
                   onClick={() => setFilterStatus(tab.value)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                    filterStatus === tab.value
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${filterStatus === tab.value
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/40'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -1157,6 +1212,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           needs_attention: 'Cần chú ý',
         }}
         onRetrySlot={async (campaignId, slotId) => {
+          setCampaignDetail(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              slots: prev.slots.map(s => s._id === slotId ? { ...s, status: 'planned', errorMessage: undefined } : s)
+            };
+          });
           try {
             await marketingCampaignService.retrySlot(campaignId, slotId);
             toast.success('Đã đặt lại slot để thử lại.');
@@ -1182,6 +1244,15 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             setCampaignDetail({ campaign: res.campaign, slots: res.slots as CampaignSlot[] });
           }
         }}
+        onUpdateSlot={(slotId, updatedFields) => {
+          setCampaignDetail(prev => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              slots: prev.slots.map(s => s._id === slotId ? { ...s, ...updatedFields } : s)
+            };
+          });
+        }}
       />
 
       {confirmConfig.isOpen && (
@@ -1200,9 +1271,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               <button
                 type="button"
                 onClick={confirmConfig.onConfirm}
-                className={`rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer transition-colors ${
-                  confirmConfig.isDangerous ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
+                className={`rounded-xl px-4 py-2 text-xs font-bold text-white cursor-pointer transition-colors ${confirmConfig.isDangerous ? 'bg-red-600 hover:bg-red-700' : 'bg-indigo-600 hover:bg-indigo-700'
+                  }`}
               >
                 {confirmConfig.confirmText || 'Xác nhận'}
               </button>

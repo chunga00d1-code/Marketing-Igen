@@ -170,9 +170,6 @@ export const tiktokMessengerService = {
 
     if (companyIntegration) {
       console.log(`[TikTok Messenger Token] Found company-level integration for businessAccountId=${businessAccountId}`);
-      if (companyIntegration.isMock) {
-        return "mock_tiktok_access_token_123456789";
-      }
       return companyIntegration.accessToken || null;
     }
 
@@ -184,9 +181,6 @@ export const tiktokMessengerService = {
 
     if (user && (user as any).tiktokIntegration) {
       const integration = (user as any).tiktokIntegration;
-      if (integration.isMock) {
-        return "mock_tiktok_access_token_123456789";
-      }
       return integration.accessToken || null;
     }
 
@@ -328,112 +322,63 @@ export const tiktokMessengerService = {
       emitToPage(businessAccountId, "conversation_updated", conversation);
     };
 
-    if (isMock) {
-      console.log(`[TikTok Messenger Mock] Giả lập gửi tin tới TikTok User: ${recipientOpenId}`);
-      conversation.lastMessageText = text;
-      conversation.lastMessageAt = sentAt;
-      conversation.unreadCount = 0;
-      if (senderType === "human") {
-        conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000);
-      }
-      await conversation.save();
-      newMsg.status = "delivered";
-      await newMsg.save();
-      emitRealtimeUpdate();
-
-      // Lên lịch phản hồi tự động từ Bot giả lập sau 2.5 giây
-      setTimeout(async () => {
-        try {
-          const autoReplyText = `[TikTok Demo Bot] Cảm ơn bạn đã phản hồi: "${text}". Hệ thống ERP đang thử nghiệm hoạt động tốt!`;
-          const botMessageId = `tt_in_mock_${Date.now()}`;
-
-          const incomingMsg = new TikTokMessageModel({
-            conversationId: conversation._id,
-            senderId: recipientOpenId,
-            recipientId: businessAccountId,
-            direction: "inbound",
-            text: autoReplyText,
-            attachments: [],
-            messageId: botMessageId,
-            timestamp: new Date(),
-            status: "delivered"
-          });
-          await incomingMsg.save();
-
-          conversation.lastMessageText = autoReplyText;
-          conversation.lastMessageAt = new Date();
-          conversation.unreadCount += 1;
-          await conversation.save();
-
-          emitToPage(businessAccountId, "new_message", {
-            message: incomingMsg,
-            conversation: conversation
-          });
-          emitToPage(businessAccountId, "conversation_updated", conversation);
-        } catch (err) {
-          console.error("Lỗi giả lập phản hồi TikTok:", err);
-        }
-      }, 2500);
-
-    } else {
-      // Gửi thật qua TikTok Business Messaging API
-      const token = await this.getAccessTokenByBusinessAccountId(businessAccountId);
-      console.log(`[TikTok SendReply] Resolved token: ${token ? `FOUND(...${token.slice(-8)})` : "NOT_FOUND"}`);
-      if (!token) {
-        throw new Error("TikTok token không hợp lệ hoặc đã hết hạn. Vui lòng kết nối lại tài khoản TikTok.");
-      }
-
-      // TikTok Business Messaging API - Send Message
-      // Endpoint: POST https://open.tiktokapis.com/v2/dm/message/send/
-      const url = "https://open.tiktokapis.com/v2/dm/message/send/";
-      const payload = {
-        open_id: recipientOpenId,
-        message_type: "text",
-        text: {
-          text: text
-        }
-      };
-
-      try {
-        const response = await (globalThis as any).fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          console.error(`[TikTok Messenger API] Gửi tin thất bại: ${response.status} - ${errText}`);
-          throw new Error(`TikTok API phản hồi lỗi: ${response.status} - ${errText}`);
-        }
-
-        const resData = await response.json();
-        if (resData.data?.error_code) {
-          throw new Error(`TikTok API Error: ${resData.data?.description || resData.data?.error_code}`);
-        }
-
-        console.log(`[TikTok Messenger API] Đã gửi tin nhắn thành công:`, resData);
-        newMsg.messageId = resData.data?.message_id || messageId;
-      } catch (apiErr: any) {
-        // Vẫn lưu message vào DB dù API fail để người dùng thấy tin nhắn đã gửi
-        console.error(`[TikTok Messenger API] Lỗi gọi TikTok API:`, apiErr.message);
-        throw apiErr;
-      }
-
-      conversation.lastMessageText = text;
-      conversation.lastMessageAt = sentAt;
-      conversation.unreadCount = 0;
-      if (senderType === "human") {
-        conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000);
-      }
-      await conversation.save();
-      newMsg.status = "delivered";
-      await newMsg.save();
-      emitRealtimeUpdate();
+    // Gửi thật qua TikTok Business Messaging API
+    const token = await this.getAccessTokenByBusinessAccountId(businessAccountId);
+    console.log(`[TikTok SendReply] Resolved token: ${token ? `FOUND(...${token.slice(-8)})` : "NOT_FOUND"}`);
+    if (!token) {
+      throw new Error("TikTok token không hợp lệ hoặc đã hết hạn. Vui lòng kết nối lại tài khoản TikTok.");
     }
+
+    // TikTok Business Messaging API - Send Message
+    // Endpoint: POST https://open.tiktokapis.com/v2/dm/message/send/
+    const url = "https://open.tiktokapis.com/v2/dm/message/send/";
+    const payload = {
+      open_id: recipientOpenId,
+      message_type: "text",
+      text: {
+        text: text
+      }
+    };
+
+    try {
+      const response = await (globalThis as any).fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[TikTok Messenger API] Gửi tin thất bại: ${response.status} - ${errText}`);
+        throw new Error(`TikTok API phản hồi lỗi: ${response.status} - ${errText}`);
+      }
+
+      const resData = await response.json();
+      if (resData.data?.error_code) {
+        throw new Error(`TikTok API Error: ${resData.data?.description || resData.data?.error_code}`);
+      }
+
+      console.log(`[TikTok Messenger API] Đã gửi tin nhắn thành công:`, resData);
+      newMsg.messageId = resData.data?.message_id || messageId;
+    } catch (apiErr: any) {
+      // Vẫn lưu message vào DB dù API fail để người dùng thấy tin nhắn đã gửi
+      console.error(`[TikTok Messenger API] Lỗi gọi TikTok API:`, apiErr.message);
+      throw apiErr;
+    }
+
+    conversation.lastMessageText = text;
+    conversation.lastMessageAt = sentAt;
+    conversation.unreadCount = 0;
+    if (senderType === "human") {
+      conversation.aiPausedUntil = new Date(Date.now() + 30 * 60 * 1000);
+    }
+    await conversation.save();
+    newMsg.status = "delivered";
+    await newMsg.save();
+    emitRealtimeUpdate();
 
     return {
       status: "success",

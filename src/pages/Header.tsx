@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { LogOut, Search, Settings, Wallet } from "lucide-react";
+import { LogOut, Search, Settings, Wallet, Send } from "lucide-react";
 import type { TabType } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { walletService } from "../services/walletService";
+import PersonalIntegrationsTab from "../components/settings/PersonalIntegrationsTab";
 
 interface HeaderProps {
   currentTab: TabType;
@@ -27,6 +28,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showIntegrationsModal, setShowIntegrationsModal] = useState(false);
 
   useEffect(() => {
     const fetchBalance = async () => {
@@ -196,6 +198,17 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
 
                     <button
                       onClick={() => {
+                        setShowIntegrationsModal(true);
+                        setShowProfileDropdown(false);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      <Send className="h-4 w-4 text-sky-500" />
+                      Kết nối Telegram
+                    </button>
+
+                    <button
+                      onClick={() => {
                         logout();
                         setShowProfileDropdown(false);
                       }}
@@ -211,6 +224,53 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
           </div>
         )}
       </div>
+
+      {showIntegrationsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="fixed inset-0" onClick={() => setShowIntegrationsModal(false)} />
+          <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-slate-50 rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-scale-up">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200/80 bg-white px-6 py-4">
+              <div className="text-left">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Send className="h-5 w-5 text-sky-500 animate-pulse" />
+                  Kết Nối Telegram
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Cấu hình nhận thông báo phê duyệt bài đăng và báo cáo nhanh từ AI qua Telegram
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIntegrationsModal(false)}
+                className="rounded-full p-2 text-gray-400 hover:bg-slate-100 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
+              <PersonalIntegrationsTab />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-200/80 bg-white px-6 py-3.5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowIntegrationsModal(false)}
+                className="rounded-xl border border-gray-200 bg-white hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 transition-all cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
     </header>
   );
 }

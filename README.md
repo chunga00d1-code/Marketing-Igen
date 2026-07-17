@@ -35,7 +35,7 @@ Dự án này sử dụng GitHub Actions để tự động hóa toàn bộ quá
 | `SSH_USER` | Tên tài khoản đăng nhập SSH của VPS. | Thường là `root`, `ubuntu`, hoặc `centos`. |
 | `SSH_KEY` | Nội dung khóa Private Key SSH dùng để xác thực kết nối. | Khóa SSH Private tương ứng với Public Key được thêm vào `authorized_keys` của VPS. |
 | `SSH_PORT` | Cổng kết nối SSH (tùy chọn). | Mặc định là `22` nếu không thiết lập. |
-
+ 
 ### 2. Quy trình kiểm tra tích hợp (CI)
 Mỗi khi bạn thực hiện **Push** hoặc **Tạo Pull Request** hướng về nhánh `develop` hoặc `main`, GitHub Actions sẽ tự động chạy:
 1. **Kiểm tra kiểu dữ liệu (Type check & Lint)**: Chạy `yarn lint` (`tsc --noEmit`) trên toàn bộ dự án.
