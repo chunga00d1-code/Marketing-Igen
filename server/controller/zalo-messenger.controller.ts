@@ -1,7 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
 import { zaloMessengerService } from "../service/zalo-messenger.service";
 import { UserModel } from "../model/user.model";
+import { SocialIntegrationModel } from "../model/social-integration.model";
 
 async function getZaloOaConfig(userId: string): Promise<{ isConnected: boolean; oaId?: string }> {
   const dbUser = await UserModel.findById(userId).lean();
@@ -16,7 +17,7 @@ async function getZaloOaConfig(userId: string): Promise<{ isConnected: boolean; 
   }
 
   // Try company integration lookup
-  const { SocialIntegrationModel } = require("../model/social-integration.model");
+
   const companyIntegration = await SocialIntegrationModel.findOne({
     companyCode: dbUser.companyCode,
     platform: "Zalo",
