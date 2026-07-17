@@ -252,7 +252,42 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     }
   };
 
-  // Lưu Fanpage Facebook sau khi lấy được token từ OAuth
+  // Lưu danh sách Fanpage Facebook sau khi hoàn tất OAuth
+  const handleFacebookPagesSelected = async (pages: any[]) => {
+    if (!pages || pages.length === 0) {
+      toast.error("Không tìm thấy Fanpage nào được cấp quyền.");
+      return;
+    }
+
+    toast.info(`Đang kết nối ${pages.length} Fanpage đã chọn...`);
+    let successCount = 0;
+
+    for (const page of pages) {
+      if (!page.id || !page.access_token) continue;
+      try {
+        await socialIntegrationService.createIntegration({
+          platform: "Facebook",
+          displayName: page.name || `Fanpage ${page.id}`,
+          username: page.id,
+          accessToken: page.access_token,
+          isConnected: true,
+          createdBy: userProfile?.email || "system",
+        });
+        successCount++;
+      } catch (err: any) {
+        console.error(`Lỗi kết nối Fanpage ${page.name || page.id}:`, err);
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`✅ Đã kết nối thành công ${successCount} Fanpage!`);
+      void fetchCompanyIntegrations();
+    } else {
+      toast.error("Không kết nối được Fanpage nào. Vui lòng kiểm tra lại quyền.");
+    }
+  };
+
+  // Lưu Fanpage Facebook sau khi lấy được token từ OAuth (Đơn lẻ)
   const handleFacebookPageSelected = async (page: any) => {
     if (!page || !page.id || !page.access_token) {
       toast.error("Dữ liệu Fanpage trả về không hợp lệ.");
@@ -319,6 +354,8 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
             const result = JSON.parse(rawResult);
             if (result.type === "FACEBOOK_PAGE_SELECTED" && result.page) {
               handleFacebookPageSelected(result.page);
+            } else if (result.type === "FACEBOOK_PAGES_SELECTED" && result.pages) {
+              handleFacebookPagesSelected(result.pages);
             } else if (result.type === "FACEBOOK_OAUTH_FAILED") {
               toast.error(`Kết nối Facebook thất bại: ${result.error || "Lỗi không xác định"}`);
             }
@@ -345,6 +382,9 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       if (event.data && event.data.type === "FACEBOOK_PAGE_SELECTED") {
         const page = event.data.page;
         handleFacebookPageSelected(page);
+      } else if (event.data && event.data.type === "FACEBOOK_PAGES_SELECTED") {
+        const pages = event.data.pages;
+        handleFacebookPagesSelected(pages);
       } else if (event.data && event.data.type === "FACEBOOK_OAUTH_FAILED") {
         toast.error(`Kết nối Facebook thất bại: ${event.data.error || "Lỗi không xác định"}`);
       }
