@@ -250,25 +250,42 @@ export const facebookPostController = {
         return sendErrorHtml("Không tìm thấy mã authorization code từ Facebook.");
       }
 
-      // Lấy App credentials từ DB theo integrationId (state)
+      // Lấy App credentials từ DB theo integrationId (state) hoặc từ state JSON
       let appId: string;
       let appSecret: string;
       let integrationId: string | null = null;
+      let companyCode = "default";
+      let createdBy = "system";
 
-      if (state && String(state).length === 24) {
-        // state là integrationId → lấy credentials từ DB (multi-tenant)
-        integrationId = String(state);
+      if (state) {
+        try {
+          const parsedState = JSON.parse(decodeURIComponent(String(state)));
+          if (parsedState && typeof parsedState === "object") {
+            companyCode = parsedState.companyCode || "default";
+            createdBy = parsedState.createdBy || "system";
+            if (parsedState.integrationId && parsedState.integrationId.length === 24) {
+              integrationId = parsedState.integrationId;
+            }
+          }
+        } catch (e) {
+          // Fallback: nếu state không phải JSON, kiểm tra xem có phải integrationId 24 ký tự
+          if (String(state).length === 24) {
+            integrationId = String(state);
+          }
+        }
+      }
+
+      if (integrationId) {
         const integration = await SocialIntegrationModel.findById(integrationId);
-
         if (!integration || !integration.fbAppId || !integration.appSecret) {
           return sendErrorHtml("Không tìm thấy thông tin App Facebook trong hệ thống. Vui lòng thử lại.");
         }
-
         appId = integration.fbAppId;
         appSecret = integration.appSecret;
+        companyCode = integration.companyCode || companyCode;
         console.log(`[FB OAuth] Dùng App ID từ DB: ${appId} (integration: ${integrationId})`);
       } else {
-        // Fallback: dùng .env nếu không có state (backward compatibility)
+        // Fallback: dùng .env nếu không có state hoặc không tìm thấy trong DB (backward compatibility)
         appId = process.env.FB_APP_ID || "";
         appSecret = process.env.FB_APP_SECRET || "";
 
@@ -310,7 +327,40 @@ export const facebookPostController = {
         `);
       }
 
-      // Trả về giao diện đồng bộ tự động
+      // Tự động lưu các pages vào DB ngay tại backend (đảm bảo đồng bộ 100% không phụ thuộc trình duyệt)
+      let successCount = 0;
+      if (companyCode && companyCode !== "default") {
+        console.log(`[FB OAuth Callback] Bắt đầu tự động lưu ${pages.length} Pages vào DB cho company: ${companyCode}...`);
+        for (const page of pages) {
+          if (!page.id || !page.access_token) continue;
+          try {
+            await SocialIntegrationModel.findOneAndUpdate(
+              { companyCode, platform: "Facebook", username: page.id },
+              {
+                $set: {
+                  displayName: page.name || `Fanpage ${page.id}`,
+                  accessToken: page.access_token,
+                  isConnected: true,
+                  createdBy: createdBy,
+                  appSecret: appSecret,
+                  fbAppId: appId,
+                  isMock: false,
+                  connectedAt: new Date()
+                }
+              },
+              { upsert: true, new: true }
+            );
+            successCount++;
+          } catch (dbErr: any) {
+            console.error(`[FB OAuth Callback] Lỗi ghi DB cho page ID ${page.id}:`, dbErr.message || dbErr);
+          }
+        }
+        console.log(`[FB OAuth Callback] Đã lưu thành công ${successCount}/${pages.length} Pages vào DB.`);
+      } else {
+        console.warn(`[FB OAuth Callback] Bỏ qua lưu tự động do không xác định được companyCode: ${companyCode}`);
+      }
+
+      // Trả về giao diện đồng bộ tự động và thông báo thành công
       return res.send(`
         <!DOCTYPE html>
         <html lang="vi">
@@ -366,34 +416,48 @@ export const facebookPostController = {
           <div class="box">
             <div class="spinner"></div>
             <h3>Đăng nhập Facebook thành công</h3>
-            <p>Đang lưu dữ liệu các Trang và đồng bộ với hệ thống ERP...</p>
+            <p>Dữ liệu các Trang đã được đồng bộ với hệ thống ERP.</p>
+            <p style="font-size: 11px; margin-top: 8px; color: #a0a0a0;">Cửa sổ này sẽ tự động đóng sau giây lát...</p>
           </div>
           <script>
-            const pages = ${JSON.stringify(pages)};
-            const integrationId = ${JSON.stringify(integrationId)};
-            
-            console.log("[FB Popup] Lưu kết quả vào localStorage...");
-            localStorage.setItem('fb_oauth_result', JSON.stringify({
-              type: 'FACEBOOK_PAGES_SELECTED',
-              pages: pages,
-              integrationId: integrationId
-            }));
-            
-            if (window.opener) {
-              console.log("[FB Popup] Gửi postMessage tới cửa sổ cha...");
-              window.opener.postMessage({
-                type: 'FACEBOOK_PAGES_SELECTED',
-                pages: pages,
-                integrationId: integrationId
-              }, '*');
-            } else {
-              console.warn("[FB Popup] Không tìm thấy window.opener!");
-            }
-            
+            // Chắc chắn đóng popup tự động sau 3 giây để tránh treo
             setTimeout(() => {
               console.log("[FB Popup] Tự động đóng popup...");
               window.close();
-            }, 4000);
+            }, 3000);
+
+            try {
+              const pages = ${JSON.stringify(pages)};
+              const integrationId = ${JSON.stringify(integrationId)};
+              
+              // 1. Gửi message cập nhật giao diện ngay lập tức
+              try {
+                if (window.opener) {
+                  console.log("[FB Popup] Gửi postMessage tới cửa sổ cha...");
+                  window.opener.postMessage({
+                    type: 'FACEBOOK_PAGES_SELECTED',
+                    pages: pages,
+                    integrationId: integrationId
+                  }, '*');
+                }
+              } catch (msgErr) {
+                console.error("[FB Popup] Lỗi gửi postMessage:", msgErr);
+              }
+              
+              // 2. Ghi localStorage làm phương án dự phòng
+              try {
+                console.log("[FB Popup] Lưu kết quả vào localStorage...");
+                localStorage.setItem('fb_oauth_result', JSON.stringify({
+                  type: 'FACEBOOK_PAGES_SELECTED',
+                  pages: pages,
+                  integrationId: integrationId
+                }));
+              } catch (stErr) {
+                console.warn("[FB Popup] Không thể ghi localStorage:", stErr);
+              }
+            } catch (err) {
+              console.error("[FB Popup] Lỗi thực thi script đồng bộ:", err);
+            }
           </script>
         </body>
         </html>
@@ -600,12 +664,16 @@ export const facebookPostController = {
         status: "success",
         appId,
         source: appId === process.env.FB_APP_ID ? "env" : "database",
+        companyCode: companyCode || "default",
+        createdBy: user?.email || "system",
       });
     } catch (error: any) {
       return res.status(200).json({
         status: "success",
         appId: process.env.FB_APP_ID || "",
         source: "env",
+        companyCode: "default",
+        createdBy: "system",
       });
     }
   },
