@@ -12,7 +12,7 @@ import { MarketingSubTabType, ContentApprovalCard } from "../types";
 import { buildFacebookPostUrl, buildFaithfulMediaPrompt, marketingService, extractDraftContent, sanitizeHumanVideoVoiceScript, stripHumanVideoOutlineSections } from "../services/marketingService";
 import { toast } from "./Toast";
 import { useAuth } from "../context/AuthContext";
-import { parseFirebaseError } from "../utils/firebaseErrorParser";
+import { parseAppError } from "../utils/errorParser";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { estimateAudioDuration } from "../utils/usage-tracker";
@@ -541,7 +541,7 @@ export default function MarketingTab() {
       toast.success(`Đã đăng video lên TikTok thành công! ID: ${postId.slice(-8)}`);
     } catch (e: any) {
       console.error("Lỗi đăng TikTok:", e);
-      toast.error(parseFirebaseError(e, "Không thể đăng bài lên TikTok. Vui lòng thử lại."));
+      toast.error(parseAppError(e, "Không thể đăng bài lên TikTok. Vui lòng thử lại."));
     } finally {
       setPublishingTikTokId(null);
     }

@@ -279,6 +279,10 @@ export default function CRMTab() {
   const [typeMessage, setTypeMessage] = useState("");
   const [aiWaiting] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const socketConnectedRef = useRef(socketConnected);
+  useEffect(() => {
+    socketConnectedRef.current = socketConnected;
+  }, [socketConnected]);
   const conversationRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // AI assistant configurations
@@ -974,7 +978,7 @@ export default function CRMTab() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, isFbConnected, isZaloConnected, isTiktokConnected, selectedFacebookPageId, selectedZaloAccountId, selectedTiktokAccountId, socketConnected]);
+  }, [subTab, isFbConnected, isZaloConnected, isTiktokConnected, selectedFacebookPageId, selectedZaloAccountId, selectedTiktokAccountId]);
 
   // 2. Polling lịch sử tin nhắn của hội thoại đang chọn - Tối ưu hiệu năng Visibility
   useEffect(() => {
@@ -982,7 +986,7 @@ export default function CRMTab() {
 
     const fetchMessages = async () => {
       if (document.hidden) return;
-      if (socketConnected) return;
+      if (socketConnectedRef.current) return;
       console.log(`[FE CRMTab] Fallback polling lịch sử tin nhắn cho conversation ID: ${activeCustomer.id}...`);
       try {
         await loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true });
@@ -991,7 +995,7 @@ export default function CRMTab() {
       }
     };
 
-    loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: !socketConnected }).catch((err) => {
+    loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: !socketConnectedRef.current }).catch((err) => {
       console.error("[FE CRMTab] Lỗi khi tải lịch sử tin nhắn ban đầu:", err);
     });
     const interval = setInterval(fetchMessages, 60000);
@@ -1010,7 +1014,7 @@ export default function CRMTab() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, activeCustomer?.id, socketConnected]);
+  }, [subTab, activeCustomer?.id]);
 
   // XÃ³a sáº¡ch lá»‹ch sá»­ chat cÅ© ngay khi chuyá»ƒn khÃ¡ch hÃ ng Ä‘á»ƒ chuyá»ƒn Ä‘á»•i mÆ°á»£t mÃ  tá»©c thÃ¬
   useEffect(() => {

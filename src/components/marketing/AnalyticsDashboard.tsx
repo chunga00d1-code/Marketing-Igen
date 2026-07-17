@@ -70,7 +70,7 @@ function MetricCard({
   let progressBar = "bg-slate-400";
   
   if (isPink) {
-    iconBg = "bg-pink-500/10 text-pink-650";
+    iconBg = "bg-pink-500/10 text-pink-600";
     glowColor = "rgba(244, 63, 94, 0.12)";
     progressBg = "bg-pink-100/50";
     progressBar = "bg-gradient-to-r from-pink-500 to-rose-500";
@@ -85,7 +85,7 @@ function MetricCard({
     progressBg = "bg-emerald-100/50";
     progressBar = "bg-gradient-to-r from-emerald-500 to-teal-500";
   } else if (isSky) {
-    iconBg = "bg-sky-500/10 text-sky-655";
+    iconBg = "bg-sky-500/10 text-sky-600";
     glowColor = "rgba(14, 165, 233, 0.12)";
     progressBg = "bg-sky-100/50";
     progressBar = "bg-gradient-to-r from-sky-500 to-cyan-500";
@@ -364,7 +364,7 @@ export default function AnalyticsDashboard() {
           <button
             onClick={handleExportExcel}
             disabled={!data || data.overview.totalSlots === 0}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-650 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-emerald-500/10 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-emerald-600/20 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             <Download className="h-3.5 w-3.5" />
             XUẤT EXCEL
