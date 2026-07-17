@@ -299,7 +299,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list`;
 
       const width = 600;
-      const height = 650;
+      const height = 800;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
 
