@@ -337,7 +337,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       }
 
       const redirectUri = `${window.location.origin}/api/v1/facebook/oauth-callback`;
-      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_messaging,pages_manage_engagement`;
+      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_messaging,pages_manage_engagement,read_insights`;
 
       const width = 600;
       const height = 800;
