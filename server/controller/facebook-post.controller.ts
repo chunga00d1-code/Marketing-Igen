@@ -261,7 +261,10 @@ export const facebookPostController = {
         try {
           const parsedState = JSON.parse(decodeURIComponent(String(state)));
           if (parsedState && typeof parsedState === "object") {
-            companyCode = parsedState.companyCode || "default";
+            // Normalize: "default" là fallback của superadmin (không có companyCode trong JWT)
+            // CRUD service dùng "SYSTEM" cho superadmin → phải khớp
+            const rawCompanyCode = parsedState.companyCode || "SYSTEM";
+            companyCode = (rawCompanyCode === "default") ? "SYSTEM" : rawCompanyCode;
             createdBy = parsedState.createdBy || "system";
             if (parsedState.integrationId && parsedState.integrationId.length === 24) {
               integrationId = parsedState.integrationId;
@@ -664,7 +667,7 @@ export const facebookPostController = {
         status: "success",
         appId,
         source: appId === process.env.FB_APP_ID ? "env" : "database",
-        companyCode: companyCode || "default",
+        companyCode: companyCode || "SYSTEM",
         createdBy: user?.email || "system",
       });
     } catch (error: any) {
@@ -672,7 +675,7 @@ export const facebookPostController = {
         status: "success",
         appId: process.env.FB_APP_ID || "",
         source: "env",
-        companyCode: "default",
+        companyCode: "SYSTEM",
         createdBy: "system",
       });
     }
