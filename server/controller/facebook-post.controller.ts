@@ -310,30 +310,69 @@ export const facebookPostController = {
         `);
       }
 
-      // Trả về giao diện chọn Trang Facebook để người dùng chủ động lựa chọn
+      // Trả về giao diện đồng bộ tự động
       return res.send(`
         <!DOCTYPE html>
         <html lang="vi">
         <head>
           <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <title>Kết nối Facebook thành công</title>
           <style>
-            body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f0f2f5; margin: 0; }
-            .box { text-align: center; }
-            .spinner { border: 4px solid rgba(0, 0, 0, 0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #1877f2; animation: spin 1s linear infinite; margin: 0 auto 12px auto; }
-            @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-            p { color: #65676b; font-size: 14px; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              background-color: #f0f2f5;
+              margin: 0;
+            }
+            .box {
+              text-align: center;
+              background: white;
+              border-radius: 12px;
+              padding: 32px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+              max-width: 400px;
+            }
+            .spinner {
+              border: 4px solid rgba(0, 0, 0, 0.1);
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              border-left-color: #1877f2;
+              animation: spin 1s linear infinite;
+              margin: 0 auto 16px auto;
+            }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            h3 {
+              color: #1c1e21;
+              margin: 0 0 8px 0;
+              font-size: 16px;
+            }
+            p {
+              color: #65676b;
+              font-size: 13px;
+              margin: 0;
+              line-height: 1.4;
+            }
           </style>
         </head>
         <body>
           <div class="box">
             <div class="spinner"></div>
-            <p>Đăng nhập thành công! Đang lưu các trang và đồng bộ với hệ thống ERP...</p>
+            <h3>Đăng nhập Facebook thành công</h3>
+            <p>Đang lưu dữ liệu các Trang và đồng bộ với hệ thống ERP...</p>
           </div>
           <script>
             const pages = ${JSON.stringify(pages)};
             const integrationId = ${JSON.stringify(integrationId)};
             
+            console.log("[FB Popup] Lưu kết quả vào localStorage...");
             localStorage.setItem('fb_oauth_result', JSON.stringify({
               type: 'FACEBOOK_PAGES_SELECTED',
               pages: pages,
@@ -341,14 +380,20 @@ export const facebookPostController = {
             }));
             
             if (window.opener) {
+              console.log("[FB Popup] Gửi postMessage tới cửa sổ cha...");
               window.opener.postMessage({
                 type: 'FACEBOOK_PAGES_SELECTED',
                 pages: pages,
                 integrationId: integrationId
               }, '*');
+            } else {
+              console.warn("[FB Popup] Không tìm thấy window.opener!");
             }
             
-            setTimeout(() => window.close(), 500);
+            setTimeout(() => {
+              console.log("[FB Popup] Tự động đóng popup...");
+              window.close();
+            }, 4000);
           </script>
         </body>
         </html>
