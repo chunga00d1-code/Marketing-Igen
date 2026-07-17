@@ -310,189 +310,90 @@ export const facebookPostController = {
         `);
       }
 
-      // Trả về giao diện chọn Trang Facebook để người dùng chủ động lựa chọn
+      // Trả về giao diện đồng bộ tự động
       return res.send(`
         <!DOCTYPE html>
         <html lang="vi">
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Kết nối Trang Facebook</title>
+          <title>Kết nối Facebook thành công</title>
           <style>
             body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
               background-color: #f0f2f5;
               margin: 0;
-              padding: 20px;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              box-sizing: border-box;
             }
-            .container {
+            .box {
+              text-align: center;
               background: white;
               border-radius: 12px;
-              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-              width: 100%;
-              max-width: 480px;
-              padding: 24px;
-              box-sizing: border-box;
+              padding: 32px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+              max-width: 400px;
             }
-            .header {
-              text-align: center;
-              margin-bottom: 24px;
-            }
-            .header h2 {
-              margin: 0;
-              color: #1c1e21;
-              font-size: 20px;
-              font-weight: 700;
-            }
-            .header p {
-              margin: 8px 0 0 0;
-              color: #65676b;
-              font-size: 14px;
-              line-height: 1.4;
-            }
-            .page-list {
-              max-height: 320px;
-              overflow-y: auto;
-              margin-bottom: 20px;
-              border: 1px solid #e4e6eb;
-              border-radius: 8px;
-            }
-            .page-item {
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
-              padding: 12px 16px;
-              border-bottom: 1px solid #e4e6eb;
-              transition: background-color 0.2s;
-            }
-            .page-item:last-child {
-              border-bottom: none;
-            }
-            .page-item:hover {
-              background-color: #f8f9fa;
-            }
-            .page-info {
-              display: flex;
-              align-items: center;
-              gap: 12px;
-              flex: 1;
-              min-width: 0;
-            }
-            .page-avatar {
+            .spinner {
+              border: 4px solid rgba(0, 0, 0, 0.1);
               width: 40px;
               height: 40px;
               border-radius: 50%;
-              background-color: #1877f2;
-              color: white;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              font-weight: bold;
+              border-left-color: #1877f2;
+              animation: spin 1s linear infinite;
+              margin: 0 auto 16px auto;
+            }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+            h3 {
+              color: #1c1e21;
+              margin: 0 0 8px 0;
               font-size: 16px;
-              flex-shrink: 0;
             }
-            .page-details {
-              display: flex;
-              flex-direction: column;
-              min-width: 0;
-            }
-            .page-name {
-              font-weight: 600;
-              color: #050505;
-              font-size: 14px;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-            }
-            .page-id {
-              font-size: 12px;
+            p {
               color: #65676b;
-              margin-top: 2px;
-            }
-            .connect-btn {
-              background-color: #1877f2;
-              color: white;
-              border: none;
-              border-radius: 6px;
-              padding: 8px 14px;
               font-size: 13px;
-              font-weight: 600;
-              cursor: pointer;
-              transition: background-color 0.2s;
-            }
-            .connect-btn:hover {
-              background-color: #1565c0;
-            }
-            .footer {
-              text-align: center;
-              font-size: 12px;
-              color: #8a8d91;
+              margin: 0;
+              line-height: 1.4;
             }
           </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
-              <h2>Chọn Trang Facebook để kết nối</h2>
-              <p>Chọn một Trang mà bạn muốn quản lý trên hệ thống iGEN ERP.</p>
-            </div>
-            <div class="page-list" id="pageList"></div>
-            <div class="footer">
-              Ứng dụng iGEN ERP kết nối bảo mật qua Facebook API.
-            </div>
+          <div class="box">
+            <div class="spinner"></div>
+            <h3>Đăng nhập Facebook thành công</h3>
+            <p>Đang lưu dữ liệu các Trang và đồng bộ với hệ thống ERP...</p>
           </div>
-
           <script>
             const pages = ${JSON.stringify(pages)};
             const integrationId = ${JSON.stringify(integrationId)};
-
-            const pageListContainer = document.getElementById('pageList');
             
-            pages.forEach((page) => {
-              const firstChar = (page.name || 'P').charAt(0).toUpperCase();
-              
-              const item = document.createElement('div');
-              item.className = 'page-item';
-              
-              item.innerHTML = \`
-                <div class="page-info">
-                  <div class="page-avatar">\${firstChar}</div>
-                  <div class="page-details">
-                    <div class="page-name" title="\${page.name}">\${page.name}</div>
-                    <div class="page-id">ID: \${page.id}</div>
-                  </div>
-                </div>
-                <button class="connect-btn" onclick="selectPage('\${page.id}')">Kết nối</button>
-              \`;
-              
-              pageListContainer.appendChild(item);
-            });
-
-            function selectPage(pageId) {
-              const selectedPage = pages.find(p => p.id === pageId);
-              if (!selectedPage) return;
-              
-              localStorage.setItem('fb_oauth_result', JSON.stringify({
-                type: 'FACEBOOK_PAGE_SELECTED',
-                page: selectedPage,
+            console.log("[FB Popup] Lưu kết quả vào localStorage...");
+            localStorage.setItem('fb_oauth_result', JSON.stringify({
+              type: 'FACEBOOK_PAGES_SELECTED',
+              pages: pages,
+              integrationId: integrationId
+            }));
+            
+            if (window.opener) {
+              console.log("[FB Popup] Gửi postMessage tới cửa sổ cha...");
+              window.opener.postMessage({
+                type: 'FACEBOOK_PAGES_SELECTED',
+                pages: pages,
                 integrationId: integrationId
-              }));
-              
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'FACEBOOK_PAGE_SELECTED',
-                  page: selectedPage,
-                  integrationId: integrationId
-                }, '*');
-              }
-              
-              window.close();
+              }, '*');
+            } else {
+              console.warn("[FB Popup] Không tìm thấy window.opener!");
             }
+            
+            setTimeout(() => {
+              console.log("[FB Popup] Tự động đóng popup...");
+              window.close();
+            }, 4000);
           </script>
         </body>
         </html>
