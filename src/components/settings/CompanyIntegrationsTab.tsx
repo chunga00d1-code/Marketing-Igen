@@ -324,27 +324,37 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       // Xóa kết quả cũ trong localStorage
       localStorage.removeItem("fb_oauth_result");
 
-      // Lấy App ID từ server (lưu trong .env của VPS, không cần user nhập)
+      // Lấy App ID và thông tin tổ chức từ server
       const configRes = await fetch("/api/v1/facebook/config", {
         headers: { "Authorization": `Bearer ${getAccessToken()}` }
       });
       const configData = await configRes.json().catch(() => ({}));
       const appId = configData.appId;
+      const companyCode = configData.companyCode || "default";
+      const createdBy = configData.createdBy || "system";
 
       if (!appId) {
         toast.error("Hệ thống chưa cấu hình Facebook App ID. Liên hệ quản trị viên.");
         return;
       }
 
+      // Tạo state JSON mã hóa để gửi sang Facebook (tránh mất thông tin doanh nghiệp khi redirect về callback)
+      const stateObj = {
+        companyCode,
+        createdBy,
+        integrationId: ""
+      };
+      const stateStr = encodeURIComponent(JSON.stringify(stateObj));
+
       const redirectUri = `${window.location.origin}/api/v1/facebook/oauth-callback`;
-      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_messaging,pages_manage_engagement,read_insights`;
+      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_messaging,pages_manage_engagement,read_insights&state=${stateStr}`;
 
       const width = 600;
       const height = 800;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
 
-      console.log("[Facebook OAuth] Đang mở popup với redirectUri:", redirectUri);
+      console.log("[Facebook OAuth] Đang mở popup với redirectUri:", redirectUri, "và state:", stateObj);
       const oauthWindow = window.open(
         oauthUrl,
         "FacebookOAuthPopup",
@@ -373,8 +383,12 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         }
 
         if (oauthWindow && oauthWindow.closed) {
-          console.log("[Facebook OAuth] Cửa sổ popup đã đóng. Dừng checkInterval.");
+          console.log("[Facebook OAuth] Cửa sổ popup đã đóng. Dừng checkInterval và làm mới danh sách.");
           clearInterval(checkInterval);
+          // Fallback kích hoạt tải lại danh sách sau khi popup đóng để đảm bảo hiển thị trang vừa kết nối
+          setTimeout(() => {
+            void fetchCompanyIntegrations();
+          }, 800);
         }
       }, 400); // Tăng tần suất kiểm tra lên 400ms để tránh race condition
     } catch (err: any) {
