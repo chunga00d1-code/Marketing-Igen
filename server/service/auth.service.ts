@@ -161,7 +161,7 @@ export const authService = {
       linkedAt: session?.linkedAt ?? null,
       pendingCode: pendingCode?.code ?? null,
       pendingCodeExpiresAt: pendingCode?.expiresAt ?? null,
-      botUsername: String(process.env.TELEGRAM_BOT_USERNAME || "iGEN_ERP_Bot").trim(),
+      botUsername: String(process.env.TELEGRAM_BOT_USERNAME || "igen_marketing_bot").trim(),
     };
   },
 
