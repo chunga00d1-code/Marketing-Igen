@@ -26,7 +26,6 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "firebase": "^12.14.0",
     "hyperframes": "^0.7.6",
     "ioredis": "^5.11.1",
     "joi": "^18.2.1",

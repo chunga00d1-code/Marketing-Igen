@@ -5,7 +5,7 @@ import { authService } from "../services/authService";
 import { CompanyProfile, UserProfile } from "../types";
 import { toast } from "./Toast";
 import { Shield, RefreshCw, Plus, User, X, Wallet, Mail, Lock, SlidersHorizontal } from "lucide-react";
-import { parseFirebaseError } from "../utils/firebaseErrorParser";
+import { parseAppError } from "../utils/errorParser";
 import { rolePermissionService, RolePermission, Permission } from "../services/rolePermissionService";
 import { AdminTransactionInfo, AdminUserBalance, walletService } from "../services/walletService";
 import { CompanyModal } from "../components/user-admin/CompanyModal";
@@ -465,7 +465,7 @@ export default function UserAdminTab() {
       await fetchCompanies();
     } catch (error: any) {
       console.error("Lỗi đăng ký doanh nghiệp:", error);
-      const errMsg = parseFirebaseError(error, "Không thể đăng ký doanh nghiệp mới.");
+      const errMsg = parseAppError(error, "Không thể đăng ký doanh nghiệp mới.");
       toast.error(errMsg);
     } finally {
       setSubmittingCompany(false);
@@ -522,7 +522,7 @@ export default function UserAdminTab() {
       setSelectedCompanyCode(editingCompany.code.trim().toUpperCase());
     } catch (error: any) {
       console.error("Lỗi cập nhật doanh nghiệp:", error);
-      toast.error(parseFirebaseError(error, "Không thể cập nhật doanh nghiệp."));
+      toast.error(parseAppError(error, "Không thể cập nhật doanh nghiệp."));
     } finally {
       setSubmittingCompany(false);
     }
@@ -601,7 +601,7 @@ export default function UserAdminTab() {
       await fetchUsers();
     } catch (error: any) {
       console.error(editingUser ? "Lỗi cập nhật người dùng:" : "Lỗi đăng ký người dùng:", error);
-      const errMsg = parseFirebaseError(
+      const errMsg = parseAppError(
         error,
         editingUser ? "Không thể cập nhật người dùng." : "Không thể đăng ký người dùng mới."
       );

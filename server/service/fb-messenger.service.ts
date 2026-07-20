@@ -135,6 +135,9 @@ export const fbMessengerService = {
         });
         await conversation.save();
       }
+
+      // Phát sự kiện socket để cập nhật realtime danh sách ở frontend
+      emitToPage(pageId, "conversation_updated", conversation);
     }
 
     console.log(`[FB Service syncConversations] Đồng bộ xong ${conversations.length} hội thoại từ Facebook cho Page ID: ${pageId} trong ${Date.now() - startedAt}ms`);
@@ -172,6 +175,7 @@ export const fbMessengerService = {
     const data = await this.fetchGraphJson(url);
     const messages = Array.isArray(data?.data) ? data.data : [];
     let upsertedCount = 0;
+    const newMessagesToEmit: any[] = [];
 
     for (const fbMessage of messages) {
       if (existingMids.has(fbMessage.id)) {
@@ -192,7 +196,7 @@ export const fbMessengerService = {
         : [];
       const normalizedText = fbMessage?.message || "";
 
-      await FBMessageModel.findOneAndUpdate(
+      const savedMsg = await FBMessageModel.findOneAndUpdate(
         { messageId: fbMessage.id },
         {
           conversationId: refreshedConversation._id,
@@ -212,9 +216,23 @@ export const fbMessengerService = {
         }
       );
       upsertedCount += 1;
+      newMessagesToEmit.push(savedMsg);
     }
 
     console.log(`[FB Service syncMessages] Đồng bộ xong ${upsertedCount}/${messages.length} tin nhắn từ Facebook cho PSID ${recipientId} trong ${Date.now() - startedAt}ms`);
+
+    if (newMessagesToEmit.length > 0) {
+      // Sắp xếp tin nhắn theo thời gian tăng dần trước khi emit
+      newMessagesToEmit.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      for (const msg of newMessagesToEmit) {
+        emitToPage(pageId, "new_message", {
+          message: msg,
+          conversation: refreshedConversation
+        });
+      }
+      emitToPage(pageId, "conversation_updated", refreshedConversation);
+    }
+
     return FBMessageModel.find({ conversationId: refreshedConversation._id }).sort({ timestamp: 1 });
   },
 
@@ -782,11 +800,14 @@ export const fbMessengerService = {
     const limit = options?.limit || 20;
 
     if (pageId && options?.sync && skip === 0 && this.shouldSync(`conversations:${pageId}`, CONVERSATION_SYNC_TTL_MS)) {
-      try {
-        await this.syncConversationsFromFacebook(pageId);
-      } catch (error) {
-        console.error(`[FB Service getConversations] Đồng bộ trực tiếp từ Facebook thất bại cho Page ID ${pageId}:`, error);
-      }
+      // Chạy đồng bộ bất đồng bộ dưới nền để không block request của Frontend
+      this.syncConversationsFromFacebook(pageId)
+        .then(() => {
+          console.log(`[FB Service getConversations] Đồng bộ ngầm thành công cho Page ID: ${pageId}`);
+        })
+        .catch((error) => {
+          console.error(`[FB Service getConversations] Đồng bộ ngầm thất bại cho Page ID ${pageId}:`, error);
+        });
     }
 
     return FBConversationModel.find(filter)
@@ -826,11 +847,17 @@ export const fbMessengerService = {
       filter.timestamp = { $lt: beforeDate };
     }
 
-    let existingMessages = await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit + 1);
+    const existingMessages = await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit + 1);
 
     if (!beforeDate && options?.sync && conversation.recipientId && this.shouldSync(`messages:${pageId}:${conversation._id}`, MESSAGE_SYNC_TTL_MS)) {
-      await this.syncMessagesFromFacebook(pageId, conversation.recipientId);
-      existingMessages = await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit + 1);
+      // Chạy đồng bộ bất đồng bộ dưới nền để không block request của Frontend
+      this.syncMessagesFromFacebook(pageId, conversation.recipientId)
+        .then((syncedMsgs) => {
+          console.log(`[FB Service getMessages] Đồng bộ ngầm thành công ${syncedMsgs.length} tin nhắn cho conversation: ${conversation._id}`);
+        })
+        .catch((err) => {
+          console.error(`[FB Service getMessages] Đồng bộ ngầm thất bại cho conversation ${conversation._id}:`, err);
+        });
     }
 
     const hasMore = existingMessages.length > limit;
