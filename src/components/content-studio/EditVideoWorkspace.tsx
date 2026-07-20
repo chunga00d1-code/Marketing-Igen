@@ -1206,8 +1206,8 @@ export function EditVideoWorkspace({
                       <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
                         <Video className="h-5 w-5 text-slate-500" />
                       </div>
-                      <span className="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp �Ồ tải video lên</span>
-                      <span className="text-[10px] text-slate-400 mt-1 font-medium">MP4, MOV, WEBM. T�i �a 200MB. H� trợ chọn nhiều video.</span>
+                      <span className="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp để tải video lên</span>
+                      <span className="text-[10px] text-slate-400 mt-1 font-medium">MP4, MOV, WEBM. Tải tối đa 200MB. Hỗ trợ chọn nhiều video.</span>
                       <input
                         type="file"
                         accept="video/*"
@@ -1284,7 +1284,7 @@ export function EditVideoWorkspace({
                         <Sparkles className="h-4 w-4 text-purple-500" />
                       </div>
                       <span className="text-xs font-semibold text-slate-700">Chọn tải lên Video mẫu (Reference Style)</span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">ĐỒ AI học phong cách dựng, b�" lọc và hi�!u ứng</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">ĐỒ AI học phong cách dựng, bộ lọc và hiệu ứng</span>
                       <input
                         ref={refVideoInputRef}
                         type="file"
@@ -1305,7 +1305,7 @@ export function EditVideoWorkspace({
 
                 <div className="grid gap-3 grid-cols-2 pt-1">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">T�0 l�! khung hình</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tỷ lệ khung hình</label>
                     <select
                       value={aspectRatio}
                       onChange={(e) => setAspectRatio(e.target.value)}
@@ -1320,7 +1320,7 @@ export function EditVideoWorkspace({
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đ�" phân giải</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Độ phân giải</label>
                     <select
                       value={resolution}
                       onChange={(e) => setResolution(e.target.value)}
@@ -1336,7 +1336,7 @@ export function EditVideoWorkspace({
                 </div>
 
                 <div className="flex flex-col gap-1.5 pt-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đ�"ng cơ kết xuất (Render Engine)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Động cơ kết xuất (Render Engine)</label>
                   <select
                     value={renderEngine}
                     onChange={(e) => setRenderEngine(e.target.value as RenderEngine)}
@@ -1671,7 +1671,7 @@ export function EditVideoWorkspace({
                               className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-cyan-400 ring-1 ring-cyan-300/50 bg-cyan-50/30' : 'border-slate-200 hover:border-slate-300'}`}
                             >
                               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span className="text-[10px] font-bold text-cyan-600 tracking-wider">L�aP CHỮ #{idx + 1}</span>
+                                <span className="text-[10px] font-bold text-cyan-600 tracking-wider">LỚP CHỮ #{idx + 1}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTimelineItem(idx)}
@@ -1692,7 +1692,7 @@ export function EditVideoWorkspace({
                                 </div>
                                 <div className="flex gap-2">
                                   <div className="flex flex-col gap-1 flex-1">
-                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Bắt �ầu (s)</label>
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Bắt đầu (s)</label>
                                     <input
                                       type="number"
                                       step="0.1"
@@ -1770,7 +1770,7 @@ export function EditVideoWorkspace({
                               className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-purple-400 ring-1 ring-purple-300/50 bg-purple-50/20' : 'border-slate-200 hover:border-slate-300'}`}
                             >
                               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span className="text-[10px] font-bold text-purple-600 tracking-wider">NHẠC NỬN #{idx + 1}</span>
+                                <span className="text-[10px] font-bold text-purple-600 tracking-wider">NHẠC NỀN #{idx + 1}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTimelineItem(idx)}
@@ -2236,7 +2236,7 @@ export function EditVideoWorkspace({
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-slate-900 line-clamp-2 leading-relaxed">{item.prompt || 'Video AI �ã tạo'}</p>
+                            <p className="font-semibold text-slate-900 line-clamp-2 leading-relaxed">{item.prompt || 'Video AI đã tạo'}</p>
                             <p className="mt-1 text-sm text-slate-500">{new Date(item.createdAt).toLocaleString()}</p>
                             <div className="mt-3 flex flex-wrap gap-2 text-xs">
                               <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{item.aspectRatio || '16:9'}</span>
