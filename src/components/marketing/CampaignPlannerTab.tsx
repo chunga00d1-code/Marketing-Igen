@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, LucideIcon } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -45,6 +45,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const qualityMode = 'premium';
   const [publishMode, setPublishMode] = useState<'auto' | 'manual'>('manual');
   const [imageMode, setImageMode] = useState<'ai' | 'real'>('ai');
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState('');
   const [drivePreviews, setDrivePreviews] = useState<DriveFileItem[]>([]);
   const [loadingPreviews, setLoadingPreviews] = useState(false);
@@ -531,527 +532,604 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-        <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
-          <div className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600"><Sparkles size={16} /></div>
-          <div>
-            <h2 className="text-sm font-extrabold text-slate-850">Tạo chiến dịch tự động</h2>
-            <p className="mt-0.5 text-[10px] text-slate-400">AI tự động viết nội dung, tạo ảnh minh họa và chuẩn bị lịch đăng bài Facebook.</p>
-          </div>
-        </div>
-
-        <div className="mt-3 mb-4">
-          <label className="mb-1.5 block text-xs font-bold text-slate-700">Nguồn tư liệu & Hình ảnh</label>
-          <div className="flex p-1 bg-slate-100 rounded-xl max-w-md">
-            <button
-              type="button"
-              onClick={() => {
-                setImageMode('ai');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${imageMode === 'ai'
-                  ? 'bg-white text-slate-850 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-850'
-                }`}
-            >
-              <Sparkles size={13} className={imageMode === 'ai' ? 'text-indigo-600' : ''} />
-              <span>Hình ảnh sinh từ AI</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setImageMode('real');
-              }}
-              className={`flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 px-3 text-xs font-bold transition-all cursor-pointer ${imageMode === 'real'
-                  ? 'bg-white text-slate-850 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-850'
-                }`}
-            >
-              <FolderOpen size={13} className={imageMode === 'real' ? 'text-indigo-600' : ''} />
-              <span>Kho Ảnh thật (Drive)</span>
-            </button>
-          </div>
-          <p className="mt-1.5 text-[10px] text-slate-400">
-            {imageMode === 'ai'
-              ? 'AI tự nghiên cứu chủ đề, viết bài và vẽ ảnh minh họa phù hợp.'
-              : 'Quét toàn bộ ảnh/video từ một thư mục Google Drive công khai.'}
-          </p>
-        </div>
-
-        <label className="mb-2 block text-xs font-bold text-slate-700">Mục tiêu và brief chiến dịch</label>
-        <CampaignPromptBox
-          prompt={prompt}
-          setPrompt={setPrompt}
-          uploadedDocName={uploadedDocName}
-          uploadedImageBase64={uploadedImageBase64}
-          loadingDoc={loadingDoc}
-          isDragging={isDragging}
-          handleDragOver={handleDragOver}
-          handleDragLeave={handleDragLeave}
-          handleDrop={handleDrop}
-          handleDocumentUpload={handleDocumentUpload}
-          handleRemoveDocument={handleRemoveDocument}
-          onClearAll={() => {
-            setPrompt('');
-            setUploadedDocName('');
-            setUploadedDocText('');
-            setUploadedImageBase64('');
-          }}
-        />
-
-        {imageMode === 'real' && (
-          <div className="mt-3.5 space-y-3">
-            <div>
-              <label className="mb-1 block text-xs font-bold text-slate-700">Đường dẫn thư mục Google Drive công khai</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="https://drive.google.com/drive/folders/..."
-                  value={googleDriveFolderUrl}
-                  onChange={(e) => setGoogleDriveFolderUrl(e.target.value)}
-                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-850 placeholder:text-slate-450 focus:border-indigo-600 focus:outline-hidden"
-                />
-                <button
-                  type="button"
-                  onClick={handlePreviewDrive}
-                  disabled={loadingPreviews || !googleDriveFolderUrl}
-                  className="rounded-xl bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-all shrink-0"
-                >
-                  {loadingPreviews ? (
-                    <Loader2 size={14} className="animate-spin text-indigo-600" />
-                  ) : (
-                    <FolderOpen size={14} />
-                  )}
-                  <span>Quét ảnh</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="rounded-lg bg-amber-50/60 border border-amber-200/40 p-2.5 text-[10px] leading-relaxed text-amber-850 font-medium">
-              <p className="font-bold mb-0.5">💡 Quy tắc đặt tên file trong thư mục Drive:</p>
-              <ul className="list-disc pl-4 space-y-0.5">
-                <li>Đặt link Drive ở chế độ <strong className="text-amber-900 font-bold">"Bất kỳ ai có liên kết đều có thể xem"</strong>.</li>
-                <li>Bài viết đơn: chứa số thứ tự bài (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">2.mp4</code>).</li>
-                <li>Bài viết nhiều hình (Album): chứa số thứ tự và gạch dưới (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">3_1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">3_2.png</code>).</li>
-              </ul>
-            </div>
-
-            {drivePreviews.length > 0 && (
-              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-2.5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Tư liệu đã quét ({drivePreviews.length} tệp)</span>
-                  <button
-                    type="button"
-                    onClick={() => setDrivePreviews([])}
-                    className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
-                  >
-                    Xóa xem trước
-                  </button>
-                </div>
-
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200">
-                  {drivePreviews.map((file) => {
-                    const hasNumber = /\d+/.test(file.name);
-                    return (
+      <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between">
+        <div>
+          {/* Stepper Header Bar */}
+          <div className="mb-6 border-b border-slate-150 pb-5">
+            <div className="flex items-center justify-between gap-2">
+              {[
+                { step: 1, label: '1. Ý tưởng & Mô tả', desc: 'Mục tiêu & Nội dung bài viết' },
+                { step: 2, label: '2. Nguồn tài liệu & Ảnh', desc: 'Tìm xu hướng & Ảnh mẫu' },
+                { step: 3, label: '3. Lịch đăng bài', desc: 'Chọn ngày & Giờ phát bài' },
+              ].map((s, idx) => {
+                const isActive = wizardStep === s.step;
+                const isCompleted = wizardStep > s.step;
+                return (
+                  <React.Fragment key={s.step}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (s.step === 1 || (s.step === 2 && prompt.trim()) || (s.step === 3 && prompt.trim())) {
+                          setWizardStep(s.step as 1 | 2 | 3);
+                        }
+                      }}
+                      className={`flex flex-1 items-center gap-2.5 rounded-xl p-2.5 transition-all text-left cursor-pointer border ${isActive
+                        ? 'bg-cyan-50/90 border-cyan-300 shadow-2xs'
+                        : isCompleted
+                          ? 'bg-emerald-50/90 border-emerald-200 hover:bg-emerald-100/60'
+                          : 'bg-white border-slate-200 text-slate-400 opacity-60'
+                        }`}
+                    >
                       <div
-                        key={file.id}
-                        className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white group shadow-xs ${hasNumber ? "border-slate-200" : "border-red-300 ring-1 ring-red-300"
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all ${isActive
+                          ? 'bg-cyan-600 text-white shadow-2xs'
+                          : isCompleted
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
                           }`}
                       >
-                        {file.isVideo ? (
-                          <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 text-white select-none">
-                            <span className="text-[9px] font-bold uppercase text-red-500 font-mono">Video</span>
-                            <span className="mt-0.5 max-w-full truncate px-1 text-[7px] text-slate-400">{file.name}</span>
-                          </div>
-                        ) : (
-                          <img
-                            src={file.directUrl}
-                            alt={file.name}
-                            className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                            loading="lazy"
-                          />
-                        )}
-                        {!hasNumber && (
-                          <div
-                            className="absolute top-0.5 right-0.5 h-4.5 w-4.5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold shadow-sm select-none"
-                            title="Tên file thiếu số thứ tự (Ví dụ: 1.jpg, 2_1.jpg)"
-                          >
-                            ⚠️
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-0.5 justify-center">
-                          <span className="text-[7px] text-white truncate max-w-full font-medium">{file.name}</span>
-                        </div>
+                        {isCompleted ? '✓' : s.step}
                       </div>
+                      <div className="hidden sm:block min-w-0">
+                        <p className={`text-xs font-bold truncate ${isActive ? 'text-cyan-950' : isCompleted ? 'text-emerald-950' : 'text-slate-700'}`}>
+                          {s.label}
+                        </p>
+                        <p className={`text-[10px] truncate mt-0.5 ${isActive ? 'text-cyan-700' : 'text-slate-400'}`}>{s.desc}</p>
+                      </div>
+                    </button>
+                    {idx < 2 && <div className="hidden md:block h-0.5 w-4 bg-slate-200 shrink-0 self-center" />}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* BƯỚC 1: Ý TƯỞNG & PROMPT */}
+          {wizardStep === 1 && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Bước 1: Nhập ý tưởng & yêu cầu bài viết
+                </label>
+                <span className="text-[11px] text-slate-400 font-medium">Viết mô tả hoặc tải tài liệu / ảnh mẫu lên</span>
+              </div>
+              <CampaignPromptBox
+                prompt={prompt}
+                setPrompt={setPrompt}
+                uploadedDocName={uploadedDocName}
+                uploadedImageBase64={uploadedImageBase64}
+                loadingDoc={loadingDoc}
+                isDragging={isDragging}
+                handleDragOver={handleDragOver}
+                handleDragLeave={handleDragLeave}
+                handleDrop={handleDrop}
+                handleDocumentUpload={handleDocumentUpload}
+                handleRemoveDocument={handleRemoveDocument}
+                onClearAll={() => {
+                  setPrompt('');
+                  setUploadedDocName('');
+                  setUploadedDocText('');
+                  setUploadedImageBase64('');
+                }}
+              />
+            </div>
+          )}
+
+          {/* BƯỚC 2: NGUỒN TÀI LIỆU & HÌNH ẢNH */}
+          {wizardStep === 2 && (
+            <div className="space-y-5 animate-fadeIn">
+              {/* Nguồn tư liệu & Hình ảnh */}
+              <div>
+                <label className="mb-2 block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Nguồn hình ảnh cho bài viết
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setImageMode('ai')}
+                    className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${imageMode === 'ai'
+                      ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                  >
+                    <div className={`rounded-lg p-2 ${imageMode === 'ai' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <Sparkles size={16} />
+                    </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800">Để AI tự tạo ảnh minh họa</span>
+                      <span className="text-[10px] text-slate-500">Trí tuệ nhân tạo sẽ tự vẽ hình phù hợp với nội dung</span>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setImageMode('real')}
+                    className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${imageMode === 'real'
+                      ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                  >
+                    <div className={`rounded-lg p-2 ${imageMode === 'real' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <FolderOpen size={16} />
+                    </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800">Dùng ảnh thật từ Google Drive</span>
+                      <span className="text-[10px] text-slate-500">Tải từ thư mục hình ảnh/video thực tế của bạn</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {imageMode === 'real' && (
+                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-slate-700">Đường dẫn thư mục Google Drive (Chế độ công khai)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="https://drive.google.com/drive/folders/..."
+                        value={googleDriveFolderUrl}
+                        onChange={(e) => setGoogleDriveFolderUrl(e.target.value)}
+                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-850 placeholder:text-slate-450 focus:border-indigo-600 focus:outline-hidden bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={handlePreviewDrive}
+                        disabled={loadingPreviews || !googleDriveFolderUrl}
+                        className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-all shrink-0"
+                      >
+                        {loadingPreviews ? (
+                          <Loader2 size={14} className="animate-spin text-white" />
+                        ) : (
+                          <FolderOpen size={14} />
+                        )}
+                        <span>Quét ảnh</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-amber-50/60 border border-amber-200/40 p-2.5 text-[10px] leading-relaxed text-amber-850 font-medium">
+                    <p className="font-bold mb-0.5">💡 Quy tắc đặt tên file trong thư mục Drive:</p>
+                    <ul className="list-disc pl-4 space-y-0.5">
+                      <li>Đặt link Drive ở chế độ <strong className="text-amber-900 font-bold">"Bất kỳ ai có liên kết đều có thể xem"</strong>.</li>
+                      <li>Bài viết đơn: chứa số thứ tự bài (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">2.mp4</code>).</li>
+                      <li>Bài viết nhiều hình (Album): chứa số thứ tự và gạch dưới (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">3_1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">3_2.png</code>).</li>
+                    </ul>
+                  </div>
+
+                  {drivePreviews.length > 0 && (
+                    <div className="rounded-xl border border-slate-100 bg-white p-2.5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Tư liệu đã quét ({drivePreviews.length} tệp)</span>
+                        <button
+                          type="button"
+                          onClick={() => setDrivePreviews([])}
+                          className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
+                        >
+                          Xóa xem trước
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200">
+                        {drivePreviews.map((file) => {
+                          const hasNumber = /\d+/.test(file.name);
+                          return (
+                            <div
+                              key={file.id}
+                              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white group shadow-xs ${hasNumber ? 'border-slate-200' : 'border-red-300 ring-1 ring-red-300'
+                                }`}
+                            >
+                              {file.isVideo ? (
+                                <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 text-white select-none">
+                                  <span className="text-[9px] font-bold uppercase text-red-500 font-mono">Video</span>
+                                  <span className="mt-0.5 max-w-full truncate px-1 text-[7px] text-slate-400">{file.name}</span>
+                                </div>
+                              ) : (
+                                <img
+                                  src={file.directUrl}
+                                  alt={file.name}
+                                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                                  loading="lazy"
+                                />
+                              )}
+                              {!hasNumber && (
+                                <div
+                                  className="absolute top-0.5 right-0.5 h-4.5 w-4.5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold shadow-sm select-none"
+                                  title="Tên file thiếu số thứ tự"
+                                >
+                                  ⚠️
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Nguồn nghiên cứu thị trường */}
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Nguồn thu thập xu hướng thị trường (AI tự động tìm kiếm)
+                </label>
+                <p className="mb-2 text-[10px] text-slate-400">Chọn tối đa 3 kênh để AI tham khảo thông tin thị trường nổi bật.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {[
+                    { id: 'google', label: 'Tìm kiếm Google', icon: Globe, disabled: false },
+                    { id: 'facebook', label: 'Bài viết Facebook', icon: Facebook, disabled: false },
+                    { id: 'tiktok', label: 'Xu hướng TikTok', icon: Sparkles, disabled: false }
+                  ].map((source) => {
+                    const isSelected = apifySources.includes(source.id);
+                    const IconComp = source.icon;
+                    return (
+                      <button
+                        type="button"
+                        key={source.id}
+                        disabled={source.disabled}
+                        onClick={() => !source.disabled && toggleApifySource(source.id)}
+                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all select-none relative ${source.disabled
+                          ? 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
+                          : isSelected
+                            ? 'border-indigo-300 bg-indigo-50/50 text-indigo-950 shadow-2xs font-bold'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer'
+                          }`}
+                      >
+                        <div className={`rounded-lg p-1.5 ${source.disabled ? 'bg-slate-200 text-slate-450' : isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                          <IconComp size={15} />
+                        </div>
+                        <span className={`text-xs font-bold ${source.disabled ? 'text-slate-400' : 'text-slate-800'}`}>{source.label}</span>
+                        {isSelected && !source.disabled && (
+                          <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
+                            ✓
+                          </span>
+                        )}
+                      </button>
                     );
                   })}
                 </div>
-
-                {/* Warning details for invalid file names */}
-                {drivePreviews.some((file) => !/\d+/.test(file.name)) && (
-                  <div className="rounded-lg border border-red-200 bg-red-50/75 p-3 text-[10.5px] leading-relaxed text-red-800 font-medium space-y-1">
-                    <span className="font-bold flex items-center gap-1 text-red-900">
-                      ⚠️ Tên tệp không hợp lệ (Không chứa số thứ tự bài đăng):
-                    </span>
-                    <p className="text-[10px] text-red-700">
-                      Các tệp dưới đây sẽ bị bỏ qua vì hệ thống không xác định được thứ tự đăng bài tương ứng. Vui lòng đổi tên tệp trên Google Drive (ví dụ: thêm số thứ tự như <code className="bg-red-100/50 px-1 rounded font-bold">1_product.jpg</code>) và quét lại.
-                    </p>
-                    <ul className="list-disc pl-4 space-y-0.5 text-red-800 font-mono max-h-32 overflow-y-auto mt-1.5">
-                      {drivePreviews
-                        .filter((file) => !/\d+/.test(file.name))
-                        .map((file) => (
-                          <li key={file.id} className="truncate" title={file.name}>
-                            {file.name}
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
-        <div className="mt-4 border-t border-slate-150 pt-4">
-          <label className="mb-1 block text-xs font-bold text-slate-700">Nguồn nghiên cứu thị trường </label>
-          <p className="mb-3 text-[10px] text-slate-400">Chọn nguồn dữ liệu để AI tự động nghiên cứu và thu thập xu hướng trước khi viết bài.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[
-              { id: 'google', label: 'Google Search', icon: Globe, disabled: false },
-              { id: 'facebook', label: 'Facebook Search', icon: Facebook, disabled: false },
-              { id: 'tiktok', label: 'TikTok Trends', icon: Sparkles, disabled: false }
-            ].map((source: { id: string; label: string; icon: LucideIcon; disabled: boolean; tooltip?: string }) => {
-              const isSelected = apifySources.includes(source.id);
-              const IconComp = source.icon;
-              return (
-                <button
-                  type="button"
-                  key={source.id}
-                  disabled={source.disabled}
-                  onClick={() => !source.disabled && toggleApifySource(source.id)}
-                  className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-all select-none relative ${source.disabled
-                      ? 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
-                      : isSelected
-                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-750 shadow-xs cursor-pointer'
-                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer'
-                    }`}
-                  title={source.disabled ? source.tooltip : undefined}
-                >
-                  <div className={`rounded-lg p-1.5 ${source.disabled ? 'bg-slate-200 text-slate-450' : isSelected ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
-                    <IconComp size={16} />
+          {/* BƯỚC 3: CẤU HÌNH LỊCH CHẠY */}
+          {wizardStep === 3 && (
+            <div className="space-y-4 animate-fadeIn">
+              <h3 className="text-xs font-bold text-slate-850 uppercase tracking-wider">Bước 3: Cấu hình lịch chạy bài viết</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Left Column: Dates & Count & Channel */}
+                <div className="space-y-4.5">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                      Ngày bắt đầu
+                      <input
+                        type="date"
+                        min={today}
+                        value={startDate}
+                        onChange={(event) => setStartDate(event.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
+                      />
+                    </label>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                      Ngày kết thúc
+                      <input
+                        type="date"
+                        min={startDate || today}
+                        value={endDate}
+                        onChange={(event) => setEndDate(event.target.value)}
+                        className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
+                      />
+                    </label>
                   </div>
-                  <span className={`text-xs font-bold ${source.disabled ? 'text-slate-400' : 'text-slate-850'}`}>{source.label}</span>
-                  {source.disabled && (
-                    <span className="ml-auto text-[9px] font-bold bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-md">
-                      Khóa
-                    </span>
-                  )}
-                  {isSelected && !source.disabled && (
-                    <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
-                      ✓
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
-        <div className="mt-4 border-t border-slate-150 pt-4">
-          <h3 className="text-xs font-bold text-slate-850 uppercase tracking-wider mb-3">Cấu hình lịch chạy</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Left Column: Dates & Count & Channel */}
-            <div className="space-y-4.5">
-              <div className="grid grid-cols-2 gap-2.5">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                  Ngày bắt đầu
-                  <input
-                    type="date"
-                    min={today}
-                    value={startDate}
-                    onChange={(event) => setStartDate(event.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
-                  />
-                </label>
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                  Ngày kết thúc
-                  <input
-                    type="date"
-                    min={startDate || today}
-                    value={endDate}
-                    onChange={(event) => setEndDate(event.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
-                  />
-                </label>
-              </div>
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Số bài mỗi ngày</label>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <button
+                          type="button"
+                          key={value}
+                          onClick={() => changePostsPerDay(value)}
+                          className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${postsPerDay === value
+                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            }`}
+                        >
+                          {value}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              <div>
-                <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Số bài mỗi ngày</label>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((value) => (
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Facebook Page nhận lịch đăng</label>
+                    <select
+                      value={integrationId}
+                      onChange={(event) => setIntegrationId(event.target.value)}
+                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden"
+                    >
+                      {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
+                      {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
+                      {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Right Column: Auto-Publish & Posting Times */}
+                <div className="space-y-4.5">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <label className="text-[11px] font-bold text-slate-700 block uppercase tracking-wide">Tự động xuất bản</label>
+                      <p className="mt-0.5 text-[10px] text-slate-400 leading-normal">
+                        AI tự duyệt & đăng bài lên Facebook mà không cần phê duyệt tay thủ công.
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      key={value}
-                      onClick={() => changePostsPerDay(value)}
-                      className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${postsPerDay === value
-                          ? 'border-indigo-600 bg-indigo-600 text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
                         }`}
                     >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Facebook Page nhận lịch đăng</label>
-                <select
-                  value={integrationId}
-                  onChange={(event) => setIntegrationId(event.target.value)}
-                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden"
-                >
-                  {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
-                  {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
-                  {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
-                </select>
-              </div>
-            </div>
-
-            {/* Right Column: Auto-Publish & Posting Times */}
-            <div className="space-y-4.5">
-              <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 flex items-center justify-between gap-3">
-                <div className="flex-1">
-                  <label className="text-[11px] font-bold text-slate-700 block uppercase tracking-wide">Tự động xuất bản</label>
-                  <p className="mt-0.5 text-[10px] text-slate-400 leading-normal">
-                    AI tự duyệt & đăng bài lên Facebook mà không cần phê duyệt tay thủ công.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
-                    }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
-                      }`}
-                  />
-                </button>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Khung giờ bài đăng</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {postingTimes.map((time, index) => (
-                    <div key={index} className="flex flex-col">
-                      <span className="text-[9px] font-semibold text-slate-400 uppercase">Giờ {index + 1}</span>
-                      <CustomTimePicker
-                        value={time}
-                        onChange={(newTime) =>
-                          setPostingTimes((current) =>
-                            current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
-                          )
-                        }
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
+                          }`}
                       />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+                    </button>
+                  </div>
 
-        {/* Detailed custom schedule editor */}
-        <div className="mt-5 border-t border-slate-100 pt-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày (Tùy chọn)</h4>
-              <p className="text-[11px] text-slate-400 mt-0.5">Thiết lập giờ đăng riêng cho từng ngày cụ thể nếu không muốn dùng giờ mặc định.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowCustomSchedule(!showCustomSchedule)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-            >
-              {showCustomSchedule ? 'Thu gọn' : 'Cấu hình chi tiết'}
-            </button>
-          </div>
-
-          {showCustomSchedule && allDatesInRange.length > 0 && (
-            <div className="mt-4 rounded-xl border border-slate-150 bg-slate-50/30 p-4">
-              {/* Pagination controls for days */}
-              <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
-                <span className="text-[11px] font-bold text-slate-500">
-                  Hiển thị ngày {Math.min(allDatesInRange.length, (customSchedulePage - 1) * 7 + 1)} - {Math.min(allDatesInRange.length, customSchedulePage * 7)} trong tổng số {allDatesInRange.length} ngày
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    disabled={customSchedulePage === 1}
-                    onClick={() => setCustomSchedulePage(customSchedulePage - 1)}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Tuần trước
-                  </button>
-                  <button
-                    type="button"
-                    disabled={customSchedulePage >= Math.ceil(allDatesInRange.length / 7)}
-                    onClick={() => setCustomSchedulePage(customSchedulePage + 1)}
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                  >
-                    Tuần sau
-                  </button>
-                </div>
-              </div>
-
-              {/* Days List */}
-              <div className="space-y-4">
-                {allDatesInRange
-                  .slice((customSchedulePage - 1) * 7, customSchedulePage * 7)
-                  .map((date) => {
-                    const isCustomized = !!customSchedule[date];
-                    const times = customSchedule[date] || postingTimes;
-
-                    // Format date string nicely: e.g. "Thứ Hai, 13/07/2026"
-                    const formattedDate = new Intl.DateTimeFormat('vi-VN', {
-                      weekday: 'long',
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: 'numeric'
-                    }).format(new Date(date));
-
-                    return (
-                      <div key={date} className="flex flex-col gap-3 rounded-lg border border-slate-150 bg-white p-3.5 shadow-2xs">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-slate-100 pb-2">
-                          <span className="text-xs font-bold text-slate-800 capitalize">{formattedDate}</span>
-                          <div className="flex items-center gap-2">
-                            <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isCustomized ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-100 text-slate-500'}`}>
-                              {isCustomized ? 'Đã tùy chỉnh' : 'Mặc định'}
-                            </span>
-                            {isCustomized ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = { ...customSchedule };
-                                  delete updated[date];
-                                  setCustomSchedule(updated);
-                                }}
-                                className="text-[10px] font-extrabold text-red-550 hover:underline cursor-pointer"
-                              >
-                                Reset về mặc định
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCustomSchedule({
-                                    ...customSchedule,
-                                    [date]: [...postingTimes]
-                                  });
-                                }}
-                                className="text-[10px] font-extrabold text-indigo-655 hover:underline cursor-pointer"
-                              >
-                                Tùy chỉnh ngày này
-                              </button>
-                            )}
-                          </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Khung giờ bài đăng</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {postingTimes.map((time, index) => (
+                        <div key={index} className="flex flex-col">
+                          <span className="text-[9px] font-semibold text-slate-400 uppercase">Giờ {index + 1}</span>
+                          <CustomTimePicker
+                            value={time}
+                            onChange={(newTime) =>
+                              setPostingTimes((current) =>
+                                current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
+                              )
+                            }
+                          />
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                        {/* Times listing */}
-                        <div className="flex flex-wrap items-end gap-3.5">
-                          {times.map((time, idx) => (
-                            <div key={idx} className="flex flex-col w-32 relative">
-                              <div className="flex items-center justify-between select-none">
-                                <span className="text-[10px] font-bold text-slate-500">Giờ bài {idx + 1}</span>
-                                {isCustomized && times.length > 1 && (
+              {/* Detailed custom schedule editor */}
+              <div className="mt-5 border-t border-slate-100 pt-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày (Tùy chọn)</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Thiết lập giờ đăng riêng cho từng ngày cụ thể nếu không muốn dùng giờ mặc định.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomSchedule(!showCustomSchedule)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    {showCustomSchedule ? 'Thu gọn' : 'Cấu hình chi tiết'}
+                  </button>
+                </div>
+
+                {showCustomSchedule && allDatesInRange.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-slate-150 bg-slate-50/30 p-4">
+                    {/* Pagination controls for days */}
+                    <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                      <span className="text-[11px] font-bold text-slate-500">
+                        Hiển thị ngày {Math.min(allDatesInRange.length, (customSchedulePage - 1) * 7 + 1)} - {Math.min(allDatesInRange.length, customSchedulePage * 7)} trong tổng số {allDatesInRange.length} ngày
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={customSchedulePage === 1}
+                          onClick={() => setCustomSchedulePage(customSchedulePage - 1)}
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Tuần trước
+                        </button>
+                        <button
+                          type="button"
+                          disabled={customSchedulePage >= Math.ceil(allDatesInRange.length / 7)}
+                          onClick={() => setCustomSchedulePage(customSchedulePage + 1)}
+                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          Tuần sau
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Days List */}
+                    <div className="space-y-4">
+                      {allDatesInRange
+                        .slice((customSchedulePage - 1) * 7, customSchedulePage * 7)
+                        .map((date) => {
+                          const isCustomized = !!customSchedule[date];
+                          const times = customSchedule[date] || postingTimes;
+
+                          const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+                            weekday: 'long',
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric'
+                          }).format(new Date(date));
+
+                          return (
+                            <div key={date} className="flex flex-col gap-3 rounded-lg border border-slate-150 bg-white p-3.5 shadow-2xs">
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-slate-100 pb-2">
+                                <span className="text-xs font-bold text-slate-800 capitalize">{formattedDate}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isCustomized ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-100 text-slate-500'}`}>
+                                    {isCustomized ? 'Đã tùy chỉnh' : 'Mặc định'}
+                                  </span>
+                                  {isCustomized ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = { ...customSchedule };
+                                        delete updated[date];
+                                        setCustomSchedule(updated);
+                                      }}
+                                      className="text-[10px] font-extrabold text-red-550 hover:underline cursor-pointer"
+                                    >
+                                      Reset về mặc định
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setCustomSchedule({
+                                          ...customSchedule,
+                                          [date]: [...postingTimes]
+                                        });
+                                      }}
+                                      className="text-[10px] font-extrabold text-indigo-655 hover:underline cursor-pointer"
+                                    >
+                                      Tùy chỉnh ngày này
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Times listing */}
+                              <div className="flex flex-wrap items-end gap-3.5">
+                                {times.map((time, idx) => (
+                                  <div key={idx} className="flex flex-col w-32 relative">
+                                    <div className="flex items-center justify-between select-none">
+                                      <span className="text-[10px] font-bold text-slate-500">Giờ bài {idx + 1}</span>
+                                      {isCustomized && times.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const updatedTimes = times.filter((_, tIdx) => tIdx !== idx);
+                                            setCustomSchedule({
+                                              ...customSchedule,
+                                              [date]: updatedTimes
+                                            });
+                                          }}
+                                          className="text-[9px] font-extrabold text-red-500 hover:text-red-700 cursor-pointer"
+                                        >
+                                          Xóa
+                                        </button>
+                                      )}
+                                    </div>
+                                    <CustomTimePicker
+                                      value={time}
+                                      disabled={!isCustomized}
+                                      onChange={(newTime) => {
+                                        const updatedTimes = times.map((t, tIdx) => tIdx === idx ? newTime : t);
+                                        setCustomSchedule({
+                                          ...customSchedule,
+                                          [date]: updatedTimes
+                                        });
+                                      }}
+                                    />
+                                  </div>
+                                ))}
+
+                                {isCustomized && times.length < 5 && (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      const updatedTimes = times.filter((_, tIdx) => tIdx !== idx);
+                                      const nextHour = times.length > 0
+                                        ? String(parseInt(times[times.length - 1].split(':')[0]) + 2).padStart(2, '0') + ':00'
+                                        : '09:00';
+                                      const validatedHour = parseInt(nextHour.split(':')[0]) >= 24 ? '23:00' : nextHour;
                                       setCustomSchedule({
                                         ...customSchedule,
-                                        [date]: updatedTimes
+                                        [date]: [...times, validatedHour]
                                       });
                                     }}
-                                    className="text-[9px] font-extrabold text-red-500 hover:text-red-700 cursor-pointer"
+                                    className="h-9 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30 px-3 text-[11px] font-extrabold text-indigo-655 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer"
                                   >
-                                    Xóa
+                                    + Thêm khung giờ
                                   </button>
                                 )}
                               </div>
-                              <CustomTimePicker
-                                value={time}
-                                disabled={!isCustomized}
-                                onChange={(newTime) => {
-                                  const updatedTimes = times.map((t, tIdx) => tIdx === idx ? newTime : t);
-                                  setCustomSchedule({
-                                    ...customSchedule,
-                                    [date]: updatedTimes
-                                  });
-                                }}
-                              />
                             </div>
-                          ))}
+                          );
+                        })}
+                    </div>
 
-                          {isCustomized && times.length < 5 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextHour = times.length > 0
-                                  ? String(parseInt(times[times.length - 1].split(':')[0]) + 2).padStart(2, '0') + ':00'
-                                  : '09:00';
-                                const validatedHour = parseInt(nextHour.split(':')[0]) >= 24 ? '23:00' : nextHour;
-                                setCustomSchedule({
-                                  ...customSchedule,
-                                  [date]: [...times, validatedHour]
-                                });
-                              }}
-                              className="h-9 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30 px-3 text-[11px] font-extrabold text-indigo-655 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer"
-                            >
-                              + Thêm khung giờ
-                            </button>
-                          )}
-                        </div>
+                    {/* Reset All Button */}
+                    {Object.keys(customSchedule).length > 0 && (
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmConfig({
+                              isOpen: true,
+                              title: 'Đặt lại lịch đăng',
+                              message: 'Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?',
+                              isDangerous: true,
+                              confirmText: 'Xác nhận xóa',
+                              cancelText: 'Quay lại',
+                              onConfirm: () => {
+                                setCustomSchedule({});
+                                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                              }
+                            });
+                          }}
+                          className="text-[11px] font-bold text-red-655 hover:text-red-800 flex items-center gap-1 cursor-pointer"
+                        >
+                          Xóa tất cả tùy chỉnh
+                        </button>
                       </div>
-                    );
-                  })}
+                    )}
+                  </div>
+                )}
               </div>
-
-              {/* Reset All Button */}
-              {Object.keys(customSchedule).length > 0 && (
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConfirmConfig({
-                        isOpen: true,
-                        title: 'Đặt lại lịch đăng',
-                        message: 'Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?',
-                        isDangerous: true,
-                        confirmText: 'Xác nhận xóa',
-                        cancelText: 'Quay lại',
-                        onConfirm: () => {
-                          setCustomSchedule({});
-                          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                        }
-                      });
-                    }}
-                    className="text-[11px] font-bold text-red-655 hover:text-red-800 flex items-center gap-1 cursor-pointer"
-                  >
-                    Xóa tất cả tùy chỉnh
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
 
+        {/* Wizard Footer Controls */}
+        <div className="mt-6 pt-4 border-t border-slate-150 flex items-center justify-between gap-3">
+          {wizardStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => setWizardStep((prev) => (prev - 1) as 1 | 2 | 3)}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <span>◀ Quay lại</span>
+            </button>
+          ) : (
+            <div />
+          )}
 
-
-        <button type="button" onClick={handleCreateCampaign} disabled={loading || !prompt.trim() || !dayCount || totalPosts > 450} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 cursor-pointer">
-          {loading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
-          {loading ? 'AI đang lập chiến lược và tạo slot...' : `Khởi chạy chiến dịch ${totalPosts || 0} slot`}
-        </button>
+          {wizardStep < 3 ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!prompt.trim()) {
+                  toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch trước khi tiếp tục.');
+                  return;
+                }
+                if (wizardStep === 2 && imageMode === 'real' && !googleDriveFolderUrl.trim()) {
+                  toast.warning('Vui lòng điền link thư mục Google Drive công khai.');
+                  return;
+                }
+                setWizardStep((prev) => (prev + 1) as 1 | 2 | 3);
+              }}
+              className="rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer flex items-center gap-1.5 ml-auto"
+            >
+              <span>Tiếp tục (Bước {wizardStep + 1}/3) ➔</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreateCampaign}
+              disabled={loading || !prompt.trim() || !dayCount || totalPosts > 450}
+              className="rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 transition cursor-pointer flex items-center gap-2 ml-auto"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Sparkles size={16} />}
+              <span>{loading ? 'AI đang lập chiến lược và tạo slot...' : `🚀 Khởi chạy chiến dịch ${totalPosts || 0} slot`}</span>
+            </button>
+          )}
+        </div>
       </section>
 
       <aside className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-6">
@@ -1096,8 +1174,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   key={tab.value}
                   onClick={() => setFilterStatus(tab.value)}
                   className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${filterStatus === tab.value
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/40'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/40'
                     }`}
                 >
                   {tab.label}

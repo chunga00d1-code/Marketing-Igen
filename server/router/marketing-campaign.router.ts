@@ -25,6 +25,7 @@ const createSchema = {
     qualityMode: Joi.string().valid("premium", "budget").default("premium"),
     publishMode: Joi.string().valid("auto", "manual").default("manual"),
     imageMode: Joi.string().valid("ai", "real").default("ai"),
+    publishNow: Joi.boolean().default(false),
     googleDriveFolderUrl: Joi.string().allow("").optional(),
     customSchedule: Joi.object().optional(),
     images: Joi.array().items(Joi.string()).optional(),
@@ -77,6 +78,7 @@ marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never)
 marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/approve", marketingCampaignController.approveSlot as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/publish-now", marketingCampaignController.publishNowSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/reject", marketingCampaignController.rejectSlot as never);
 marketingCampaignRouter.get("/:id/slots/:slotId/share-link", marketingCampaignController.getShareLink as never);
 marketingCampaignRouter.get("/:id/dates/:date/share-link", marketingCampaignController.getDailyShareLink as never);
