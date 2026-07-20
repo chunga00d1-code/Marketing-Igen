@@ -18,6 +18,7 @@ import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { estimateAudioDuration } from "../utils/usage-tracker";
 import CustomTimePicker from "../components/common/CustomTimePicker";
 import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
+import TikTokPublishModal from "../components/marketing/TikTokPublishModal";
 
 // Lazy-loaded subcomponents
 const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
@@ -177,6 +178,7 @@ export default function MarketingTab() {
 
   // Shared Approval Cards State
   const [approvalCards, setApprovalCards] = useState<ContentApprovalCard[]>([]);
+  const [tiktokModalCard, setTiktokModalCard] = useState<ContentApprovalCard | null>(null);
 
   // Real-time Firestore Live Synchronization
   useEffect(() => {
@@ -479,6 +481,76 @@ export default function MarketingTab() {
     }
   };
 
+  const executeTikTokPublish = async (params: {
+    caption: string;
+    privacyLevel: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY";
+    allowComment: boolean;
+    allowDuet: boolean;
+    allowStitch: boolean;
+    brandContent: boolean;
+  }) => {
+    if (!tiktokModalCard) return;
+    const card = tiktokModalCard;
+    const tiktok = effectiveTikTokIntegration;
+    setPublishingTikTokId(card.id);
+    const integrationId = card.integrationId || tiktok.integrationId;
+    const accessToken = tiktok.accessToken;
+    const username = tiktok.username;
+    try {
+      const publishResult = await marketingService.publishToTikTok(
+        card.id,
+        params.caption,
+        card.videoUrl!,
+        false,
+        params.privacyLevel,
+        {
+          integrationId,
+          accessToken,
+          username,
+        }
+      );
+      const postId = String(publishResult.postId || "");
+      if (publishResult.status === "pending") {
+        setApprovalCards((prev) =>
+          prev.map((item) =>
+            item.id === card.id
+              ? {
+                ...item,
+                status: "processing",
+                tiktokPostId: publishResult.postId || item.tiktokPostId,
+                tiktokShareUrl: publishResult.shareUrl || item.tiktokShareUrl,
+              }
+              : item
+          )
+        );
+        toast.success("Đã gửi video sang TikTok. Hệ thống đang chờ TikTok xử lý.");
+        setTiktokModalCard(null);
+        return;
+      }
+
+      setApprovalCards((prev) =>
+        prev.map((item) =>
+          item.id === card.id
+            ? {
+              ...item,
+              status: "published",
+              publishedAt: new Date().toISOString(),
+              tiktokPostId: publishResult.postId || item.tiktokPostId,
+              tiktokShareUrl: publishResult.shareUrl || item.tiktokShareUrl,
+            }
+            : item
+        )
+      );
+      toast.success(`Đã đăng video lên TikTok thành công! ID: ${postId.slice(-8)}`);
+      setTiktokModalCard(null);
+    } catch (e: any) {
+      console.error("Lỗi đăng TikTok:", e);
+      toast.error(parseAppError(e, "Không thể đăng bài lên TikTok. Vui lòng thử lại."));
+    } finally {
+      setPublishingTikTokId(null);
+    }
+  };
+
   const handlePublishToTikTok = async (card: ContentApprovalCard) => {
     const tiktok = effectiveTikTokIntegration;
     if (!tiktok?.isConnected) {
@@ -489,6 +561,13 @@ export default function MarketingTab() {
       toast.error("Bài đăng TikTok cần có video. Hãy tạo video AI trước.");
       return;
     }
+
+    // Mở Modal cấu hình đăng bài TikTok đối với tài khoản superadmin để quay Video Demo theo UX Guideline TikTok
+    if (userProfile?.role === "superadmin") {
+      setTiktokModalCard(card);
+      return;
+    }
+
     setPublishingTikTokId(card.id);
     const integrationId = card.integrationId || tiktok.integrationId;
     const accessToken = tiktok.accessToken;
@@ -545,7 +624,7 @@ export default function MarketingTab() {
     } finally {
       setPublishingTikTokId(null);
     }
-  }
+  };
 
   const handlePublishCard = async (card: ContentApprovalCard) => {
     if (card.channel === 'TikTok') {
@@ -1137,6 +1216,16 @@ export default function MarketingTab() {
           </div>
         </div>
       )}
+
+      {/* TikTok Publishing Modal for Superadmin UX compliance */}
+      <TikTokPublishModal
+        isOpen={!!tiktokModalCard}
+        onClose={() => setTiktokModalCard(null)}
+        card={tiktokModalCard}
+        tiktokAccount={effectiveTikTokIntegration}
+        onConfirmPublish={executeTikTokPublish}
+        isPublishing={!!publishingTikTokId}
+      />
     </div>
   );
 }
