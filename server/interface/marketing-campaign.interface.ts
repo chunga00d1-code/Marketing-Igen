@@ -37,6 +37,15 @@ export interface IMarketingCampaign extends Document {
   customSchedule?: Record<string, string[]>;
   researchReport?: string;
   apifySources?: string[];
+  contentMatrix?: Array<{
+    pillar: string;
+    direction: string;
+    targetPercentage: number;
+    angles: Array<{
+      title: string;
+      funnel: "TOFU" | "MOFU" | "BOFU";
+    }>;
+  }>;
   statistics: {
     totalSlots: number;
     publishedSlots: number;

@@ -1231,6 +1231,9 @@ export const telegramService = {
   /**
    * Khởi động vòng lặp Polling chạy nền nhận và xử lý lệnh từ người dùng
    */
+  /**
+   * Khởi động vòng lặp Polling chạy nền nhận và xử lý lệnh từ người dùng
+   */
   async startPolling(): Promise<void> {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     if (!botToken) {
@@ -1240,6 +1243,31 @@ export const telegramService = {
 
     if (pollingActive) return;
     pollingActive = true;
+
+    // Tự động dọn dẹp Webhook cũ (nếu có) để tránh lỗi 409 Conflict với Long Polling
+    try {
+      await fetch(`${TELEGRAM_API_BASE_URL}/bot${botToken}/deleteWebhook?drop_pending_updates=false`, {
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch {
+      // Bỏ qua nếu lỗi mạng tạm thời
+    }
+
+    // Xác thực thông tin Bot
+    try {
+      const meRes = await fetch(`${TELEGRAM_API_BASE_URL}/bot${botToken}/getMe`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (meRes.ok) {
+        const meData: any = await meRes.json();
+        if (meData.ok && meData.result?.username) {
+          console.log(`[Telegram Bot] Đã kết nối thành công Bot: @${meData.result.username} (ID: ${meData.result.id})`);
+        }
+      }
+    } catch (err: any) {
+      console.warn("[Telegram Bot] Không thể kiểm tra thông tin Bot khi khởi động:", err?.message || err);
+    }
+
     console.log("[Telegram Bot] Đã khởi chạy dịch vụ Telegram Polling nhận tin nhắn.");
 
     this.pollLoop().catch((err) => {
@@ -1253,16 +1281,28 @@ export const telegramService = {
    */
   async pollLoop(): Promise<void> {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    let consecutiveErrors = 0;
+
     while (pollingActive) {
       try {
-        const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/getUpdates?offset=${lastOffset + 1}&timeout=30`;
-        const response = await fetch(url, { method: "GET" });
+        const allowedUpdates = JSON.stringify(["message", "callback_query"]);
+        const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/getUpdates?offset=${lastOffset + 1}&timeout=10&allowed_updates=${encodeURIComponent(allowedUpdates)}`;
+        
+        const response = await fetch(url, {
+          method: "GET",
+          signal: AbortSignal.timeout(25000),
+        });
+
         if (!response.ok) {
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          consecutiveErrors++;
+          const delay = Math.min(consecutiveErrors * 1000, 5000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
           continue;
         }
 
         const body: any = await response.json();
+        consecutiveErrors = 0; // Reset đếm lỗi khi thành công
+
         if (body.ok && Array.isArray(body.result)) {
           for (const update of body.result) {
             lastOffset = Math.max(lastOffset, update.update_id);
@@ -1322,14 +1362,23 @@ export const telegramService = {
           }
         }
       } catch (err: any) {
+        consecutiveErrors++;
         const errStr = err?.message || String(err);
-        const isTimeout = errStr.includes("ETIMEDOUT") || errStr.includes("fetch failed") || errStr.includes("timeout") || err?.code === "ETIMEDOUT";
+        const isTimeout =
+          errStr.includes("ETIMEDOUT") ||
+          errStr.includes("fetch failed") ||
+          errStr.includes("timeout") ||
+          err?.name === "AbortError" ||
+          err?.code === "ETIMEDOUT";
+
         if (isTimeout) {
-          console.warn(`[Telegram Bot] Lỗi kết nối API getUpdates (Timeout/Network): ${errStr}. Sẽ thử lại sau 5s...`);
+          // Thử lại êm sau 1s mà không làm rác log server
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         } else {
-          console.error("[Telegram Bot] Lỗi kết nối API getUpdates:", err);
+          console.error("[Telegram Bot] Lỗi kết nối API getUpdates:", errStr);
+          const delay = Math.min(consecutiveErrors * 1000, 5000);
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
-        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
   },

@@ -17,6 +17,15 @@ export interface MarketingCampaignSummary {
   contentPillars: string[];
   publishMode?: 'auto' | 'manual';
   researchReport?: string;
+  contentMatrix?: Array<{
+    pillar: string;
+    direction: string;
+    targetPercentage: number;
+    angles: Array<{
+      title: string;
+      funnel: 'TOFU' | 'MOFU' | 'BOFU';
+    }>;
+  }>;
   statistics: {
     totalSlots: number;
     publishedSlots: number;
@@ -32,6 +41,7 @@ export interface CampaignSlot {
   pillar: string;
   objective?: string;
   topicBrief: string;
+  funnelStage?: 'TOFU' | 'MOFU' | 'BOFU';
   scheduledAt: string;
   status: string;
   variant?: string;

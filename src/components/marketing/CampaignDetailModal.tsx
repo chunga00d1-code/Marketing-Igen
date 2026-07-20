@@ -3,6 +3,7 @@ import { CalendarClock, X, Loader2, RotateCcw } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
+import { socketService } from '../../services/socketService';
 
 interface CampaignSlot {
   _id: string;
@@ -202,6 +203,26 @@ export default function CampaignDetailModal({
     setSelectedSlot(null);
   }, [campaignDetail?.campaign?._id]);
 
+  // Subscribe to real-time socket updates for campaign slots
+  useEffect(() => {
+    if (!isOpen || !campaignDetail?.campaign?._id) return;
+    
+    let timer: NodeJS.Timeout | null = null;
+    const unsub = socketService.onCampaignSlotUpdate((data) => {
+      if (data.campaignId === campaignDetail.campaign._id) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          onRefresh?.();
+        }, 1200);
+      }
+    });
+
+    return () => {
+      unsub();
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOpen, campaignDetail?.campaign?._id, onRefresh]);
+
   if (!isOpen) return null;
 
   // Compute detailed status counts & next/last slots
@@ -370,6 +391,109 @@ export default function CampaignDetailModal({
                       </div>
                     )}
                   </div>
+
+                  {/* Content Strategy Matrix (Zero-Click Auto Generated) */}
+                  {campaignDetail.campaign.contentMatrix && campaignDetail.campaign.contentMatrix.length > 0 && (
+                    <div className="rounded-xl border border-indigo-150 bg-indigo-50/10 p-4 space-y-3">
+                      <div className="flex items-center justify-between border-b border-indigo-100 pb-2.5">
+                        <span className="text-xs font-extrabold text-indigo-900 tracking-wide uppercase font-mono flex items-center gap-1.5">
+                          📊 Bảng Content Strategy Matrix (Tự động hóa ngầm)
+                        </span>
+                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100/60 px-2 py-0.5 rounded-full">
+                          TOFU 20% · MOFU 60% · BOFU 20%
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto scrollbar-thin">
+                        <table className="w-full text-left text-xs border-collapse border border-indigo-100 bg-white rounded-lg">
+                          <thead>
+                            <tr className="border-b border-indigo-150 bg-indigo-50/70 text-[11px] font-extrabold text-indigo-950">
+                              <th className="p-2.5 border-r border-indigo-100 min-w-[140px]">Pillar</th>
+                              <th className="p-2.5 border-r border-indigo-100 min-w-[150px]">Direction</th>
+                              <th className="p-2.5 border-r border-indigo-100">Angles</th>
+                              <th className="p-2.5 border-r border-indigo-100 text-center w-[80px]">Phễu</th>
+                              <th className="p-2.5 border-r border-indigo-100 text-center w-[90px]">Tỷ lệ nội dung</th>
+                              <th className="p-2.5 text-center w-[85px]">Số bài/tháng</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {campaignDetail.campaign.contentMatrix.map((item, pIdx) => {
+                              const angles = item.angles || [];
+                              const totalCampaignSlots = campaignDetail.campaign.statistics.totalSlots || campaignDetail.slots.length || 0;
+                              
+                              // Calculate exact post count for this pillar
+                              const postCountForPillar = Math.max(1, Math.round((item.targetPercentage / 100) * totalCampaignSlots));
+
+                              // Calculate duration (days & weeks) of the campaign
+                              const start = new Date(campaignDetail.campaign.startDate);
+                              const end = new Date(campaignDetail.campaign.endDate);
+                              const totalDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
+                              const totalWeeks = (totalDays / 7).toFixed(1);
+
+                              if (angles.length === 0) {
+                                return (
+                                  <tr key={pIdx} className="hover:bg-slate-50/60 transition-colors">
+                                    <td className="p-2.5 font-bold text-slate-800 align-top border-r border-slate-200 bg-rose-50/20">
+                                      {item.pillar}
+                                    </td>
+                                    <td className="p-2.5 text-slate-600 align-top border-r border-slate-200 text-[11px]">
+                                      {item.direction}
+                                    </td>
+                                    <td className="p-2 text-slate-400 italic text-[11.5px] border-r border-slate-200">-</td>
+                                    <td className="p-2 text-center text-slate-400 italic border-r border-slate-200">-</td>
+                                    <td className="p-2 text-center font-bold text-slate-700 border-r border-slate-200">{item.targetPercentage}%</td>
+                                    <td className="p-2 text-center font-bold text-indigo-650">{postCountForPillar} bài ({totalDays} ngày)</td>
+                                  </tr>
+                                );
+                              }
+                              return (
+                                <React.Fragment key={pIdx}>
+                                  {angles.map((ang, aIdx) => (
+                                    <tr key={aIdx} className="hover:bg-slate-50/60 transition-colors">
+                                      {aIdx === 0 && (
+                                        <td rowSpan={angles.length} className="p-2.5 font-bold text-slate-850 align-top border-r border-slate-200 bg-rose-50/30">
+                                          {item.pillar}
+                                        </td>
+                                      )}
+                                      {aIdx === 0 && (
+                                        <td rowSpan={angles.length} className="p-2.5 text-slate-700 align-top border-r border-slate-200 text-[11px]">
+                                          {item.direction}
+                                        </td>
+                                      )}
+                                      <td className="p-2 border-r border-slate-200 text-slate-750 font-medium text-[11.5px]">
+                                        {ang.title}
+                                      </td>
+                                      <td className="p-2 border-r border-slate-200 text-center align-middle">
+                                        <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold inline-block ${
+                                          ang.funnel === 'TOFU'
+                                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                            : ang.funnel === 'BOFU'
+                                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        }`}>
+                                          {ang.funnel}
+                                        </span>
+                                      </td>
+                                      {aIdx === 0 && (
+                                        <td rowSpan={angles.length} className="p-2 text-center font-bold text-slate-800 align-middle border-r border-slate-200 bg-slate-50/30">
+                                          {item.targetPercentage}%
+                                        </td>
+                                      )}
+                                      {aIdx === 0 && (
+                                        <td rowSpan={angles.length} className="p-2 text-center align-middle bg-indigo-50/30">
+                                          <div className="font-extrabold text-indigo-700 text-xs">{postCountForPillar} bài</div>
+                                          <div className="text-[10px] text-slate-500 font-mono mt-0.5">({totalWeeks} tuần)</div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </React.Fragment>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Content Pillars */}
                   {campaignDetail.campaign.contentPillars?.length > 0 && (
