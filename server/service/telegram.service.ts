@@ -16,6 +16,9 @@ import { MarketingContentModel } from "../model/marketing-content.model";
 import { facebookPostService } from "./facebook-post.service";
 import { tiktokService } from "./tiktok.service";
 import dns from "dns";
+import https from "https";
+import http from "http";
+import { URL } from "url";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
@@ -27,6 +30,83 @@ try {
 } catch {
   // Ignored if not supported
 }
+
+const ipv4HttpsAgent = new https.Agent({ family: 4, keepAlive: true });
+const ipv4HttpAgent = new http.Agent({ family: 4, keepAlive: true });
+
+function telegramFetch(urlStr: string, options: any = {}): Promise<{
+  ok: boolean;
+  status: number;
+  text: () => Promise<string>;
+  json: () => Promise<any>;
+}> {
+  return new Promise((resolve, reject) => {
+    try {
+      const parsedUrl = new URL(urlStr);
+      const isHttps = parsedUrl.protocol === "https:";
+      const transport = isHttps ? https : http;
+      const agent = isHttps ? ipv4HttpsAgent : ipv4HttpAgent;
+
+      const postData = options.body ? (typeof options.body === "string" ? options.body : JSON.stringify(options.body)) : null;
+
+      const reqOptions: https.RequestOptions = {
+        hostname: parsedUrl.hostname,
+        port: parsedUrl.port || (isHttps ? 443 : 80),
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: options.method || "GET",
+        headers: {
+          ...(options.headers || {}),
+          ...(postData ? { "Content-Length": String(Buffer.byteLength(postData)) } : {}),
+        },
+        agent,
+        timeout: options.timeout || 15000,
+      };
+
+      const req = transport.request(reqOptions, (res) => {
+        let rawData = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => { rawData += chunk; });
+        res.on("end", () => {
+          const statusCode = res.statusCode || 500;
+          const ok = statusCode >= 200 && statusCode < 300;
+          resolve({
+            ok,
+            status: statusCode,
+            text: async () => rawData,
+            json: async () => JSON.parse(rawData),
+          });
+        });
+      });
+
+      const signal = options.signal;
+      if (signal) {
+        if (signal.aborted) {
+          req.destroy(new Error("Aborted"));
+          return reject(new Error("Aborted"));
+        }
+        signal.addEventListener("abort", () => {
+          req.destroy(new Error("Aborted"));
+          reject(new Error("Aborted"));
+        });
+      }
+
+      req.on("error", (err) => reject(err));
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Request timeout"));
+      });
+
+      if (postData) {
+        req.write(postData);
+      }
+      req.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+const fetch = telegramFetch as any;
 
 const TELEGRAM_API_BASE_URL = process.env.TELEGRAM_API_BASE_URL || "https://api.telegram.org";
 
