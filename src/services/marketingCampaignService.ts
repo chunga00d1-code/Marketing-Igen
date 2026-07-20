@@ -157,6 +157,7 @@ export const marketingCampaignService = {
     qualityMode?: 'premium' | 'budget';
     publishMode?: 'auto' | 'manual';
     imageMode?: 'ai' | 'real';
+    publishNow?: boolean;
     googleDriveFolderUrl?: string;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     images?: string[];
@@ -187,6 +188,10 @@ export const marketingCampaignService = {
 
   approveSlot(campaignId: string, slotId: string) {
     return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, { method: 'POST' });
+  },
+
+  publishNowSlot(campaignId: string, slotId: string) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/publish-now`, { method: 'POST' });
   },
 
   updateSlotContent(campaignId: string, slotId: string, updates: { title?: string; bodyText?: string; outline?: string; mediaPrompt?: string }) {

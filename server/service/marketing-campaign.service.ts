@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
@@ -9,6 +10,8 @@ import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slo
 import { buildCampaignSchedule, zonedLocalTimeToUtc } from "./marketing-campaign-schedule.service";
 import { geminiService } from "./gemini.service";
 import { CampaignMatrixGeneratorService } from "./agents/campaign-matrix-generator.service";
+import { CampaignOrchestratorService } from "./agents/campaign-orchestrator.service";
+import { marketingCampaignWorkerService } from "./marketing-campaign-worker.service";
 import { API_COSTS } from "./wallet.service";
 import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
 
@@ -31,6 +34,7 @@ interface CreateCampaignInput {
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
   imageMode?: "ai" | "real";
+  publishNow?: boolean;
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   apifySources?: string[];
@@ -80,27 +84,29 @@ export const marketingCampaignService = {
 
     const now = new Date();
     const minLeadTimeMs = 15 * 60 * 1000;
-    const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
-    if (failingSlot) {
-      const formatZonedTime = (date: Date) => {
-        return new Intl.DateTimeFormat("vi-VN", {
-          timeZone: timezone,
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        }).format(date);
-      };
+    if (!input.publishNow) {
+      const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
+      if (failingSlot) {
+        const formatZonedTime = (date: Date) => {
+          return new Intl.DateTimeFormat("vi-VN", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          }).format(date);
+        };
 
-      const scheduledStr = formatZonedTime(failingSlot.scheduledAt);
-      const nowStr = formatZonedTime(now);
+        const scheduledStr = formatZonedTime(failingSlot.scheduledAt);
+        const nowStr = formatZonedTime(now);
 
-      throw new Error(
-        `Lịch đăng lúc ${scheduledStr} quá sát so với thời gian hiện tại (${nowStr}). Hệ thống cần ít nhất 15 phút để chuẩn bị nội dung.`
-      );
+        throw new Error(
+          `Lịch đăng lúc ${scheduledStr} quá sát so với thời gian hiện tại (${nowStr}). Hệ thống cần ít nhất 15 phút để chuẩn bị nội dung.`
+        );
+      }
     }
     await validateIntegrations(companyCode, input.platforms, input.integrationIds);
 
@@ -324,11 +330,15 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         // Try to assign matching angle if available
         const matchingAngle = allAngles.find((a) => a.funnel === funnelStage);
 
+        const isPastOrImmediate = input.publishNow || scheduledSlot.scheduledAt.getTime() <= Date.now();
+        const finalScheduledAt = isPastOrImmediate ? new Date() : scheduledSlot.scheduledAt;
+        const finalPrepareAt = isPastOrImmediate ? new Date() : scheduledSlot.prepareAt;
+
         return {
           companyCode,
           campaignId: campaign._id,
-          scheduledAt: scheduledSlot.scheduledAt,
-          prepareAt: scheduledSlot.prepareAt,
+          scheduledAt: finalScheduledAt,
+          prepareAt: finalPrepareAt,
           verifyAt: scheduledSlot.verifyAt,
           platform: scheduledSlot.platform,
           integrationId,
@@ -343,9 +353,16 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
           status: "planned",
           attemptCount: 0,
           publishIdempotencyKey: `${campaign._id}:${index}:${scheduledSlot.platform}`,
-          transitions: [{ to: "planned", reason: "Campaign activated", at: new Date() }],
+          transitions: [{ to: "planned", reason: input.publishNow ? "Campaign activated (Publish Now mode)" : "Campaign activated", at: new Date() }],
         };
       }));
+
+      if (input.publishNow) {
+        marketingCampaignWorkerService.prepareDueSlots(schedule.length).catch((err) => {
+          console.error("[PublishNow] Error triggering prepare worker:", err);
+        });
+      }
+
       return { campaign, slots };
     } catch (error) {
       await MarketingCampaignModel.deleteOne({ _id: campaign._id, companyCode });
@@ -514,6 +531,44 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     });
 
     await slot.save();
+    return slot;
+  },
+
+  async publishNowSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+      throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
+    }
+    const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
+    if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+    const allowedStatuses = ["pending_approval", "ready_to_publish", "needs_attention", "failed", "planned"];
+    if (!allowedStatuses.includes(slot.status)) {
+      throw new Error(`Slot không thể đăng ngay ở trạng thái này: ${slot.status}`);
+    }
+
+    const previousStatus = slot.status;
+    const lockId = randomUUID();
+    const now = new Date();
+
+    slot.status = "publishing";
+    slot.scheduledAt = now;
+    slot.approvedBy = approvedBy;
+    slot.approvedAt = now;
+    slot.lockId = lockId;
+    slot.lockedAt = now;
+    slot.lockExpiresAt = new Date(now.getTime() + 20 * 60000);
+    slot.transitions.push({
+      from: previousStatus,
+      to: "publishing",
+      reason: `Publish Now requested by ${approvedBy}`,
+      at: now,
+    });
+
+    await slot.save();
+
+    CampaignOrchestratorService.orchestratePublish(String(slot._id), lockId).catch((err) => {
+      console.error(`[PublishNow] Error publishing slot ${slot._id}:`, err);
+    });
+
     return slot;
   },
 
