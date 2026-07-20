@@ -334,26 +334,8 @@ export const telegramService = {
         await this.sendMessage(chatId, "⚠️ Định hướng chiến dịch không được để trống. Vui lòng nhập lại:");
         return true;
       }
-      wizard.brief = brief;
-      wizard.step = "waiting_for_media_mode";
-      campaignWizards.set(chatId, wizard);
-
-      await this.sendMessageWithCallbackButtons(
-        chatId,
-        [
-          `🖼️ <b>Bước 2/6: Chọn nguồn hình ảnh/media</b>`,
-          `Định hướng: <i>"${brief}"</i>`,
-          ``,
-          `Chọn nguồn ảnh/video minh họa cho chiến dịch của bạn:`
-        ].join("\n"),
-        [
-          [
-            { text: "🤖 Ảnh sinh tự động bằng AI", callbackData: "/w_media_ai" },
-            { text: "📁 Ảnh thật từ Google Drive", callbackData: "/w_media_drive" }
-          ],
-          [{ text: "❌ Hủy bỏ", callbackData: "/cancel" }]
-        ]
-      );
+      campaignWizards.delete(chatId);
+      await this.executeDirectCampaignCreation(chatId, session, brief);
       return true;
     }
 
@@ -2294,8 +2276,8 @@ export const telegramService = {
       await this.sendMessage(
         chatId,
         [
-          "✏️ <b>Bước 1/6: Nhập định hướng chiến dịch</b>",
-          "Vui lòng nhập định hướng chiến lược chung, chủ đề hoặc thông điệp chính của chiến dịch Marketing mới.",
+          "🚀 <b>HERMES AGENT: TẠO CHIẾN DỊCH MARKETING TRỰC TIẾP WEB ERP</b>",
+          "Vui lòng nhập định hướng chiến lược chung, chủ đề hoặc thông điệp sản phẩm cho chiến dịch mới của sếp.",
           "",
           "<i>Ví dụ: Quảng bá thương hiệu trà sữa matcha tự nhiên mới khai trương, giảm giá 20% tuần đầu tiên.</i>",
           "",
@@ -3034,8 +3016,7 @@ export const telegramService = {
     if (/^(tạo|lên|thiết lập|khởi tạo)\s*(chiến dịch|campaign)/i.test(textLower)) {
       const briefMatch = textTrimmed.match(/(?:tạo|lên|thiết lập|khởi tạo)\s*(?:chiến dịch|campaign)\s*(?:mới)?\s*[:\-\s]?\s*(.+)/i);
       if (briefMatch && briefMatch[1] && briefMatch[1].trim().length > 3) {
-        campaignWizards.set(chatId, { step: "waiting_for_brief" });
-        await this.processCampaignWizard(chatId, "", briefMatch[1].trim(), session);
+        await this.executeDirectCampaignCreation(chatId, session, briefMatch[1].trim());
       } else {
         await this.handleCommand(chatId, chatType, telegramUserId, "/create_campaign", photo, document, replyToMessage, messageId);
       }
@@ -3288,6 +3269,119 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
     await this.sendMessage(chatId, "⚠️ <b>Hết thời gian chờ (Timeout 20 phút) từ Hermes Worker VPS.</b>");
   },
 
+  async parseCampaignParamsFromBrief(
+    brief: string,
+    connectedPlatforms: Array<"Facebook" | "TikTok">
+  ): Promise<{
+    days: number;
+    postsPerDay: number;
+    postingTimes: string[];
+    imageMode: "ai" | "real";
+    googleDriveFolderUrl?: string;
+    platforms: Array<"Facebook" | "TikTok">;
+    publishMode: "auto" | "manual";
+  }> {
+    const driveMatch = brief.match(/https?:\/\/(?:drive|docs)\.google\.com\/[^\s]+/i);
+    const googleDriveFolderUrl = driveMatch ? driveMatch[0] : undefined;
+    const hasDrive = !!googleDriveFolderUrl;
+
+    try {
+      const prompt = `Bạn là trợ lý AI phân tích yêu cầu tạo chiến dịch marketing.
+Hãy phân tích đoạn văn bản yêu cầu và trích xuất thông số thành JSON:
+
+Yêu cầu: "${brief}"
+Nền tảng kết nối hiện có: ${connectedPlatforms.join(", ")}
+
+Trả về duy nhất JSON object theo cấu trúc:
+{
+  "days": number (số ngày chạy chiến dịch, mặc định 7 nếu không nói rõ),
+  "postsPerDay": number (số bài đăng/ngày từ 1 đến 5, mặc định 1 nếu không nói rõ),
+  "postingTimes": string[] (khung giờ đăng HH:MM tương ứng số bài/ngày, ví dụ ["09:00"] hoặc ["08:00", "20:00"]),
+  "imageMode": "ai" | "real" (nếu có nhắc tới Google Drive/ảnh thật thì "real", mặc định "ai"),
+  "platforms": array chọn từ [${connectedPlatforms.map((p) => `"${p}"`).join(", ")}] (mặc định lấy tất cả nền tảng hiện có nếu người dùng không chỉ định riêng),
+  "publishMode": "manual" | "auto" (mặc định "manual")
+}`;
+
+      const { openrouterChat } = await import("./openrouter.service");
+      const res = await openrouterChat({
+        model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.1,
+        jsonMode: true,
+      });
+
+      if (res && res.text) {
+        let cleaned = res.text.trim();
+        const mdMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (mdMatch) cleaned = mdMatch[1].trim();
+        const parsed = JSON.parse(cleaned);
+
+        const days = typeof parsed.days === "number" && parsed.days > 0 ? Math.min(parsed.days, 90) : 7;
+        const postsPerDay = typeof parsed.postsPerDay === "number" && parsed.postsPerDay > 0 ? Math.min(parsed.postsPerDay, 5) : 1;
+
+        let postingTimes: string[] = Array.isArray(parsed.postingTimes) && parsed.postingTimes.length > 0 ? parsed.postingTimes : ["09:00"];
+        const defaultTimes = ["09:00", "15:00", "20:00", "11:30", "18:00"];
+        if (postingTimes.length < postsPerDay) {
+          for (let i = postingTimes.length; i < postsPerDay; i++) {
+            postingTimes.push(defaultTimes[i % defaultTimes.length]);
+          }
+        } else if (postingTimes.length > postsPerDay) {
+          postingTimes = postingTimes.slice(0, postsPerDay);
+        }
+
+        let selectedPlatforms: Array<"Facebook" | "TikTok"> = [];
+        if (Array.isArray(parsed.platforms) && parsed.platforms.length > 0) {
+          selectedPlatforms = parsed.platforms.filter((p: any) => connectedPlatforms.includes(p));
+        }
+        if (selectedPlatforms.length === 0) {
+          selectedPlatforms = connectedPlatforms;
+        }
+
+        return {
+          days,
+          postsPerDay,
+          postingTimes,
+          imageMode: hasDrive || parsed.imageMode === "real" ? "real" : "ai",
+          googleDriveFolderUrl,
+          platforms: selectedPlatforms,
+          publishMode: parsed.publishMode === "auto" ? "auto" : "manual",
+        };
+      }
+    } catch (err) {
+      console.warn("[Telegram AI Campaign Parser] Lỗi AI parse brief, dùng fallback:", err);
+    }
+
+    // Fallback heuristic regex
+    let days = 7;
+    const daysMatch = brief.match(/(\d+)\s*(?:ngày|day)/i);
+    if (daysMatch) days = Math.min(parseInt(daysMatch[1], 10), 90);
+
+    let postsPerDay = 1;
+    const postsMatch = brief.match(/(\d+)\s*(?:bài|post)(?:\/|\s*mỗi\s*|\s*1\s*)ngày/i);
+    if (postsMatch) postsPerDay = Math.min(parseInt(postsMatch[1], 10), 5);
+
+    const timesMatch = brief.match(/([0-2]?\d:[0-5]\d)/gi);
+    let postingTimes = ["09:00"];
+    if (timesMatch && timesMatch.length > 0) {
+      postingTimes = timesMatch.map((t) => {
+        const parts = t.split(":");
+        const h = parts[0].padStart(2, "0");
+        const m = parts[1].padStart(2, "0");
+        return `${h}:${m}`;
+      }).slice(0, postsPerDay);
+    }
+
+    return {
+      days,
+      postsPerDay,
+      postingTimes,
+      imageMode: hasDrive ? "real" : "ai",
+      googleDriveFolderUrl,
+      platforms: connectedPlatforms,
+      publishMode: "manual",
+    };
+  },
+
   async executeDirectCampaignCreation(chatId: number, session: any, brief: string): Promise<void> {
     const scope = buildSessionScope(session);
     if (!scope.companyCode) {
@@ -3298,10 +3392,10 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
     await this.sendMessage(
       chatId,
       [
-        "🚀 <b>HERMES AGENT ĐANG TRỰC TIẾP KHỞI TẠO CHIẾN DỊCH TRÊN WEB ERP...</b>",
+        "🚀 <b>HERMES AGENT ĐANG TỰ ĐỘNG PHÂN TÍCH & KHỞI TẠO CHIẾN DỊCH...</b>",
         "=============================",
         `📝 <b>Định hướng:</b> <i>"${brief}"</i>`,
-        "⏱️ <i>Hệ thống đang tự động phân tích thị trường, phân bổ lịch đăng và tạo slots... Vui lòng đợi trong giây lát!</i>"
+        "⏱️ <i>AI đang tự động đọc thông số (thời gian, tần suất, kênh đăng) và cấu hình slots... Vui lòng đợi trong giây lát!</i>"
       ].join("\n")
     );
 
@@ -3320,17 +3414,17 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
         return;
       }
 
-      const platforms: Array<"Facebook" | "TikTok"> = [];
+      const connectedPlatforms: Array<"Facebook" | "TikTok"> = [];
       const integrationIds: Record<string, string> = {};
 
       integrations.forEach((item: any) => {
-        if ((item.platform === "Facebook" || item.platform === "TikTok") && !platforms.includes(item.platform)) {
-          platforms.push(item.platform);
+        if ((item.platform === "Facebook" || item.platform === "TikTok") && !connectedPlatforms.includes(item.platform)) {
+          connectedPlatforms.push(item.platform);
           integrationIds[item.platform] = String(item._id);
         }
       });
 
-      if (platforms.length === 0) {
+      if (connectedPlatforms.length === 0) {
         await this.sendMessage(
           chatId,
           "❌ <b>Không tìm thấy liên kết Facebook/TikTok hợp lệ.</b> Vui lòng kiểm tra tài khoản liên kết trên Web ERP."
@@ -3338,10 +3432,12 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
         return;
       }
 
-      // 2. Tính toán lịch đăng mặc định (7 ngày bắt đầu từ ngày mai, định dạng YYYY-MM-DD)
+      // 2. Dùng AI phân tích linh hoạt thông số từ brief
+      const parsedParams = await this.parseCampaignParamsFromBrief(brief, connectedPlatforms);
+
       const now = new Date();
       const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const endDateObj = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const endDateObj = new Date(now.getTime() + (parsedParams.days || 7) * 24 * 60 * 60 * 1000);
 
       const formatZonedIsoDate = (date: Date) => {
         return new Intl.DateTimeFormat("en-CA", {
@@ -3354,8 +3450,6 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
 
       const startDate = formatZonedIsoDate(tomorrow);
       const endDate = formatZonedIsoDate(endDateObj);
-      const postsPerDay = 1;
-      const postingTimes = ["09:00"];
 
       // 3. Thực thi khởi tạo chiến dịch trực tiếp thông qua Marketing Campaign Service của Web
       const { marketingCampaignService } = await import("./marketing-campaign.service");
@@ -3364,14 +3458,15 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
         sourceBrief: brief,
         startDate,
         endDate,
-        postsPerDay,
-        postingTimes,
-        platforms,
+        postsPerDay: parsedParams.postsPerDay,
+        postingTimes: parsedParams.postingTimes,
+        platforms: parsedParams.platforms,
         integrationIds,
-        imageMode: "ai",
+        imageMode: parsedParams.imageMode,
+        googleDriveFolderUrl: parsedParams.googleDriveFolderUrl,
         timezone: "Asia/Ho_Chi_Minh",
         qualityMode: "premium",
-        publishMode: "manual",
+        publishMode: parsedParams.publishMode,
         candidateCount: 1,
       });
 
@@ -3389,12 +3484,15 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
           "=============================",
           `📌 <b>Tên chiến dịch:</b> ${campaign.title}`,
           `🏢 <b>Mã công ty:</b> <code>${scope.companyCode}</code>`,
-          `📢 <b>Nền tảng:</b> <b>${platforms.join(", ")}</b>`,
-          `📅 <b>Thời gian:</b> Từ <code>${startDate}</code> đến <code>${endDate}</code> (7 ngày)`,
+          `📢 <b>Nền tảng:</b> <b>${parsedParams.platforms.join(", ")}</b>`,
+          `📅 <b>Thời gian:</b> Từ <code>${startDate}</code> đến <code>${endDate}</code> (${parsedParams.days} ngày)`,
+          `⏰ <b>Giờ đăng bài:</b> <code>${parsedParams.postingTimes.join(", ")}</code> (${parsedParams.postsPerDay} bài/ngày)`,
+          `🖼️ <b>Nguồn media:</b> <b>${parsedParams.imageMode === "real" ? "Ảnh thật từ Google Drive" : "Ảnh sinh tự động AI"}</b>`,
+          parsedParams.googleDriveFolderUrl ? `📁 <b>Link Drive:</b> <code>${parsedParams.googleDriveFolderUrl}</code>` : "",
           `📊 <b>Số bài viết (Slots):</b> <b>${slots.length} bài</b>`,
           "=============================",
           `🔗 <a href="${campaignWebUrl}"><b>Nhấn vào đây để xem chi tiết chiến dịch trên Web ERP</b></a>`
-        ].join("\n")
+        ].filter(Boolean).join("\n")
       );
     } catch (err: any) {
       console.error("[Telegram Direct Campaign] Lỗi tạo chiến dịch:", err);
