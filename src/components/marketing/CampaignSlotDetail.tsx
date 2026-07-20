@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, AlertTriangle, RotateCcw, Check, Upload, Image } from 'lucide-react';
+import { X, Loader2, AlertTriangle, RotateCcw, Check, Upload, Image, Zap } from 'lucide-react';
 import { CampaignSlot } from './CampaignDetailModal';
 import { MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -66,6 +66,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
   onCloseDetail,
 }) => {
   const [isApproving, setIsApproving] = useState(false);
+  const [isPublishingNow, setIsPublishingNow] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
   const [isSavingContent, setIsSavingContent] = useState(false);
   const [isReplacingImage, setIsReplacingImage] = useState(false);
@@ -110,6 +111,29 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
       }
     } finally {
       setIsApproving(false);
+    }
+  };
+
+  // Handle Instant Publish (Đăng ngay)
+  const handlePublishNowSlot = async () => {
+    if (!window.confirm('Bạn có chắc chắn muốn phát bài viết này lên Trang ngay lập tức không?')) return;
+    setIsPublishingNow(true);
+    if (onUpdateSlot) {
+      onUpdateSlot(activeSlot._id, { status: 'publishing' });
+    }
+    try {
+      await marketingCampaignService.publishNowSlot(campaign._id, activeSlot._id);
+      toast.success('Đã kích hoạt xuất bản bài viết lên Trang ngay lập tức!');
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể xuất bản bài viết ngay.');
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } finally {
+      setIsPublishingNow(false);
     }
   };
 
@@ -264,25 +288,36 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
             </span>
           </div>
 
-          {['pending_approval', 'needs_attention', 'failed'].includes(activeSlot.status) && (
+          {['pending_approval', 'ready_to_publish', 'needs_attention', 'failed'].includes(activeSlot.status) && (
             <div className="flex items-center gap-2">
+              {['pending_approval', 'needs_attention', 'failed'].includes(activeSlot.status) && (
+                <button
+                  type="button"
+                  disabled={isApproving || isPublishingNow || isRejecting || retryingSlotId === activeSlot._id}
+                  onClick={handleApproveSlot}
+                  className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition shadow-2xs cursor-pointer disabled:opacity-55"
+                >
+                  {isApproving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                  Duyệt theo lịch
+                </button>
+              )}
               <button
                 type="button"
-                disabled={isApproving || isRejecting || retryingSlotId === activeSlot._id}
-                onClick={handleApproveSlot}
-                className="inline-flex items-center gap-1 bg-green-650 hover:bg-green-755 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+                disabled={isApproving || isPublishingNow || isRejecting || retryingSlotId === activeSlot._id}
+                onClick={handlePublishNowSlot}
+                className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-semibold transition shadow-2xs cursor-pointer disabled:opacity-55"
               >
-                {isApproving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                Duyệt
+                {isPublishingNow ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                Đăng ngay
               </button>
               {activeSlot.status === 'pending_approval' && (
                 <button
                   type="button"
-                  disabled={isApproving || isRejecting}
+                  disabled={isApproving || isPublishingNow || isRejecting}
                   onClick={handleRejectSlot}
-                  className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+                  className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer disabled:opacity-55"
                 >
-                  {isRejecting ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                  {isRejecting ? <Loader2 size={13} className="animate-spin" /> : <X size={13} />}
                   Từ chối
                 </button>
               )}
