@@ -107,7 +107,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     menuItems.push({
       label: "VI & NAP TIEN",
       title: "Ví & Nạp tiền",
-      desc: "Số dư ví và cổng PayOS",
+      desc: "Số dư ví ",
       icon: Wallet,
       tone: "blue",
     });
