@@ -1444,17 +1444,9 @@ export const telegramService = {
           ],
         }).lean();
 
-        const linkToken = await TelegramLinkTokenModel.findOneAndUpdate(
-          {
-            code: normalizedCode,
-            $or: [
-              { isClaimed: { $ne: true } },
-              { claimedAt: { $lt: new Date(Date.now() - 10000) } }
-            ]
-          },
-          { $set: { isClaimed: true, claimedAt: new Date() } },
-          { new: true }
-        );
+        const linkToken = await TelegramLinkTokenModel.findOne({
+          code: normalizedCode,
+        }).lean();
 
         logTelegramDebug("link:tokenLookup", {
           chatId,
@@ -1462,17 +1454,11 @@ export const telegramService = {
           code: normalizedCode,
           foundToken: !!linkToken,
           tokenUserId: linkToken?.userId ? String(linkToken.userId) : "none",
-          tokenExpiresAt: linkToken?.expiresAt ? linkToken.expiresAt.toISOString() : "none",
+          tokenExpiresAt: linkToken?.expiresAt ? new Date(linkToken.expiresAt).toISOString() : "none",
           hasExistingSession: !!existingSession,
         });
 
         if (!linkToken) {
-          const checkClaimed = await TelegramLinkTokenModel.findOne({ code: normalizedCode }).lean();
-          if (checkClaimed && checkClaimed.isClaimed) {
-            logTelegramDebug("link:duplicateRequestSilencedDueToOngoingClaim", { chatId });
-            return;
-          }
-
           if (existingSession) {
             logTelegramDebug("link:duplicateRequestSilenced", { chatId });
             return;
@@ -1481,7 +1467,7 @@ export const telegramService = {
           return;
         }
 
-        if (linkToken.expiresAt.getTime() <= Date.now()) {
+        if (new Date(linkToken.expiresAt).getTime() <= Date.now()) {
           await TelegramLinkTokenModel.deleteOne({ _id: linkToken._id }).catch(() => undefined);
           await this.sendMessage(chatId, "⌛ Mã liên kết đã hết hạn. Hãy tạo mã mới từ web ERP.");
           return;
