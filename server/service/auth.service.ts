@@ -14,7 +14,7 @@ import { getCompanyHeyGenLibrary } from "./heygen.service";
 
 const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key";
 const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET || "your_jwt_refresh_secret_key";
-const TELEGRAM_LINK_CODE_TTL_MS = 5 * 60 * 1000;
+const TELEGRAM_LINK_CODE_TTL_MS = 30 * 60 * 1000;
 
 function generateTelegramLinkCode() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
