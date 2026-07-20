@@ -13,6 +13,7 @@ const MarketingCampaignSlotSchema = new Schema<IMarketingCampaignSlot>(
     pillar: { type: String, default: "" },
     objective: { type: String, required: true },
     topicBrief: { type: String, required: true },
+    funnelStage: { type: String, enum: ["TOFU", "MOFU", "BOFU"], default: "MOFU", index: true },
     mediaType: { type: String, enum: ["text", "image", "video", "human-video"], required: true },
     status: {
       type: String,
