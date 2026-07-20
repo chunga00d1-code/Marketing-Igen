@@ -15,11 +15,18 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
 import { facebookPostService } from "./facebook-post.service";
 import { tiktokService } from "./tiktok.service";
+import dns from "dns";
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { marketingCampaignService } from "./marketing-campaign.service";
+
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  // Ignored if not supported
+}
 
 const TELEGRAM_API_BASE_URL = process.env.TELEGRAM_API_BASE_URL || "https://api.telegram.org";
 
@@ -1384,8 +1391,12 @@ export const telegramService = {
           err?.code === "ETIMEDOUT";
 
         if (isTimeout) {
-          // Thử lại êm sau 1s mà không làm rác log server
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          if (consecutiveErrors % 10 === 0) {
+            console.warn(
+              `[Telegram Bot] Cảnh báo kết nối: Không thể kết nối tới Telegram API (${TELEGRAM_API_BASE_URL}) sau ${consecutiveErrors} lần thử (${errStr}). Vui lòng kiểm tra mạng internet/firewall của VPS hoặc cấu hình TELEGRAM_API_BASE_URL trong .env.`
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         } else {
           console.error("[Telegram Bot] Lỗi kết nối API getUpdates:", errStr);
           const delay = Math.min(consecutiveErrors * 1000, 5000);
@@ -1457,7 +1468,7 @@ export const telegramService = {
         }).lean();
 
         const linkToken = await TelegramLinkTokenModel.findOne({
-          code: normalizedCode,
+          code: { $regex: new RegExp(`^${normalizedCode}$`, "i") },
         }).lean();
 
         logTelegramDebug("link:tokenLookup", {
@@ -1472,7 +1483,11 @@ export const telegramService = {
 
         if (!linkToken) {
           if (existingSession) {
-            logTelegramDebug("link:duplicateRequestSilenced", { chatId });
+            logTelegramDebug("link:alreadyLinkedNotice", { chatId });
+            await this.sendMessage(
+              chatId,
+              `ℹ️ <b>Tài khoản Telegram của sếp đã được liên kết với hệ thống iGEN ERP rồi!</b>\nEmail: <code>${existingSession.email || "Đã xác thực"}</code>\nMã công ty: <code>${existingSession.companyCode || "-"}</code>\n\nSếp có thể gõ <code>/help</code> hoặc ra lệnh trực tiếp cho Hermes Agent ngay bây giờ.`
+            );
             return;
           }
           await this.sendMessage(chatId, "❌ Mã liên kết không hợp lệ hoặc đã hết hạn. Hãy tạo mã mới từ web ERP.");
