@@ -52,8 +52,26 @@ const DEFAULT_SLOT_STATUS_LABEL: Record<string, string> = {
 
 const SLOTS_PER_PAGE = 10;
 
-function getFunnelStage(objective: string): { label: string; color: string } {
-  const obj = (objective || '').toLowerCase();
+function getFunnelStage(slotOrObjective: string | { objective?: string; funnelStage?: string }): { label: string; color: string } {
+  let stage = '';
+  let obj = '';
+  if (typeof slotOrObjective === 'object' && slotOrObjective !== null) {
+    stage = slotOrObjective.funnelStage || '';
+    obj = (slotOrObjective.objective || '').toLowerCase();
+  } else if (typeof slotOrObjective === 'string') {
+    obj = slotOrObjective.toLowerCase();
+  }
+
+  if (stage === 'TOFU') {
+    return { label: 'TOFU: Nhận biết', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+  }
+  if (stage === 'BOFU') {
+    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+  }
+  if (stage === 'MOFU') {
+    return { label: 'MOFU: Cân nhắc', color: 'bg-amber-50 text-amber-700 border-amber-150' };
+  }
+
   if (
     obj.includes('nhận diện') ||
     obj.includes('tiếp cận') ||
@@ -63,7 +81,7 @@ function getFunnelStage(objective: string): { label: string; color: string } {
     obj.includes('nhận biết') ||
     obj.includes('thương hiệu')
   ) {
-    return { label: 'TOFU: Nhận diện', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+    return { label: 'TOFU: Nhận biết', color: 'bg-blue-50 text-blue-700 border-blue-150' };
   }
   if (
     obj.includes('chuyển đổi') ||
@@ -655,7 +673,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                             🏢 {slot.pillar}
                           </span>
                           {(() => {
-                            const funnel = getFunnelStage(slot.objective || '');
+                            const funnel = getFunnelStage(slot);
                             return (
                               <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${funnel.color}`}>
                                 🎯 {funnel.label}

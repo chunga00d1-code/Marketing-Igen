@@ -15,6 +15,7 @@ import { buildDocumentTitle, getSeoForPath, resolveSeoUrl } from "./src/seo/seo-
 import { BRAND_NAME, BRAND_TAGLINE, BRAND_LOGO_URL, SERVICE_WEBSITE_URL } from "./src/config/brand";
 import { telegramService } from "./server/service/telegram.service";
 import { initCampaignWorkers } from "./server/queue/campaign-workers";
+import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
 
 dotenv.config();
 
@@ -365,6 +366,14 @@ async function startServer() {
     telegramService.startPolling().catch((err) => {
       console.error("[Telegram Bot] Khởi động polling thất bại:", err);
     });
+
+    // Khởi tạo BullMQ queue workers & campaign scheduler
+    try {
+      initCampaignWorkers();
+      initCampaignScheduler();
+    } catch (err) {
+      console.error("[Campaign Pipeline] Khởi tạo queue/scheduler thất bại:", err);
+    }
   });
 }
 

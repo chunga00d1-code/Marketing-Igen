@@ -42,6 +42,19 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     googleDriveFolderUrl: { type: String },
     customSchedule: { type: Schema.Types.Map, of: [String] },
     researchReport: { type: String },
+    contentMatrix: [
+      {
+        pillar: { type: String, required: true },
+        direction: { type: String, default: "" },
+        targetPercentage: { type: Number, default: 0 },
+        angles: [
+          {
+            title: { type: String, required: true },
+            funnel: { type: String, enum: ["TOFU", "MOFU", "BOFU"], default: "MOFU" },
+          },
+        ],
+      },
+    ],
     apifySources: {
       type: [String],
       enum: ["google", "facebook", "tiktok"],

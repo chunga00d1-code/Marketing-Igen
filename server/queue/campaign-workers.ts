@@ -23,7 +23,7 @@ export function initCampaignWorkers() {
       return;
     }
 
-    console.log(`[Campaign Worker] Khởi tạo worker xử lý chiến dịch marketing (Concurrency: 5, Rate limit: 10 jobs/min)...`);
+    console.log(`[Campaign Worker] Khởi tạo worker xử lý chiến dịch marketing (Concurrency: 20, Rate limit: 60 jobs/min)...`);
     
     worker = new Worker(
       QUEUE_NAME,
@@ -33,9 +33,11 @@ export function initCampaignWorkers() {
         
         console.log(`[Campaign Worker] Bắt đầu xử lý job ${job.id} (${jobName}) cho slot: ${slotId}`);
 
+        const lockId = randomUUID();
+        const now = new Date();
+        const leaseExpires = new Date(now.getTime() + 20 * 60000);
+
         if (jobName === "prepare") {
-          const lockId = randomUUID();
-          // Cố gắng khóa slot và cập nhật trạng thái "generating"
           const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
             { 
               _id: slotId, 
@@ -43,22 +45,22 @@ export function initCampaignWorkers() {
               $or: [
                 { lockExpiresAt: { $exists: false } }, 
                 { lockExpiresAt: null }, 
-                { lockExpiresAt: { $lte: new Date() } }
+                { lockExpiresAt: { $lte: now } }
               ] 
             },
             {
               $set: { 
                 status: "generating", 
                 lockId, 
-                lockedAt: new Date(), 
-                lockExpiresAt: new Date(Date.now() + 20 * 60000) 
+                lockedAt: now, 
+                lockExpiresAt: leaseExpires 
               },
               $push: { 
                 transitions: { 
                   from: "planned", 
                   to: "generating", 
-                  reason: `Queue worker ${job.id} claimed slot`, 
-                  at: new Date() 
+                  reason: `Queue worker ${job.id} claimed slot for prepare`, 
+                  at: now 
                 } 
               },
             },
@@ -66,16 +68,114 @@ export function initCampaignWorkers() {
           );
 
           if (!claimed) {
-            console.warn(`[Campaign Worker] Slot ${slotId} đã bị khóa hoặc trạng thái không hợp lệ. Bỏ qua job.`);
+            console.warn(`[Campaign Worker] Slot ${slotId} đã bị khóa hoặc trạng thái không hợp lệ. Bỏ qua job prepare.`);
             return { status: "skipped_or_locked" };
           }
 
           try {
             await CampaignOrchestratorService.orchestratePrepare(slotId, lockId);
             console.log(`[Campaign Worker] Hoàn thành prepare cho slot: ${slotId}`);
+
+            // Auto-chaining next phase
+            const updatedSlot = await MarketingCampaignSlotModel.findById(slotId);
+            if (updatedSlot) {
+              if (updatedSlot.status === "generating_media") {
+                await campaignQueueService.addMediaJob(slotId);
+              } else if (updatedSlot.status === "verifying") {
+                await campaignQueueService.addVerifyJob(slotId);
+              }
+            }
+
             return { status: "success" };
           } catch (err: unknown) {
             console.error(`[Campaign Worker] Lỗi prepare slot ${slotId}:`, err);
+            throw err;
+          }
+        } else if (jobName === "media") {
+          const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
+            {
+              _id: slotId,
+              status: "generating_media",
+              $or: [
+                { lockExpiresAt: { $exists: false } },
+                { lockExpiresAt: null },
+                { lockExpiresAt: { $lte: now } }
+              ]
+            },
+            {
+              $set: { lockId, lockedAt: now, lockExpiresAt: leaseExpires }
+            },
+            { new: true }
+          );
+
+          if (!claimed) return { status: "skipped_or_locked" };
+
+          try {
+            await CampaignOrchestratorService.orchestrateMedia(slotId, lockId);
+            console.log(`[Campaign Worker] Hoàn thành media cho slot: ${slotId}`);
+
+            const updatedSlot = await MarketingCampaignSlotModel.findById(slotId);
+            if (updatedSlot && updatedSlot.status === "verifying") {
+              await campaignQueueService.addVerifyJob(slotId);
+            }
+
+            return { status: "success" };
+          } catch (err: unknown) {
+            console.error(`[Campaign Worker] Lỗi media slot ${slotId}:`, err);
+            throw err;
+          }
+        } else if (jobName === "verify") {
+          const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
+            {
+              _id: slotId,
+              status: "verifying",
+              $or: [
+                { lockExpiresAt: { $exists: false } },
+                { lockExpiresAt: null },
+                { lockExpiresAt: { $lte: now } }
+              ]
+            },
+            {
+              $set: { lockId, lockedAt: now, lockExpiresAt: leaseExpires }
+            },
+            { new: true }
+          );
+
+          if (!claimed) return { status: "skipped_or_locked" };
+
+          try {
+            await CampaignOrchestratorService.orchestrateVerify(slotId, lockId);
+            console.log(`[Campaign Worker] Hoàn thành verify cho slot: ${slotId}`);
+            return { status: "success" };
+          } catch (err: unknown) {
+            console.error(`[Campaign Worker] Lỗi verify slot ${slotId}:`, err);
+            throw err;
+          }
+        } else if (jobName === "publish") {
+          const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
+            {
+              _id: slotId,
+              status: { $in: ["ready_to_publish", "publishing"] },
+              $or: [
+                { lockExpiresAt: { $exists: false } },
+                { lockExpiresAt: null },
+                { lockExpiresAt: { $lte: now } }
+              ]
+            },
+            {
+              $set: { status: "publishing", lockId, lockedAt: now, lockExpiresAt: leaseExpires }
+            },
+            { new: true }
+          );
+
+          if (!claimed) return { status: "skipped_or_locked" };
+
+          try {
+            await CampaignOrchestratorService.orchestratePublish(slotId, lockId);
+            console.log(`[Campaign Worker] Hoàn thành publish cho slot: ${slotId}`);
+            return { status: "success" };
+          } catch (err: unknown) {
+            console.error(`[Campaign Worker] Lỗi publish slot ${slotId}:`, err);
             throw err;
           }
         }
@@ -84,9 +184,9 @@ export function initCampaignWorkers() {
       },
       {
         connection: redisConfig,
-        concurrency: 5,
+        concurrency: 20,
         limiter: {
-          max: 10,
+          max: 60,
           duration: 60000,
         },
       }

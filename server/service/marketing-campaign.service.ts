@@ -8,6 +8,7 @@ import { MarketingCampaignStatus, MarketingCampaignPlatform } from "../interface
 import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
 import { buildCampaignSchedule, zonedLocalTimeToUtc } from "./marketing-campaign-schedule.service";
 import { geminiService } from "./gemini.service";
+import { CampaignMatrixGeneratorService } from "./agents/campaign-matrix-generator.service";
 import { API_COSTS } from "./wallet.service";
 import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
 
@@ -223,6 +224,15 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     const pPlan = API_COSTS.CAMPAIGN_STRATEGY;
     const pResearch = API_COSTS.CAMPAIGN_RESEARCH;
 
+    // Zero-Click Content Strategy Matrix Generation (Background)
+    const contentMatrix = await CampaignMatrixGeneratorService.generateMatrix(
+      input.sourceBrief,
+      schedule.length
+    );
+
+    // Flatten all angles with their funnel tags
+    const allAngles = contentMatrix.flatMap((p) => p.angles);
+
     let totalResearchCost = 0;
     let totalVisionCost = 0;
     let totalContentCost = 0;
@@ -291,6 +301,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       googleDriveFolderUrl,
       customSchedule: input.customSchedule,
       apifySources: input.apifySources || ["google"],
+      contentMatrix,
       rules: input.rules || {},
       statistics: { totalSlots: schedule.length, publishedSlots: 0, failedSlots: 0, estimatedCost, actualCost: 0 },
     });
@@ -299,6 +310,20 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       const slots = await MarketingCampaignSlotModel.insertMany(schedule.map((scheduledSlot, index) => {
         const brief = strategy.slots[index];
         const integrationId = input.integrationIds?.[scheduledSlot.platform];
+
+        // Map funnel stage according to schedule timeline progress ratio
+        // Week 1 (0% - 25%): TOFU | Week 2-3 (25% - 75%): MOFU | Week 4 (75% - 100%): BOFU
+        const ratio = scheduledSlot.progressRatio;
+        let funnelStage: "TOFU" | "MOFU" | "BOFU" = "MOFU";
+        if (ratio <= 0.25) {
+          funnelStage = "TOFU";
+        } else if (ratio >= 0.75) {
+          funnelStage = "BOFU";
+        }
+
+        // Try to assign matching angle if available
+        const matchingAngle = allAngles.find((a) => a.funnel === funnelStage);
+
         return {
           companyCode,
           campaignId: campaign._id,
@@ -309,7 +334,8 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
           integrationId,
           pillar: brief.pillar,
           objective: brief.objective,
-          topicBrief: brief.topicBrief,
+          topicBrief: matchingAngle ? `${matchingAngle.title} — ${brief.topicBrief}` : brief.topicBrief,
+          funnelStage,
           mediaType: brief.mediaType,
           realImageDriveUrls: brief.realImageDriveUrls || [],
           realImageDirectUrls: brief.realImageDirectUrls || [],
