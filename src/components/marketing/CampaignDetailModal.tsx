@@ -440,9 +440,15 @@ export default function CampaignDetailModal({
                     <div className="rounded-xl border border-teal-150 bg-teal-50/10 p-5 space-y-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-teal-800 font-bold text-sm">🌐 Tài liệu cào thực tế từ Web, TikTok, Facebook</span>
+                          <span className="text-teal-800 font-bold text-sm">
+                            {allResearchEvidence.length > 0
+                              ? '🌐 Tài liệu cào thực tế từ Web, TikTok, Facebook'
+                              : '💡 Phân tích bối cảnh chiến dịch & Thị trường (AI Agent)'}
+                          </span>
                           <span className="text-[10px] text-teal-700 bg-teal-100/70 font-bold px-2.5 py-0.5 rounded-full">
-                            Thu thập {allResearchEvidence.length} dữ liệu nguồn
+                            {allResearchEvidence.length > 0
+                              ? `Thu thập ${allResearchEvidence.length} dữ liệu nguồn`
+                              : 'Tự động phân tích từ Tri thức AI'}
                           </span>
                         </div>
                         <div className="flex gap-2 text-xs font-bold">
@@ -457,17 +463,19 @@ export default function CampaignDetailModal({
                           >
                             Tổng hợp bối cảnh
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => setCampaignResearchTab('evidence')}
-                            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                              campaignResearchTab === 'evidence'
-                                ? 'bg-teal-600 text-white shadow-xs'
-                                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                            }`}
-                          >
-                            Tài liệu chi tiết ({allResearchEvidence.length})
-                          </button>
+                          {allResearchEvidence.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setCampaignResearchTab('evidence')}
+                              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                                campaignResearchTab === 'evidence'
+                                  ? 'bg-teal-600 text-white shadow-xs'
+                                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                              }`}
+                            >
+                              Tài liệu chi tiết ({allResearchEvidence.length})
+                            </button>
+                          )}
                         </div>
                       </div>
 
