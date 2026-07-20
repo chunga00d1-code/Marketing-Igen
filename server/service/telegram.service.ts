@@ -2,6 +2,8 @@
 import { ICRMTicket } from "../interface/crm-ticket.interface";
 import { geminiService } from "./gemini.service";
 import { cloudinaryService } from "./cloudinary.service";
+import { hermesService } from "./hermes.service";
+import { AIMediaModel } from "../model/ai-media.model";
 import { TelegramProcessedUpdateModel } from "../model/telegram-processed-update.model";
 import { TelegramSessionModel } from "../model/telegram-session.model";
 import { TelegramLinkTokenModel } from "../model/telegram-link-token.model";
@@ -176,12 +178,19 @@ function buildGuestHelpMessage(): string {
 function buildSessionHelpMessage(session: any): string {
   const isAdmin = ADMIN_ROLES.includes(session.role);
   const helpLines = [
-    `🤖 <b>HƯỚNG DẪN SỬ DỤNG IGEN BOT</b>`,
+    `🤖 <b>HƯỚNG DẪN SỬ DỤNG IGEN BOT (HERMES AGENT)</b>`,
     `📧 Tài khoản: ${session.email} | Vai trò: <b>${session.role.toUpperCase()}</b>`,
     "",
-    "📌 <b>Các tính năng cơ bản:</b>",
+    "💡 <b>TƯƠNG TÁC BẰNG NGÔN NGỮ ĐỜI THƯỜNG (HERMES AGENT):</b>",
+    "• Bạn có thể nhắn tin trực tiếp như trò chuyện hàng ngày với Hermes Agent (không cần gõ lệnh slash):",
+    "  👉 <i>'Duyệt bài giúp anh'</i> | <i>'Báo cáo doanh thu hôm nay'</i>",
+    "  👉 <i>'Tạo ảnh chú mèo mập uống trà bưởi'</i> | <i>'Tạo video dòng sông chảy'</i>",
+    "  👉 <i>'Lên chiến dịch 7 ngày quảng bá quán cà phê'</i> | <i>'Hàng chờ có bài nào'</i>",
+    "",
+    "📌 <b>Các câu lệnh nhanh (Menu / Slash commands):</b>",
     "• <code>/menu</code> hoặc <code>/help</code> - Mở bảng nút bấm điều khiển nhanh.",
-    "• <code>/image [mô tả]</code> - Tạo ảnh nghệ thuật bằng AI (Gemini).",
+    "• <code>/hermes [link/video] [mô tả]</code> - Biên tập video bằng Hermes Agent trên VPS.",
+    "• <code>/image [mô tả]</code> - Tạo ảnh nghệ thuật bằng AI.",
     "• <code>/video [mô tả]</code> - Tạo video ngắn bằng AI.",
   ];
 
@@ -1331,6 +1340,9 @@ export const telegramService = {
               if (text.startsWith("/") || campaignWizards.has(chatId) || rejectWizards.has(chatId) || editWizards.has(chatId)) {
                 // Xử lý tuần tự từng command để tránh race condition giữa /link và lệnh ngay sau đó như /help.
                 await this.handleCommand(chatId, chatType, telegramUserId, text, photo, document, replyToMessage, messageId);
+              } else if (text) {
+                // Xử lý bằng Hermes AI Agent qua Ngôn ngữ đời thường (Natural Language Interaction)
+                await this.processNaturalLanguageInput(chatId, chatType, telegramUserId, text, photo, document, replyToMessage, messageId);
               }
             }
 
@@ -2178,6 +2190,11 @@ export const telegramService = {
     }
 
     if (command === "/create_campaign") {
+      const brief = args.trim();
+      if (brief) {
+        await this.executeDirectCampaignCreation(chatId, session, brief);
+        return;
+      }
       campaignWizards.set(chatId, { step: "waiting_for_brief" });
       await this.sendMessage(
         chatId,
@@ -2492,6 +2509,11 @@ export const telegramService = {
       return;
     }
 
+    if (command === "/hermes" || command === "/hermes_edit" || command === "/hermes_vps") {
+      await this.handleHermesEditCommand(chatId, session, args, photo, document, replyToMessage);
+      return;
+    }
+
     if (command === "/report" || command === "/stats") {
       await this.sendMessage(chatId, "📊 <b>Đang truy vấn hệ thống để lập báo cáo, vui lòng đợi...</b>");
       try {
@@ -2633,7 +2655,10 @@ export const telegramService = {
       return;
     }
 
-    await this.sendMessage(chatId, "⚠️ Câu lệnh không được hỗ trợ. Hãy gõ /help để xem các lệnh khả dụng.");
+    await this.sendMessage(
+      chatId,
+      "⚠️ <b>Tính năng hoặc câu lệnh này chưa được cài đặt / chưa được cấu hình trên hệ thống iGEN ERP.</b>\n👉 Vui lòng bấm <code>/help</code> hoặc <code>/menu</code> để xem danh sách tính năng đang hoạt động."
+    );
   },
 
   async resolveTelegramReferenceImage(
@@ -2861,5 +2886,424 @@ export const telegramService = {
     await this.sendMessage(chatId, message).catch((err) => {
       console.error("[Telegram Bot] Lỗi gửi cảnh báo hóa đơn Gemini:", err);
     });
+  },
+
+  /**
+   * Xử lý tin nhắn dạng ngôn ngữ đời thường (Natural Language) qua Hermes Agent
+   */
+  async processNaturalLanguageInput(
+    chatId: number,
+    chatType: string,
+    telegramUserId: number | undefined,
+    rawText: string,
+    photo?: any[],
+    document?: any,
+    replyToMessage?: any,
+    messageId?: number
+  ): Promise<void> {
+    let session = await findTelegramSession(chatId, telegramUserId);
+    if (!session) {
+      await this.sendMessage(chatId, buildGuestHelpMessage());
+      return;
+    }
+
+    session = await hydrateLinkedSession(session);
+    if (!session) {
+      await this.sendMessage(chatId, buildGuestHelpMessage());
+      return;
+    }
+
+    const textTrimmed = rawText.trim();
+    if (!textTrimmed) return;
+
+    logTelegramDebug("nlu:start", { chatId, telegramUserId: telegramUserId ?? "none", text: truncateTelegramText(textTrimmed, 50) });
+
+    const textLower = textTrimmed.toLowerCase();
+
+    // 1. Phân loại bằng Heuristic Regex để phản hồi cực nhanh đối với các câu thường gặp
+    if (/^(xem|có|danh sách)?\s*(bài|nội dung)?\s*(chờ duyệt|chờ phê duyệt|pending)/i.test(textLower) || /^duyệt bài/i.test(textLower)) {
+      await this.handleCommand(chatId, chatType, telegramUserId, "/pending", photo, document, replyToMessage, messageId);
+      return;
+    }
+
+    if (/^(xem|cho xem|lấy)?\s*(báo cáo|thống kê|doanh thu|doanh số|stats|report)/i.test(textLower)) {
+      await this.handleCommand(chatId, chatType, telegramUserId, "/stats", photo, document, replyToMessage, messageId);
+      return;
+    }
+
+    if (/^(xem|cho xem)?\s*(hàng chờ|danh sách chờ đăng|queue)/i.test(textLower)) {
+      await this.handleCommand(chatId, chatType, telegramUserId, "/queue", photo, document, replyToMessage, messageId);
+      return;
+    }
+
+    if (/^(tạo|lên|thiết lập|khởi tạo)\s*(chiến dịch|campaign)/i.test(textLower)) {
+      const briefMatch = textTrimmed.match(/(?:tạo|lên|thiết lập|khởi tạo)\s*(?:chiến dịch|campaign)\s*(?:mới)?\s*[:\-\s]?\s*(.+)/i);
+      if (briefMatch && briefMatch[1] && briefMatch[1].trim().length > 3) {
+        campaignWizards.set(chatId, { step: "waiting_for_brief" });
+        await this.processCampaignWizard(chatId, "", briefMatch[1].trim(), session);
+      } else {
+        await this.handleCommand(chatId, chatType, telegramUserId, "/create_campaign", photo, document, replyToMessage, messageId);
+      }
+      return;
+    }
+
+    if (/^(tạo|vẽ|sinh|làm|tạo cho|vẽ cho)\s*(bức ảnh|ảnh|hình|hình ảnh|image|picture)/i.test(textLower)) {
+      const imgPrompt = textTrimmed.replace(/^(tạo|vẽ|sinh|làm|tạo cho|vẽ cho)\s*(bức ảnh|ảnh|hình|hình ảnh|image|picture)\s*[:\-\s]?/i, "").trim();
+      if (imgPrompt) {
+        await this.handleCommand(chatId, chatType, telegramUserId, `/image ${imgPrompt}`, photo, document, replyToMessage, messageId);
+        return;
+      }
+    }
+
+    if (/^(tạo|quay|sinh|làm|tạo cho|làm cho)\s*(clip|video|phim)/i.test(textLower)) {
+      const vidPrompt = textTrimmed.replace(/^(tạo|quay|sinh|làm|tạo cho|làm cho)\s*(clip|video|phim)\s*[:\-\s]?/i, "").trim();
+      if (vidPrompt) {
+        await this.handleCommand(chatId, chatType, telegramUserId, `/video ${vidPrompt}`, photo, document, replyToMessage, messageId);
+        return;
+      }
+    }
+
+    if (/^(hướng dẫn|trợ giúp|help|bot làm được gì|dùng như thế nào|menu)/i.test(textLower)) {
+      await this.handleCommand(chatId, chatType, telegramUserId, "/help", photo, document, replyToMessage, messageId);
+      return;
+    }
+
+    if (/(hermes|vps).*(video|edit|sửa|dựng|biên tập)/i.test(textLower) || /(sửa|dựng|biên tập)\s*video.*(hermes|vps)/i.test(textLower)) {
+      await this.handleCommand(chatId, chatType, telegramUserId, `/hermes ${textTrimmed}`, photo, document, replyToMessage, messageId);
+      return;
+    }
+
+    // 2. Sử dụng OpenRouter / LLM AI để hiểu ngôn ngữ tự nhiên phức tạp & tư vấn bằng Hermes Agent
+    try {
+      const { openrouterChat } = await import("./openrouter.service");
+
+      const systemPrompt = `Bạn là Hermes Agent - Trợ lý AI Marketing & Quản trị ERP thông minh của iGEN ERP.
+Người dùng đang trò chuyện bằng ngôn ngữ đời thường qua Telegram.
+Nhiệm vụ của bạn: Phân tích ý định (intent) của câu thoại và chọn một hành động hệ thống hoặc trả lời tự nhiên.
+
+Hệ thống hỗ trợ các lệnh:
+- PENDING: Xem/duyệt bài viết ("duyệt bài giúp mình", "bài nào chờ duyệt", "xem danh sách duyệt") -> intent: "pending"
+- STATS: Xem báo cáo/doanh thu ("doanh số hôm nay", "thống kê", "xem báo cáo") -> intent: "stats"
+- QUEUE: Hàng chờ đăng bài ("hàng chờ có gì", "xem bài sắp đăng") -> intent: "queue"
+- CREATE_CAMPAIGN: Tạo chiến dịch marketing ("lên chiến dịch trà sữa", "quảng bá sản phẩm X") -> intent: "create_campaign", extractedBrief: (mô tả chiến dịch nếu có)
+- HERMES_EDIT: Biên tập video qua Hermes Agent VPS ("biên tập video qua hermes", "sửa video này...", "hermes edit...") -> intent: "hermes_edit", videoPrompt: (yêu cầu biên tập video)
+- IMAGE: Tạo ảnh AI ("tạo ảnh chú mèo...", "vẽ cho anh hình...") -> intent: "image", imagePrompt: (mô tả ảnh)
+- VIDEO: Tạo video AI ("quay clip thiên nhiên...", "tạo video...") -> intent: "video", videoPrompt: (mô tả video)
+- HELP: Trợ giúp/Menu ("hướng dẫn", "trợ giúp") -> intent: "help"
+- UNSUPPORTED: Khi người dùng hỏi hoặc yêu cầu một tính năng/thao tác nằm ngoài danh sách hỗ trợ hoặc chưa có trong hệ thống ERP -> intent: "unsupported", replyText: "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem danh sách các chức năng đang khả dụng ạ!"
+- CHAT: Hỏi đáp kiến thức ERP/Marketing có trong hệ thống hoặc trò chuyện chào hỏi ngắn gọn -> intent: "chat", replyText: (câu trả lời tự nhiên bằng tiếng Việt)
+
+Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài JSON):
+{
+  "intent": "pending" | "stats" | "queue" | "create_campaign" | "hermes_edit" | "image" | "video" | "help" | "unsupported" | "chat",
+  "extractedBrief"?: string,
+  "imagePrompt"?: string,
+  "videoPrompt"?: string,
+  "replyText"?: string
+}`;
+
+      const aiRes = await openrouterChat({
+        model: "google/gemini-2.5-flash",
+        temperature: 0.3,
+        jsonMode: true,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: textTrimmed }
+        ]
+      });
+
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(aiRes.text);
+      } catch {
+        parsed = { intent: "unsupported", replyText: "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem các chức năng khả dụng ạ!" };
+      }
+
+      if (parsed.intent === "pending") {
+        await this.handleCommand(chatId, chatType, telegramUserId, "/pending", photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "stats") {
+        await this.handleCommand(chatId, chatType, telegramUserId, "/stats", photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "queue") {
+        await this.handleCommand(chatId, chatType, telegramUserId, "/queue", photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "create_campaign") {
+        const briefToUse = parsed.extractedBrief || textTrimmed;
+        await this.executeDirectCampaignCreation(chatId, session, briefToUse);
+      } else if (parsed.intent === "hermes_edit") {
+        const promptToUse = parsed.videoPrompt || textTrimmed;
+        await this.handleCommand(chatId, chatType, telegramUserId, `/hermes ${promptToUse}`, photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "image" && parsed.imagePrompt) {
+        await this.handleCommand(chatId, chatType, telegramUserId, `/image ${parsed.imagePrompt}`, photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "video" && parsed.videoPrompt) {
+        await this.handleCommand(chatId, chatType, telegramUserId, `/video ${parsed.videoPrompt}`, photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "help") {
+        await this.handleCommand(chatId, chatType, telegramUserId, "/help", photo, document, replyToMessage, messageId);
+      } else if (parsed.intent === "unsupported") {
+        const reply = parsed.replyText || "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem danh sách các chức năng đang khả dụng ạ!";
+        await this.sendMessage(chatId, `🤖 <b>Hermes Agent:</b>\n${reply}`);
+      } else {
+        const reply = parsed.replyText || "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem các chức năng khả dụng ạ!";
+        await this.sendMessage(chatId, `🤖 <b>Hermes Agent:</b>\n${reply}`);
+      }
+    } catch (err: any) {
+      console.error("[Telegram Hermes Agent] Lỗi xử lý ngôn ngữ tự nhiên:", err);
+      await this.sendMessage(
+        chatId,
+        "🤖 <b>Hermes Agent:</b> ⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help hoặc /menu để xem danh sách chức năng khả dụng ạ!"
+      );
+    }
+  },
+
+  async handleHermesEditCommand(
+    chatId: number,
+    session: any,
+    args: string,
+    photo?: any[],
+    document?: any,
+    replyToMessage?: any
+  ): Promise<void> {
+    const scope = buildSessionScope(session);
+    if (!scope.companyCode) {
+      await this.sendMessage(chatId, "⚠️ Tài khoản chưa được gán companyCode.");
+      return;
+    }
+
+    try {
+      let videoUrl: string | undefined;
+      let prompt = args;
+
+      const urlMatch = args.match(/https?:\/\/[^\s]+/i);
+      if (urlMatch) {
+        videoUrl = urlMatch[0];
+        prompt = args.replace(urlMatch[0], "").trim();
+      }
+
+      if (!videoUrl) {
+        videoUrl = await this.resolveTelegramReferenceVideo(chatId, document, replyToMessage);
+      }
+
+      if (!videoUrl) {
+        await this.sendMessage(
+          chatId,
+          [
+            "⚠️ <b>Thiếu video đầu vào!</b>",
+            "Cú pháp sử dụng Hermes Agent trên VPS (103.90.224.34:8643):",
+            "1. Reply hoặc đính kèm 1 video + gõ <code>/hermes [mô tả biên tập]</code>",
+            "2. Gõ câu lệnh trực tiếp: <code>/hermes [link_video_http] [mô tả biên tập]</code>",
+            "3. Chat tự nhiên: <i>'Sửa video này qua Hermes VPS: cắt 5s đầu, tăng tương phản'</i> (kèm video)"
+          ].join("\n")
+        );
+        return;
+      }
+
+      if (!prompt) {
+        prompt = "Biên tập tối ưu hiệu ứng, màu sắc và âm thanh chuyên nghiệp.";
+      }
+
+      const workerUrl = process.env.HERMES_WORKER_URL || "http://103.90.224.34:8643";
+      await this.sendMessage(
+        chatId,
+        [
+          "🚀 <b>ĐÃ GỬI YÊU CẦU ĐẾN HERMES AGENT (VPS WORKER POOL)!</b>",
+          "=============================",
+          `🌐 <b>VPS Endpoint:</b> <code>${workerUrl}</code>`,
+          `📽️ <b>Video nguồn:</b> ${videoUrl}`,
+          `🎬 <b>Yêu cầu biên tập:</b> <i>"${prompt}"</i>`,
+          "=============================",
+          "⏱️ <i>Hermes Agent đang chạy tiến trình dựng/cắt/ghép video trên VPS. Kết quả sẽ tự động gửi về đây ngay khi hoàn thành!</i>"
+        ].join("\n")
+      );
+
+      const res = await hermesService.editVideo(String(session.userId), videoUrl, prompt);
+      const recordId = res.record._id.toString();
+
+      void this.pollHermesRecordAndNotifyTelegram(chatId, recordId, prompt);
+    } catch (err: any) {
+      console.error("[Telegram Hermes VPS] Lỗi biên tập video:", err);
+      await this.sendMessage(chatId, `❌ <b>Lỗi khởi tạo Hermes Agent VPS:</b> ${err.message || err}`);
+    }
+  },
+
+  async resolveTelegramReferenceVideo(
+    chatId: number,
+    document?: any,
+    replyToMessage?: any
+  ): Promise<string | undefined> {
+    const fileId = this.extractTelegramVideoFileId(document)
+      || this.extractTelegramVideoFileId(replyToMessage?.document)
+      || (replyToMessage?.video?.file_id ? replyToMessage.video.file_id : undefined);
+
+    if (!fileId) {
+      return undefined;
+    }
+
+    await this.sendMessage(chatId, "📥 <b>Đang tải video từ Telegram lên Cloudinary...</b>");
+    const buffer = await this.downloadTelegramFile(fileId);
+    return cloudinaryService.uploadMediaBuffer(buffer, "telegram_vps_videos");
+  },
+
+  extractTelegramVideoFileId(document?: any): string | undefined {
+    if (document?.file_id) {
+      const mimeType = String(document.mime_type || "").toLowerCase();
+      if (mimeType.startsWith("video/")) {
+        return document.file_id;
+      }
+    }
+    return undefined;
+  },
+
+  async pollHermesRecordAndNotifyTelegram(chatId: number, recordId: string, prompt: string): Promise<void> {
+    const maxAttempts = 120;
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+      try {
+        const record = await AIMediaModel.findById(recordId).lean();
+        if (!record) break;
+        const status = record.metadata?.status;
+        if (status === "completed" && record.url) {
+          const resultUrl = record.url;
+          const sendRes = await this.sendVideo(
+            chatId,
+            resultUrl,
+            `🎬 <b>HERMES AGENT (VPS) BIÊN TẬP HOÀN TẤT!</b>\nYêu cầu: <i>"${prompt}"</i>`
+          );
+          if (!sendRes || !sendRes.ok) {
+            await this.sendMessage(
+              chatId,
+              [
+                "🎉 <b>HERMES AGENT (VPS) BIÊN TẬP HOÀN TẤT!</b>",
+                "=============================",
+                `🎬 <b>Yêu cầu:</b> <i>"${prompt}"</i>`,
+                `🔗 <b>Link kết xuất Cloudinary:</b>`,
+                `${resultUrl}`,
+                "============================="
+              ].join("\n")
+            );
+          }
+          return;
+        }
+        if (status === "failed") {
+          const err = record.metadata?.error || "Lỗi không xác định từ Hermes Worker VPS";
+          await this.sendMessage(chatId, `❌ <b>Hermes Agent VPS báo lỗi:</b> ${err}`);
+          return;
+        }
+      } catch (err) {
+        console.error("[Telegram Bot] Lỗi pollHermesRecordAndNotifyTelegram:", err);
+      }
+    }
+    await this.sendMessage(chatId, "⚠️ <b>Hết thời gian chờ (Timeout 20 phút) từ Hermes Worker VPS.</b>");
+  },
+
+  async executeDirectCampaignCreation(chatId: number, session: any, brief: string): Promise<void> {
+    const scope = buildSessionScope(session);
+    if (!scope.companyCode) {
+      await this.sendMessage(chatId, "⚠️ Tài khoản của bạn chưa được gán companyCode.");
+      return;
+    }
+
+    await this.sendMessage(
+      chatId,
+      [
+        "🚀 <b>HERMES AGENT ĐANG TRỰC TIẾP KHỞI TẠO CHIẾN DỊCH TRÊN WEB ERP...</b>",
+        "=============================",
+        `📝 <b>Định hướng:</b> <i>"${brief}"</i>`,
+        "⏱️ <i>Hệ thống đang tự động phân tích thị trường, phân bổ lịch đăng và tạo slots... Vui lòng đợi trong giây lát!</i>"
+      ].join("\n")
+    );
+
+    try {
+      // 1. Kiểm tra các liên kết Mạng Xã Hội khả dụng
+      const integrations = await SocialIntegrationModel.find({
+        companyCode: scope.companyCode,
+        isConnected: true,
+      }).lean();
+
+      if (!integrations || integrations.length === 0) {
+        await this.sendMessage(
+          chatId,
+          "❌ <b>Không thể tạo chiến dịch:</b> Doanh nghiệp chưa kết nối tài khoản Facebook hay TikTok nào trên Web ERP.\nVui lòng vào mục Cấu hình ERP để kết nối trước."
+        );
+        return;
+      }
+
+      const platforms: Array<"Facebook" | "TikTok"> = [];
+      const integrationIds: Record<string, string> = {};
+
+      integrations.forEach((item: any) => {
+        if ((item.platform === "Facebook" || item.platform === "TikTok") && !platforms.includes(item.platform)) {
+          platforms.push(item.platform);
+          integrationIds[item.platform] = String(item._id);
+        }
+      });
+
+      if (platforms.length === 0) {
+        await this.sendMessage(
+          chatId,
+          "❌ <b>Không tìm thấy liên kết Facebook/TikTok hợp lệ.</b> Vui lòng kiểm tra tài khoản liên kết trên Web ERP."
+        );
+        return;
+      }
+
+      // 2. Tính toán lịch đăng mặc định (7 ngày bắt đầu từ ngày mai, định dạng YYYY-MM-DD)
+      const now = new Date();
+      const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const endDateObj = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+      const formatZonedIsoDate = (date: Date) => {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Ho_Chi_Minh",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(date);
+      };
+
+      const startDate = formatZonedIsoDate(tomorrow);
+      const endDate = formatZonedIsoDate(endDateObj);
+      const postsPerDay = 1;
+      const postingTimes = ["09:00"];
+
+      // 3. Thực thi khởi tạo chiến dịch trực tiếp thông qua Marketing Campaign Service của Web
+      const { marketingCampaignService } = await import("./marketing-campaign.service");
+
+      const result = await marketingCampaignService.create(scope.companyCode, session.email || "telegram-user", {
+        sourceBrief: brief,
+        startDate,
+        endDate,
+        postsPerDay,
+        postingTimes,
+        platforms,
+        integrationIds,
+        imageMode: "ai",
+        timezone: "Asia/Ho_Chi_Minh",
+        qualityMode: "premium",
+        publishMode: "manual",
+        candidateCount: 1,
+      });
+
+      const campaign = result.campaign;
+      const slots = result.slots || [];
+
+      let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+      if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+      const campaignWebUrl = `${baseUrl}/campaigns/${campaign._id}`;
+
+      await this.sendMessage(
+        chatId,
+        [
+          "🎉 <b>HERMES AGENT ĐÃ TẠO THÀNH CÔNG CHIẾN DỊCH TRÊN WEB ERP!</b>",
+          "=============================",
+          `📌 <b>Tên chiến dịch:</b> ${campaign.title}`,
+          `🏢 <b>Mã công ty:</b> <code>${scope.companyCode}</code>`,
+          `📢 <b>Nền tảng:</b> <b>${platforms.join(", ")}</b>`,
+          `📅 <b>Thời gian:</b> Từ <code>${startDate}</code> đến <code>${endDate}</code> (7 ngày)`,
+          `📊 <b>Số bài viết (Slots):</b> <b>${slots.length} bài</b>`,
+          "=============================",
+          `🔗 <a href="${campaignWebUrl}"><b>Nhấn vào đây để xem chi tiết chiến dịch trên Web ERP</b></a>`
+        ].join("\n")
+      );
+    } catch (err: any) {
+      console.error("[Telegram Direct Campaign] Lỗi tạo chiến dịch:", err);
+      await this.sendMessage(chatId, `❌ <b>Không thể khởi tạo chiến dịch trực tiếp:</b> ${err.message || err}`);
+    }
   },
 };
