@@ -128,14 +128,16 @@ export class ApifyResearchService {
       ? campaign.apifySources
       : ["google", slot.platform === "Facebook" ? "facebook" : "", slot.platform === "TikTok" ? "tiktok" : ""].filter(Boolean);
 
+    const targetQuota = this.calculateDynamicQuota(slot, campaign);
+
     if (sources.includes("google")) {
-      await collect((remaining) => this.collectGoogle(queries, billingMode, remaining));
+      await collect((remaining) => this.collectGoogle(queries, billingMode, targetQuota, remaining));
     }
     if (sources.includes("facebook")) {
-      await collect((remaining) => this.collectFacebook(queries, billingMode, remaining));
+      await collect((remaining) => this.collectFacebook(queries, billingMode, targetQuota, remaining));
     }
     if (sources.includes("tiktok")) {
-      await collect((remaining) => this.collectTikTok(queries, billingMode, remaining));
+      await collect((remaining) => this.collectTikTok(queries, billingMode, targetQuota, remaining));
     }
     const evidence = this.dedupeEvidence(results.flatMap((result) => result.evidence));
     const apifyRuns = results.map((result) => result.audit);
@@ -155,8 +157,39 @@ export class ApifyResearchService {
     ].map((value) => trimText(value, 180)).filter(Boolean))].slice(0, MAX_GOOGLE_QUERIES);
   }
 
-  private static async collectGoogle(queries: string[], billingMode: "shadow" | "live", remainingBudgetUsd?: number): Promise<CollectorResult> {
-    const resultsPerQuery = parsePositiveInt(process.env.APIFY_GOOGLE_MAX_RESULTS, 10, MAX_RESULTS_PER_SOURCE);
+  /**
+   * Calculates dynamic quota of items to collect per source based on campaign duration & funnel stage.
+   */
+  public static calculateDynamicQuota(
+    slot: IMarketingCampaignSlot,
+    campaign: IMarketingCampaign
+  ): number {
+    const totalSlots = campaign.statistics?.totalSlots || 8;
+    
+    // Base quota per source
+    let baseQuota = 5; // Default for short campaigns (<= 10 slots)
+    if (totalSlots > 10 && totalSlots <= 30) {
+      baseQuota = 8;
+    } else if (totalSlots > 30) {
+      baseQuota = 12;
+    }
+
+    // Funnel stage multiplier
+    const funnel = slot.funnelStage || "MOFU";
+    let multiplier = 1.0;
+    if (funnel === "TOFU") multiplier = 1.2;
+    else if (funnel === "BOFU") multiplier = 0.6;
+
+    return Math.max(3, Math.round(baseQuota * multiplier));
+  }
+
+  private static async collectGoogle(
+    queries: string[],
+    billingMode: "shadow" | "live",
+    targetQuota: number,
+    remainingBudgetUsd?: number
+  ): Promise<CollectorResult> {
+    const resultsPerQuery = Math.min(targetQuota, parsePositiveInt(process.env.APIFY_GOOGLE_MAX_RESULTS, 5, MAX_RESULTS_PER_SOURCE));
     const estimatedCostUsd = queries.length * 0.0045;
     const actorId = process.env.APIFY_GOOGLE_ACTOR_ID || "apify/google-search-scraper";
     const result = await this.runActor("google", actorId, {
@@ -180,15 +213,17 @@ export class ApifyResearchService {
           text,
           collectedAt: new Date(),
         }];
-      }),
+      }).slice(0, targetQuota),
     };
   }
 
-  private static async collectFacebook(queries: string[], billingMode: "shadow" | "live", remainingBudgetUsd?: number): Promise<CollectorResult> {
-    const maxResults = Math.max(
-      10,
-      parsePositiveInt(process.env.APIFY_FACEBOOK_MAX_RESULTS, 10, MAX_RESULTS_PER_SOURCE)
-    );
+  private static async collectFacebook(
+    queries: string[],
+    billingMode: "shadow" | "live",
+    targetQuota: number,
+    remainingBudgetUsd?: number
+  ): Promise<CollectorResult> {
+    const maxResults = Math.min(targetQuota, parsePositiveInt(process.env.APIFY_FACEBOOK_MAX_RESULTS, 5, MAX_RESULTS_PER_SOURCE));
     const actorId = process.env.APIFY_FACEBOOK_ACTOR_ID || "powerai/facebook-post-search-scraper";
     const query = queries[0] || "marketing";
     const result = await this.runActor("facebook", actorId, {
@@ -213,12 +248,17 @@ export class ApifyResearchService {
           collectedAt: new Date(),
           metrics: normalizeMetrics(item),
         }];
-      }),
+      }).slice(0, targetQuota),
     };
   }
 
-  private static async collectTikTok(queries: string[], billingMode: "shadow" | "live", remainingBudgetUsd?: number): Promise<CollectorResult> {
-    const maxResults = parsePositiveInt(process.env.APIFY_TIKTOK_MAX_RESULTS, 20, MAX_RESULTS_PER_SOURCE);
+  private static async collectTikTok(
+    queries: string[],
+    billingMode: "shadow" | "live",
+    targetQuota: number,
+    remainingBudgetUsd?: number
+  ): Promise<CollectorResult> {
+    const maxResults = Math.min(targetQuota, parsePositiveInt(process.env.APIFY_TIKTOK_MAX_RESULTS, 5, MAX_RESULTS_PER_SOURCE));
     const actorId = process.env.APIFY_TIKTOK_ACTOR_ID || "clockworks/tiktok-scraper";
     const result = await this.runActor("tiktok", actorId, {
       searchQueries: queries,
@@ -242,7 +282,7 @@ export class ApifyResearchService {
           collectedAt: new Date(),
           metrics: normalizeMetrics(item),
         }];
-      }),
+      }).slice(0, targetQuota),
     };
   }
 
