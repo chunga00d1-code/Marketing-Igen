@@ -145,11 +145,11 @@ export const marketingCampaignController = {
 
   async publishNowSlot(req: AuthenticatedRequest, res: Response) {
     try {
-      const { companyCode } = getIdentity(req);
-      const slot = await marketingCampaignService.publishNowSlot(companyCode, req.params.id, req.params.slotId);
+      const { companyCode, userId } = getIdentity(req);
+      const slot = await marketingCampaignService.publishNowSlot(companyCode, req.params.id, req.params.slotId, userId);
       return res.status(200).json({ status: "success", data: slot });
     } catch (error: unknown) {
-      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đăng slot ngay lập tức." });
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đăng ngay slot này." });
     }
   },
 
