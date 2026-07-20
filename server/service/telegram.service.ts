@@ -1255,10 +1255,13 @@ export const telegramService = {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     while (pollingActive) {
       try {
-        const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/getUpdates?offset=${lastOffset + 1}&timeout=30`;
-        const response = await fetch(url, { method: "GET" });
+        const url = `${TELEGRAM_API_BASE_URL}/bot${botToken}/getUpdates?offset=${lastOffset + 1}&timeout=15`;
+        const response = await fetch(url, {
+          method: "GET",
+          signal: AbortSignal.timeout(30000),
+        });
         if (!response.ok) {
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await new Promise((resolve) => setTimeout(resolve, 3000));
           continue;
         }
 
@@ -1323,13 +1326,20 @@ export const telegramService = {
         }
       } catch (err: any) {
         const errStr = err?.message || String(err);
-        const isTimeout = errStr.includes("ETIMEDOUT") || errStr.includes("fetch failed") || errStr.includes("timeout") || err?.code === "ETIMEDOUT";
+        const isTimeout =
+          errStr.includes("ETIMEDOUT") ||
+          errStr.includes("fetch failed") ||
+          errStr.includes("timeout") ||
+          err?.name === "AbortError" ||
+          err?.code === "ETIMEDOUT";
+
         if (isTimeout) {
-          console.warn(`[Telegram Bot] Lỗi kết nối API getUpdates (Timeout/Network): ${errStr}. Sẽ thử lại sau 5s...`);
+          // Khi gián đoạn mạng hoặc timeout long polling thông thường, thử lại êm sau 1s mà không làm rác log server
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         } else {
           console.error("[Telegram Bot] Lỗi kết nối API getUpdates:", err);
+          await new Promise((resolve) => setTimeout(resolve, 5000));
         }
-        await new Promise((resolve) => setTimeout(resolve, 5000));
       }
     }
   },
