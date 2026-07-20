@@ -14,7 +14,10 @@ export default function PersonalIntegrationsTab() {
   const fetchTelegramStatus = async () => {
     setLoadingTelegram(true);
     try {
-      const data = await authService.getTelegramLinkStatus();
+      let data = await authService.getTelegramLinkStatus();
+      if (!data.linked && !data.pendingCode) {
+        data = await authService.createTelegramLinkCode();
+      }
       setTelegramStatus(data);
     } catch (err: any) {
       console.error(err);
@@ -23,6 +26,7 @@ export default function PersonalIntegrationsTab() {
       setLoadingTelegram(false);
     }
   };
+
 
   const handleCreateTelegramCode = async () => {
     setCreatingCode(true);
