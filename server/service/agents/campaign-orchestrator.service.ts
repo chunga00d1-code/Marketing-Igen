@@ -12,6 +12,22 @@ import { cloudinaryService } from "../cloudinary.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { VisualAnalystAgentService } from "./visual-analyst-agent.service";
 import { approvalNotifierService } from "../approval-notifier.service";
+import { broadcastEvent } from "../../socket";
+
+function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: string; status: string }, extra?: Record<string, unknown>) {
+  try {
+    broadcastEvent("campaign:slot-update", {
+      slotId: String(slot._id),
+      campaignId: String(slot.campaignId),
+      companyCode: slot.companyCode,
+      status: slot.status,
+      updatedAt: new Date().toISOString(),
+      ...extra,
+    });
+  } catch (e) {
+    console.warn("[Orchestrator] Socket broadcast failed:", e);
+  }
+}
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -199,6 +215,7 @@ export class CampaignOrchestratorService {
           at: new Date(),
         });
         await slot.save();
+        emitSlotUpdate(slot);
 
         await ingestRealMedia(slot, campaign);
 
@@ -217,6 +234,7 @@ export class CampaignOrchestratorService {
           at: new Date(),
         });
         await slot.save();
+        emitSlotUpdate(slot);
 
         if (slot.customBodyText) {
           // Use pre-written content
@@ -245,6 +263,7 @@ export class CampaignOrchestratorService {
           at: new Date(),
         });
         await slot.save();
+        emitSlotUpdate(slot);
 
         // Run Researcher Agent
         const researchContext = await getResearchContext(slot, campaign);
@@ -258,6 +277,7 @@ export class CampaignOrchestratorService {
           at: new Date(),
         });
         await slot.save();
+        emitSlotUpdate(slot);
 
         // Run Copywriter Agent (Single-Variant Content Generation)
         candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
@@ -330,6 +350,7 @@ export class CampaignOrchestratorService {
       );
 
       console.log(`[Orchestrator] Slot ${slotId} prepare phase completed. Next status: ${nextStatus}`);
+      emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: nextStatus });
 
       // Fire-and-forget: gửi thông báo phê duyệt qua Telegram nếu slot cần duyệt
       if (nextStatus === "pending_approval") {
@@ -368,6 +389,7 @@ export class CampaignOrchestratorService {
           },
         }
       );
+      emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: targetStatus });
       if (isBudgetError) {
         await MarketingCampaignModel.updateOne(
           { _id: campaign._id, companyCode: campaign.companyCode, status: "active" },
@@ -444,6 +466,7 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} uploaded and linked real images from Drive/Cloudinary. Next status: ${nextStatus}`);
+        emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: nextStatus });
 
         // Fire-and-forget: gửi thông báo phê duyệt qua Telegram nếu slot cần duyệt
         if (nextStatus === "pending_approval") {
@@ -473,6 +496,7 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} media phase completed. Next status: ${nextStatus}`);
+        emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: nextStatus });
 
         // Fire-and-forget: gửi thông báo phê duyệt qua Telegram nếu slot cần duyệt
         if (nextStatus === "pending_approval") {
@@ -482,6 +506,7 @@ export class CampaignOrchestratorService {
     } catch (error: unknown) {
       console.error(`[Orchestrator] Error during slot ${slotId} media phase:`, error);
       await releaseWithFailure(slotId, lockId, "media", error);
+      emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "failed" });
     }
   }
 
@@ -532,6 +557,7 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} QC passed. Status transitioned to ready_to_publish.`);
+        emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "ready_to_publish" });
       } else {
         // Did not pass QC validation
         const failureReason = qcResult.reasons.join("; ");
@@ -556,10 +582,12 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} QC failed: ${failureReason}`);
+        emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "needs_attention" });
       }
     } catch (error: unknown) {
       console.error(`[Orchestrator] Error during slot ${slotId} verify phase:`, error);
       await releaseWithFailure(slotId, lockId, "verify", error);
+      emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "failed" });
     }
   }
 
@@ -611,6 +639,7 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} published successfully.`);
+        emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "published" });
       } else {
         // Status is "publishing" (async webhook callback pending)
         await MarketingCampaignSlotModel.updateOne(
@@ -632,10 +661,12 @@ export class CampaignOrchestratorService {
           }
         );
         console.log(`[Orchestrator] Slot ${slotId} publish requested. Awaiting callback.`);
+        emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "publishing" });
       }
     } catch (error: unknown) {
       console.error(`[Orchestrator] Error during slot ${slotId} publish phase:`, error);
       await releaseWithFailure(slotId, lockId, "publish", error);
+      emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "failed" });
     }
   }
 }

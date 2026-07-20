@@ -26,6 +26,13 @@ type SocketVideoUpdate = {
 } & Record<string, unknown>;
 type NewMessagePayload = { message: SocketMessage; conversation: SocketConversation };
 type VideoStatusPayload = { videoId: string; status: string; updates: SocketVideoUpdate[] };
+export type CampaignSlotUpdatePayload = {
+  slotId: string;
+  campaignId: string;
+  companyCode: string;
+  status: string;
+  updatedAt: string;
+};
 
 class SocketService {
   private socket: Socket | null = null;
@@ -33,6 +40,7 @@ class SocketService {
   private conversationCallbacks: Array<(conversation: SocketConversation) => void> = [];
   private statusCallbacks: Array<(connected: boolean) => void> = [];
   private videoCallbacks: Array<(data: VideoStatusPayload) => void> = [];
+  private campaignSlotCallbacks: Array<(data: CampaignSlotUpdatePayload) => void> = [];
 
   connect(token: string) {
     if (this.socket) {
@@ -86,6 +94,12 @@ class SocketService {
       console.log("[SocketService] Received 'video_status_updated' event:", data);
       this.videoCallbacks.forEach((cb) => cb(data));
     });
+
+    // Listen to campaign slot updates
+    this.socket.on("campaign:slot-update", (data: CampaignSlotUpdatePayload) => {
+      console.log("[SocketService] Received 'campaign:slot-update' event:", data);
+      this.campaignSlotCallbacks.forEach((cb) => cb(data));
+    });
   }
 
   disconnect() {
@@ -120,6 +134,13 @@ class SocketService {
     this.videoCallbacks.push(callback);
     return () => {
       this.videoCallbacks = this.videoCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
+  onCampaignSlotUpdate(callback: (data: CampaignSlotUpdatePayload) => void) {
+    this.campaignSlotCallbacks.push(callback);
+    return () => {
+      this.campaignSlotCallbacks = this.campaignSlotCallbacks.filter((cb) => cb !== callback);
     };
   }
 

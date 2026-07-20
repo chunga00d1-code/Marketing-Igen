@@ -6,6 +6,8 @@ export interface CampaignScheduleSlotInput {
   verifyAt: Date;
   platform: MarketingCampaignPlatform;
   slotIndex: number;
+  totalSlots: number;
+  progressRatio: number; // Value from 0.0 to 1.0 representing timeline position
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -143,12 +145,15 @@ export function buildCampaignSchedule(input: {
       const scheduledAt = zonedLocalTimeToUtc(date, time, input.timezone);
       const currentSlotIndex = globalSlotIndex;
       globalSlotIndex += 1;
+      const progressRatio = totalSlots > 1 ? currentSlotIndex / (totalSlots - 1) : 0;
       return {
         scheduledAt,
         prepareAt: zonedLocalTimeToUtc(date, '00:00', input.timezone),
         verifyAt: zonedLocalTimeToUtc(date, '00:30', input.timezone),
         platform: input.platforms[currentSlotIndex % input.platforms.length],
         slotIndex: currentSlotIndex,
+        totalSlots,
+        progressRatio,
       };
     });
   });

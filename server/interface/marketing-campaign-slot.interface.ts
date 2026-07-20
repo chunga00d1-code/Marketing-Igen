@@ -33,6 +33,7 @@ export interface IMarketingCampaignSlot extends Document {
   pillar: string;
   objective: string;
   topicBrief: string;
+  funnelStage?: "TOFU" | "MOFU" | "BOFU";
   mediaType: "text" | "image" | "video" | "human-video";
   status: MarketingCampaignSlotStatus;
   attemptCount: number;
