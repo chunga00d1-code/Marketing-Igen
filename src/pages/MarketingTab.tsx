@@ -769,6 +769,7 @@ export default function MarketingTab() {
               userProfile={userProfile}
               setApprovalCards={setApprovalCards}
               setSubTab={setSubTab}
+              subTab={subTab}
             />
           </div>
 
