@@ -33,6 +33,7 @@ export interface MarketingCampaignSummary {
     estimatedCost?: number;
     actualCost?: number;
   };
+  companyCode?: string;
   createdAt: string;
 }
 
