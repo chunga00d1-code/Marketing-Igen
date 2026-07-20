@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe } from 'lucide-react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, Zap } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -44,6 +44,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
   const qualityMode = 'premium';
   const [publishMode, setPublishMode] = useState<'auto' | 'manual'>('manual');
+  const [isInstantSinglePost, setIsInstantSinglePost] = useState(false);
   const [imageMode, setImageMode] = useState<'ai' | 'real'>('ai');
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState('');
@@ -469,7 +470,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         integrationIds: integrationId ? { Facebook: integrationId } : {},
         candidateCount: 1, // Single-Render Flow
         qualityMode,
-        publishMode,
+        publishMode: isInstantSinglePost ? 'auto' : publishMode,
+        publishNow: isInstantSinglePost,
         imageMode,
         googleDriveFolderUrl: imageMode === 'real' ? googleDriveFolderUrl.trim() : undefined,
         mediaPolicy: 'auto',
@@ -795,59 +797,75 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
           {/* BƯỚC 3: CẤU HÌNH LỊCH CHẠY */}
           {wizardStep === 3 && (
-            <div className="space-y-4 animate-fadeIn">
-              <h3 className="text-xs font-bold text-slate-850 uppercase tracking-wider">Bước 3: Cấu hình lịch chạy bài viết</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {/* Left Column: Dates & Count & Channel */}
-                <div className="space-y-4.5">
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                      Ngày bắt đầu
-                      <input
-                        type="date"
-                        min={today}
-                        value={startDate}
-                        onChange={(event) => setStartDate(event.target.value)}
-                        className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
-                      />
-                    </label>
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                      Ngày kết thúc
-                      <input
-                        type="date"
-                        min={startDate || today}
-                        value={endDate}
-                        onChange={(event) => setEndDate(event.target.value)}
-                        className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
-                      />
-                    </label>
-                  </div>
+            <div className="space-y-5 animate-fadeIn">
+              <div>
+                <label className="mb-2 block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Chế độ xuất bản bài viết
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsInstantSinglePost(false)}
+                    className={`flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${!isInstantSinglePost
+                        ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                  >
+                    <div className={`rounded-lg p-2 shrink-0 ${!isInstantSinglePost ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <CalendarClock size={16} />
+                    </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800">Lên lịch tự động (Nhiều ngày)</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">Tạo chuỗi bài viết tự động theo lịch hẹn và khung giờ cố định</span>
+                    </div>
+                  </button>
 
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Số bài mỗi ngày</label>
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <button
-                          type="button"
-                          key={value}
-                          onClick={() => changePostsPerDay(value)}
-                          className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${postsPerDay === value
-                            ? 'border-indigo-600 bg-indigo-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                            }`}
-                        >
-                          {value}
-                        </button>
-                      ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInstantSinglePost(true);
+                      setStartDate(today);
+                      setEndDate(today);
+                      changePostsPerDay(1);
+                    }}
+                    className={`flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${isInstantSinglePost
+                        ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
+                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      }`}
+                  >
+                    <div className={`rounded-lg p-2 shrink-0 ${isInstantSinglePost ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <Zap size={16} />
+                    </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-800">⚡ Đăng ngay 1 bài duy nhất</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">AI tự viết bài và phát trực tiếp lên Fanpage ngay lập tức</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {isInstantSinglePost ? (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-xs text-indigo-950 flex items-start gap-3">
+                    <div className="rounded-lg bg-indigo-600 text-white p-2 shrink-0 shadow-2xs mt-0.5">
+                      <Zap size={16} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-indigo-950">Quy trình xuất bản tức thì </p>
+                      <p className="text-[11px] text-indigo-750 mt-0.5 leading-relaxed">
+                        Hệ thống sẽ tập trung AI tạo 1 bài viết hoàn chỉnh và phát thẳng lên Fanpage ngay lập tức mà không cần đặt lịch hẹn đếm ngược.
+                      </p>
                     </div>
                   </div>
 
                   <div>
-                    <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Facebook Page nhận lịch đăng</label>
+                    <label className="mb-1.5 block text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                      Facebook Page nhận bài đăng ngay
+                    </label>
                     <select
                       value={integrationId}
                       onChange={(event) => setIntegrationId(event.target.value)}
-                      className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden shadow-2xs"
                     >
                       {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
                       {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
@@ -855,233 +873,295 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     </select>
                   </div>
                 </div>
-
-                {/* Right Column: Auto-Publish & Posting Times */}
-                <div className="space-y-4.5">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 flex items-center justify-between gap-3">
-                    <div className="flex-1">
-                      <label className="text-[11px] font-bold text-slate-700 block uppercase tracking-wide">Tự động xuất bản</label>
-                      <p className="mt-0.5 text-[10px] text-slate-400 leading-normal">
-                        AI tự duyệt & đăng bài lên Facebook mà không cần phê duyệt tay thủ công.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
-                        }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
-                          }`}
-                      />
-                    </button>
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Khung giờ bài đăng</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {postingTimes.map((time, index) => (
-                        <div key={index} className="flex flex-col">
-                          <span className="text-[9px] font-semibold text-slate-400 uppercase">Giờ {index + 1}</span>
-                          <CustomTimePicker
-                            value={time}
-                            onChange={(newTime) =>
-                              setPostingTimes((current) =>
-                                current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
-                              )
-                            }
+              ) : (
+                <div className="space-y-5 animate-fadeIn">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Left Column: Dates & Count & Channel */}
+                    <div className="space-y-4.5">
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                          Ngày bắt đầu
+                          <input
+                            type="date"
+                            min={today}
+                            value={startDate}
+                            onChange={(event) => setStartDate(event.target.value)}
+                            className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
                           />
+                        </label>
+                        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                          Ngày kết thúc
+                          <input
+                            type="date"
+                            min={startDate || today}
+                            value={endDate}
+                            onChange={(event) => setEndDate(event.target.value)}
+                            className="mt-1.5 w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-normal focus:border-indigo-600 focus:outline-hidden"
+                          />
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Số bài mỗi ngày</label>
+                        <div className="flex gap-1">
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <button
+                              type="button"
+                              key={value}
+                              onClick={() => changePostsPerDay(value)}
+                              className={`h-7 w-8.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${postsPerDay === value
+                                ? 'border-indigo-600 bg-indigo-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                }`}
+                            >
+                              {value}
+                            </button>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                      </div>
 
-              {/* Detailed custom schedule editor */}
-              <div className="mt-5 border-t border-slate-100 pt-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày (Tùy chọn)</h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Thiết lập giờ đăng riêng cho từng ngày cụ thể nếu không muốn dùng giờ mặc định.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomSchedule(!showCustomSchedule)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                  >
-                    {showCustomSchedule ? 'Thu gọn' : 'Cấu hình chi tiết'}
-                  </button>
-                </div>
-
-                {showCustomSchedule && allDatesInRange.length > 0 && (
-                  <div className="mt-4 rounded-xl border border-slate-150 bg-slate-50/30 p-4">
-                    {/* Pagination controls for days */}
-                    <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
-                      <span className="text-[11px] font-bold text-slate-500">
-                        Hiển thị ngày {Math.min(allDatesInRange.length, (customSchedulePage - 1) * 7 + 1)} - {Math.min(allDatesInRange.length, customSchedulePage * 7)} trong tổng số {allDatesInRange.length} ngày
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          disabled={customSchedulePage === 1}
-                          onClick={() => setCustomSchedulePage(customSchedulePage - 1)}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                      <div>
+                        <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Facebook Page nhận lịch đăng</label>
+                        <select
+                          value={integrationId}
+                          onChange={(event) => setIntegrationId(event.target.value)}
+                          className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden"
                         >
-                          Tuần trước
-                        </button>
-                        <button
-                          type="button"
-                          disabled={customSchedulePage >= Math.ceil(allDatesInRange.length / 7)}
-                          onClick={() => setCustomSchedulePage(customSchedulePage + 1)}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                        >
-                          Tuần sau
-                        </button>
+                          {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
+                          {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
+                          {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
+                        </select>
                       </div>
                     </div>
 
-                    {/* Days List */}
-                    <div className="space-y-4">
-                      {allDatesInRange
-                        .slice((customSchedulePage - 1) * 7, customSchedulePage * 7)
-                        .map((date) => {
-                          const isCustomized = !!customSchedule[date];
-                          const times = customSchedule[date] || postingTimes;
+                    {/* Right Column: Auto-Publish & Posting Times */}
+                    <div className="space-y-4.5">
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3 flex items-center justify-between gap-3">
+                        <div className="flex-1">
+                          <label className="text-[11px] font-bold text-slate-700 block uppercase tracking-wide">Tự động xuất bản</label>
+                          <p className="mt-0.5 text-[10px] text-slate-400 leading-normal">
+                            AI tự duyệt & đăng bài lên Facebook mà không cần phê duyệt tay thủ công.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPublishMode(publishMode === 'auto' ? 'manual' : 'auto')}
+                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${publishMode === 'auto' ? 'bg-indigo-600' : 'bg-slate-200'
+                            }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${publishMode === 'auto' ? 'translate-x-4' : 'translate-x-0'
+                              }`}
+                          />
+                        </button>
+                      </div>
 
-                          const formattedDate = new Intl.DateTimeFormat('vi-VN', {
-                            weekday: 'long',
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric'
-                          }).format(new Date(date));
+                      <div>
+                        <label className="mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Khung giờ bài đăng</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {postingTimes.map((time, index) => (
+                            <div key={index} className="flex flex-col">
+                              <span className="text-[9px] font-semibold text-slate-400 uppercase">Giờ {index + 1}</span>
+                              <CustomTimePicker
+                                value={time}
+                                onChange={(newTime) =>
+                                  setPostingTimes((current) =>
+                                    current.map((item, itemIndex) => (itemIndex === index ? newTime : item))
+                                  )
+                                }
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                          return (
-                            <div key={date} className="flex flex-col gap-3 rounded-lg border border-slate-150 bg-white p-3.5 shadow-2xs">
-                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-slate-100 pb-2">
-                                <span className="text-xs font-bold text-slate-800 capitalize">{formattedDate}</span>
-                                <div className="flex items-center gap-2">
-                                  <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isCustomized ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-100 text-slate-500'}`}>
-                                    {isCustomized ? 'Đã tùy chỉnh' : 'Mặc định'}
-                                  </span>
-                                  {isCustomized ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const updated = { ...customSchedule };
-                                        delete updated[date];
-                                        setCustomSchedule(updated);
-                                      }}
-                                      className="text-[10px] font-extrabold text-red-550 hover:underline cursor-pointer"
-                                    >
-                                      Reset về mặc định
-                                    </button>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setCustomSchedule({
-                                          ...customSchedule,
-                                          [date]: [...postingTimes]
-                                        });
-                                      }}
-                                      className="text-[10px] font-extrabold text-indigo-655 hover:underline cursor-pointer"
-                                    >
-                                      Tùy chỉnh ngày này
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
+                  {/* Detailed custom schedule editor */}
+                  <div className="mt-5 border-t border-slate-100 pt-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày (Tùy chọn)</h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Thiết lập giờ đăng riêng cho từng ngày cụ thể nếu không muốn dùng giờ mặc định.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomSchedule(!showCustomSchedule)}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                      >
+                        {showCustomSchedule ? 'Thu gọn' : 'Cấu hình chi tiết'}
+                      </button>
+                    </div>
 
-                              {/* Times listing */}
-                              <div className="flex flex-wrap items-end gap-3.5">
-                                {times.map((time, idx) => (
-                                  <div key={idx} className="flex flex-col w-32 relative">
-                                    <div className="flex items-center justify-between select-none">
-                                      <span className="text-[10px] font-bold text-slate-500">Giờ bài {idx + 1}</span>
-                                      {isCustomized && times.length > 1 && (
+                    {showCustomSchedule && allDatesInRange.length > 0 && (
+                      <div className="mt-4 rounded-xl border border-slate-150 bg-slate-50/30 p-4">
+                        {/* Pagination controls for days */}
+                        <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                          <span className="text-[11px] font-bold text-slate-500">
+                            Hiển thị ngày {Math.min(allDatesInRange.length, (customSchedulePage - 1) * 7 + 1)} - {Math.min(allDatesInRange.length, customSchedulePage * 7)} trong tổng số {allDatesInRange.length} ngày
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={customSchedulePage === 1}
+                              onClick={() => setCustomSchedulePage(customSchedulePage - 1)}
+                              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              Tuần trước
+                            </button>
+                            <button
+                              type="button"
+                              disabled={customSchedulePage >= Math.ceil(allDatesInRange.length / 7)}
+                              onClick={() => setCustomSchedulePage(customSchedulePage + 1)}
+                              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-655 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                              Tuần sau
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Days List */}
+                        <div className="space-y-4">
+                          {allDatesInRange
+                            .slice((customSchedulePage - 1) * 7, customSchedulePage * 7)
+                            .map((date) => {
+                              const isCustomized = !!customSchedule[date];
+                              const times = customSchedule[date] || postingTimes;
+
+                              const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+                                weekday: 'long',
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric'
+                              }).format(new Date(date));
+
+                              return (
+                                <div key={date} className="flex flex-col gap-3 rounded-lg border border-slate-150 bg-white p-3.5 shadow-2xs">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-dashed border-slate-100 pb-2">
+                                    <span className="text-xs font-bold text-slate-800 capitalize">{formattedDate}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${isCustomized ? 'bg-amber-50 text-amber-700 border border-amber-100' : 'bg-slate-100 text-slate-500'}`}>
+                                        {isCustomized ? 'Đã tùy chỉnh' : 'Mặc định'}
+                                      </span>
+                                      {isCustomized ? (
                                         <button
                                           type="button"
                                           onClick={() => {
-                                            const updatedTimes = times.filter((_, tIdx) => tIdx !== idx);
+                                            const updated = { ...customSchedule };
+                                            delete updated[date];
+                                            setCustomSchedule(updated);
+                                          }}
+                                          className="text-[10px] font-extrabold text-red-550 hover:underline cursor-pointer"
+                                        >
+                                          Reset về mặc định
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setCustomSchedule({
+                                              ...customSchedule,
+                                              [date]: [...postingTimes]
+                                            });
+                                          }}
+                                          className="text-[10px] font-extrabold text-indigo-655 hover:underline cursor-pointer"
+                                        >
+                                          Tùy chỉnh ngày này
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Times listing */}
+                                  <div className="flex flex-wrap items-end gap-3.5">
+                                    {times.map((time, idx) => (
+                                      <div key={idx} className="flex flex-col w-32 relative">
+                                        <div className="flex items-center justify-between select-none">
+                                          <span className="text-[10px] font-bold text-slate-500">Giờ bài {idx + 1}</span>
+                                          {isCustomized && times.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const updatedTimes = times.filter((_, tIdx) => tIdx !== idx);
+                                                setCustomSchedule({
+                                                  ...customSchedule,
+                                                  [date]: updatedTimes
+                                                });
+                                              }}
+                                              className="text-[9px] font-extrabold text-red-500 hover:text-red-700 cursor-pointer"
+                                            >
+                                              Xóa
+                                            </button>
+                                          )}
+                                        </div>
+                                        <CustomTimePicker
+                                          value={time}
+                                          disabled={!isCustomized}
+                                          onChange={(newTime) => {
+                                            const updatedTimes = times.map((t, tIdx) => tIdx === idx ? newTime : t);
                                             setCustomSchedule({
                                               ...customSchedule,
                                               [date]: updatedTimes
                                             });
                                           }}
-                                          className="text-[9px] font-extrabold text-red-500 hover:text-red-700 cursor-pointer"
-                                        >
-                                          Xóa
-                                        </button>
-                                      )}
-                                    </div>
-                                    <CustomTimePicker
-                                      value={time}
-                                      disabled={!isCustomized}
-                                      onChange={(newTime) => {
-                                        const updatedTimes = times.map((t, tIdx) => tIdx === idx ? newTime : t);
-                                        setCustomSchedule({
-                                          ...customSchedule,
-                                          [date]: updatedTimes
-                                        });
-                                      }}
-                                    />
+                                        />
+                                      </div>
+                                    ))}
+
+                                    {isCustomized && times.length < 5 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const nextHour = times.length > 0
+                                            ? String(parseInt(times[times.length - 1].split(':')[0]) + 2).padStart(2, '0') + ':00'
+                                            : '09:00';
+                                          const validatedHour = parseInt(nextHour.split(':')[0]) >= 24 ? '23:00' : nextHour;
+                                          setCustomSchedule({
+                                            ...customSchedule,
+                                            [date]: [...times, validatedHour]
+                                          });
+                                        }}
+                                        className="h-9 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30 px-3 text-[11px] font-extrabold text-indigo-655 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer"
+                                      >
+                                        + Thêm khung giờ
+                                      </button>
+                                    )}
                                   </div>
-                                ))}
+                                </div>
+                              );
+                            })}
+                        </div>
 
-                                {isCustomized && times.length < 5 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const nextHour = times.length > 0
-                                        ? String(parseInt(times[times.length - 1].split(':')[0]) + 2).padStart(2, '0') + ':00'
-                                        : '09:00';
-                                      const validatedHour = parseInt(nextHour.split(':')[0]) >= 24 ? '23:00' : nextHour;
-                                      setCustomSchedule({
-                                        ...customSchedule,
-                                        [date]: [...times, validatedHour]
-                                      });
-                                    }}
-                                    className="h-9 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/30 px-3 text-[11px] font-extrabold text-indigo-655 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer"
-                                  >
-                                    + Thêm khung giờ
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-
-                    {/* Reset All Button */}
-                    {Object.keys(customSchedule).length > 0 && (
-                      <div className="mt-4 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfirmConfig({
-                              isOpen: true,
-                              title: 'Đặt lại lịch đăng',
-                              message: 'Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?',
-                              isDangerous: true,
-                              confirmText: 'Xác nhận xóa',
-                              cancelText: 'Quay lại',
-                              onConfirm: () => {
-                                setCustomSchedule({});
-                                setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                              }
-                            });
-                          }}
-                          className="text-[11px] font-bold text-red-655 hover:text-red-800 flex items-center gap-1 cursor-pointer"
-                        >
-                          Xóa tất cả tùy chỉnh
-                        </button>
+                        {/* Reset All Button */}
+                        {Object.keys(customSchedule).length > 0 && (
+                          <div className="mt-4 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmConfig({
+                                  isOpen: true,
+                                  title: 'Đặt lại lịch đăng',
+                                  message: 'Bạn có chắc muốn đặt lại tất cả các ngày về giờ đăng mặc định không?',
+                                  isDangerous: true,
+                                  confirmText: 'Xác nhận xóa',
+                                  cancelText: 'Quay lại',
+                                  onConfirm: () => {
+                                    setCustomSchedule({});
+                                    setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                  }
+                                });
+                              }}
+                              className="text-[11px] font-bold text-red-655 hover:text-red-800 flex items-center gap-1 cursor-pointer"
+                            >
+                              Xóa tất cả tùy chỉnh
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
         </div>
