@@ -574,8 +574,8 @@ export default function CampaignDetailModal({
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4.5">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Trạng thái</span>
                       <div className="mt-2 flex items-center gap-2">
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${campaignDetail.campaign.status === 'active' ? 'bg-green-100 text-green-800' : campaignDetail.campaign.status === 'paused' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'}`}>
-                          {statusLabel[campaignDetail.campaign.status]}
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${campaignDetail.campaign.status === 'active' ? 'bg-green-100 text-green-800' : campaignDetail.campaign.status === 'paused' ? 'bg-amber-100 text-amber-800' : campaignDetail.campaign.status === 'completed' ? 'bg-emerald-100 text-emerald-800 font-extrabold' : 'bg-slate-200 text-slate-700'}`}>
+                          {statusLabel[campaignDetail.campaign.status] || campaignDetail.campaign.status}
                         </span>
                       </div>
                     </div>
