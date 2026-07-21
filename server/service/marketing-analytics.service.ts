@@ -410,17 +410,23 @@ export class MarketingAnalyticsService {
             postId: {
               $ifNull: [
                 { $arrayElemAt: ["$metrics.postId", 0] },
-                "$publishedPostId",
-                "",
+                { $ifNull: ["$publishedPostId", ""] },
               ],
             },
             postUrl: {
               $ifNull: [
                 { $arrayElemAt: ["$metrics.postUrl", 0] },
-                "$publishedUrl",
-                { $arrayElemAt: ["$content.postUrl", 0] },
-                { $arrayElemAt: ["$content.facebookShareUrl", 0] },
-                "",
+                {
+                  $ifNull: [
+                    "$publishedUrl",
+                    {
+                      $ifNull: [
+                        { $arrayElemAt: ["$content.postUrl", 0] },
+                        { $ifNull: [{ $arrayElemAt: ["$content.facebookShareUrl", 0] }, ""] },
+                      ],
+                    },
+                  ],
+                },
               ],
             },
             likes: { $ifNull: [{ $arrayElemAt: ["$metrics.likes", 0] }, 0] },
@@ -507,8 +513,8 @@ export class MarketingAnalyticsService {
 
     const postList = posts || [];
 
-    const totalFunnelSlots = byFunnelRaw.reduce((acc, curr) => acc + curr.count, 0) || 1;
-    const funnelMap = new Map(byFunnelRaw.map((item) => [item._id || "MOFU", item.count]));
+    const totalFunnelSlots = byFunnelRaw.reduce((acc: number, curr: any) => acc + curr.count, 0) || 1;
+    const funnelMap = new Map(byFunnelRaw.map((item: any) => [item._id || "MOFU", item.count]));
 
     const byFunnel = [
       {
@@ -537,8 +543,8 @@ export class MarketingAnalyticsService {
       },
     ];
 
-    const totalMediaSlots = byMediaRaw.reduce((acc, curr) => acc + curr.count, 0) || 1;
-    const mediaMap = new Map(byMediaRaw.map((item) => [item._id || "image", item.count]));
+    const totalMediaSlots = byMediaRaw.reduce((acc: number, curr: any) => acc + curr.count, 0) || 1;
+    const mediaMap = new Map(byMediaRaw.map((item: any) => [item._id || "image", item.count]));
 
     const byMediaType = [
       {
