@@ -7,7 +7,8 @@ export type TabType =
   | "SALES CRM"
   | "QUAN TRI USER"
   | "VI & NAP TIEN"
-  | "CAI DAT";
+  | "CAI DAT"
+  | "HUONG DAN SU DUNG";
 
 export interface UserProfile {
   uid: string;

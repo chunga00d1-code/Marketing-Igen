@@ -9,6 +9,7 @@ import {
   Settings,
   Shield,
   Wallet,
+  BookOpen,
 } from "lucide-react";
 import {
   BRAND_LOGO_PATH,
@@ -119,6 +120,14 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     desc: "Thông tin cá nhân và cấu hình",
     icon: Settings,
     tone: "slate",
+  });
+
+  menuItems.push({
+    label: "HUONG DAN SU DUNG",
+    title: "Hướng dẫn sử dụng",
+    desc: "Cẩm nang quy trình & tra cứu",
+    icon: BookOpen,
+    tone: "purple",
   });
 
   return (

@@ -29,6 +29,8 @@ import {
   Sparkles,
   Megaphone,
   Target,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   marketingAnalyticsService,
@@ -145,6 +147,10 @@ export default function AnalyticsDashboard() {
   // Tab switcher cho biểu đồ xu hướng chính
   const [activeChartTab, setActiveChartTab] = useState<"posts" | "engagement">("posts");
 
+  // Phân trang danh sách bài viết
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -155,6 +161,7 @@ export default function AnalyticsDashboard() {
         endDate: endDate || undefined,
       });
       setData(res);
+      setCurrentPage(1);
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || "Không thể tải báo cáo marketing.");
@@ -696,7 +703,7 @@ export default function AnalyticsDashboard() {
                         {data.topErrors.slice(0, 5).map((err, i) => (
                           <tr key={i} className="hover:bg-slate-50/50">
                             <td className="py-1.5 font-bold text-rose-500">{err.errorType}</td>
-                            <td className="py-1.5 max-w-[110px] truncate" title={err.message}>
+                            <td className="py-1.5 max-w-[180px] truncate" title={err.message}>
                               {err.message}
                             </td>
                             <td className="py-1.5 text-right font-black text-slate-700">{err.count}</td>
@@ -718,117 +725,172 @@ export default function AnalyticsDashboard() {
 
           {/* 4. Danh sách chi tiết hiệu suất từng bài viết */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4.5 shadow-xs mt-5">
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-3.5">
-              <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Layers className="h-4 w-4 text-indigo-500" />
-                CHI TIẾT HIỆU SUẤT TỪNG BÀI VIẾT
-              </h3>
-              <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-md">
-                Hiển thị {data.posts?.length || 0} bài gần đây nhất
-              </span>
-            </div>
+            {(() => {
+              const totalPosts = data.posts?.length || 0;
+              const totalPages = Math.ceil(totalPosts / pageSize) || 1;
+              const startIndex = (currentPage - 1) * pageSize;
+              const paginatedPosts = data.posts ? data.posts.slice(startIndex, startIndex + pageSize) : [];
 
-            <div className="overflow-x-auto">
-              {data.posts && data.posts.length > 0 ? (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <th className="py-2.5 px-3">Bài viết</th>
-                      <th className="py-2.5 px-3">Kênh</th>
-                      <th className="py-2.5 px-3">Pillar</th>
-                      <th className="py-2.5 px-3 text-right">Reach (Tiếp cận)</th>
-                      <th className="py-2.5 px-3 text-right">Impressions (Hiển thị)</th>
-                      <th className="py-2.5 px-3 text-right">Tương tác</th>
-                      <th className="py-2.5 px-3 text-right">Clicks</th>
-                      <th className="py-2.5 px-3 text-center">Liên kết</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-bold">
-                    {data.posts.map((post) => {
-                      const likes = post.likes ?? 0;
-                      const comments = post.comments ?? 0;
-                      const shares = post.shares ?? 0;
-                      const reach = post.reach ?? 0;
-                      const impressions = post.impressions ?? 0;
-                      const clicks = post.clicks ?? 0;
-                      const totalEngagements = likes + comments + shares;
-                      const dateStr = post.slotId?.scheduledAt
-                        ? new Date(post.slotId.scheduledAt).toLocaleDateString("vi-VN", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "Chưa xác định";
+              return (
+                <>
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-3.5">
+                    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-indigo-500" />
+                      CHI TIẾT HIỆU SUẤT TỪNG BÀI VIẾT
+                    </h3>
+                    <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                      Tổng số: {totalPosts} bài viết
+                    </span>
+                  </div>
 
-                      return (
-                        <tr key={post._id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-3 px-3 max-w-[280px]">
-                            <p className="text-slate-800 font-bold truncate" title={post.slotId?.topicBrief}>
-                              {post.slotId?.topicBrief || "Bài viết không tên / Content tự động"}
-                            </p>
-                            <span className="text-[10px] font-semibold text-slate-400">
-                              Lên lịch: {dateStr}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              post.platform === "Facebook"
-                                ? "bg-blue-50 text-blue-600"
-                                : "bg-zinc-950 text-white"
-                            }`}>
-                              {post.platform}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="text-slate-500 font-semibold">
-                              {post.slotId?.pillar || "Khác"}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right font-black text-slate-700">
-                            {reach.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-3 text-right font-black text-slate-700">
-                            {impressions.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="flex flex-col items-end">
-                              <span className="font-black text-slate-700">{totalEngagements.toLocaleString()}</span>
-                              <span className="text-[9px] font-semibold text-slate-400">
-                                {likes} L / {comments} C / {shares} S
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-right font-black text-slate-700">
-                            {clicks.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            {post.postUrl ? (
-                              <a
-                                href={post.postUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-bold"
+                  <div className="overflow-x-auto">
+                    {paginatedPosts.length > 0 ? (
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <th className="py-2.5 px-3">Bài viết</th>
+                            <th className="py-2.5 px-3">Kênh</th>
+                            <th className="py-2.5 px-3">Pillar</th>
+                            <th className="py-2.5 px-3 text-right">Reach (Tiếp cận)</th>
+                            <th className="py-2.5 px-3 text-right">Impressions (Hiển thị)</th>
+                            <th className="py-2.5 px-3 text-right">Tương tác</th>
+                            <th className="py-2.5 px-3 text-right">Clicks</th>
+                            <th className="py-2.5 px-3 text-center">Liên kết</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-bold">
+                          {paginatedPosts.map((post) => {
+                            const likes = post.likes ?? 0;
+                            const comments = post.comments ?? 0;
+                            const shares = post.shares ?? 0;
+                            const reach = post.reach ?? 0;
+                            const impressions = post.impressions ?? 0;
+                            const clicks = post.clicks ?? 0;
+                            const totalEngagements = likes + comments + shares;
+                            const dateStr = post.slotId?.scheduledAt
+                              ? new Date(post.slotId.scheduledAt).toLocaleDateString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "Chưa xác định";
+
+                            return (
+                              <tr key={post._id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="py-3 px-3 max-w-[280px]">
+                                  <p className="text-slate-800 font-bold truncate" title={post.slotId?.topicBrief}>
+                                    {post.slotId?.topicBrief || "Bài viết không tên / Content tự động"}
+                                  </p>
+                                  <span className="text-[10px] font-semibold text-slate-400">
+                                    Lên lịch: {dateStr}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    post.platform === "Facebook"
+                                      ? "bg-blue-50 text-blue-600"
+                                      : "bg-zinc-950 text-white"
+                                  }`}>
+                                    {post.platform}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="text-slate-500 font-semibold">
+                                    {post.slotId?.pillar || "Khác"}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                  {reach.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                  {impressions.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span className="font-black text-slate-700">{totalEngagements.toLocaleString()}</span>
+                                    <span className="text-[9px] font-semibold text-slate-400">
+                                      {likes} L / {comments} C / {shares} S
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                  {clicks.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  {post.postUrl ? (
+                                    <a
+                                      href={post.postUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-bold"
+                                    >
+                                      Xem bài gốc
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-300 font-semibold">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                        <Layers className="h-8 w-8 text-slate-300 animate-pulse" />
+                        <span className="text-xs font-semibold">Không tìm thấy bài viết nào phù hợp với bộ lọc</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Thanh Phân Trang (Pagination Controls) */}
+                  {totalPosts > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 pt-3 mt-3 gap-2">
+                      <span className="text-[11px] font-medium text-slate-500">
+                        Hiển thị <span className="font-bold text-slate-700">{startIndex + 1}</span> - <span className="font-bold text-slate-700">{Math.min(startIndex + pageSize, totalPosts)}</span> trên <span className="font-bold text-slate-700">{totalPosts}</span> bài viết
+                      </span>
+                      {totalPages > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition"
+                            title="Trang trước"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                              <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                  currentPage === page
+                                    ? "bg-indigo-600 text-white shadow-xs"
+                                    : "text-slate-600 hover:bg-slate-100"
+                                }`}
                               >
-                                Xem bài gốc
-                              </a>
-                            ) : (
-                              <span className="text-slate-300 font-semibold">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
-                  <Layers className="h-8 w-8 text-slate-300 animate-pulse" />
-                  <span className="text-xs font-semibold">Không tìm thấy bài viết nào phù hợp với bộ lọc</span>
-                </div>
-              )}
-            </div>
+                                {page}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition"
+                            title="Trang sau"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </>
       )}
