@@ -19,7 +19,8 @@ const searchIndex = [
   { label: "Omni-Inbox Chat", tab: "SALES CRM" as TabType, subTab: "OMNI-INBOX CHAT", keywords: "chat vip mailbox tro ly ai" },
   { label: "Quản trị user", tab: "QUAN TRI USER" as TabType, keywords: "user admin role permission cong ty wallet balance" },
   { label: "Ví & Nạp tiền", tab: "VI & NAP TIEN" as TabType, keywords: "vi nap tien so du payos vietqr nap bank" },
-  { label: "Cài đặt", tab: "CAI DAT" as TabType, keywords: "cai dat profile integration cong ty" },
+  { label: "Cài đặt hệ thống", tab: "CAI DAT" as TabType, keywords: "cai dat profile integration cong ty" },
+  { label: "Hướng dẫn sử dụng", tab: "HUONG DAN SU DUNG" as TabType, keywords: "huong dan su dung tro giup documentation guide nontech cam nang" },
 ];
 
 export default function Header({ currentTab, onSearchSelect }: HeaderProps) {

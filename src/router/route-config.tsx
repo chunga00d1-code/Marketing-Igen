@@ -36,6 +36,10 @@ export const APP_ROUTES: AppRoute[] = [
     tab: "VI & NAP TIEN",
     component: lazy(() => import("../pages/WalletTab")),
   },
+  {
+    tab: "HUONG DAN SU DUNG",
+    component: lazy(() => import("../pages/UserGuidePage")),
+  },
 ];
 
 export const DEFAULT_APP_TAB: TabType = "TONG QUAN";

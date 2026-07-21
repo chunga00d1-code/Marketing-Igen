@@ -540,9 +540,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           <div className="mb-6 border-b border-slate-150 pb-5">
             <div className="flex items-center justify-between gap-2">
               {[
-                { step: 1, label: '1. Ý tưởng & Mô tả', desc: 'Mục tiêu & Nội dung bài viết' },
-                { step: 2, label: '2. Nguồn tài liệu & Ảnh', desc: 'Tìm xu hướng & Ảnh mẫu' },
-                { step: 3, label: '3. Lịch đăng bài', desc: 'Chọn ngày & Giờ phát bài' },
+                { step: 1, label: 'Ý tưởng & Mô tả' },
+                { step: 2, label: 'Nguồn tài liệu & Ảnh' },
+                { step: 3, label: 'Lịch đăng bài' },
               ].map((s, idx) => {
                 const isActive = wizardStep === s.step;
                 const isCompleted = wizardStep > s.step;
@@ -555,7 +555,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                           setWizardStep(s.step as 1 | 2 | 3);
                         }
                       }}
-                      className={`flex flex-1 items-center gap-2.5 rounded-xl p-2.5 transition-all text-left cursor-pointer border ${isActive
+                      className={`flex flex-1 items-center justify-center gap-2.5 rounded-xl py-3 px-4 transition-all text-center cursor-pointer border ${isActive
                         ? 'bg-cyan-50/90 border-cyan-300 shadow-2xs'
                         : isCompleted
                           ? 'bg-emerald-50/90 border-emerald-200 hover:bg-emerald-100/60'
@@ -563,7 +563,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                         }`}
                     >
                       <div
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all ${isActive
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all ${isActive
                           ? 'bg-cyan-600 text-white shadow-2xs'
                           : isCompleted
                             ? 'bg-emerald-600 text-white'
@@ -572,14 +572,11 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       >
                         {isCompleted ? '✓' : s.step}
                       </div>
-                      <div className="hidden sm:block min-w-0">
-                        <p className={`text-xs font-bold truncate ${isActive ? 'text-cyan-950' : isCompleted ? 'text-emerald-950' : 'text-slate-700'}`}>
-                          {s.label}
-                        </p>
-                        <p className={`text-[10px] truncate mt-0.5 ${isActive ? 'text-cyan-700' : 'text-slate-400'}`}>{s.desc}</p>
-                      </div>
+                      <span className={`text-xs font-bold truncate ${isActive ? 'text-cyan-950' : isCompleted ? 'text-emerald-950' : 'text-slate-700'}`}>
+                        {s.label}
+                      </span>
                     </button>
-                    {idx < 2 && <div className="hidden md:block h-0.5 w-4 bg-slate-200 shrink-0 self-center" />}
+                    {idx < 2 && <div className="hidden md:block h-0.5 w-6 bg-slate-200 shrink-0 self-center" />}
                   </React.Fragment>
                 );
               })}
@@ -591,9 +588,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             <div className="space-y-4 animate-fadeIn">
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Bước 1: Nhập ý tưởng & yêu cầu bài viết
+                  Nhập ý tưởng bài viết
                 </label>
-                <span className="text-[11px] text-slate-400 font-medium">Viết mô tả hoặc tải tài liệu / ảnh mẫu lên</span>
+                <span className="text-[11px] text-slate-400 font-medium">Nhập nội dung hoặc đính kèm tài liệu / ảnh</span>
               </div>
               <CampaignPromptBox
                 prompt={prompt}
@@ -623,7 +620,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               {/* Nguồn tư liệu & Hình ảnh */}
               <div>
                 <label className="mb-2 block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Nguồn hình ảnh cho bài viết
+                  Chọn nguồn ảnh cho bài viết
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -638,8 +635,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       <Sparkles size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">Để AI tự tạo ảnh minh họa</span>
-                      <span className="text-[10px] text-slate-500">Trí tuệ nhân tạo sẽ tự vẽ hình phù hợp với nội dung</span>
+                      <span className="block text-xs font-bold text-slate-800">AI tự vẽ ảnh</span>
+                      <span className="text-[10px] text-slate-500">Tự động sinh hình ảnh phù hợp nội dung</span>
                     </div>
                   </button>
 
@@ -655,8 +652,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       <FolderOpen size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">Dùng ảnh thật từ Google Drive</span>
-                      <span className="text-[10px] text-slate-500">Tải từ thư mục hình ảnh/video thực tế của bạn</span>
+                      <span className="block text-xs font-bold text-slate-800">Dùng ảnh Google Drive</span>
+                      <span className="text-[10px] text-slate-500">Lấy từ thư mục ảnh/video có sẵn</span>
                     </div>
                   </button>
                 </div>
@@ -665,7 +662,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               {imageMode === 'real' && (
                 <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                   <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-700">Đường dẫn thư mục Google Drive (Chế độ công khai)</label>
+                    <label className="mb-1 block text-xs font-bold text-slate-700">Link thư mục Google Drive</label>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -754,9 +751,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               {/* Nguồn nghiên cứu thị trường */}
               <div>
                 <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Nguồn thu thập xu hướng thị trường (AI tự động tìm kiếm)
+                  Nguồn AI tra cứu xu hướng
                 </label>
-                <p className="mb-2 text-[10px] text-slate-400">Chọn tối đa 3 kênh để AI tham khảo thông tin thị trường nổi bật.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
                     { id: 'google', label: 'Tìm kiếm Google', icon: Globe, disabled: false },
@@ -800,23 +796,23 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             <div className="space-y-5 animate-fadeIn">
               <div>
                 <label className="mb-2 block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Chế độ xuất bản bài viết
+                  Hình thức đăng bài
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setIsInstantSinglePost(false)}
                     className={`flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${!isInstantSinglePost
-                        ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
-                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                       }`}
                   >
                     <div className={`rounded-lg p-2 shrink-0 ${!isInstantSinglePost ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                       <CalendarClock size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">Lên lịch tự động (Nhiều ngày)</span>
-                      <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">Tạo chuỗi bài viết tự động theo lịch hẹn và khung giờ cố định</span>
+                      <span className="block text-xs font-bold text-slate-800">Lên lịch nhiều ngày</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">Đăng lần lượt theo các ngày và giờ đã chọn</span>
                     </div>
                   </button>
 
@@ -829,16 +825,16 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       changePostsPerDay(1);
                     }}
                     className={`flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${isInstantSinglePost
-                        ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
-                        : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                      ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                       }`}
                   >
                     <div className={`rounded-lg p-2 shrink-0 ${isInstantSinglePost ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                       <Zap size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">⚡ Đăng ngay 1 bài duy nhất</span>
-                      <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">AI tự viết bài và phát trực tiếp lên Fanpage ngay lập tức</span>
+                      <span className="block text-xs font-bold text-slate-800">⚡ Đăng ngay 1 bài</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block leading-normal">Tạo và đăng trực tiếp lên Facebook Page ngay</span>
                     </div>
                   </button>
                 </div>
@@ -846,16 +842,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
               {isInstantSinglePost ? (
                 <div className="space-y-4 animate-fadeIn">
-                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 text-xs text-indigo-950 flex items-start gap-3">
-                    <div className="rounded-lg bg-indigo-600 text-white p-2 shrink-0 shadow-2xs mt-0.5">
-                      <Zap size={16} />
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3.5 text-xs text-indigo-950 flex items-center gap-3">
+                    <div className="rounded-lg bg-indigo-600 text-white p-1.5 shrink-0 shadow-2xs">
+                      <Zap size={14} />
                     </div>
-                    <div>
-                      <p className="font-bold text-indigo-950">Quy trình xuất bản tức thì </p>
-                      <p className="text-[11px] text-indigo-750 mt-0.5 leading-relaxed">
-                        Hệ thống sẽ tập trung AI tạo 1 bài viết hoàn chỉnh và phát thẳng lên Fanpage ngay lập tức mà không cần đặt lịch hẹn đếm ngược.
-                      </p>
-                    </div>
+                    <p className="font-bold text-indigo-950 text-xs">
+                      ⚡ Hệ thống sẽ tạo bài viết và tự động đăng ngay lên Facebook Page.
+                    </p>
                   </div>
 
                   <div>
@@ -981,7 +974,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   <div className="mt-5 border-t border-slate-100 pt-5">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày (Tùy chọn)</h4>
+                        <h4 className="text-xs font-extrabold text-slate-800">Tùy chỉnh lịch chi tiết từng ngày</h4>
                         <p className="text-[11px] text-slate-400 mt-0.5">Thiết lập giờ đăng riêng cho từng ngày cụ thể nếu không muốn dùng giờ mặc định.</p>
                       </div>
                       <button
@@ -1227,8 +1220,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
           <div>
-            <h3 className="text-sm font-extrabold text-slate-850">Chiến dịch tự động</h3>
-            <p className="mt-1 text-xs text-slate-500 font-medium">Trạng thái được lưu trên server và tiếp tục chạy khi đóng trình duyệt.</p>
+            <h3 className="text-sm font-extrabold text-slate-850">Lịch sử chiến dịch</h3>
           </div>
           <div className="flex items-center gap-2">
             {loadingCampaigns && <Loader2 size={17} className="animate-spin text-indigo-600" />}
