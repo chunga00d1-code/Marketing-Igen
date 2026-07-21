@@ -146,6 +146,15 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.5",
     changeFrequency: "weekly",
   },
+  "HUONG DAN SU DUNG": {
+    title: "Hướng dẫn sử dụng Marketing & Sales Workspace",
+    description:
+      "Cẩm nang hướng dẫn chi tiết dành cho người dùng non-tech, giải thích từng tính năng và quy trình vận hành hệ thống Marketing AI.",
+    keywords: "hướng dẫn sử dụng, cẩm nang iGen Marketing, user guide, hướng dẫn nontech",
+    path: "/huong-dan-su-dung",
+    priority: "0.6",
+    changeFrequency: "monthly",
+  },
 };
 
 export const PUBLIC_SEO_PAGES: SeoMeta[] = [

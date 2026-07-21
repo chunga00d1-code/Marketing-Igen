@@ -213,7 +213,7 @@ export default function CampaignDetailModal({
   // Subscribe to real-time socket updates for campaign slots
   useEffect(() => {
     if (!isOpen || !campaignDetail?.campaign?._id) return;
-    
+
     let timer: NodeJS.Timeout | null = null;
     const unsub = socketService.onCampaignSlotUpdate((data) => {
       if (data.campaignId === campaignDetail.campaign._id) {
@@ -239,7 +239,7 @@ export default function CampaignDetailModal({
 
   const totalSlots = sortedSlots.length;
   const publishedSlots = sortedSlots.filter((s) => s.status === 'published').length;
-  
+
   const inProgressSlots = sortedSlots.filter((s) =>
     ['queued', 'generating', 'researching', 'writing', 'scoring', 'generating_media', 'verifying', 'pending_approval', 'ready_to_publish', 'publishing', 'retrying'].includes(s.status)
   ).length;
@@ -247,7 +247,7 @@ export default function CampaignDetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300">
       <div className={`relative w-full ${activeSlot ? 'max-w-7xl' : 'max-w-5xl'} max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 animate-scaleIn`}>
-        
+
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-150 px-6 py-4 bg-slate-50/50 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -285,55 +285,50 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('published_links')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${
-                activeMainTab === 'published_links'
-                  ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                  : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
-              }`}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'published_links'
+                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+                }`}
             >
               Link theo dõi bài đăng FB ({publishedSlotsList.length})
             </button>
             <button
               type="button"
               onClick={() => setActiveMainTab('research')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${
-                activeMainTab === 'research'
-                  ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                  : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
-              }`}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'research'
+                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+                }`}
             >
               Research & Xu hướng ({allResearchEvidence.length})
             </button>
             <button
               type="button"
               onClick={() => setActiveMainTab('overall_strategy')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${
-                activeMainTab === 'overall_strategy'
-                  ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                  : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
-              }`}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'overall_strategy'
+                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+                }`}
             >
               Chiến lược tổng
             </button>
             <button
               type="button"
               onClick={() => setActiveMainTab('content_pillar')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${
-                activeMainTab === 'content_pillar'
-                  ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                  : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
-              }`}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'content_pillar'
+                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+                }`}
             >
               Content Pillar ({campaignDetail.campaign.contentMatrix?.length || campaignDetail.campaign.contentPillars?.length || 0})
             </button>
             <button
               type="button"
               onClick={() => setActiveMainTab('content_calendar')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${
-                activeMainTab === 'content_calendar'
-                  ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                  : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
-              }`}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'content_calendar'
+                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+                }`}
             >
               Content Calendar ({totalSlots} bài)
             </button>
@@ -443,7 +438,7 @@ export default function CampaignDetailModal({
                           <span className="text-teal-800 font-bold text-sm">
                             {allResearchEvidence.length > 0
                               ? '🌐 Tài liệu cào thực tế từ Web, TikTok, Facebook'
-                              : '💡 Phân tích bối cảnh chiến dịch & Thị trường (AI Agent)'}
+                              : '💡 Phân tích bối cảnh chiến dịch & Thị trường'}
                           </span>
                           <span className="text-[10px] text-teal-700 bg-teal-100/70 font-bold px-2.5 py-0.5 rounded-full">
                             {allResearchEvidence.length > 0
@@ -455,11 +450,10 @@ export default function CampaignDetailModal({
                           <button
                             type="button"
                             onClick={() => setCampaignResearchTab('summary')}
-                            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                              campaignResearchTab === 'summary'
-                                ? 'bg-teal-600 text-white shadow-xs'
-                                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${campaignResearchTab === 'summary'
+                              ? 'bg-teal-600 text-white shadow-xs'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                              }`}
                           >
                             Tổng hợp bối cảnh
                           </button>
@@ -467,11 +461,10 @@ export default function CampaignDetailModal({
                             <button
                               type="button"
                               onClick={() => setCampaignResearchTab('evidence')}
-                              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                                campaignResearchTab === 'evidence'
-                                  ? 'bg-teal-600 text-white shadow-xs'
-                                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-                              }`}
+                              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${campaignResearchTab === 'evidence'
+                                ? 'bg-teal-600 text-white shadow-xs'
+                                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                                }`}
                             >
                               Tài liệu chi tiết ({allResearchEvidence.length})
                             </button>
@@ -539,11 +532,10 @@ export default function CampaignDetailModal({
                           {allResearchEvidence.map((ev, i) => (
                             <div key={i} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
                               <div className="flex items-start justify-between gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                  ev.source === 'facebook' ? 'bg-blue-100 text-blue-800' :
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ev.source === 'facebook' ? 'bg-blue-100 text-blue-800' :
                                   ev.source === 'tiktok' ? 'bg-zinc-800 text-white' :
-                                  'bg-emerald-100 text-emerald-800'
-                                }`}>
+                                    'bg-emerald-100 text-emerald-800'
+                                  }`}>
                                   {ev.source}
                                 </span>
                                 {ev.sourceUrl && (
@@ -603,7 +595,7 @@ export default function CampaignDetailModal({
                   {/* Source Brief */}
                   <div className="rounded-xl border border-slate-200 p-5 bg-white space-y-2">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block font-mono">
-                      📋 Định hướng chiến dịch (Source Brief)
+                      📋 Định hướng chiến dịch
                     </span>
                     <pre className="text-xs text-slate-750 whitespace-pre-wrap font-sans leading-relaxed p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
                       {campaignDetail.campaign.sourceBrief}
@@ -620,7 +612,7 @@ export default function CampaignDetailModal({
                     <div className="rounded-xl border border-indigo-150 bg-indigo-50/10 p-5 space-y-4">
                       <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
                         <span className="text-xs font-extrabold text-indigo-900 tracking-wide uppercase font-mono">
-                          📊 Bảng Content Strategy Matrix (Tự động hóa ngầm)
+                          📊 Bảng ma trận chiến lược nội dung
                         </span>
                         <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-3 py-1 rounded-full">
                           Phân bổ: TOFU 20% · MOFU 60% · BOFU 20%
@@ -682,13 +674,12 @@ export default function CampaignDetailModal({
                                         {ang.title}
                                       </td>
                                       <td className="p-3 border-r border-slate-200 text-center align-middle">
-                                        <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold inline-block ${
-                                          ang.funnel === 'TOFU'
-                                            ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                                            : ang.funnel === 'BOFU'
+                                        <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold inline-block ${ang.funnel === 'TOFU'
+                                          ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                                          : ang.funnel === 'BOFU'
                                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                                             : 'bg-amber-100 text-amber-800 border border-amber-200'
-                                        }`}>
+                                          }`}>
                                           {ang.funnel}
                                         </span>
                                       </td>
@@ -801,7 +792,7 @@ export default function CampaignDetailModal({
             <div className="text-center py-10 text-slate-400 font-sans">Không có thông tin chi tiết.</div>
           )}
         </div>
-        
+
         {/* Modal Footer */}
         <div className="border-t border-slate-150 px-6 py-4 flex items-center justify-between bg-slate-50/50">
           <div>
