@@ -198,10 +198,10 @@ export default function PublicDailySlotsApproval() {
       </header>
 
       {/* Main Container */}
-      <div className="flex-grow flex flex-col lg:flex-row overflow-hidden max-w-[1600px] w-full mx-auto p-4 md:p-6 gap-6">
+      <div className="flex-grow flex flex-col lg:flex-row overflow-hidden max-w-[1800px] w-full mx-auto p-3 md:p-5 gap-4 md:gap-5 h-[calc(100vh-130px)]">
         
         {/* Left Side: Campaign Info & Slots List */}
-        <div className="w-full lg:w-[32%] flex flex-col gap-4 overflow-hidden h-full">
+        <div className="w-full lg:w-[310px] shrink-0 flex flex-col gap-4 overflow-hidden h-full">
           {/* Campaign details */}
           <div className="bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none shrink-0">
             <span className="text-[9px] font-black tracking-widest text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded">Chiến dịch Marketing</span>
@@ -298,14 +298,14 @@ export default function PublicDailySlotsApproval() {
         </div>
 
         {/* Right Side: Active Preview & Decision */}
-        <div className="w-full lg:w-[68%] flex flex-col overflow-hidden h-full">
+        <div className="flex-1 min-w-0 flex flex-col overflow-hidden h-full">
           {activeSlot ? (
-            <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-hidden h-full">
+            <div className="flex-1 flex flex-col lg:flex-row gap-4 md:gap-5 overflow-hidden h-full">
               {/* Preview mockup (Facebook / TikTok) */}
-              <div className="flex-grow flex items-center justify-center bg-slate-100/60 border border-slate-200/60 rounded-2xl p-4 overflow-y-auto">
+              <div className="flex-1 min-w-0 flex items-start justify-center bg-slate-100/60 border border-slate-200/60 rounded-2xl p-4 md:p-6 overflow-y-auto h-full">
                 {activeSlot.platform === 'TikTok' ? (
                   /* TikTok Mockup */
-                  <div className="w-[310px] aspect-[9/19] bg-black border-[5px] border-slate-900 rounded-[32px] shadow-2xl relative overflow-hidden flex flex-col select-none shrink-0">
+                  <div className="w-[310px] aspect-[9/19] bg-black border-[5px] border-slate-900 rounded-[32px] shadow-2xl relative overflow-hidden flex flex-col select-none shrink-0 my-auto">
                     <div className="absolute inset-0 z-0 bg-slate-950 flex items-center justify-center">
                       {activeSlot.content?.videoUrl || activeSlot.content?.mediaUrls?.[0] ? (
                         <video
@@ -363,7 +363,7 @@ export default function PublicDailySlotsApproval() {
                   </div>
                 ) : (
                   /* Facebook Mockup */
-                  <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden font-sans text-slate-800 select-none text-left shrink-0">
+                  <div className="w-full max-w-lg bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden font-sans text-slate-800 select-none text-left shrink-0 my-auto sm:my-0">
                     <div className="p-3 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-indigo-650 font-bold shrink-0">
@@ -421,7 +421,7 @@ export default function PublicDailySlotsApproval() {
               </div>
 
               {/* Action Column for the active slot */}
-              <div className="w-full lg:w-[240px] shrink-0 flex flex-col gap-4 justify-between h-full bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none">
+              <div className="w-full lg:w-[250px] shrink-0 flex flex-col gap-4 justify-between h-full bg-white border border-slate-250/70 rounded-2xl p-4 shadow-sm select-none overflow-y-auto min-h-0">
                 <div className="space-y-4">
                   <div>
                     <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Trạng thái hiện tại</span>
