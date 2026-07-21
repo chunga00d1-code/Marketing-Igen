@@ -101,6 +101,22 @@ export interface PostMetricItem {
   };
 }
 
+export interface FunnelItem {
+  stage: "TOFU" | "MOFU" | "BOFU";
+  label: string;
+  desc: string;
+  count: number;
+  percentage: number;
+  color: string;
+}
+
+export interface MediaTypeItem {
+  mediaType: "text" | "image" | "video" | "human-video";
+  label: string;
+  count: number;
+  percentage: number;
+}
+
 export interface AnalyticsResponse {
   overview: AnalyticsOverview;
   platformMetrics: PlatformMetrics;
@@ -108,6 +124,8 @@ export interface AnalyticsResponse {
   byDate: DateMetricPoint[];
   qualityScores: QualityScores;
   byPillar: PillarBreakdown[];
+  byFunnel: FunnelItem[];
+  byMediaType: MediaTypeItem[];
   topErrors: TopErrorItem[];
   campaigns: CampaignListItem[];
   posts: PostMetricItem[];
