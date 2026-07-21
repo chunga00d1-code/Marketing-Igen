@@ -27,7 +27,7 @@ export default function CampaignItem({
               {campaign.title}
               <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </h4>
-            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${campaign.status === 'active' ? 'bg-green-50 text-green-700' : campaign.status === 'paused' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-660 bg-slate-100 text-slate-600'}`}>{statusLabel[campaign.status]}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${campaign.status === 'active' ? 'bg-green-50 text-green-700' : campaign.status === 'paused' ? 'bg-amber-50 text-amber-700' : campaign.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-extrabold' : 'bg-slate-100 text-slate-600'}`}>{statusLabel[campaign.status] || campaign.status}</span>
           </div>
           <p className="mt-1 text-[11px] text-slate-550">{campaign.startDate} → {campaign.endDate} · {campaign.statistics.totalSlots} slot · {campaign.candidateCount} phương án/slot</p>
         </div>

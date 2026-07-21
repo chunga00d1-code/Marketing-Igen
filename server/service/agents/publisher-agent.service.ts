@@ -1,10 +1,10 @@
 import { IMarketingCampaignSlot } from "../../interface/marketing-campaign-slot.interface";
 import { IMarketingCampaign } from "../../interface/marketing-campaign.interface";
-import { MarketingCampaignModel } from "../../model/marketing-campaign.model";
 import { MarketingContentModel } from "../../model/marketing-content.model";
 import { facebookPostService } from "../facebook-post.service";
 import { tiktokService } from "../tiktok.service";
 import { resolveFacebookCredentials } from "./campaign-utils";
+import { marketingCampaignService } from "../marketing-campaign.service";
 
 export class PublisherAgentService {
   public static async publish(
@@ -68,7 +68,7 @@ export class PublisherAgentService {
         slot.publishedUrl = postUrl;
         await slot.save();
 
-        await MarketingCampaignModel.updateOne({ _id: campaign._id }, { $inc: { "statistics.publishedSlots": 1 } });
+        await marketingCampaignService.syncCampaignStatusAndStats(campaign._id);
         console.log(`[PublisherAgent] Published slot ${slot._id} successfully to TikTok. Post ID: ${postId}`);
         return { status: "published", postId, postUrl };
       }
@@ -131,7 +131,7 @@ export class PublisherAgentService {
         slot.publishedUrl = postUrl;
         await slot.save();
 
-        await MarketingCampaignModel.updateOne({ _id: campaign._id }, { $inc: { "statistics.publishedSlots": 1 } });
+        await marketingCampaignService.syncCampaignStatusAndStats(campaign._id);
         console.log(`[PublisherAgent] Published slot ${slot._id} successfully. Post ID: ${postId}`);
         return { status: "published", postId, postUrl };
       }

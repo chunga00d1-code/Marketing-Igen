@@ -19,6 +19,7 @@ import { estimateAudioDuration } from "../utils/usage-tracker";
 import CustomTimePicker from "../components/common/CustomTimePicker";
 import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
 import TikTokPublishModal from "../components/marketing/TikTokPublishModal";
+import ErrorBoundary from "../components/common/ErrorBoundary";
 
 // Lazy-loaded subcomponents
 const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
@@ -907,7 +908,9 @@ export default function MarketingTab() {
 
           {/* SUB TAB 5: BÁO CÁO */}
           {subTab === "BÁO CÁO" && (
-            <AnalyticsDashboard />
+            <ErrorBoundary fallbackLabel="Không thể hiển thị Báo cáo Marketing">
+              <AnalyticsDashboard />
+            </ErrorBoundary>
           )}
         </Suspense>
       </div>

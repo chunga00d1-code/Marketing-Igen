@@ -61,6 +61,7 @@ export async function resolveFacebookCredentials(input: {
   createdBy: string;
   integrationId?: unknown;
 }) {
+  // 1. If integrationId is provided, attempt lookup in SocialIntegrationModel
   if (input.integrationId) {
     const integration = await SocialIntegrationModel.findOne({
       _id: input.integrationId,
@@ -68,19 +69,51 @@ export async function resolveFacebookCredentials(input: {
       platform: "Facebook",
       isConnected: true,
     }).lean();
-    if (!integration?.username || !integration.accessToken) {
-      throw new Error("Liên kết Facebook doanh nghiệp thiếu Page ID hoặc access token.");
+    if (integration?.username && integration.accessToken) {
+      return { pageId: integration.username, accessToken: integration.accessToken };
     }
-    return { pageId: integration.username, accessToken: integration.accessToken };
   }
+
+  // 2. Fallback: Check creator user's personal Facebook connection
   const user = await UserModel.findById(input.createdBy).select("companyCode facebookIntegration").lean();
-  if (!user || user.companyCode !== input.companyCode || !user.facebookIntegration?.isConnected) {
-    throw new Error("Không tìm thấy Facebook Page cá nhân đang kết nối.");
+  if (
+    user &&
+    user.companyCode === input.companyCode &&
+    user.facebookIntegration?.isConnected &&
+    user.facebookIntegration.pageId &&
+    user.facebookIntegration.pageAccessToken
+  ) {
+    return { pageId: user.facebookIntegration.pageId, accessToken: user.facebookIntegration.pageAccessToken };
   }
-  if (!user.facebookIntegration.pageId || !user.facebookIntegration.pageAccessToken) {
-    throw new Error("Facebook Page cá nhân thiếu Page ID hoặc access token.");
+
+  // 3. Fallback: Check ANY active company-wide Facebook integration in SocialIntegrationModel
+  const companyIntegration = await SocialIntegrationModel.findOne({
+    companyCode: input.companyCode,
+    platform: "Facebook",
+    isConnected: true,
+    username: { $exists: true, $ne: "" },
+    accessToken: { $exists: true, $ne: "" },
+  }).lean();
+  if (companyIntegration?.username && companyIntegration.accessToken) {
+    return { pageId: companyIntegration.username, accessToken: companyIntegration.accessToken };
   }
-  return { pageId: user.facebookIntegration.pageId, accessToken: user.facebookIntegration.pageAccessToken };
+
+  // 4. Fallback: Check ANY user in the company with an active Facebook connection in UserModel
+  const anyConnectedUser = await UserModel.findOne({
+    companyCode: input.companyCode,
+    "facebookIntegration.isConnected": true,
+    "facebookIntegration.pageId": { $exists: true, $ne: "" },
+    "facebookIntegration.pageAccessToken": { $exists: true, $ne: "" },
+  }).select("facebookIntegration").lean();
+
+  if (anyConnectedUser?.facebookIntegration?.pageId && anyConnectedUser?.facebookIntegration?.pageAccessToken) {
+    return {
+      pageId: anyConnectedUser.facebookIntegration.pageId,
+      accessToken: anyConnectedUser.facebookIntegration.pageAccessToken,
+    };
+  }
+
+  throw new Error("Không tìm thấy kết nối Facebook Page (cá nhân hoặc doanh nghiệp) đang hoạt động.");
 }
 
 export async function releaseWithFailure(
