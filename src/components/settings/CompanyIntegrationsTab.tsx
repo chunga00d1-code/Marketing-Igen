@@ -198,9 +198,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       localStorage.removeItem("tt_oauth_result");
       const authUrl = await socialIntegrationService.getTikTokOAuthUrl(
         "company",
-        compPlatform === "TikTok" && editingIntegrationId ? editingIntegrationId : undefined,
-        compVerifyToken.trim() || undefined,
-        compAppSecret.trim() || undefined
+        compPlatform === "TikTok" && editingIntegrationId ? editingIntegrationId : undefined
       );
       if (!authUrl) {
         throw new Error("Không tạo được link đăng nhập TikTok.");
@@ -490,7 +488,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         accessToken: finalAccessToken,
         refreshToken: (compPlatform === "Zalo" || compPlatform === "TikTok") ? compRefreshToken.trim() || undefined : undefined,
         tokenExpiredAt: (compPlatform === "Zalo" || compPlatform === "TikTok") && compTokenExpiredAt ? new Date(compTokenExpiredAt).toISOString() : undefined,
-        appSecret: (compPlatform === "Facebook" || compPlatform === "TikTok") ? compAppSecret.trim() : undefined,
+        appSecret: (compPlatform === "Facebook" || compPlatform === "TikTok") ? compAppSecret.trim() || undefined : undefined,
         verifyToken: (compPlatform === "Facebook" || compPlatform === "TikTok") ? compVerifyToken.trim() : undefined,
         isConnected: true,
         createdBy: userProfile?.email || "system",

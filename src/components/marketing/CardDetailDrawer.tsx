@@ -133,6 +133,14 @@ export default function CardDetailDrawer({
       toast.error("Chỉ hỗ trợ file ảnh hoặc video.");
       return;
     }
+    if (card.channel === "TikTok" && !file.type.startsWith("video/")) {
+      toast.error("Bài TikTok Direct Post chỉ chấp nhận video.");
+      return;
+    }
+    if (card.channel === "TikTok" && !["video/mp4", "video/quicktime", "video/webm"].includes(file.type)) {
+      toast.error("TikTok chỉ hỗ trợ video MP4, MOV hoặc WebM trong luồng này.");
+      return;
+    }
     if (file.size > 100 * 1024 * 1024) {
       toast.error("File không được lớn hơn 100MB.");
       return;
@@ -247,10 +255,10 @@ export default function CardDetailDrawer({
             <label className="block text-[10px] font-bold text-gray-450 font-mono uppercase mb-2">Phương tiện (Media)</label>
             {card.status !== "published" && (
               <div className="mb-3 space-y-2">
-                <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUploadMedia} />
+                <input ref={mediaInputRef} type="file" accept={card.channel === "TikTok" ? "video/mp4,video/quicktime,video/webm,.mov" : "image/*,video/*"} className="hidden" onChange={handleUploadMedia} />
                 <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={isUploadingMedia || card.status === "processing"} className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
                   {isUploadingMedia ? <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" /> : <Upload className="h-3.5 w-3.5 text-slate-600" />}
-                  {isUploadingMedia ? `Đang tải media (${uploadProgress}%)...` : "Tải ảnh / video của bạn"}
+                  {isUploadingMedia ? `Đang tải media (${uploadProgress}%)...` : card.channel === "TikTok" ? "Tải video TikTok của bạn" : "Tải ảnh / video của bạn"}
                 </button>
 
                 {isUploadingMedia && (

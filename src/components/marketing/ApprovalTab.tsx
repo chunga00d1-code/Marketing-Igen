@@ -93,7 +93,7 @@ export default function ApprovalTab({
 
   const pendingCards = approvalCards.filter((c) => c.status === "pending");
   const approvedCards = approvalCards.filter((c) => c.status === "approved");
-  const scheduledCards = approvalCards.filter((c) => c.status === "scheduled" || c.status === "failed");
+  const scheduledCards = approvalCards.filter((c) => c.status === "scheduled" || c.status === "processing" || c.status === "failed");
   const publishedCards = approvalCards.filter((c) => c.status === "published");
 
   return (
@@ -147,8 +147,8 @@ export default function ApprovalTab({
                 <ModerationPipCard
                   key={card.id}
                   card={card}
-                  onNextStatus={() => {
-                    if (card.channel !== "Facebook" && card.channel !== "TikTok") {
+                  onNextStatus={card.channel === "TikTok" ? null : () => {
+                    if (card.channel !== "Facebook") {
                       toast.error(`Kênh "${card.channel}" chưa hỗ trợ tự động lên lịch.`);
                       return;
                     }
@@ -173,7 +173,7 @@ export default function ApprovalTab({
         <div className="bg-slate-50/50 border border-slate-200/60 rounded-3xl p-3 flex flex-col min-h-[500px] flex-1 min-w-[280px] md:min-w-[320px] shadow-3xs">
           <div className="flex justify-between items-center mb-3.5 pb-2.5 border-b border-slate-200">
             <span className="text-[11px] font-bold text-emerald-800 tracking-wider flex items-center gap-1.5 uppercase font-mono">
-              <span>Đã lên lịch</span>
+              <span>Đang xử lý / Đã lên lịch</span>
               <span className="inline-flex items-center justify-center bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full w-5 h-5">{scheduledCards.length}</span>
             </span>
           </div>

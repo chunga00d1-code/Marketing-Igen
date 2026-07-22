@@ -16,7 +16,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { MarketingConcept, ContentApprovalCard } from "../../types";
-import { marketingService, extractDraftContent } from "../../services/marketingService";
+import { marketingService } from "../../services/marketingService";
 import { socialIntegrationService } from "../../services/socialIntegrationService";
 import { geminiApi } from "../../api/gemini";
 import { toast } from "../../pages/Toast";
@@ -45,6 +45,9 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
   const [uploadedImageBase64, setUploadedImageBase64] = useState("");
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadedTikTokVideoUrl, setUploadedTikTokVideoUrl] = useState("");
+  const [uploadedTikTokVideoName, setUploadedTikTokVideoName] = useState("");
+  const [uploadingTikTokVideo, setUploadingTikTokVideo] = useState(false);
 
   // Guide popup states
   const [isGuideOpen, setIsGuideOpen] = useState(false);
@@ -185,6 +188,53 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
     if (file) {
       processFile(file);
     }
+  };
+
+  const handleTikTokVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const allowedExtensions = new Set(["mp4", "mov", "webm"]);
+    if (!allowedExtensions.has(extension || "")) {
+      toast.error("Video TikTok chỉ hỗ trợ MP4, MOV hoặc WebM.");
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      toast.warning("Dung lượng video TikTok không được vượt quá 100MB.");
+      return;
+    }
+
+    setUploadingTikTokVideo(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Không thể đọc video TikTok."));
+        reader.readAsDataURL(file);
+      });
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const storedUrl = await marketingService.uploadMediaToStorage(
+        dataUrl,
+        `tiktok_${Date.now()}_${safeName}`,
+        "video"
+      );
+      setUploadedTikTokVideoUrl(storedUrl);
+      setUploadedTikTokVideoName(file.name);
+      toast.success("Đã tải video TikTok lên. Video sẽ được đưa sang bước Duyệt nội dung.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không thể tải video TikTok lên.");
+    } finally {
+      setUploadingTikTokVideo(false);
+    }
+  };
+
+  const handleRemoveTikTokVideo = () => {
+    setUploadedTikTokVideoUrl("");
+    setUploadedTikTokVideoName("");
+    toast.success("Đã gỡ video TikTok tải lên.");
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -668,7 +718,11 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
         let updatedCard = card;
         const targetMediaType = concept.mediaType || mediaType;
 
-        if (targetMediaType === "human-video") {
+        const hasSelfUploadedTikTokVideo = card.channel === "TikTok"
+          && Boolean(uploadedTikTokVideoUrl)
+          && card.videoUrl === uploadedTikTokVideoUrl;
+
+        if (targetMediaType === "human-video" && !hasSelfUploadedTikTokVideo) {
           const post = posts[idx] || {};
           const voiceScript = selectedHumanVoiceSource === "personal" ? (manualInputText || getHumanVideoScript(post, concept.title, concept.summary)) : getHumanVideoScript(post, concept.title, concept.summary);
           const motionText = String(post?.motionText || "").trim();
@@ -692,6 +746,25 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
         const integrationId = selectedIntegrations[platform] || undefined;
         const integration = integrationsList.find(item => item._id === integrationId);
 
+        if (platform === "TikTok") {
+          await marketingService.updateCard(updatedCard.id, {
+            status: "pending",
+            integrationId: undefined,
+            scheduledDate: "",
+            scheduledTime: "",
+          });
+          const reviewCard = {
+            ...updatedCard,
+            status: "pending" as const,
+            integrationId: undefined,
+            scheduledDate: undefined,
+            scheduledTime: undefined,
+          };
+          setApprovalCards((prev) => prev.map((item) => item.id === card.id ? reviewCard : item));
+          toast.success(`Video TikTok "${card.title}" đã sẵn sàng để bạn duyệt và xác nhận đăng.`);
+          return;
+        }
+
         if (autoPublishMode === "instant") {
           if (platform === "Facebook") {
             const pageToken = integration?.accessToken;
@@ -707,23 +780,6 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
               !!integration?.isMock,
               updatedCard.imageUrl || undefined,
               updatedCard.videoUrl || undefined
-            );
-          } else if (platform === "TikTok") {
-            if (!updatedCard.videoUrl) {
-              throw new Error("Bài đăng TikTok cần có video. Hãy tạo video AI trước.");
-            }
-            const caption = extractDraftContent(updatedCard.bodyText).slice(0, 2200);
-            await marketingService.publishToTikTok(
-              updatedCard.id,
-              caption,
-              updatedCard.videoUrl,
-              !!integration?.isMock,
-              integration?.privacyLevel || "PUBLIC_TO_EVERYONE",
-              {
-                integrationId: integration?._id,
-                accessToken: integration?.accessToken,
-                username: integration?.username,
-              }
             );
           } else {
             await marketingService.updateCard(updatedCard.id, {
@@ -755,7 +811,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
             console.warn("Lỗi tính toán giờ đăng tự động:", e);
           }
 
-          if (platform === "Facebook" || platform === "TikTok") {
+          if (platform === "Facebook") {
             await marketingService.scheduleCard(updatedCard.id, scheduledDate, scheduledTime, integrationId);
           } else {
             await marketingService.updateCard(updatedCard.id, {
@@ -1114,7 +1170,9 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
             outline: post.outline || "",
             bodyText: post.bodyText || "",
             imageUrl: post.imageUrl || null,
-            videoUrl: post.videoUrl || null,
+            videoUrl: post.channel === "TikTok" && uploadedTikTokVideoUrl
+              ? uploadedTikTokVideoUrl
+              : post.videoUrl || null,
             mediaPrompt: post.mediaPrompt || "",
             voiceScript: voiceScriptVal,
             voiceTitle: voiceTitleVal,
@@ -1122,7 +1180,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
             motionText: post.motionText || "",
             generatedAt: new Date().toISOString(),
             authorUid: userProfile?.uid ?? '',
-            mediaType: cardMediaType,
+            mediaType: post.channel === "TikTok" && uploadedTikTokVideoUrl ? "video" : cardMediaType,
             humanDurationSeconds: parseInt(estimatedHumanVoiceDuration, 10) || DEFAULT_HUMAN_VOICE_DURATION_SECONDS,
             referenceImage: uploadedImageBase64 || undefined,
             sourceBrief: sourceBriefContext,
@@ -1222,7 +1280,9 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
             outline: post.outline || "",
             bodyText: post.bodyText || "",
             imageUrl: post.imageUrl || null,
-            videoUrl: post.videoUrl || null,
+            videoUrl: post.channel === "TikTok" && uploadedTikTokVideoUrl
+              ? uploadedTikTokVideoUrl
+              : post.videoUrl || null,
             mediaPrompt: post.mediaPrompt || "",
             voiceScript: post.voiceScript || "",
             voiceTitle: post.voiceTitle || "",
@@ -1230,7 +1290,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
             motionText: post.motionText || "",
             generatedAt: new Date().toISOString(),
             authorUid: userProfile?.uid ?? "",
-            mediaType: cardMediaType,
+            mediaType: post.channel === "TikTok" && uploadedTikTokVideoUrl ? "video" : cardMediaType,
             sourceBrief: sourceBriefContext,
             conceptTitle: concept.title,
             conceptSummary: concept.summary || "",
@@ -1361,12 +1421,14 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                   <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider">
                     Mô tả mục tiêu chiến dịch của bạn:
                   </span>
-                  {(campaignInput || uploadedDocName) && (
+                  {(campaignInput || uploadedDocName || uploadedTikTokVideoUrl) && (
                     <button
                       type="button"
                       onClick={() => {
                         setCampaignInput("");
                         handleRemoveDocument();
+                        setUploadedTikTokVideoUrl("");
+                        setUploadedTikTokVideoName("");
                         toast.success("Đã xóa sạch nội dung prompt!");
                       }}
                       className="text-[10px] font-bold font-mono text-red-600 hover:text-red-750 transition-colors flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100/80 px-2.5 py-0.5 rounded border border-red-200/30"
@@ -1428,6 +1490,28 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                     </div>
                   )}
 
+                  {uploadedTikTokVideoName && (
+                    <div className="px-3 pb-1.5">
+                      <div className="inline-flex items-center gap-2 pl-1.5 pr-1 py-1 bg-pink-50 border border-pink-200 rounded-lg max-w-xs group">
+                        <div className="h-7 w-7 rounded-md bg-pink-100 border border-pink-200 flex items-center justify-center shrink-0">
+                          <Video className="h-3.5 w-3.5 text-pink-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold text-gray-700 truncate leading-tight">{uploadedTikTokVideoName}</p>
+                          <p className="text-[9px] text-pink-600 font-mono leading-tight">Video tự tải lên · chỉ dùng cho TikTok</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveTikTokVideo}
+                          className="p-0.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+                          title="Gỡ video TikTok"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Loading indicator */}
                   {loadingDoc && (
                     <div className="flex items-center gap-1.5 px-3.5 pb-1.5 text-indigo-600 text-[10px] font-bold font-mono select-none">
@@ -1465,6 +1549,29 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                         onChange={handleDocumentUpload}
                         className="hidden"
                         disabled={loadingDoc}
+                      />
+                    </label>
+
+                    {/* Upload the creator's own TikTok video */}
+                    <label
+                      className={`p-1.5 rounded-lg transition-all group relative ${
+                        selectedChannels.includes("TikTok") && !uploadingTikTokVideo
+                          ? "text-gray-400 hover:text-pink-600 hover:bg-pink-50 cursor-pointer"
+                          : "text-gray-300 cursor-not-allowed"
+                      }`}
+                      title={selectedChannels.includes("TikTok")
+                        ? "Tải video TikTok của bạn (MP4, MOV, WebM; tối đa 100MB)"
+                        : "Chọn kênh TikTok trước khi tải video"}
+                    >
+                      {uploadingTikTokVideo
+                        ? <RefreshCw className="h-4 w-4 animate-spin" />
+                        : <Video className="h-4 w-4" />}
+                      <input
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                        onChange={handleTikTokVideoUpload}
+                        className="hidden"
+                        disabled={!selectedChannels.includes("TikTok") || uploadingTikTokVideo}
                       />
                     </label>
 
@@ -1580,8 +1687,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
 
                 {isAutoPilot && (
                   <div className="mt-2.5 border-t border-purple-200/50 pt-3.5 space-y-3.5 text-left animate-fadeIn">
-                    {/* Switch: LÃªn lá»‹ch vs ÄÄƒng ngay */}
-                    <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-purple-100 shadow-3xs">
+                    {selectedChannels.includes("Facebook") && <div className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-purple-100 shadow-3xs">
                       <span className="text-xs font-bold text-gray-700 font-sans">Chế độ xuất bản:</span>
                       <div className="flex rounded-lg bg-slate-100 p-0.5">
                         <button
@@ -1605,9 +1711,9 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                           Đăng ngay
                         </button>
                       </div>
-                    </div>
+                    </div>}
 
-                    {autoPublishMode === "scheduled" && (
+                    {selectedChannels.includes("Facebook") && autoPublishMode === "scheduled" && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
                         {/* Scheduled Date */}
                         <div className="space-y-1.5">
@@ -1632,10 +1738,16 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                       </div>
                     )}
 
+                    {selectedChannels.includes("TikTok") && (
+                      <div className="rounded-xl border border-slate-300 bg-white p-3 text-[11px] leading-relaxed text-slate-700">
+                        <b>TikTok:</b> hệ thống chỉ chuẩn bị nội dung và video. Bài sẽ chuyển sang <b>Duyệt nội dung</b> để bạn xem preview, chọn quyền riêng tư và xác nhận trực tiếp trước khi đăng.
+                      </div>
+                    )}
+
                     {/* Integrations Selectors */}
                     <div className="space-y-3">
                       {selectedChannels.map(channel => {
-                        if (channel !== "Facebook" && channel !== "TikTok") return null;
+                        if (channel !== "Facebook") return null;
                         const platform = channel;
                         const available = integrationsList.filter(item => item.platform === platform);
                         const selectedVal = selectedIntegrations[platform] || "";
@@ -1994,7 +2106,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
           <div className="mt-6 pt-4 border-t border-gray-200 flex items-center justify-between gap-4">
             {isAutoPilot && (
               <div className="flex-1 text-left text-[11px] text-purple-750 bg-purple-50 border border-purple-100 p-2 px-3 rounded-xl flex items-center gap-1.5 font-medium animate-fadeIn">
-                <span><b>Quy trình 1-Click:</b> AI sẽ tự động phân tích Pillar, viết nội dung, tạo ảnh/video và tự động xuất bản lên các kênh đã cấu hình.</span>
+                <span><b>Quy trình 1-Click:</b> hệ thống tự động chuẩn bị nội dung và media. TikTok luôn được chuyển sang bước duyệt để bạn xác nhận trước khi đăng.</span>
               </div>
             )}
             <button

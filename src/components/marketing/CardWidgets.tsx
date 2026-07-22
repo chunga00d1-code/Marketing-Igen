@@ -491,10 +491,10 @@ export function ScheduledCard({
             e.stopPropagation();
             onPublishToTikTok();
           }}
-          disabled={isPublishingTikTok || !card.videoUrl}
-          title={!card.videoUrl ? 'Cần có video để đăng lên TikTok' : (isPublishingTikTok ? 'Đang đăng...' : 'Đăng video lên TikTok')}
+          disabled={isPublishingTikTok || card.status === "processing" || !card.videoUrl}
+          title={!card.videoUrl ? 'Cần có video để đăng lên TikTok' : card.status === "processing" ? 'TikTok đang xử lý video' : (isPublishingTikTok ? 'Đang đăng...' : 'Đăng video lên TikTok')}
           className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-[10px] font-bold transition-all cursor-pointer border ${
-            !card.videoUrl
+            !card.videoUrl || card.status === "processing"
               ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed shadow-none'
               : isPublishingTikTok
               ? 'bg-slate-800 text-white border-slate-700 opacity-75 cursor-wait'
@@ -502,10 +502,12 @@ export function ScheduledCard({
           }`}
           id={`tiktok_publish_btn_${card.id}`}
         >
-          {isPublishingTikTok ? (
+          {card.status === "processing" ? (
+            <><RefreshCw className="h-3 w-3 animate-spin" /><span>TikTok đang xử lý...</span></>
+          ) : isPublishingTikTok ? (
             <><RefreshCw className="h-3 w-3 animate-spin" /><span>Đang đăng lên TikTok...</span></>
           ) : (
-            <><span className="text-sm font-sans">♪</span><span>Đăng lên TikTok {tiktokIntegration.isMock ? '(Demo)' : ''}</span></>
+            <><span className="text-sm font-sans">♪</span><span>Đăng lên TikTok</span></>
           )}
         </button>
       )}
@@ -539,6 +541,10 @@ export function ScheduledCard({
           {card.status === "failed" ? (
             <span className="px-2 py-0.5 bg-red-500 text-white border border-red-600 rounded-md text-[8px] font-bold font-mono animate-pulse">
               ⚠️ LỖI ĐĂNG
+            </span>
+          ) : card.status === "processing" ? (
+            <span className="px-2 py-0.5 bg-cyan-50 border border-cyan-200 text-cyan-800 rounded-md text-[8px] font-bold font-mono animate-pulse">
+              ĐANG XỬ LÝ
             </span>
           ) : (
             <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-md text-[9px] font-bold font-mono">
@@ -679,19 +685,13 @@ export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOp
         )
       ) : null}
 
-      {(card.tiktokShareUrl || card.tiktokPostId || (card.channel === "TikTok" && card.publishedAt)) && (
+      {card.tiktokShareUrl && (
         <a
-          href={
-            card.tiktokShareUrl && !card.tiktokShareUrl.includes("v_")
-              ? card.tiktokShareUrl
-              : (card.tiktokPostId && !card.tiktokPostId.startsWith("v_")
-                ? `https://www.tiktok.com/@technologyigen/video/${card.tiktokPostId}`
-                : `https://www.tiktok.com/@technologyigen`)
-          }
+          href={card.tiktokShareUrl}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title="Xem bài viết / Trang TikTok Sandbox"
+          title="Xem video thật trên TikTok"
           className="text-[10px] text-[#FE2C55] font-mono bg-[#FE2C55]/10 border border-[#FE2C55]/30 px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-1.5 hover:bg-[#FE2C55]/20 transition-colors cursor-pointer"
         >
           <span className="flex items-center gap-1.5 font-bold">
@@ -702,6 +702,11 @@ export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOp
           </span>
           <ExternalLink className="h-3.5 w-3.5 shrink-0" />
         </a>
+      )}
+      {!card.tiktokShareUrl && card.channel === "TikTok" && card.status === "published" && (
+        <div className="text-[10px] text-emerald-800 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl">
+          TikTok đã xác nhận đăng thành công. Bài SELF_ONLY cần xem trong hồ sơ TikTok đã kết nối.
+        </div>
       )}
 
       <div className="flex flex-col gap-2 border-t border-slate-100 pt-2.5 mt-auto">
