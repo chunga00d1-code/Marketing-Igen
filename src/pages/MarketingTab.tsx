@@ -37,13 +37,14 @@ export default function MarketingTab() {
   const { userProfile } = useAuth();
   const isUserRole = userProfile?.role === "user" || userProfile?.role === "manager";
   const MARKETING_SUB_TAB_ROUTES = [
+    { slug: "len-y-tuong-ai", value: "LÊN Ý TƯỞNG AI" as MarketingSubTabType },
     { slug: "tao-chien-dich", value: "TẠO CHIẾN DỊCH" as MarketingSubTabType },
     { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
     { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
-  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "TẠO CHIẾN DỊCH");
+  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
 
   const CONTENT_STUDIO_SUB_TAB = MARKETING_SUB_TAB_ROUTES[3].value;
   const DEFAULT_HUMAN_VOICE_DURATION_SECONDS = 45;
