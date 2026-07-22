@@ -69,6 +69,7 @@ export default function CardDetailDrawer({
   const [isSaving, setIsSaving] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(true);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -123,8 +124,6 @@ export default function CardDetailDrawer({
       setIsSaving(false);
     }
   };
-
-  const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleUploadMedia = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
