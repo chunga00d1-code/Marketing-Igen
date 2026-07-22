@@ -23,9 +23,7 @@ import TikTokPublishModal from "../components/marketing/TikTokPublishModal";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 
 // Lazy-loaded subcomponents
-const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
 const CampaignPlannerTab = lazy(() => import("../components/marketing/CampaignPlannerTab"));
-const ApprovalTab = lazy(() => import("../components/marketing/ApprovalTab"));
 const CalendarTab = lazy(() => import("../components/marketing/CalendarTab"));
 const ContentStudioWorkspace = lazy(() =>
   import("../components/content-studio/ContentStudioWorkspace").then((module) => ({
@@ -38,17 +36,24 @@ export default function MarketingTab() {
   const { userProfile } = useAuth();
   const isUserRole = userProfile?.role === "user" || userProfile?.role === "manager";
   const MARKETING_SUB_TAB_ROUTES = [
-    { slug: "len-y-tuong-ai", value: "LÊN Ý TƯỞNG AI" as MarketingSubTabType },
     { slug: "tao-chien-dich", value: "TẠO CHIẾN DỊCH" as MarketingSubTabType },
-    { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
     { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
-  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
+  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "TẠO CHIẾN DỊCH");
 
-  const CONTENT_STUDIO_SUB_TAB = MARKETING_SUB_TAB_ROUTES[3].value;
+  const CONTENT_STUDIO_SUB_TAB = "XƯỞNG NỘI DUNG" as MarketingSubTabType;
   const DEFAULT_HUMAN_VOICE_DURATION_SECONDS = 45;
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const legacySubTab = url.searchParams.get("sub");
+    if (["duyet-noi-dung", "len-y-tuong-ai", "y-tuong"].includes(legacySubTab || "")) {
+      url.searchParams.set("sub", "tao-chien-dich");
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
 
   // AI Media Generation States
   const [publishingTikTokId, setPublishingTikTokId] = useState<string | null>(null);
@@ -756,59 +761,13 @@ export default function MarketingTab() {
 
       <div className="flex-1 p-6 overflow-y-auto" id="marketing_tab_content">
         <Suspense fallback={<TabLoader label="Đang tải dữ liệu marketing..." />}>
-          {/* SUB TAB 1: LÊN Ý TƯỞNG AI */}
-          <div style={{ display: subTab === "LÊN Ý TƯỞNG AI" ? "block" : "none" }}>
-            <IdeationTab
-              userProfile={userProfile}
-              setApprovalCards={setApprovalCards}
-              setSubTab={setSubTab}
-              subTab={subTab}
-            />
-          </div>
-
           {subTab === "TẠO CHIẾN DỊCH" && (
             <CampaignPlannerTab
               userProfile={userProfile}
             />
           )}
 
-          {/* SUB TAB 2: DUYỆT NỘI DUNG */}
-          {subTab === "DUYỆT NỘI DUNG" && (
-            <ApprovalTab
-              userProfile={userProfile}
-              tiktokIntegration={effectiveTikTokIntegration}
-              isUserRole={isUserRole}
-              approvalCards={approvalCards}
-              setApprovalCards={setApprovalCards}
-              updateCardStatus={updateCardStatus}
-              deleteCard={deleteCard}
-              handleInitAIGeneration={handleInitAIGeneration}
-              handleOpenLightbox={handleOpenLightbox}
-              handlePublishToTikTok={handlePublishToTikTok}
-              publishingTikTokId={publishingTikTokId}
-              setSchedulingCard={(card) => {
-                setSchedulingCard(card);
-                setPublishMode("scheduled");
-                if (card) {
-                  setScheduleDate(new Date().toISOString().split("T")[0]);
-                  setScheduleTime("09:00");
-                }
-              }}
-              setScheduleDate={setScheduleDate}
-              setScheduleTime={setScheduleTime}
-              onPublishToPlatform={async (card) => {
-                if (card.channel === "TikTok") {
-                  await handlePublishToTikTok(card);
-                } else {
-                  setSchedulingCard(card);
-                  setPublishMode("instant");
-                }
-              }}
-              isPublishing={isPublishing}
-            />
-          )}
-
-          {/* SUB TAB 3: LỊCH ĐĂNG CONTENT */}
+          {/* LỊCH ĐĂNG CONTENT */}
           {subTab === "LỊCH ĐĂNG CONTENT" && (
             <CalendarTab
               isUserRole={isUserRole}

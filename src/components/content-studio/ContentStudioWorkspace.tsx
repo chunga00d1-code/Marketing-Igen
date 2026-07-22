@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { ImageIcon, Mic, Video } from 'lucide-react';
+import { ImageIcon, Layers3, Mic, Video } from 'lucide-react';
+import { BulkCreateWorkspace } from './BulkCreateWorkspace';
 import { ImageGenerationWorkspace } from './ImageGenerationWorkspace';
 import { VideoGenerationWorkspace } from './VideoGenerationWorkspace';
 import { VoiceGenerationWorkspace } from './VoiceGenerationWorkspace';
@@ -22,7 +23,7 @@ interface ContentStudioWorkspaceProps {
 }
 
 export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSaved }: ContentStudioWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<'image' | 'video' | 'voice'>(initialParams?.tab || 'image');
+  const [activeTab, setActiveTab] = useState<'image' | 'video' | 'voice' | 'bulk'>(initialParams?.tab || 'image');
   const [videoSubTab, setVideoSubTab] = useState<'veo' | 'heygen' | 'edit-video'>('veo');
   const clearParamsRef = useRef(onClearParams);
 
@@ -77,6 +78,15 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
               <Mic className="h-3.5 w-3.5" />
               Tạo giọng nói
             </button>
+            <button
+              onClick={() => setActiveTab('bulk')}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'bulk' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
+              }`}
+            >
+              <Layers3 className="h-3.5 w-3.5" />
+              Thiết kế hàng loạt
+            </button>
           </div>
         </div>
       </div>
@@ -117,6 +127,7 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
             }}
           />
         )}
+        {activeTab === 'bulk' && <BulkCreateWorkspace />}
       </div>
     </div>
   );

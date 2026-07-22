@@ -12,8 +12,7 @@ interface HeaderProps {
 
 const searchIndex = [
   { label: "Dashboard tổng quan", tab: "TONG QUAN" as TabType, keywords: "dashboard tong quan sale marketing crm publishing kenh chat" },
-  { label: "Lên ý tưởng AI Marketing", tab: "MARKETING" as TabType, subTab: "LÊN Ý TƯỞNG AI", keywords: "viet content y tuong campaign facebook tiktok copywriter" },
-  { label: "Duyệt nội dung Marketing", tab: "MARKETING" as TabType, subTab: "DUYỆT NỘI DUNG", keywords: "duyet content post facebook linkedin tiktok" },
+  { label: "Tạo nội dung & chiến dịch", tab: "MARKETING" as TabType, subTab: "TẠO CHIẾN DỊCH", keywords: "viet content y tuong campaign facebook tiktok copywriter duyet" },
   { label: "Lịch đăng Content", tab: "MARKETING" as TabType, subTab: "LỊCH ĐĂNG CONTENT", keywords: "lich dang content calendar publish" },
   { label: "Phễu khách hàng", tab: "SALES CRM" as TabType, subTab: "PHỄU KHÁCH HÀNG", keywords: "crm phieu khach hang lead cold warm hot" },
   { label: "Omni-Inbox Chat", tab: "SALES CRM" as TabType, subTab: "OMNI-INBOX CHAT", keywords: "chat vip mailbox tro ly ai" },

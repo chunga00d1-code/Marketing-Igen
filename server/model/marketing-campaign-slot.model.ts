@@ -121,6 +121,7 @@ const MarketingCampaignSlotSchema = new Schema<IMarketingCampaignSlot>(
 
 MarketingCampaignSlotSchema.index({ companyCode: 1, campaignId: 1, scheduledAt: 1 });
 MarketingCampaignSlotSchema.index({ status: 1, prepareAt: 1, lockExpiresAt: 1 });
+MarketingCampaignSlotSchema.index({ companyCode: 1, scheduledAt: 1 });
 MarketingCampaignSlotSchema.index({ status: 1, verifyAt: 1, lockExpiresAt: 1 });
 MarketingCampaignSlotSchema.index({ status: 1, scheduledAt: 1, lockExpiresAt: 1 });
 
