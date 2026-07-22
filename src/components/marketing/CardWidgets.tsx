@@ -682,10 +682,11 @@ export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOp
       {(card.tiktokShareUrl || card.tiktokPostId || (card.channel === "TikTok" && card.publishedAt)) && (
         <a
           href={
-            card.tiktokShareUrl ||
-            (card.tiktokPostId && !card.tiktokPostId.startsWith("v_")
-              ? `https://www.tiktok.com/@technologyigen/video/${card.tiktokPostId}`
-              : `https://www.tiktok.com/@technologyigen`)
+            card.tiktokShareUrl && !card.tiktokShareUrl.includes("v_")
+              ? card.tiktokShareUrl
+              : (card.tiktokPostId && !card.tiktokPostId.startsWith("v_")
+                ? `https://www.tiktok.com/@technologyigen/video/${card.tiktokPostId}`
+                : `https://www.tiktok.com/@technologyigen`)
           }
           target="_blank"
           rel="noopener noreferrer"
