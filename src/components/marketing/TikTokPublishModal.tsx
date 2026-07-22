@@ -51,6 +51,7 @@ export default function TikTokPublishModal({
   const [allowDuet, setAllowDuet] = useState(true);
   const [allowStitch, setAllowStitch] = useState(true);
   const [brandContent, setBrandContent] = useState(false);
+  const [brandContentType, setBrandContentType] = useState<"YOUR_BRAND" | "BRANDED_CONTENT">("YOUR_BRAND");
 
   useEffect(() => {
     if (card) {
@@ -304,12 +305,12 @@ export default function TikTokPublishModal({
               </label>
             </div>
 
-            {/* Commercial Content Toggle */}
-            <div className="pt-3 border-t border-slate-800/80">
+            {/* Commercial Content Toggle & Options */}
+            <div className="pt-3 border-t border-slate-800/80 space-y-3">
               <label className="flex items-center justify-between cursor-pointer">
                 <div className="space-y-0.5">
                   <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5 text-amber-400" /> Khai báo nội dung thương mại / Quảng cáo
+                    <Info className="w-3.5 h-3.5 text-amber-400" /> Khai báo nội dung thương mại / Quảng cáo (Commercial Content)
                   </span>
                   <span className="text-[11px] text-slate-400 block">
                     Bật nếu bài viết này chứa thông tin tiếp thị sản phẩm, tài trợ thương hiệu
@@ -322,6 +323,55 @@ export default function TikTokPublishModal({
                   className="rounded bg-slate-900 border-slate-700 text-[#FE2C55] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FE2C55]"
                 />
               </label>
+
+              {brandContent && (
+                <div className="p-3 bg-[#121212] border border-amber-500/30 rounded-xl space-y-2 animate-fadeIn">
+                  <p className="text-[10px] font-bold text-amber-300 uppercase tracking-wider">
+                    Loại hình tiếp thị / Thương mại:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label
+                      className={`p-2.5 rounded-lg border flex items-center gap-2 cursor-pointer transition-all ${
+                        brandContentType === "YOUR_BRAND"
+                          ? "bg-amber-500/10 border-amber-400 text-amber-200"
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="brandType"
+                        checked={brandContentType === "YOUR_BRAND"}
+                        onChange={() => setBrandContentType("YOUR_BRAND")}
+                        className="accent-[#FE2C55]"
+                      />
+                      <div>
+                        <span className="text-xs font-bold block">Your Brand</span>
+                        <span className="text-[9.5px] opacity-80 block">Quảng cáo sản phẩm/dịch vụ của chính bạn</span>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`p-2.5 rounded-lg border flex items-center gap-2 cursor-pointer transition-all ${
+                        brandContentType === "BRANDED_CONTENT"
+                          ? "bg-amber-500/10 border-amber-400 text-amber-200"
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="brandType"
+                        checked={brandContentType === "BRANDED_CONTENT"}
+                        onChange={() => setBrandContentType("BRANDED_CONTENT")}
+                        className="accent-[#FE2C55]"
+                      />
+                      <div>
+                        <span className="text-xs font-bold block">Branded Content</span>
+                        <span className="text-[9.5px] opacity-80 block">Tài trợ từ nhãn hàng / Đối tác thứ ba</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
