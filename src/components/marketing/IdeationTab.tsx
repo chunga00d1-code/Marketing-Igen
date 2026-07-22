@@ -12,7 +12,8 @@ import {
   Paperclip,
   X,
   FileText,
-  Trash2
+  Trash2,
+  HelpCircle
 } from "lucide-react";
 import { MarketingConcept, ContentApprovalCard } from "../../types";
 import { marketingService, extractDraftContent } from "../../services/marketingService";
@@ -23,14 +24,16 @@ import HumanVideoSettingsCard from "./HumanVideoSettingsCard";
 import { heygenApi, type HeyGenLibraryItem } from "../../api/heygen";
 import { elevenlabsApi } from "../../api/elevenlabs";
 import CustomTimePicker from "../common/CustomTimePicker";
+import IdeationGuideModal from "./IdeationGuideModal";
 
 interface IdeationTabProps {
   userProfile: any;
   setApprovalCards: React.Dispatch<React.SetStateAction<ContentApprovalCard[]>>;
   setSubTab: (tab: any) => void;
+  subTab?: string;
 }
 
-export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }: IdeationTabProps) {
+export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, subTab }: IdeationTabProps) {
   const hasFetchedRef = useRef(false);
   const librariesLoadedRef = useRef(false);
   const DEFAULT_HUMAN_VOICE_DURATION_SECONDS = 45;
@@ -42,6 +45,18 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
   const [uploadedImageBase64, setUploadedImageBase64] = useState("");
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  // Guide popup states
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
+
+  useEffect(() => {
+    if (subTab === "LÊN Ý TƯỞNG AI") {
+      const seen = localStorage.getItem("igen_ideation_guide_seen");
+      if (!seen) {
+        setIsGuideOpen(true);
+      }
+    }
+  }, [subTab]);
 
   const buildSourceBriefContext = (baseText?: string) => {
     const primaryText = String(baseText || campaignInput || "").trim();
@@ -1321,10 +1336,24 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
                 </p>
               </div>
             )}
-            <h4 className="font-bold text-gray-850 text-sm tracking-wide font-sans flex items-center gap-1.5 uppercase">
-              <Sparkles className="h-4.5 w-4.5 text-indigo-500 animate-pulse" />
-              Khởi tạo ý tưởng chiến dịch marketing
-            </h4>
+            <div className="flex justify-between items-center w-full select-none gap-4">
+              <h4 className="font-bold text-gray-850 text-sm tracking-wide font-sans flex items-center gap-1.5 uppercase">
+                <Sparkles className="h-4.5 w-4.5 text-indigo-500 animate-pulse" />
+                Khởi tạo ý tưởng chiến dịch marketing
+              </h4>
+              <button
+                type="button"
+                onClick={() => setIsGuideOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-all cursor-pointer relative shadow-3xs hover:scale-102 active:scale-98"
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+                <span>Hướng dẫn nhanh</span>
+                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                </span>
+              </button>
+            </div>
 
             <form onSubmit={handleGenerateIdeas} className="mt-5 space-y-4">
               <div className="flex flex-col gap-1.5">
@@ -1484,46 +1513,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
               )}
 
               {/* Quick suggestions chips bubble list */}
-              <div className="space-y-1.5 font-sans">
-                <span className="text-[10px] font-bold text-gray-400 font-mono uppercase tracking-wider block">Gợi ý chủ đề nhanh:</span>
-                <div className="flex flex-wrap gap-2">
-                  {loadingSuggestions ? (
-                    <>
-                      <div className="px-2.5 py-1 text-[10px] rounded-md border border-gray-100 bg-slate-50 text-gray-400 flex items-center gap-1.5 animate-pulse select-none">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-                        <span>Gợi ý 1 đang tải...</span>
-                      </div>
-                      <div className="px-2.5 py-1 text-[10px] rounded-md border border-gray-100 bg-slate-50 text-gray-400 flex items-center gap-1.5 animate-pulse select-none">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-                        <span>Gợi ý 2 đang tải...</span>
-                      </div>
-                      <div className="px-2.5 py-1 text-[10px] rounded-md border border-gray-100 bg-slate-50 text-gray-400 flex items-center gap-1.5 animate-pulse select-none">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
-                        <span>Gợi ý 3 đang tải...</span>
-                      </div>
-                    </>
-                  ) : (
-                    quickSuggestions.map((s, idx) => {
-                      const isMatch = campaignInput === s;
-                      return (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => {
-                            setCampaignInput(s);
-                          }}
-                          className={`px-2.5 py-1 text-[10px] rounded-md font-medium transition-all cursor-pointer select-none border ${isMatch
-                            ? "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs transform scale-102 font-semibold"
-                            : "bg-white hover:bg-slate-100 text-gray-600 border-gray-200"
-                            }`}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
+              
 
               {/* Platform Selector */}
               <div className="space-y-2 text-left mt-4">
@@ -2190,6 +2180,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab }
           ))}
         </div>
       </div>
+      <IdeationGuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
     </div>
   );
 }
