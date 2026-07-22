@@ -681,11 +681,16 @@ export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOp
 
       {(card.tiktokShareUrl || card.tiktokPostId || (card.channel === "TikTok" && card.publishedAt)) && (
         <a
-          href={card.tiktokShareUrl || `https://www.tiktok.com/@igen_marketing_bot/video/${card.tiktokPostId || 'sandbox_demo_123'}`}
+          href={
+            card.tiktokShareUrl ||
+            (card.tiktokPostId && !card.tiktokPostId.startsWith("v_")
+              ? `https://www.tiktok.com/@technologyigen/video/${card.tiktokPostId}`
+              : `https://www.tiktok.com/@technologyigen`)
+          }
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          title="Xem bài viết trên TikTok Sandbox"
+          title="Xem bài viết / Trang TikTok Sandbox"
           className="text-[10px] text-[#FE2C55] font-mono bg-[#FE2C55]/10 border border-[#FE2C55]/30 px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-1.5 hover:bg-[#FE2C55]/20 transition-colors cursor-pointer"
         >
           <span className="flex items-center gap-1.5 font-bold">

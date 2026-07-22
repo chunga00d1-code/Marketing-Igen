@@ -953,7 +953,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Clip ${i + 1}: ${t.start}s �  ${t.end}s | rate=${t.playbackRate || 1}x`}
+                        title={`Clip ${i + 1}: ${t.start}s - ${t.end}s | rate=${t.playbackRate || 1}x`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -982,7 +982,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Audio ${i + 1}: ${t.start}s �  ${t.end}s | vol=${t.volume}`}
+                        title={`Audio ${i + 1}: ${t.start}s - ${t.end}s | vol=${t.volume}`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -1130,7 +1130,7 @@ export function EditVideoWorkspace({
             <div className="space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm min-w-0 overflow-hidden">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video �ầu vào</label>
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video đầu vào</label>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1206,8 +1206,8 @@ export function EditVideoWorkspace({
                       <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
                         <Video className="h-5 w-5 text-slate-500" />
                       </div>
-                      <span className="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp �Ồ tải video lên</span>
-                      <span className="text-[10px] text-slate-400 mt-1 font-medium">MP4, MOV, WEBM. T�i �a 200MB. H� trợ chọn nhiều video.</span>
+                      <span className="text-xs font-semibold text-slate-700">Kéo thả hoặc nhấp để tải video lên</span>
+                      <span className="text-[10px] text-slate-400 mt-1 font-medium">MP4, MOV, WEBM. Tối đa 200MB. Hỗ trợ chọn nhiều video.</span>
                       <input
                         type="file"
                         accept="video/*"
@@ -1284,7 +1284,7 @@ export function EditVideoWorkspace({
                         <Sparkles className="h-4 w-4 text-purple-500" />
                       </div>
                       <span className="text-xs font-semibold text-slate-700">Chọn tải lên Video mẫu (Reference Style)</span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">ĐỒ AI học phong cách dựng, b�" lọc và hi�!u ứng</span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">Để AI học phong cách dựng, bộ lọc và hiệu ứng</span>
                       <input
                         ref={refVideoInputRef}
                         type="file"
@@ -1305,7 +1305,7 @@ export function EditVideoWorkspace({
 
                 <div className="grid gap-3 grid-cols-2 pt-1">
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">T�0 l�! khung hình</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tỷ lệ khung hình</label>
                     <select
                       value={aspectRatio}
                       onChange={(e) => setAspectRatio(e.target.value)}
@@ -1320,7 +1320,7 @@ export function EditVideoWorkspace({
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đ�" phân giải</label>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Độ phân giải</label>
                     <select
                       value={resolution}
                       onChange={(e) => setResolution(e.target.value)}
@@ -1336,7 +1336,7 @@ export function EditVideoWorkspace({
                 </div>
 
                 <div className="flex flex-col gap-1.5 pt-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đ�"ng cơ kết xuất (Render Engine)</label>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Động cơ kết xuất (Render Engine)</label>
                   <select
                     value={renderEngine}
                     onChange={(e) => setRenderEngine(e.target.value as RenderEngine)}
@@ -1359,7 +1359,7 @@ export function EditVideoWorkspace({
                 <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-bold text-amber-700">Professional Scene Builder</span>
-                    <span className="text-[10px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-mono">Claude �  HTML+GSAP</span>
+                    <span className="text-[10px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-mono">Claude 3.5+HTML+GSAP</span>
                   </div>
 
                   {/* Outline + Brand */}
