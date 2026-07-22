@@ -563,11 +563,9 @@ export default function MarketingTab() {
       return;
     }
 
-    // Mở Modal cấu hình đăng bài TikTok đối với tài khoản superadmin để quay Video Demo theo UX Guideline TikTok
-    if (userProfile?.role === "superadmin") {
-      setTiktokModalCard(card);
-      return;
-    }
+    // Mở Modal cấu hình đăng bài TikTok chuẩn UX Guideline TikTok Direct Post API cho mọi tài khoản
+    setTiktokModalCard(card);
+    return;
 
     setPublishingTikTokId(card.id);
     const integrationId = card.integrationId || tiktok.integrationId;
@@ -884,8 +882,12 @@ export default function MarketingTab() {
               setScheduleDate={setScheduleDate}
               setScheduleTime={setScheduleTime}
               onPublishToPlatform={async (card) => {
-                setSchedulingCard(card);
-                setPublishMode("instant");
+                if (card.channel === "TikTok") {
+                  await handlePublishToTikTok(card);
+                } else {
+                  setSchedulingCard(card);
+                  setPublishMode("instant");
+                }
               }}
               isPublishing={isPublishing}
             />

@@ -124,6 +124,8 @@ export default function CardDetailDrawer({
     }
   };
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   const handleUploadMedia = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -138,19 +140,30 @@ export default function CardDetailDrawer({
     }
 
     setIsUploadingMedia(true);
+    setUploadProgress(0);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
+        reader.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.round((e.loaded / e.total) * 60); // FileReader takes 0-60%
+            setUploadProgress(percent);
+          }
+        };
         reader.onload = () => resolve(String(reader.result || ""));
         reader.onerror = () => reject(new Error("Không thể đọc file media."));
         reader.readAsDataURL(file);
       });
+
+      setUploadProgress(75);
       const type = file.type.startsWith("video/") ? "video" : "image";
       const storedUrl = await marketingService.uploadMediaToStorage(
         dataUrl,
         `marketing_${card.id}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`,
         type
       );
+      setUploadProgress(100);
+
       const updatedFields: Partial<ContentApprovalCard> = type === "video"
         ? { videoUrl: storedUrl, mediaType: "video" }
         : { imageUrl: storedUrl, mediaType: "image" };
@@ -162,6 +175,7 @@ export default function CardDetailDrawer({
       toast.error(error?.message || "Không thể tải media lên. Vui lòng thử lại.");
     } finally {
       setIsUploadingMedia(false);
+      setUploadProgress(0);
     }
   };
 
@@ -233,13 +247,22 @@ export default function CardDetailDrawer({
           <div>
             <label className="block text-[10px] font-bold text-gray-450 font-mono uppercase mb-2">Phương tiện (Media)</label>
             {card.status !== "published" && (
-              <>
+              <div className="mb-3 space-y-2">
                 <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleUploadMedia} />
-                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={isUploadingMedia || card.status === "processing"} className="mb-3 inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60">
-                  <Upload className={`h-3.5 w-3.5 ${isUploadingMedia ? "animate-pulse" : ""}`} />
-                  {isUploadingMedia ? "Đang tải media..." : "Tải ảnh / video của bạn"}
+                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={isUploadingMedia || card.status === "processing"} className="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer">
+                  {isUploadingMedia ? <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-600" /> : <Upload className="h-3.5 w-3.5 text-slate-600" />}
+                  {isUploadingMedia ? `Đang tải media (${uploadProgress}%)...` : "Tải ảnh / video của bạn"}
                 </button>
-              </>
+
+                {isUploadingMedia && (
+                  <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200 animate-fadeIn">
+                    <div
+                      className="bg-gradient-to-r from-indigo-500 to-purple-600 h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${Math.max(uploadProgress, 5)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
             {card.status === 'processing' && (
               <div className="relative overflow-hidden rounded-xl aspect-video w-full border border-purple-200 bg-purple-50/30 flex flex-col items-center justify-center gap-3">
