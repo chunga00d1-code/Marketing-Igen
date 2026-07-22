@@ -1253,24 +1253,24 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     key={item._id}
                     className={`border rounded-2xl p-4 bg-white shadow-2xs flex flex-col justify-between gap-4 transition-all hover:shadow-xs ${editingIntegrationId === item._id ? "border-indigo-500 ring-2 ring-indigo-500/10" : "border-gray-200"}`}
                   >
-                    <div className="flex items-start justify-between gap-2 min-w-0">
-                      <div className="flex gap-3 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         {/* Platform Icon */}
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 font-bold ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 font-bold text-sm ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
                           }`}>
                           {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
                         </div>
-                        <div className="text-left min-w-0">
+                        <div className="text-left min-w-0 flex-1">
                           <h5 className="text-xs font-bold text-gray-800 truncate" title={item.displayName}>
                             {item.displayName}
                           </h5>
-                          <p className="text-[10px] text-gray-500 truncate mt-0.5">
+                          <p className="text-[10px] text-gray-500 truncate mt-0.5" title={item.platform === "TikTok" ? `@${item.username || "n/a"}` : item.username || "n/a"}>
                             {item.platform === "TikTok" ? `@${item.username || "n/a"}` : item.username || "n/a"}
                           </p>
                         </div>
                       </div>
 
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded-full text-[9px] font-bold shrink-0">
+                      <span className="flex items-center gap-1 px-2 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-full text-[10px] font-bold shrink-0">
                         <CheckCircle className="h-3 w-3" /> Đang chạy
                       </span>
                     </div>
@@ -1278,14 +1278,14 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     {/* Details details */}
                     <div className="bg-gray-50/70 border border-gray-150/60 rounded-xl p-2.5 text-left text-[10px] space-y-1.5 font-mono text-gray-600">
                       {item.platform === "TikTok" && (
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">Che do:</span>
-                          <span className="font-semibold truncate max-w-[130px]">TikTok Direct</span>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Chế độ:</span>
+                          <span className="font-semibold truncate">TikTok Direct</span>
                         </div>
                       )}
-                      <div className="flex justify-between gap-2">
-                        <span className="text-gray-400">Token/Key:</span>
-                        <div className="flex items-center gap-1">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-gray-400 shrink-0">Token/Key:</span>
+                        <div className="flex items-center gap-1 shrink-0">
                           <span className="font-semibold">••••••••</span>
                           <button
                             onClick={() => {
@@ -1302,36 +1302,36 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                         </div>
                       </div>
                       {item.platform === "Zalo" && (
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">Refresh:</span>
-                          <span className="font-semibold truncate max-w-[130px]">
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Refresh:</span>
+                          <span className="font-semibold truncate">
                             {item.refreshToken ? "Đã lưu" : "Chưa có"}
                           </span>
                         </div>
                       )}
                       {item.platform === "Zalo" && item.tokenExpiredAt && (
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">Hết hạn:</span>
-                          <span className="font-semibold truncate max-w-[130px]">
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Hết hạn:</span>
+                          <span className="font-semibold truncate">
                             {new Date(item.tokenExpiredAt).toLocaleString("vi-VN")}
                           </span>
                         </div>
                       )}
                       {item.platform === "Facebook" && item.appSecret && (
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">App Secret:</span>
-                          <span className="font-semibold truncate max-w-[130px]">{item.appSecret}</span>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-gray-400 shrink-0">App Secret:</span>
+                          <span className="font-semibold truncate" title={item.appSecret}>{item.appSecret}</span>
                         </div>
                       )}
                       {item.platform === "Facebook" && item.verifyToken && (
-                        <div className="flex justify-between gap-2">
-                          <span className="text-gray-400">Verify Token:</span>
-                          <span className="font-semibold truncate max-w-[130px]">{item.verifyToken}</span>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-gray-400 shrink-0">Verify Token:</span>
+                          <span className="font-semibold truncate" title={item.verifyToken}>{item.verifyToken}</span>
                         </div>
                       )}
-                      <div className="flex justify-between gap-2 pt-1.5 border-t border-gray-150">
-                        <span className="text-gray-400">Tạo bởi:</span>
-                        <span className="truncate max-w-[140px]" title={item.createdBy}>{item.createdBy}</span>
+                      <div className="flex justify-between items-center gap-2 pt-1.5 border-t border-gray-150">
+                        <span className="text-gray-400 shrink-0">Tạo bởi:</span>
+                        <span className="truncate font-sans font-medium text-gray-700" title={item.createdBy}>{item.createdBy}</span>
                       </div>
                     </div>
 
