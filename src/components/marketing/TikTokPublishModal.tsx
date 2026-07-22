@@ -96,16 +96,17 @@ export default function TikTokPublishModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-base text-white tracking-tight">
+                <h3 className="font-extrabold text-base text-white tracking-tight flex items-center gap-2">
                   Share to TikTok
                 </h3>
-                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-[#FE2C55]/15 text-[#FE2C55] border border-[#FE2C55]/30">
-                  Direct Post API
+                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-[#FE2C55]/15 text-[#FE2C55] border border-[#FE2C55]/30 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#FE2C55] animate-ping"></span>
+                  Direct Post API (Sandbox Environment)
                 </span>
               </div>
               <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Tài khoản: <span className="font-bold text-slate-200">@{username}</span> ({displayName})
+                Tài khoản TikTok Sandbox: <span className="font-bold text-slate-200">@{username}</span> ({displayName})
               </p>
             </div>
           </div>
@@ -157,7 +158,14 @@ export default function TikTokPublishModal({
                   </div>
                 </div>
               </div>
-              <span className="text-[10px] text-slate-500 mt-2 font-mono">Xem trước diện mạo bài đăng</span>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-[10px] text-slate-400 font-mono bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700">
+                  Format: MP4/MOV (9:16)
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  Ready to Post
+                </span>
+              </div>
             </div>
 
             {/* Right Column: Settings & Direct Post Options (7 cols) */}
