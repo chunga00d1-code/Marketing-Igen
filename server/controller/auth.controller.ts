@@ -4,6 +4,17 @@ import { authService } from "../service/auth.service";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { aiKnowledgeService } from "../service/ai-knowledge.service";
 
+function sanitizeUserForClient(user: any) {
+  const userObject = typeof user?.toObject === "function" ? user.toObject() : { ...(user || {}) };
+  delete userObject.password;
+  if (userObject.tiktokIntegration) {
+    delete userObject.tiktokIntegration.accessToken;
+    delete userObject.tiktokIntegration.refreshToken;
+    delete userObject.tiktokIntegration.clientSecret;
+  }
+  return userObject;
+}
+
 export const authController = {
   /**
    * POST /api/v1/auth/register
@@ -11,8 +22,7 @@ export const authController = {
   async register(req: Request, res: Response) {
     try {
       const user = await authService.register(req.body);
-      const userObj = user.toObject();
-      delete userObj.password;
+      const userObj = sanitizeUserForClient(user);
 
       return res.status(201).json({
         status: "success",
@@ -44,8 +54,7 @@ export const authController = {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 ngày
       });
 
-      const userObj = user.toObject();
-      delete userObj.password;
+      const userObj = sanitizeUserForClient(user);
 
       return res.status(200).json({
         status: "success",
@@ -142,7 +151,7 @@ export const authController = {
       // console.log(`[Auth getMe] Trả về profile cho user ${user.email}. FBConnected=${user.facebookIntegration?.isConnected}, FBPageId=${user.facebookIntegration?.pageId}`);
       return res.status(200).json({
         status: "success",
-        user,
+        user: sanitizeUserForClient(user),
       });
     } catch (error: any) {
       console.error("[Auth getMe] Error:", error);
@@ -249,7 +258,7 @@ export const authController = {
       return res.status(200).json({
         status: "success",
         message: "Cập nhật hồ sơ người dùng thành công",
-        user: updatedUser,
+        user: sanitizeUserForClient(updatedUser),
       });
     } catch (error: any) {
       console.error("[Auth updateProfile] Error:", error);

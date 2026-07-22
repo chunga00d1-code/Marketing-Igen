@@ -20,6 +20,23 @@ export interface SocialIntegration {
   aiAutoReplyConfig?: Record<string, unknown>;
 }
 
+export type TikTokPrivacyLevel =
+  | "PUBLIC_TO_EVERYONE"
+  | "MUTUAL_FOLLOW_FRIENDS"
+  | "FOLLOWER_OF_CREATOR"
+  | "SELF_ONLY";
+
+export interface TikTokCreatorInfo {
+  creatorAvatarUrl: string;
+  creatorNickname: string;
+  creatorUsername: string;
+  privacyLevelOptions: TikTokPrivacyLevel[];
+  commentDisabled: boolean;
+  duetDisabled: boolean;
+  stitchDisabled: boolean;
+  maxVideoPostDurationSec: number;
+}
+
 type ValidationResult = {
   message?: string;
   details?: string;
@@ -166,21 +183,12 @@ export const socialIntegrationService = {
 
   async getTikTokOAuthUrl(
     target: "personal" | "company",
-    integrationId?: string,
-    clientKey?: string,
-    clientSecret?: string
+    integrationId?: string
   ): Promise<string> {
     const query = new URLSearchParams({ target });
     if (integrationId) {
       query.set("integrationId", integrationId);
     }
-    if (clientKey) {
-      query.set("clientKey", clientKey);
-    }
-    if (clientSecret) {
-      query.set("clientSecret", clientSecret);
-    }
-
     const res = await fetch(`/api/v1/tiktok/oauth/start?${query.toString()}`, {
       headers: {
         "Authorization": `Bearer ${getAccessToken()}`,
@@ -193,5 +201,23 @@ export const socialIntegrationService = {
     }
 
     return result.data?.authUrl || "";
+  },
+
+  async getTikTokCreatorInfo(integrationId?: string): Promise<TikTokCreatorInfo> {
+    const res = await fetch("/api/v1/tiktok/creator-info", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${getAccessToken()}`,
+      },
+      body: JSON.stringify({ integrationId: integrationId || undefined }),
+    });
+
+    const result = await res.json().catch(() => ({} as ValidationResult));
+    if (!res.ok) {
+      throw new Error(result.details || result.message || "Không thể tải thông tin tài khoản TikTok.");
+    }
+
+    return result.data as TikTokCreatorInfo;
   }
 };
