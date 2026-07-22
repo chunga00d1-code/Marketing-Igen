@@ -22,7 +22,6 @@ export interface TikTokIntegration {
   refreshToken?: string;
   tokenExpiredAt?: string | Date;
   clientKey?: string;
-  clientSecret?: string;
   scopes?: string[];
   /** Thời điểm kết nối */
   connectedAt: string | Date;
