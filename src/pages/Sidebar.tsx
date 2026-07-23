@@ -3,6 +3,7 @@ import {
   ChevronRight,
   LayoutDashboard,
   Megaphone,
+  Palette,
   MessageSquareShare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -79,6 +80,13 @@ const baseMenuItems: MenuItem[] = [
     desc: "Sáng tạo nội dung và đăng lịch",
     icon: Megaphone,
     tone: "purple",
+  },
+  {
+    label: "XUONG NOI DUNG",
+    title: "Xưởng nội dung",
+    desc: "Tạo ảnh, video và thiết kế hàng loạt",
+    icon: Palette,
+    tone: "blue",
   },
   {
     label: "SALES CRM",

@@ -7,6 +7,7 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     createdBy: { type: String, required: true, index: true },
     title: { type: String, required: true },
     sourceBrief: { type: String, required: true },
+    campaignType: { type: String, enum: ["single", "campaign"], default: "campaign", index: true },
     status: {
       type: String,
       enum: ["draft", "active", "paused", "completed", "cancelled", "failed"],
@@ -60,11 +61,11 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
       enum: ["google", "facebook", "tiktok"],
       validate: {
         validator: function (val: string[]) {
-          return val.length <= 2;
+          return val.length <= 3;
         },
-        message: "Chỉ được chọn tối đa 2 nguồn dữ liệu Apify."
+        message: "Chỉ được chọn tối đa 3 nguồn dữ liệu Apify."
       },
-      default: ["google"],
+      default: ["google", "facebook", "tiktok"],
     },
     statistics: {
       totalSlots: { type: Number, default: 0 },

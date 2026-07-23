@@ -3,12 +3,14 @@ import { Document, Types } from "mongoose";
 export type MarketingCampaignStatus = "draft" | "active" | "paused" | "completed" | "cancelled" | "failed";
 export type MarketingCampaignPlatform = "Facebook" | "TikTok";
 export type MarketingCampaignMediaPolicy = "text" | "image" | "video" | "auto";
+export type MarketingCampaignType = "single" | "campaign";
 
 export interface IMarketingCampaign extends Document {
   companyCode: string;
   createdBy: string;
   title: string;
   sourceBrief: string;
+  campaignType: MarketingCampaignType;
   status: MarketingCampaignStatus;
   timezone: string;
   startDate: string;

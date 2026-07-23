@@ -9,6 +9,7 @@ export const marketingCampaignRouter = Router();
 const createSchema = {
   body: Joi.object({
     sourceBrief: Joi.string().trim().min(3).max(30000).required(),
+    campaignType: Joi.string().valid("single", "campaign").default("campaign"),
     startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
     endDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
     postsPerDay: Joi.number().integer().min(1).max(5).required(),
@@ -29,6 +30,7 @@ const createSchema = {
     googleDriveFolderUrl: Joi.string().allow("").optional(),
     customSchedule: Joi.object().optional(),
     images: Joi.array().items(Joi.string()).optional(),
+    apifySources: Joi.array().items(Joi.string().valid("google", "facebook", "tiktok")).min(1).max(3).default(["google", "facebook", "tiktok"]),
     rules: Joi.object({
       requiredCta: Joi.string().allow(""),
       requiredHashtags: Joi.array().items(Joi.string()),
@@ -53,6 +55,13 @@ const replaceImageSchema = {
   }),
 };
 
+const calendarSchema = {
+  query: Joi.object({
+    startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+    endDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+  }),
+};
+
 marketingCampaignRouter.post("/internal/prepare", marketingCampaignController.prepareWorker as never);
 marketingCampaignRouter.post("/internal/media", marketingCampaignController.mediaWorker as never);
 marketingCampaignRouter.post("/internal/verify", marketingCampaignController.verifyWorker as never);
@@ -72,6 +81,7 @@ marketingCampaignRouter.post("/public/monthly/:token/bulk-action", marketingCamp
 marketingCampaignRouter.use(requireAuth as never, requirePermission("marketing:post") as never);
 marketingCampaignRouter.post("/preview-drive", marketingCampaignController.previewDrive as never);
 marketingCampaignRouter.get("/analytics", marketingCampaignController.getAnalytics as never);
+marketingCampaignRouter.get("/calendar", validateRequest(calendarSchema), marketingCampaignController.calendar as never);
 marketingCampaignRouter.post("/", validateRequest(createSchema), marketingCampaignController.create as never);
 marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);

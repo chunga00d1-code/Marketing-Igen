@@ -165,16 +165,16 @@ export default function DashboardTab() {
 
   const quickLinks = [
     {
-      title: "Lên ý tưởng campaign",
-      description: "Tạo nhanh brief và hướng nội dung AI cho team marketing.",
-      href: "/marketing?sub=y-tuong",
+      title: "Tạo nội dung & chiến dịch",
+      description: "Tạo bài đăng nhanh hoặc lập chiến dịch tự động.",
+      href: "/marketing?sub=tao-chien-dich",
       icon: Sparkles,
       tone: "from-fuchsia-500 via-purple-500 to-indigo-500",
     },
     {
-      title: "Duyệt và xuất bản",
-      description: "Kiểm tra bài viết, media và tình trạng lịch đăng.",
-      href: "/marketing?sub=duyet-noi-dung",
+      title: "Lịch đăng nội dung",
+      description: "Theo dõi nội dung đã lên lịch và trạng thái xuất bản.",
+      href: "/marketing?sub=lich-dang",
       icon: Megaphone,
       tone: "from-amber-500 via-orange-500 to-rose-500",
     },

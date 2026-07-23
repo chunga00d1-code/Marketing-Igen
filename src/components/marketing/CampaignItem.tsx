@@ -27,9 +27,14 @@ export default function CampaignItem({
               {campaign.title}
               <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity" />
             </h4>
+            <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${campaign.campaignType === 'single' ? 'bg-indigo-50 text-indigo-700' : 'bg-cyan-50 text-cyan-700'}`}>
+              {campaign.campaignType === 'single' ? 'Bài đăng nhanh' : 'Chiến dịch'}
+            </span>
             <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${campaign.status === 'active' ? 'bg-green-50 text-green-700' : campaign.status === 'paused' ? 'bg-amber-50 text-amber-700' : campaign.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-extrabold' : 'bg-slate-100 text-slate-600'}`}>{statusLabel[campaign.status] || campaign.status}</span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-550">{campaign.startDate} → {campaign.endDate} · {campaign.statistics.totalSlots} slot · {campaign.candidateCount} phương án/slot</p>
+          <p className="mt-1 text-[11px] text-slate-550">{campaign.campaignType === 'single'
+            ? '1 bài · Đăng ngay'
+            : `${campaign.startDate} → ${campaign.endDate} · ${campaign.statistics.totalSlots} slot · ${campaign.candidateCount} phương án/slot`}</p>
         </div>
         <div className="flex gap-2">
           {campaign.status === 'active' && <button type="button" onClick={() => onLifecycle(campaign, 'pause')} className="flex items-center gap-1 rounded-lg border border-amber-255 hover:bg-amber-50/50 px-2.5 py-1.5 text-[10px] font-bold text-amber-700 transition active:scale-98"><Pause size={12} /> Tạm dừng</button>}
