@@ -4,6 +4,7 @@ import { ContentApprovalCard } from "../types";
 import { geminiApi } from "../api/gemini";
 import { elevenlabsApi } from "../api/elevenlabs";
 import { heygenApi } from "../api/heygen";
+import type { TikTokPrivacyLevel } from "./socialIntegrationService";
 
 const DEMO_VIDEO_URL_PATTERNS = [
   "w3schools.com/html/mov_bbb.mp4",
@@ -506,12 +507,19 @@ export const marketingService = {
     id: string,
     caption: string,
     videoUrl: string,
-    isMock: boolean,
-    privacyLevel: string = 'SELF_ONLY',
+    _isMock: boolean,
+    privacyLevel: TikTokPrivacyLevel,
     options?: {
       integrationId?: string;
-      accessToken?: string;
-      username?: string;
+      allowComment: boolean;
+      allowDuet: boolean;
+      allowStitch: boolean;
+      brandContentToggle: boolean;
+      brandContent: boolean;
+      brandOrganic: boolean;
+      isAigc: boolean;
+      videoDurationSeconds: number;
+      consentAccepted: boolean;
     }
   ): Promise<{ postId: string; status: "success" | "pending"; shareUrl?: string }> {
 
@@ -528,8 +536,15 @@ export const marketingService = {
         videoUrl,
         privacyLevel,
         integrationId: options?.integrationId,
-        accessToken: options?.accessToken,
-        username: options?.username,
+        allowComment: options?.allowComment,
+        allowDuet: options?.allowDuet,
+        allowStitch: options?.allowStitch,
+        brandContentToggle: options?.brandContentToggle,
+        brandContent: options?.brandContent,
+        brandOrganic: options?.brandOrganic,
+        isAigc: options?.isAigc,
+        videoDurationSeconds: options?.videoDurationSeconds,
+        consentAccepted: options?.consentAccepted,
       }),
     });
 

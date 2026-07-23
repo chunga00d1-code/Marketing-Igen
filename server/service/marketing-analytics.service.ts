@@ -62,6 +62,8 @@ export class MarketingAnalyticsService {
       topErrors,
       campaigns,
       posts,
+      byFunnelRaw,
+      byMediaRaw,
     ] = await Promise.all([
       // Aggregation 1: Tổng quan slot (Total, Published, Failed, AI Cost)
       MarketingCampaignSlotModel.aggregate([
@@ -380,12 +382,89 @@ export class MarketingAnalyticsService {
         .sort({ createdAt: -1 })
         .lean(),
 
-      // Aggregation 9: Danh sách các bài đăng chi tiết kèm metrics thực tế từ mạng xã hội
-      SocialPostMetricModel.find(metricMatch)
-        .populate("slotId", "topicBrief pillar scheduledAt mediaType status")
-        .sort({ syncedAt: -1 })
-        .limit(100)
-        .lean(),
+      // Aggregation 9: Danh sách tất cả các slot bài đăng kèm metrics thực tế (nếu có) và đường dẫn bài đăng
+      MarketingCampaignSlotModel.aggregate([
+        { $match: slotMatch },
+        { $sort: { scheduledAt: -1 } },
+        { $limit: 100 },
+        {
+          $lookup: {
+            from: "marketingcontents",
+            localField: "marketingContentId",
+            foreignField: "_id",
+            as: "content",
+          },
+        },
+        {
+          $lookup: {
+            from: "socialpostmetrics",
+            localField: "_id",
+            foreignField: "slotId",
+            as: "metrics",
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            platform: "$platform",
+            postId: {
+              $ifNull: [
+                { $arrayElemAt: ["$metrics.postId", 0] },
+                { $ifNull: ["$publishedPostId", ""] },
+              ],
+            },
+            postUrl: {
+              $ifNull: [
+                { $arrayElemAt: ["$metrics.postUrl", 0] },
+                {
+                  $ifNull: [
+                    "$publishedUrl",
+                    {
+                      $ifNull: [
+                        { $arrayElemAt: ["$content.postUrl", 0] },
+                        { $ifNull: [{ $arrayElemAt: ["$content.facebookShareUrl", 0] }, ""] },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            likes: { $ifNull: [{ $arrayElemAt: ["$metrics.likes", 0] }, 0] },
+            comments: { $ifNull: [{ $arrayElemAt: ["$metrics.comments", 0] }, 0] },
+            shares: { $ifNull: [{ $arrayElemAt: ["$metrics.shares", 0] }, 0] },
+            views: { $ifNull: [{ $arrayElemAt: ["$metrics.views", 0] }, 0] },
+            reach: { $ifNull: [{ $arrayElemAt: ["$metrics.reach", 0] }, 0] },
+            impressions: { $ifNull: [{ $arrayElemAt: ["$metrics.impressions", 0] }, 0] },
+            clicks: { $ifNull: [{ $arrayElemAt: ["$metrics.clicks", 0] }, 0] },
+            syncedAt: {
+              $ifNull: [
+                { $arrayElemAt: ["$metrics.syncedAt", 0] },
+                "$updatedAt",
+              ],
+            },
+            slotId: {
+              _id: "$_id",
+              topicBrief: "$topicBrief",
+              pillar: "$pillar",
+              scheduledAt: "$scheduledAt",
+              mediaType: "$mediaType",
+              status: "$status",
+            },
+          },
+        },
+      ]),
+
+      // Aggregation 10: Thống kê theo Phễu Marketing (TOFU / MOFU / BOFU)
+      MarketingCampaignSlotModel.aggregate([
+        { $match: slotMatch },
+        { $group: { _id: "$funnelStage", count: { $sum: 1 } } },
+      ]),
+
+      // Aggregation 11: Thống kê theo Loại Đa Phương Tiện
+      MarketingCampaignSlotModel.aggregate([
+        { $match: slotMatch },
+        { $group: { _id: "$mediaType", count: { $sum: 1 } } },
+      ]),
     ]);
 
     // 3. Chuẩn hóa dữ liệu trả về
@@ -434,6 +513,66 @@ export class MarketingAnalyticsService {
 
     const postList = posts || [];
 
+    const totalFunnelSlots = byFunnelRaw.reduce((acc: number, curr: any) => acc + curr.count, 0) || 1;
+    const funnelMap = new Map(byFunnelRaw.map((item: any) => [item._id || "MOFU", item.count]));
+
+    const byFunnel = [
+      {
+        stage: "TOFU" as const,
+        label: "Nhận biết thương hiệu (TOFU)",
+        desc: "Thu hút độc giả mới, mở rộng tiếp cận",
+        count: funnelMap.get("TOFU") || 0,
+        percentage: Math.round(((funnelMap.get("TOFU") || 0) / totalFunnelSlots) * 100),
+        color: "from-blue-500 to-indigo-600",
+      },
+      {
+        stage: "MOFU" as const,
+        label: "Tương tác & Đánh giá (MOFU)",
+        desc: "Cung cấp giá trị chuyên sâu, giữ chân khách hàng",
+        count: funnelMap.get("MOFU") || 0,
+        percentage: Math.round(((funnelMap.get("MOFU") || 0) / totalFunnelSlots) * 100),
+        color: "from-purple-500 to-pink-600",
+      },
+      {
+        stage: "BOFU" as const,
+        label: "Chuyển đổi & Chốt đơn (BOFU)",
+        desc: "Thúc đẩy đăng ký, mua hàng & gọi hotline/inbox",
+        count: funnelMap.get("BOFU") || 0,
+        percentage: Math.round(((funnelMap.get("BOFU") || 0) / totalFunnelSlots) * 100),
+        color: "from-emerald-500 to-teal-600",
+      },
+    ];
+
+    const totalMediaSlots = byMediaRaw.reduce((acc: number, curr: any) => acc + curr.count, 0) || 1;
+    const mediaMap = new Map(byMediaRaw.map((item: any) => [item._id || "image", item.count]));
+
+    const byMediaType = [
+      {
+        mediaType: "image" as const,
+        label: "Hình ảnh (Image)",
+        count: mediaMap.get("image") || 0,
+        percentage: Math.round(((mediaMap.get("image") || 0) / totalMediaSlots) * 100),
+      },
+      {
+        mediaType: "video" as const,
+        label: "Video ngắn / Reel",
+        count: mediaMap.get("video") || 0,
+        percentage: Math.round(((mediaMap.get("video") || 0) / totalMediaSlots) * 100),
+      },
+      {
+        mediaType: "human-video" as const,
+        label: "Video MC người ảo AI",
+        count: mediaMap.get("human-video") || 0,
+        percentage: Math.round(((mediaMap.get("human-video") || 0) / totalMediaSlots) * 100),
+      },
+      {
+        mediaType: "text" as const,
+        label: "Bài viết chữ (Text-only)",
+        count: mediaMap.get("text") || 0,
+        percentage: Math.round(((mediaMap.get("text") || 0) / totalMediaSlots) * 100),
+      },
+    ];
+
     return {
       overview: {
         totalSlots: ov.totalSlots,
@@ -446,7 +585,7 @@ export class MarketingAnalyticsService {
       },
       platformMetrics: {
         totalLikes: pm.totalLikes,
-        totalComments: pm.comments || pm.totalComments, // fallback check
+        totalComments: pm.comments || pm.totalComments,
         totalShares: pm.shares || pm.totalShares,
         totalViews: pm.totalViews,
         totalReach: pm.totalReach,
@@ -457,7 +596,7 @@ export class MarketingAnalyticsService {
       byPlatform,
       byDate,
       qualityScores: {
-        avgScore: Math.round(qs.avgScore),
+        avgScore: Math.round(qs.avgScore || 0),
         byDimension: {
           fidelity: Math.round(qs.fidelity || 0),
           objective: Math.round(qs.objective || 0),
@@ -469,6 +608,8 @@ export class MarketingAnalyticsService {
         },
       },
       byPillar,
+      byFunnel,
+      byMediaType,
       topErrors,
       campaigns,
       posts: postList,

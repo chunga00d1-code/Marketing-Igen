@@ -84,7 +84,6 @@ const updateProfileSchema = {
       refreshToken: Joi.string().optional().allow(""),
       tokenExpiredAt: Joi.date().optional().allow(null),
       clientKey: Joi.string().optional().allow(""),
-      clientSecret: Joi.string().optional().allow(""),
       scopes: Joi.array().items(Joi.string()).optional(),
       connectedAt: Joi.date().optional(),
       privacyLevel: Joi.string().optional(),

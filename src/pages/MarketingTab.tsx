@@ -13,12 +13,14 @@ import { buildFacebookPostUrl, buildFaithfulMediaPrompt, marketingService, extra
 import { toast } from "./Toast";
 import { useAuth } from "../context/AuthContext";
 import { parseAppError } from "../utils/errorParser";
-import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
+import { socialIntegrationService, SocialIntegration, type TikTokPrivacyLevel } from "../services/socialIntegrationService";
+import { socketService } from "../services/socketService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { estimateAudioDuration } from "../utils/usage-tracker";
 import CustomTimePicker from "../components/common/CustomTimePicker";
 import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
 import TikTokPublishModal from "../components/marketing/TikTokPublishModal";
+import ErrorBoundary from "../components/common/ErrorBoundary";
 
 // Lazy-loaded subcomponents
 const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
@@ -36,13 +38,14 @@ export default function MarketingTab() {
   const { userProfile } = useAuth();
   const isUserRole = userProfile?.role === "user" || userProfile?.role === "manager";
   const MARKETING_SUB_TAB_ROUTES = [
+    { slug: "len-y-tuong-ai", value: "LÊN Ý TƯỞNG AI" as MarketingSubTabType },
     { slug: "tao-chien-dich", value: "TẠO CHIẾN DỊCH" as MarketingSubTabType },
     { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
     { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
-  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "TẠO CHIẾN DỊCH");
+  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
 
   const CONTENT_STUDIO_SUB_TAB = MARKETING_SUB_TAB_ROUTES[3].value;
   const DEFAULT_HUMAN_VOICE_DURATION_SECONDS = 45;
@@ -111,10 +114,7 @@ export default function MarketingTab() {
           id: "personal",
           displayName: userProfile.tiktokIntegration.displayName || "Kênh TikTok cá nhân",
           username: userProfile.tiktokIntegration.username,
-          accessToken: userProfile.tiktokIntegration.accessToken,
-          isMock: !!userProfile.tiktokIntegration.isMock,
           platform: "TikTok",
-          privacyLevel: userProfile.tiktokIntegration.privacyLevel || "PUBLIC_TO_EVERYONE",
         });
       }
     } else if (platform === "Zalo") {
@@ -137,16 +137,15 @@ export default function MarketingTab() {
             id: item._id || "company_" + item.username,
             displayName: item.displayName || `${platform} OA/Page ${item.username}`,
             username: item.username,
-            accessToken: item.accessToken,
-            isMock: !!item.isMock,
+            accessToken: platform === "TikTok" ? undefined : item.accessToken,
+            isMock: platform === "TikTok" ? false : !!item.isMock,
             platform: platform,
-            privacyLevel: "PUBLIC_TO_EVERYONE",
           });
         }
       }
     });
 
-    if (list.length === 0 && platform) {
+    if (list.length === 0 && platform && platform !== "TikTok") {
       list.push({
         id: "mock_" + platform.toLowerCase() + "_personal",
         displayName: `${platform} Demo Account (Video)`,
@@ -196,6 +195,18 @@ export default function MarketingTab() {
   }, [userProfile?.uid, userProfile?.role]);
 
   useEffect(() => {
+    return socketService.on("tiktok_post_updated", (payload: unknown) => {
+      const event = payload as { cardId?: string; card?: Record<string, unknown> };
+      if (!event.cardId || !event.card) return;
+      const updatedCard = {
+        ...event.card,
+        id: String(event.card._id || event.cardId),
+      } as unknown as ContentApprovalCard;
+      setApprovalCards((previous) => previous.map((card) => card.id === event.cardId ? updatedCard : card));
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadCompanySocialIntegrations = async () => {
@@ -223,9 +234,6 @@ export default function MarketingTab() {
       isConnected: true,
       username: userProfile.tiktokIntegration.username,
       displayName: userProfile.tiktokIntegration.displayName,
-      accessToken: userProfile.tiktokIntegration.accessToken,
-      privacyLevel: userProfile.tiktokIntegration.privacyLevel,
-      isMock: userProfile.tiktokIntegration.isMock,
       source: "personal" as const,
     }
     : companyTikTokIntegration
@@ -233,21 +241,10 @@ export default function MarketingTab() {
         isConnected: true,
         username: companyTikTokIntegration.username || "",
         displayName: companyTikTokIntegration.displayName,
-        accessToken: companyTikTokIntegration.accessToken,
-        privacyLevel: "PUBLIC_TO_EVERYONE",
-        isMock: companyTikTokIntegration.isMock,
         integrationId: companyTikTokIntegration._id,
         source: "company" as const,
       }
-      : {
-        isConnected: true,
-        username: "igen_tiktok_demo",
-        displayName: "TikTok Demo Account (Video)",
-        accessToken: "mock_token",
-        privacyLevel: "PUBLIC_TO_EVERYONE",
-        isMock: true,
-        source: "personal" as const,
-      };
+      : null;
 
   // Load integrations dynamically when a card is selected for scheduling
   useEffect(() => {
@@ -304,6 +301,19 @@ export default function MarketingTab() {
       return;
     }
 
+    if (schedulingCard.channel === "TikTok") {
+      if (publishMode === "scheduled") {
+        toast.error("TikTok yêu cầu xác nhận trực tiếp trước khi đăng nên không hỗ trợ đặt lịch tại màn này.");
+        return;
+      }
+      setTiktokModalCard({
+        ...schedulingCard,
+        integrationId: selectedAcc.id === "personal" ? undefined : selectedAcc.id,
+      });
+      setSchedulingCard(null);
+      return;
+    }
+
     setIsScheduling(true);
     try {
       if (publishMode === "instant") {
@@ -334,55 +344,6 @@ export default function MarketingTab() {
           } : c));
           const countLabel = publishQuantity > 1 ? ` (x${publishQuantity})` : "";
           toast.success(`Đã đăng bài lên Facebook thành công${countLabel}! ${selectedAcc.isMock ? '(Demo)' : ''} ID: ${lastPostId.slice(-8)}`);
-        } else if (schedulingCard.channel === "TikTok") {
-          if (!schedulingCard.videoUrl) {
-            throw new Error("Bài đăng TikTok cần có video. Hãy tạo video AI trước.");
-          }
-          const caption = extractDraftContent(schedulingCard.bodyText).slice(0, 2200);
-          const publishResult = await marketingService.publishToTikTok(
-            schedulingCard.id,
-            caption,
-            schedulingCard.videoUrl,
-            false,
-            selectedAcc.privacyLevel || "PUBLIC_TO_EVERYONE",
-            {
-              integrationId: selectedAcc.id === "personal" ? undefined : selectedAcc.id,
-              accessToken: selectedAcc.accessToken,
-              username: selectedAcc.username,
-            }
-          );
-
-          if (publishResult.status === "pending") {
-            setApprovalCards((prev) =>
-              prev.map((item) =>
-                item.id === schedulingCard.id
-                  ? {
-                    ...item,
-                    status: "processing",
-                    tiktokPostId: publishResult.postId || item.tiktokPostId,
-                    tiktokShareUrl: publishResult.shareUrl || item.tiktokShareUrl,
-                  }
-                  : item
-              )
-            );
-            toast.success("Đã gửi video sang TikTok. Hệ thống đang chờ TikTok xử lý.");
-            return;
-          } else {
-            setApprovalCards((prev) =>
-              prev.map((item) =>
-                item.id === schedulingCard.id
-                  ? {
-                    ...item,
-                    status: "published",
-                    publishedAt: new Date().toISOString(),
-                    tiktokPostId: publishResult.postId || item.tiktokPostId,
-                    tiktokShareUrl: publishResult.shareUrl || item.tiktokShareUrl,
-                  }
-                  : item
-              )
-            );
-            toast.success(`Đã đăng video lên TikTok thành công! ID: ${String(publishResult.postId || "").slice(-8)}`);
-          }
         } else {
           toast.error(`Kênh "${schedulingCard.channel}" chưa hỗ trợ đăng tải trực tiếp.`);
         }
@@ -482,19 +443,26 @@ export default function MarketingTab() {
 
   const executeTikTokPublish = async (params: {
     caption: string;
-    privacyLevel: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY";
+    privacyLevel: TikTokPrivacyLevel;
     allowComment: boolean;
     allowDuet: boolean;
     allowStitch: boolean;
+    brandContentToggle: boolean;
     brandContent: boolean;
+    brandOrganic: boolean;
+    isAigc: boolean;
+    videoDurationSeconds: number;
+    consentAccepted: boolean;
   }) => {
     if (!tiktokModalCard) return;
     const card = tiktokModalCard;
     const tiktok = effectiveTikTokIntegration;
+    if (!tiktok) {
+      toast.error("Bạn chưa liên kết tài khoản TikTok.");
+      return;
+    }
     setPublishingTikTokId(card.id);
     const integrationId = card.integrationId || tiktok.integrationId;
-    const accessToken = tiktok.accessToken;
-    const username = tiktok.username;
     try {
       const publishResult = await marketingService.publishToTikTok(
         card.id,
@@ -504,8 +472,15 @@ export default function MarketingTab() {
         params.privacyLevel,
         {
           integrationId,
-          accessToken,
-          username,
+          allowComment: params.allowComment,
+          allowDuet: params.allowDuet,
+          allowStitch: params.allowStitch,
+          brandContentToggle: params.brandContentToggle,
+          brandContent: params.brandContent,
+          brandOrganic: params.brandOrganic,
+          isAigc: params.isAigc,
+          videoDurationSeconds: params.videoDurationSeconds,
+          consentAccepted: params.consentAccepted,
         }
       );
       const postId = String(publishResult.postId || "");
@@ -561,68 +536,8 @@ export default function MarketingTab() {
       return;
     }
 
-    // Mở Modal cấu hình đăng bài TikTok đối với tài khoản superadmin để quay Video Demo theo UX Guideline TikTok
-    if (userProfile?.role === "superadmin") {
-      setTiktokModalCard(card);
-      return;
-    }
-
-    setPublishingTikTokId(card.id);
-    const integrationId = card.integrationId || tiktok.integrationId;
-    const accessToken = tiktok.accessToken;
-    const username = tiktok.username;
-    try {
-      const caption = extractDraftContent(card.bodyText).slice(0, 2200); // TikTok caption max 2200 chars
-      const publishResult = await marketingService.publishToTikTok(
-        card.id,
-        caption,
-        card.videoUrl,
-        false,
-        tiktok.privacyLevel ?? 'SELF_ONLY',
-        {
-          integrationId,
-          accessToken,
-          username,
-        }
-      );
-      const postId = String(publishResult.postId || "");
-      if (publishResult.status === "pending") {
-        setApprovalCards((prev) =>
-          prev.map((item) =>
-            item.id === card.id
-              ? {
-                ...item,
-                status: "processing",
-                tiktokPostId: publishResult.postId || item.tiktokPostId,
-                tiktokShareUrl: publishResult.shareUrl || item.tiktokShareUrl,
-              }
-              : item
-          )
-        );
-        toast.success("Đã gửi video sang TikTok. Hệ thống đang chờ TikTok xử lý.");
-        return;
-      }
-
-      setApprovalCards((prev) =>
-        prev.map((item) =>
-          item.id === card.id
-            ? {
-              ...item,
-              status: "published",
-              publishedAt: new Date().toISOString(),
-              tiktokPostId: publishResult.postId || item.tiktokPostId,
-              tiktokShareUrl: publishResult.shareUrl || item.tiktokShareUrl,
-            }
-            : item
-        )
-      );
-      toast.success(`Đã đăng video lên TikTok thành công! ID: ${postId.slice(-8)}`);
-    } catch (e: any) {
-      console.error("Lỗi đăng TikTok:", e);
-      toast.error(parseAppError(e, "Không thể đăng bài lên TikTok. Vui lòng thử lại."));
-    } finally {
-      setPublishingTikTokId(null);
-    }
+    // TikTok chỉ được gửi sau khi người dùng xác nhận đầy đủ metadata trong modal.
+    setTiktokModalCard(card);
   };
 
   const handlePublishCard = async (card: ContentApprovalCard) => {
@@ -882,8 +797,12 @@ export default function MarketingTab() {
               setScheduleDate={setScheduleDate}
               setScheduleTime={setScheduleTime}
               onPublishToPlatform={async (card) => {
-                setSchedulingCard(card);
-                setPublishMode("instant");
+                if (card.channel === "TikTok") {
+                  await handlePublishToTikTok(card);
+                } else {
+                  setSchedulingCard(card);
+                  setPublishMode("instant");
+                }
               }}
               isPublishing={isPublishing}
             />
@@ -908,7 +827,9 @@ export default function MarketingTab() {
 
           {/* SUB TAB 5: BÁO CÁO */}
           {subTab === "BÁO CÁO" && (
-            <AnalyticsDashboard />
+            <ErrorBoundary fallbackLabel="Không thể hiển thị Báo cáo Marketing">
+              <AnalyticsDashboard />
+            </ErrorBoundary>
           )}
         </Suspense>
       </div>
@@ -1222,7 +1143,10 @@ export default function MarketingTab() {
         isOpen={!!tiktokModalCard}
         onClose={() => setTiktokModalCard(null)}
         card={tiktokModalCard}
-        tiktokAccount={effectiveTikTokIntegration}
+        tiktokAccount={effectiveTikTokIntegration ? {
+          ...effectiveTikTokIntegration,
+          integrationId: tiktokModalCard?.integrationId || effectiveTikTokIntegration.integrationId,
+        } : null}
         onConfirmPublish={executeTikTokPublish}
         isPublishing={!!publishingTikTokId}
       />

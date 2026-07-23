@@ -370,19 +370,62 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
   },
 
+  async syncCampaignStatusAndStats(campaignId: string | mongoose.Types.ObjectId) {
+    const campaign = await MarketingCampaignModel.findById(campaignId);
+    if (!campaign) return null;
+
+    const slots = await MarketingCampaignSlotModel.find({ campaignId: campaign._id }).select("status").lean();
+    const totalSlots = slots.length;
+    if (totalSlots === 0) return campaign;
+
+    const publishedSlots = slots.filter((s) => s.status === "published").length;
+    const failedSlots = slots.filter((s) => s.status === "failed").length;
+    const cancelledSlots = slots.filter((s) => s.status === "cancelled").length;
+    const skippedSlots = slots.filter((s) => s.status === "skipped").length;
+
+    const finishedSlotsCount = publishedSlots + failedSlots + cancelledSlots + skippedSlots;
+
+    campaign.statistics.totalSlots = totalSlots;
+    campaign.statistics.publishedSlots = publishedSlots;
+    campaign.statistics.failedSlots = failedSlots;
+
+    if (finishedSlotsCount >= totalSlots && totalSlots > 0) {
+      if (campaign.status === "active" || campaign.status === "paused") {
+        if (publishedSlots > 0 || (publishedSlots === 0 && failedSlots === 0)) {
+          campaign.status = "completed";
+        } else if (failedSlots === totalSlots) {
+          campaign.status = "failed";
+        } else if (cancelledSlots === totalSlots) {
+          campaign.status = "cancelled";
+        } else {
+          campaign.status = "completed";
+        }
+      }
+    }
+
+    await campaign.save();
+    return campaign;
+  },
+
   async list(companyCode: string, query?: { page?: number; limit?: number }) {
     const page = Math.max(1, Number(query?.page || 1));
     const limit = Math.max(1, Math.min(100, Number(query?.limit || 10)));
     const skip = (page - 1) * limit;
 
-    const [campaigns, total] = await Promise.all([
+    const [campaignDocs, total] = await Promise.all([
       MarketingCampaignModel.find({ companyCode })
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit)
-        .lean(),
+        .limit(limit),
       MarketingCampaignModel.countDocuments({ companyCode }),
     ]);
+
+    const campaigns = await Promise.all(
+      campaignDocs.map(async (camp) => {
+        const synced = await this.syncCampaignStatusAndStats(camp._id);
+        return (synced || camp).toObject();
+      })
+    );
 
     return {
       campaigns,
@@ -397,6 +440,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
 
   async getDetail(companyCode: string, campaignId: string) {
     if (!mongoose.Types.ObjectId.isValid(campaignId)) throw new Error("ID chiến dịch không hợp lệ.");
+    await this.syncCampaignStatusAndStats(campaignId);
     const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode }).lean();
     if (!campaign) throw new Error("Không tìm thấy chiến dịch.");
     const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode })

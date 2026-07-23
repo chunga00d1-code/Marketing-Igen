@@ -12,8 +12,6 @@ export const tiktokController = {
       const email = authReq.user?.email;
       const target = String(req.query.target || "personal");
       const integrationId = String(req.query.integrationId || "").trim();
-      const clientKey = String(req.query.clientKey || "").trim();
-      const clientSecret = String(req.query.clientSecret || "").trim();
 
       if (!userId) {
         return res.status(401).json({
@@ -28,8 +26,6 @@ export const tiktokController = {
         email,
         target,
         integrationId,
-        clientKey: clientKey || undefined,
-        clientSecret: clientSecret || undefined,
       });
 
       return res.status(200).json(result);
@@ -75,8 +71,15 @@ export const tiktokController = {
         caption,
         videoUrl,
         privacyLevel,
-        accessToken,
-        username,
+        allowComment,
+        allowDuet,
+        allowStitch,
+        brandContentToggle,
+        brandContent,
+        brandOrganic,
+        isAigc,
+        videoDurationSeconds,
+        consentAccepted,
         scheduledTime,
         integrationId,
       } = req.body;
@@ -86,11 +89,23 @@ export const tiktokController = {
         caption,
         videoUrl,
         privacyLevel,
-        accessToken,
-        username,
+        undefined,
+        undefined,
         scheduledTime,
         integrationId,
-        companyCode
+        companyCode,
+        {
+          allowComment,
+          allowDuet,
+          allowStitch,
+          brandContentToggle,
+          brandContent,
+          brandOrganic,
+          isAigc,
+          videoDurationSeconds,
+          consentAccepted,
+        },
+        authReq.user?.id
       );
 
       await tiktokService.registerPublishTracking(cardId, result);
@@ -122,8 +137,13 @@ export const tiktokController = {
 
   async getCreatorInfo(req: Request, res: Response) {
     try {
-      const { accessToken } = req.body;
-      const result = await tiktokService.getCreatorInfo(accessToken);
+      const authReq = req as AuthenticatedRequest;
+      const { integrationId } = req.body;
+      const result = await tiktokService.getCreatorInfoForIntegration({
+        integrationId: integrationId || undefined,
+        companyCode: authReq.user?.companyCode,
+        userId: authReq.user?.id,
+      });
       return res.status(200).json(result);
     } catch (error: any) {
       console.error("[tiktokController.getCreatorInfo] Error:", error);

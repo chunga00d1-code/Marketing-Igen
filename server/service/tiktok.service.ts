@@ -108,6 +108,12 @@ function extractWebhookIdentifiers(payload: any) {
 function mapWebhookStatusToCardStatus(status: string) {
   const normalized = String(status || "").toLowerCase();
   if (!normalized) return null;
+  if (normalized === "post.publish.complete" || normalized === "post.publish.publicly_available") {
+    return "published";
+  }
+  if (normalized === "post.publish.failed" || normalized === "post.publish.no_longer_publicaly_available") {
+    return "failed";
+  }
   if (["publish_complete", "completed", "success", "published", "posted"].includes(normalized)) {
     return "published";
   }
@@ -450,14 +456,24 @@ async function oldResolveDirectCredentials(integrationId?: any, companyCode?: an
 
 type TikTokOAuthTarget = "personal" | "company";
 
+type TikTokDirectPostOptions = {
+  allowComment?: boolean;
+  allowDuet?: boolean;
+  allowStitch?: boolean;
+  brandContentToggle?: boolean;
+  brandContent?: boolean;
+  brandOrganic?: boolean;
+  isAigc?: boolean;
+  videoDurationSeconds?: number;
+  consentAccepted?: boolean;
+};
+
 function signOAuthState(payload: {
   userId: string;
   companyCode?: string;
   email?: string;
   target: TikTokOAuthTarget;
   integrationId?: string;
-  clientKey?: string;
-  clientSecret?: string;
 }) {
   return jwt.sign(payload, getOAuthStateSecret(), { expiresIn: "10m" });
 }
@@ -469,8 +485,6 @@ function verifyOAuthState(state: string) {
     email?: string;
     target: TikTokOAuthTarget;
     integrationId?: string;
-    clientKey?: string;
-    clientSecret?: string;
   };
 }
 
@@ -555,7 +569,6 @@ async function savePersonalTikTokOAuthIntegration(params: {
   tokenData: any;
   creatorInfo: any;
   clientKey?: string;
-  clientSecret?: string;
 }) {
   const expiresAt = params.tokenData.expires_in
     ? new Date(Date.now() + Number(params.tokenData.expires_in) * 1000)
@@ -572,7 +585,6 @@ async function savePersonalTikTokOAuthIntegration(params: {
         refreshToken: params.tokenData.refresh_token || "",
         tokenExpiredAt: expiresAt,
         clientKey: params.clientKey || getTikTokClientKey(),
-        clientSecret: params.clientSecret || getTikTokClientSecret(),
         scopes: String(params.tokenData.scope || "")
           .split(",")
           .map((item) => item.trim())
@@ -675,8 +687,6 @@ export const tiktokService = {
     email?: string;
     target: string;
     integrationId?: string;
-    clientKey?: string;
-    clientSecret?: string;
   }) {
     const target = params.target === "company" ? "company" : "personal";
     const credentials = await resolveOAuthClientCredentials({
@@ -686,8 +696,8 @@ export const tiktokService = {
       integrationId: params.integrationId || undefined,
     });
 
-    const clientKey = params.clientKey?.trim() || credentials.clientKey;
-    const clientSecret = params.clientSecret?.trim() || credentials.clientSecret;
+    const clientKey = credentials.clientKey;
+    const clientSecret = credentials.clientSecret;
     const redirectUri = getTikTokRedirectUri(target);
 
     if (!clientKey || !clientSecret || !redirectUri) {
@@ -704,8 +714,6 @@ export const tiktokService = {
       email: params.email,
       target,
       integrationId: params.integrationId || undefined,
-      clientKey,
-      clientSecret,
     });
 
     const query = new URLSearchParams({
@@ -741,21 +749,12 @@ export const tiktokService = {
 
     const statePayload = verifyOAuthState(params.state);
 
-    let clientKey = statePayload.clientKey || "";
-    let clientSecret = statePayload.clientSecret || "";
-
-    if (!clientKey || !clientSecret) {
-      const resolved = await resolveOAuthClientCredentials({
-        userId: statePayload.userId,
-        companyCode: statePayload.companyCode,
-        target: statePayload.target,
-        integrationId: statePayload.integrationId,
-      });
-      clientKey = resolved.clientKey;
-      clientSecret = resolved.clientSecret;
-    }
-
-    const credentials = { clientKey, clientSecret };
+    const credentials = await resolveOAuthClientCredentials({
+      userId: statePayload.userId,
+      companyCode: statePayload.companyCode,
+      target: statePayload.target,
+      integrationId: statePayload.integrationId,
+    });
     const tokenData = await exchangeCodeForOAuthToken(params.code, credentials, statePayload.target);
     const creatorInfo = await this.getCreatorInfo(tokenData.access_token);
 
@@ -776,7 +775,6 @@ export const tiktokService = {
         tokenData,
         creatorInfo,
         clientKey: credentials.clientKey,
-        clientSecret: credentials.clientSecret,
       });
     }
 
@@ -847,14 +845,15 @@ export const tiktokService = {
     username?: string,
     scheduledTime?: string,
     integrationId?: string,
-    companyCode?: string
+    companyCode?: string,
+    postOptions: TikTokDirectPostOptions = {},
+    requestUserId?: string
   ) {
     void scheduledTime;
 
     if (
-      String(process.env.TIKTOK_MOCK_PUBLISH).trim().toLowerCase() === "true" ||
-      accessToken === "mock_token" ||
-      String(integrationId).startsWith("mock")
+      process.env.NODE_ENV !== "production" &&
+      String(process.env.TIKTOK_MOCK_PUBLISH).trim().toLowerCase() === "true"
     ) {
       console.log("[TikTok Service] Mock publish requested. Bypassing real API posting.");
       const mockPostId = "v_" + Math.random().toString(36).substring(2, 15);
@@ -873,13 +872,55 @@ export const tiktokService = {
       };
     }
 
-    let userId: string | undefined = undefined;
+    let userId: string | undefined = requestUserId;
     const card = cardId ? await MarketingContentModel.findById(cardId) : null;
-    if (card?.authorUid) {
+    if (requestUserId) {
+      if (!card) {
+        throw new Error("Không tìm thấy nội dung TikTok cần đăng.");
+      }
+      if (companyCode && card.companyCode !== companyCode) {
+        throw new Error("Bạn không có quyền đăng nội dung của doanh nghiệp khác.");
+      }
+      if (card.channel !== "TikTok") {
+        throw new Error("Nội dung được chọn không thuộc kênh TikTok.");
+      }
+      if (!card.videoUrl || card.videoUrl !== videoUrl) {
+        throw new Error("Video đã thay đổi. Vui lòng mở lại màn duyệt TikTok để kiểm tra preview.");
+      }
+    }
+    if (!userId && card?.authorUid) {
       userId = card.authorUid;
     }
 
     const credentials = await resolveDirectCredentials(integrationId, companyCode, accessToken, username, userId);
+    const creatorInfo = await this.getCreatorInfo(credentials.accessToken);
+    if (requestUserId && postOptions.consentAccepted !== true) {
+      throw new Error("Bạn phải xác nhận điều khoản TikTok trước khi đăng.");
+    }
+    const availablePrivacy = creatorInfo.data.privacyLevelOptions || [];
+
+    if (!availablePrivacy.includes(privacyLevel)) {
+      throw new Error("Quyền riêng tư đã chọn không còn khả dụng. Vui lòng mở lại màn đăng TikTok và chọn lại.");
+    }
+
+    const maxDuration = Number(creatorInfo.data.maxVideoPostDurationSec || 0);
+    const videoDuration = Number(postOptions.videoDurationSeconds || 0);
+    if (videoDuration > 0 && maxDuration > 0 && videoDuration > maxDuration) {
+      throw new Error(`Video dài ${Math.ceil(videoDuration)} giây, vượt giới hạn ${maxDuration} giây của tài khoản TikTok này.`);
+    }
+
+    const hasCommercialDisclosure = Boolean(postOptions.brandContentToggle);
+    const brandContent = hasCommercialDisclosure && Boolean(postOptions.brandContent);
+    const brandOrganic = hasCommercialDisclosure && Boolean(postOptions.brandOrganic);
+    if (hasCommercialDisclosure && !brandContent && !brandOrganic) {
+      throw new Error("Vui lòng chọn Your Brand, Branded Content hoặc cả hai trước khi đăng.");
+    }
+    if (brandContent && privacyLevel === "SELF_ONLY") {
+      throw new Error("Branded Content không thể đăng ở chế độ Chỉ mình tôi.");
+    }
+
+    const resolveDisableFlag = (allowed: boolean | undefined, disabledByCreator: boolean) =>
+      disabledByCreator || (typeof allowed === "boolean" ? !allowed : false);
 
     console.log(
       `[TikTok Service -> Direct API] Publishing card ${cardId} for ${credentials.username || "unknown"} with privacy ${privacyLevel}`
@@ -890,18 +931,33 @@ export const tiktokService = {
       Authorization: `Bearer ${credentials.accessToken}`,
     };
 
+    const appBaseUrl = String(process.env.APP_URL || "").replace(/\/$/, "");
+    if (!appBaseUrl) {
+      throw new Error("APP_URL chưa được cấu hình để TikTok tải video từ domain đã xác minh.");
+    }
+    const sourceVideoUrl = videoUrl.startsWith(appBaseUrl)
+      ? videoUrl
+      : `${appBaseUrl}/api/v1/media/video-proxy?url=${encodeURIComponent(videoUrl)}`;
+    const parsedSourceUrl = new URL(sourceVideoUrl);
+    if (process.env.NODE_ENV === "production" && parsedSourceUrl.protocol !== "https:") {
+      throw new Error("TikTok Direct Post yêu cầu URL video HTTPS trên domain đã xác minh.");
+    }
+
     const initPayload = {
       post_info: {
         title: caption || "",
         privacy_level: privacyLevel,
-        disable_duet: false,
-        disable_comment: false,
-        disable_stitch: false,
+        disable_duet: resolveDisableFlag(postOptions.allowDuet, creatorInfo.data.duetDisabled),
+        disable_comment: resolveDisableFlag(postOptions.allowComment, creatorInfo.data.commentDisabled),
+        disable_stitch: resolveDisableFlag(postOptions.allowStitch, creatorInfo.data.stitchDisabled),
         video_cover_timestamp_ms: 1000,
+        brand_content_toggle: brandContent,
+        brand_organic_toggle: brandOrganic,
+        is_aigc: Boolean(postOptions.isAigc),
       },
       source_info: {
         source: "PULL_FROM_URL",
-        video_url: (videoUrl && process.env.APP_URL && !videoUrl.startsWith(String(process.env.APP_URL).replace(/\/$/, ""))) ? `${String(process.env.APP_URL).replace(/\/$/, "")}/api/v1/media/video-proxy?url=${encodeURIComponent(videoUrl)}` : videoUrl,
+        video_url: sourceVideoUrl,
       },
     };
 
@@ -1126,7 +1182,7 @@ export const tiktokService = {
       };
     }
 
-    const mappedStatus = mapWebhookStatusToCardStatus(parsed.status);
+    const mappedStatus = mapWebhookStatusToCardStatus(parsed.status || parsed.eventType);
     const updateData: Record<string, any> = {
       tiktokLastWebhookEvent: parsed.eventType,
       tiktokWebhookUpdatedAt: new Date(),
@@ -1220,12 +1276,28 @@ export const tiktokService = {
           commentDisabled: data.data?.comment_disabled ?? false,
           duetDisabled: data.data?.duet_disabled ?? false,
           stitchDisabled: data.data?.stitch_disabled ?? false,
+          maxVideoPostDurationSec: Number(data.data?.max_video_post_duration_sec || 0),
         },
       };
     } catch (error: any) {
       console.error("[tiktokService.getCreatorInfo] Error:", error);
       throw new Error(`Lay thong tin creator TikTok that bai: ${error.message}`);
     }
+  },
+
+  async getCreatorInfoForIntegration(params: {
+    integrationId?: string;
+    companyCode?: string;
+    userId?: string;
+  }) {
+    const credentials = await resolveDirectCredentials(
+      params.integrationId,
+      params.companyCode,
+      undefined,
+      undefined,
+      params.userId
+    );
+    return this.getCreatorInfo(credentials.accessToken);
   },
 
   async validateToken(username: string, accessToken: string) {

@@ -14,11 +14,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
 } from "recharts";
 import * as XLSX from "xlsx";
 import {
@@ -34,6 +29,8 @@ import {
   Sparkles,
   Megaphone,
   Target,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   marketingAnalyticsService,
@@ -150,6 +147,10 @@ export default function AnalyticsDashboard() {
   // Tab switcher cho biểu đồ xu hướng chính
   const [activeChartTab, setActiveChartTab] = useState<"posts" | "engagement">("posts");
 
+  // Phân trang danh sách bài viết
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -160,6 +161,7 @@ export default function AnalyticsDashboard() {
         endDate: endDate || undefined,
       });
       setData(res);
+      setCurrentPage(1);
     } catch (e: any) {
       console.error(e);
       toast.error(e.message || "Không thể tải báo cáo marketing.");
@@ -256,24 +258,30 @@ export default function AnalyticsDashboard() {
     );
   }
 
+  if (!loading && !data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-80 gap-3 text-slate-500 bg-slate-50/50 rounded-2xl border border-slate-100 p-6">
+        <AlertTriangle className="h-10 w-10 text-amber-500" />
+        <div className="text-center">
+          <p className="font-bold text-sm text-slate-700">Không thể tải dữ liệu báo cáo</p>
+          <p className="text-xs text-slate-400 mt-1">Vui lòng kiểm tra kết nối hệ thống hoặc thử lại</p>
+        </div>
+        <button
+          onClick={() => void loadData()}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Thử lại
+        </button>
+      </div>
+    );
+  }
+
   // Chuẩn bị dữ liệu cho Pie chart phân bổ kênh
-  const pieData = data?.byPlatform.map((item) => ({
+  const pieData = data?.byPlatform?.map((item) => ({
     name: item.platform,
     value: item.published,
   })) || [];
-
-  // Chuẩn bị dữ liệu cho Radar chart chất lượng AI
-  const radarData = data
-    ? [
-        { subject: "Fidelity", A: data.qualityScores.byDimension.fidelity, fullMark: 100 },
-        { subject: "Objective", A: data.qualityScores.byDimension.objective, fullMark: 100 },
-        { subject: "Platform", A: data.qualityScores.byDimension.platform, fullMark: 100 },
-        { subject: "Hook", A: data.qualityScores.byDimension.hook, fullMark: 100 },
-        { subject: "Conversion", A: data.qualityScores.byDimension.conversion, fullMark: 100 },
-        { subject: "Readability", A: data.qualityScores.byDimension.readability, fullMark: 100 },
-        { subject: "Novelty", A: data.qualityScores.byDimension.novelty, fullMark: 100 },
-      ]
-    : [];
 
   return (
     <div className="space-y-5 animate-fadeIn">
@@ -305,7 +313,7 @@ export default function AnalyticsDashboard() {
                 className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs"
               >
                 <option value="">Tất cả</option>
-                {data?.campaigns.map((c) => (
+                {data?.campaigns?.map((c) => (
                   <option key={c._id} value={c._id}>
                     {c.title}
                   </option>
@@ -363,7 +371,7 @@ export default function AnalyticsDashboard() {
           {/* Nút xuất excel */}
           <button
             onClick={handleExportExcel}
-            disabled={!data || data.overview.totalSlots === 0}
+            disabled={!data || !data.overview || data.overview.totalSlots === 0}
             className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-emerald-600/20 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             <Download className="h-3.5 w-3.5" />
@@ -372,7 +380,7 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      {data && (
+      {data && data.overview && (
         <>
           {/* 2. Styled KPI Cards from reference image */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -577,37 +585,47 @@ export default function AnalyticsDashboard() {
                   </div>
                 </div>
 
-                {/* Chất lượng AI Content */}
+                {/* Phân bổ Phễu Marketing (TOFU / MOFU / BOFU) */}
                 <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-xs flex flex-col justify-between">
-                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 border-b border-slate-50 pb-2.5 mb-2.5">
-                    <Sparkles className="h-4 w-4 text-indigo-500" />
-                    ĐÁNH GIÁ CHẤT LƯỢNG NỘI DUNG AI
-                  </h3>
-                  <div className="h-40 flex items-center justify-center">
-                    {data.qualityScores.avgScore > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-                          <PolarGrid stroke="#e2e8f0" />
-                          <PolarAngleAxis dataKey="subject" tick={{ fontSize: 8, fontWeight: 700, fill: '#64748b' }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 7, fill: '#94a3b8' }} />
-                          <Radar
-                            name="Điểm trung bình"
-                            dataKey="A"
-                            stroke="#6366f1"
-                            fill="#818cf8"
-                            fillOpacity={0.25}
-                          />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-slate-400 text-xs">
-                        Chưa có dữ liệu đánh giá
-                      </div>
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-2.5 mb-2.5">
+                    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Target className="h-4 w-4 text-indigo-500" />
+                      PHÂN BỔ THEO PHỄU MARKETING
+                    </h3>
+                    {data.qualityScores?.avgScore > 0 && (
+                      <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                        AI Score: {data.qualityScores.avgScore}/100
+                      </span>
                     )}
                   </div>
-                  <div className="text-center pt-2 border-t border-slate-50 flex items-center justify-between text-[11px] font-bold text-slate-500">
-                    <span>Điểm trung bình:</span>
-                    <span className="text-indigo-600 text-xs font-black">{data.qualityScores.avgScore}/100</span>
+
+                  <div className="space-y-3 my-auto py-1">
+                    {(data.byFunnel && data.byFunnel.length > 0 ? data.byFunnel : [
+                      { stage: "TOFU", label: "Nhận biết thương hiệu (TOFU)", desc: "Mở rộng tiếp cận", count: 0, percentage: 33, color: "from-blue-500 to-indigo-600" },
+                      { stage: "MOFU", label: "Tương tác & Đánh giá (MOFU)", desc: "Giữ chân khách hàng", count: 0, percentage: 34, color: "from-purple-500 to-pink-600" },
+                      { stage: "BOFU", label: "Chuyển đổi & Chốt đơn (BOFU)", desc: "Thúc đẩy doanh số", count: 0, percentage: 33, color: "from-emerald-500 to-teal-600" },
+                    ]).map((f) => (
+                      <div key={f.stage} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-bold text-slate-700 text-[11px]">{f.label}</span>
+                          <span className="font-black text-slate-800 text-[11px]">
+                            {f.count} bài <span className="text-slate-400 font-semibold">({f.percentage}%)</span>
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full bg-gradient-to-r ${f.color || 'from-indigo-500 to-purple-600'} transition-all duration-500 rounded-full`}
+                            style={{ width: `${Math.max(f.percentage, 4)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="text-[10px] text-slate-400 font-medium pt-2 border-t border-slate-50 flex items-center justify-between">
+                    <span>TOFU: Phễu Đầu (Thu hút)</span>
+                    <span>MOFU: Phễu Giữa (Tương tác)</span>
+                    <span>BOFU: Phễu Cuối (Chuyển đổi)</span>
                   </div>
                 </div>
 
@@ -685,7 +703,7 @@ export default function AnalyticsDashboard() {
                         {data.topErrors.slice(0, 5).map((err, i) => (
                           <tr key={i} className="hover:bg-slate-50/50">
                             <td className="py-1.5 font-bold text-rose-500">{err.errorType}</td>
-                            <td className="py-1.5 max-w-[110px] truncate" title={err.message}>
+                            <td className="py-1.5 max-w-[180px] truncate" title={err.message}>
                               {err.message}
                             </td>
                             <td className="py-1.5 text-right font-black text-slate-700">{err.count}</td>
@@ -707,111 +725,172 @@ export default function AnalyticsDashboard() {
 
           {/* 4. Danh sách chi tiết hiệu suất từng bài viết */}
           <div className="bg-white border border-slate-100 rounded-2xl p-4.5 shadow-xs mt-5">
-            <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-3.5">
-              <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <Layers className="h-4 w-4 text-indigo-500" />
-                CHI TIẾT HIỆU SUẤT TỪNG BÀI VIẾT
-              </h3>
-              <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1 rounded-md">
-                Hiển thị {data.posts?.length || 0} bài gần đây nhất
-              </span>
-            </div>
+            {(() => {
+              const totalPosts = data.posts?.length || 0;
+              const totalPages = Math.ceil(totalPosts / pageSize) || 1;
+              const startIndex = (currentPage - 1) * pageSize;
+              const paginatedPosts = data.posts ? data.posts.slice(startIndex, startIndex + pageSize) : [];
 
-            <div className="overflow-x-auto">
-              {data.posts && data.posts.length > 0 ? (
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <th className="py-2.5 px-3">Bài viết</th>
-                      <th className="py-2.5 px-3">Kênh</th>
-                      <th className="py-2.5 px-3">Pillar</th>
-                      <th className="py-2.5 px-3 text-right">Reach (Tiếp cận)</th>
-                      <th className="py-2.5 px-3 text-right">Impressions (Hiển thị)</th>
-                      <th className="py-2.5 px-3 text-right">Tương tác</th>
-                      <th className="py-2.5 px-3 text-right">Clicks</th>
-                      <th className="py-2.5 px-3 text-center">Liên kết</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-bold">
-                    {data.posts.map((post) => {
-                      const totalEngagements = post.likes + post.comments + post.shares;
-                      const dateStr = post.slotId?.scheduledAt
-                        ? new Date(post.slotId.scheduledAt).toLocaleDateString("vi-VN", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "Chưa xác định";
+              return (
+                <>
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-3.5">
+                    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-indigo-500" />
+                      CHI TIẾT HIỆU SUẤT TỪNG BÀI VIẾT
+                    </h3>
+                    <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                      Tổng số: {totalPosts} bài viết
+                    </span>
+                  </div>
 
-                      return (
-                        <tr key={post._id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="py-3 px-3 max-w-[280px]">
-                            <p className="text-slate-800 font-bold truncate" title={post.slotId?.topicBrief}>
-                              {post.slotId?.topicBrief || "Bài viết không tên / Content tự động"}
-                            </p>
-                            <span className="text-[10px] font-semibold text-slate-400">
-                              Lên lịch: {dateStr}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              post.platform === "Facebook"
-                                ? "bg-blue-50 text-blue-600"
-                                : "bg-zinc-950 text-white"
-                            }`}>
-                              {post.platform}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className="text-slate-500 font-semibold">
-                              {post.slotId?.pillar || "Khác"}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-right font-black text-slate-700">
-                            {post.reach.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-3 text-right font-black text-slate-700">
-                            {post.impressions.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="flex flex-col items-end">
-                              <span className="font-black text-slate-700">{totalEngagements.toLocaleString()}</span>
-                              <span className="text-[9px] font-semibold text-slate-400">
-                                {post.likes} L / {post.comments} C / {post.shares} S
-                              </span>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3 text-right font-black text-slate-700">
-                            {post.clicks.toLocaleString()}
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            {post.postUrl ? (
-                              <a
-                                href={post.postUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-bold"
+                  <div className="overflow-x-auto">
+                    {paginatedPosts.length > 0 ? (
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <th className="py-2.5 px-3">Bài viết</th>
+                            <th className="py-2.5 px-3">Kênh</th>
+                            <th className="py-2.5 px-3">Pillar</th>
+                            <th className="py-2.5 px-3 text-right">Reach (Tiếp cận)</th>
+                            <th className="py-2.5 px-3 text-right">Impressions (Hiển thị)</th>
+                            <th className="py-2.5 px-3 text-right">Tương tác</th>
+                            <th className="py-2.5 px-3 text-right">Clicks</th>
+                            <th className="py-2.5 px-3 text-center">Liên kết</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-bold">
+                          {paginatedPosts.map((post) => {
+                            const likes = post.likes ?? 0;
+                            const comments = post.comments ?? 0;
+                            const shares = post.shares ?? 0;
+                            const reach = post.reach ?? 0;
+                            const impressions = post.impressions ?? 0;
+                            const clicks = post.clicks ?? 0;
+                            const totalEngagements = likes + comments + shares;
+                            const dateStr = post.slotId?.scheduledAt
+                              ? new Date(post.slotId.scheduledAt).toLocaleDateString("vi-VN", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "Chưa xác định";
+
+                            return (
+                              <tr key={post._id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="py-3 px-3 max-w-[280px]">
+                                  <p className="text-slate-800 font-bold truncate" title={post.slotId?.topicBrief}>
+                                    {post.slotId?.topicBrief || "Bài viết không tên / Content tự động"}
+                                  </p>
+                                  <span className="text-[10px] font-semibold text-slate-400">
+                                    Lên lịch: {dateStr}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    post.platform === "Facebook"
+                                      ? "bg-blue-50 text-blue-600"
+                                      : "bg-zinc-950 text-white"
+                                  }`}>
+                                    {post.platform}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <span className="text-slate-500 font-semibold">
+                                    {post.slotId?.pillar || "Khác"}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                  {reach.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                  {impressions.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-right">
+                                  <div className="flex flex-col items-end">
+                                    <span className="font-black text-slate-700">{totalEngagements.toLocaleString()}</span>
+                                    <span className="text-[9px] font-semibold text-slate-400">
+                                      {likes} L / {comments} C / {shares} S
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                  {clicks.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-center">
+                                  {post.postUrl ? (
+                                    <a
+                                      href={post.postUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-bold"
+                                    >
+                                      Xem bài gốc
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-300 font-semibold">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
+                        <Layers className="h-8 w-8 text-slate-300 animate-pulse" />
+                        <span className="text-xs font-semibold">Không tìm thấy bài viết nào phù hợp với bộ lọc</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Thanh Phân Trang (Pagination Controls) */}
+                  {totalPosts > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 pt-3 mt-3 gap-2">
+                      <span className="text-[11px] font-medium text-slate-500">
+                        Hiển thị <span className="font-bold text-slate-700">{startIndex + 1}</span> - <span className="font-bold text-slate-700">{Math.min(startIndex + pageSize, totalPosts)}</span> trên <span className="font-bold text-slate-700">{totalPosts}</span> bài viết
+                      </span>
+                      {totalPages > 1 && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1}
+                            className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition"
+                            title="Trang trước"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                              <button
+                                key={page}
+                                onClick={() => setCurrentPage(page)}
+                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                  currentPage === page
+                                    ? "bg-indigo-600 text-white shadow-xs"
+                                    : "text-slate-600 hover:bg-slate-100"
+                                }`}
                               >
-                                Xem bài gốc
-                              </a>
-                            ) : (
-                              <span className="text-slate-300 font-semibold">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
-                  <Layers className="h-8 w-8 text-slate-300 animate-pulse" />
-                  <span className="text-xs font-semibold">Không tìm thấy bài viết nào phù hợp với bộ lọc</span>
-                </div>
-              )}
-            </div>
+                                {page}
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages}
+                            className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition"
+                            title="Trang sau"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </>
       )}

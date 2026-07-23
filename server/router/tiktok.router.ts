@@ -16,11 +16,17 @@ const publishSchema = {
     caption: Joi.string().optional().allow(""),
     videoUrl: Joi.string().uri().required(),
     privacyLevel: Joi.string()
-      .valid("PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_ACTIVE_USER", "SELF_ONLY")
-      .optional()
-      .default("SELF_ONLY"),
-    accessToken: Joi.string().optional().allow(""),
-    username: Joi.string().optional().allow(""),
+      .valid("PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY")
+      .required(),
+    allowComment: Joi.boolean().required(),
+    allowDuet: Joi.boolean().required(),
+    allowStitch: Joi.boolean().required(),
+    brandContentToggle: Joi.boolean().required(),
+    brandContent: Joi.boolean().required(),
+    brandOrganic: Joi.boolean().required(),
+    isAigc: Joi.boolean().required(),
+    videoDurationSeconds: Joi.number().positive().required(),
+    consentAccepted: Joi.boolean().valid(true).required(),
     scheduledTime: Joi.string().isoDate().optional().allow(""),
     integrationId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional().allow(""),
   }),
@@ -35,7 +41,7 @@ const validateTokenSchema = {
 
 const creatorInfoSchema = {
   body: Joi.object({
-    accessToken: Joi.string().required(),
+    integrationId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional().allow(""),
   }),
 };
 

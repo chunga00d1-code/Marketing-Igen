@@ -1,383 +1,248 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  X,
-  Globe,
-  Users,
-  Lock,
-  MessageSquare,
-  Repeat,
-  Scissors,
-  ShieldCheck,
-  Music,
-  Tag,
-  Sparkles,
-  Info,
-  CheckCircle2
+  AlertTriangle, CheckCircle2, Globe, Info, Loader2, Lock, MessageSquare,
+  Music, Repeat, Scissors, ShieldCheck, Tag, Users, X,
 } from "lucide-react";
 import { ContentApprovalCard } from "../../types";
+import { extractDraftContent } from "../../services/marketingService";
+import {
+  socialIntegrationService,
+  type TikTokCreatorInfo,
+  type TikTokPrivacyLevel,
+} from "../../services/socialIntegrationService";
 
 interface TikTokPublishModalProps {
   isOpen: boolean;
   onClose: () => void;
   card: ContentApprovalCard | null;
-  tiktokAccount: {
-    username?: string;
-    displayName?: string;
-    avatarUrl?: string;
-    isMock?: boolean;
-  } | null;
+  tiktokAccount: { isConnected?: boolean; integrationId?: string; source?: "personal" | "company" } | null;
   onConfirmPublish: (params: {
     caption: string;
-    privacyLevel: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY";
+    privacyLevel: TikTokPrivacyLevel;
     allowComment: boolean;
     allowDuet: boolean;
     allowStitch: boolean;
+    brandContentToggle: boolean;
     brandContent: boolean;
+    brandOrganic: boolean;
+    isAigc: boolean;
+    videoDurationSeconds: number;
+    consentAccepted: boolean;
   }) => Promise<void>;
   isPublishing: boolean;
 }
 
+const PRIVACY_LABELS: Record<TikTokPrivacyLevel, string> = {
+  PUBLIC_TO_EVERYONE: "Công khai",
+  MUTUAL_FOLLOW_FRIENDS: "Bạn bè",
+  FOLLOWER_OF_CREATOR: "Người theo dõi",
+  SELF_ONLY: "Chỉ mình tôi",
+};
+
+const PRIVACY_ICONS: Record<TikTokPrivacyLevel, React.ReactNode> = {
+  PUBLIC_TO_EVERYONE: <Globe className="h-4 w-4" />,
+  MUTUAL_FOLLOW_FRIENDS: <Users className="h-4 w-4" />,
+  FOLLOWER_OF_CREATOR: <Users className="h-4 w-4" />,
+  SELF_ONLY: <Lock className="h-4 w-4" />,
+};
+
 export default function TikTokPublishModal({
-  isOpen,
-  onClose,
-  card,
-  tiktokAccount,
-  onConfirmPublish,
-  isPublishing,
+  isOpen, onClose, card, tiktokAccount, onConfirmPublish, isPublishing,
 }: TikTokPublishModalProps) {
-  const [caption, setCaption] = useState(card?.bodyText || card?.title || "");
-  const [privacyLevel, setPrivacyLevel] = useState<"PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "SELF_ONLY">("PUBLIC_TO_EVERYONE");
-  const [allowComment, setAllowComment] = useState(true);
-  const [allowDuet, setAllowDuet] = useState(true);
-  const [allowStitch, setAllowStitch] = useState(true);
+  const [creatorInfo, setCreatorInfo] = useState<TikTokCreatorInfo | null>(null);
+  const [creatorError, setCreatorError] = useState("");
+  const [loadingCreator, setLoadingCreator] = useState(false);
+  const [reloadCreatorKey, setReloadCreatorKey] = useState(0);
+  const [caption, setCaption] = useState("");
+  const [privacyLevel, setPrivacyLevel] = useState<TikTokPrivacyLevel | "">("");
+  const [allowComment, setAllowComment] = useState(false);
+  const [allowDuet, setAllowDuet] = useState(false);
+  const [allowStitch, setAllowStitch] = useState(false);
+  const [brandContentToggle, setBrandContentToggle] = useState(false);
   const [brandContent, setBrandContent] = useState(false);
+  const [brandOrganic, setBrandOrganic] = useState(false);
+  const [isAigc, setIsAigc] = useState(false);
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [videoDurationSeconds, setVideoDurationSeconds] = useState<number | null>(null);
+  const [videoMetadataError, setVideoMetadataError] = useState("");
+  const activeCardId = card?.id || "";
+  const initialCaption = card ? extractDraftContent(card.bodyText || card.title || "").slice(0, 2200) : "";
 
   useEffect(() => {
-    if (card) {
-      setCaption(card.bodyText || card.title || "");
-    }
-  }, [card]);
+    if (!isOpen || !activeCardId) return;
+    let cancelled = false;
+
+    setCaption(initialCaption);
+    setPrivacyLevel("");
+    setAllowComment(false);
+    setAllowDuet(false);
+    setAllowStitch(false);
+    setBrandContentToggle(false);
+    setBrandContent(false);
+    setBrandOrganic(false);
+    setIsAigc(false);
+    setConsentAccepted(false);
+    setVideoDurationSeconds(null);
+    setVideoMetadataError("");
+    setCreatorInfo(null);
+    setCreatorError("");
+    setLoadingCreator(true);
+
+    socialIntegrationService.getTikTokCreatorInfo(tiktokAccount?.integrationId)
+      .then((info) => {
+        if (cancelled) return;
+        if (!info.maxVideoPostDurationSec || info.privacyLevelOptions.length === 0) {
+          throw new Error("TikTok chưa trả về đầy đủ quyền đăng và giới hạn video của tài khoản.");
+        }
+        setCreatorInfo(info);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setCreatorError(error instanceof Error ? error.message : "Không thể tải creator info từ TikTok.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCreator(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [isOpen, activeCardId, initialCaption, tiktokAccount?.integrationId, reloadCreatorKey]);
 
   if (!isOpen || !card) return null;
 
-  const handleAddHashtag = (tag: string) => {
-    if (!caption.includes(tag)) {
-      setCaption((prev) => (prev ? `${prev} ${tag}` : tag));
-    }
-  };
+  const maxDuration = creatorInfo?.maxVideoPostDurationSec || 0;
+  const durationTooLong = videoDurationSeconds !== null && maxDuration > 0 && videoDurationSeconds > maxDuration;
+  const commercialSelectionMissing = brandContentToggle && !brandContent && !brandOrganic;
+  const brandedPrivate = brandContent && privacyLevel === "SELF_ONLY";
+  const canPublish = Boolean(
+    creatorInfo && privacyLevel && consentAccepted && videoDurationSeconds && !videoMetadataError &&
+    !durationTooLong && !commercialSelectionMissing && !brandedPrivate && !isPublishing
+  );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!canPublish || !privacyLevel || videoDurationSeconds === null) return;
     await onConfirmPublish({
-      caption,
-      privacyLevel,
-      allowComment,
-      allowDuet,
-      allowStitch,
-      brandContent,
+      caption, privacyLevel, allowComment, allowDuet, allowStitch, brandContentToggle,
+      brandContent, brandOrganic, isAigc, videoDurationSeconds,
+      consentAccepted: true,
     });
   };
 
-  const username = tiktokAccount?.username || "igen_marketing_bot";
-  const displayName = tiktokAccount?.displayName || "iGen TikTok Studio";
+  const toggleCommercialDisclosure = (enabled: boolean) => {
+    setBrandContentToggle(enabled);
+    if (!enabled) {
+      setBrandContent(false);
+      setBrandOrganic(false);
+    }
+  };
+
+  const setBrandedContent = (enabled: boolean) => {
+    setBrandContent(enabled);
+    if (enabled && privacyLevel === "SELF_ONLY") setPrivacyLevel("");
+  };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fadeIn">
-      <div className="bg-[#121212] border border-slate-800 text-white rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] font-sans">
-        
-        {/* Header with TikTok Premium Identity */}
-        <div className="px-6 py-4 bg-gradient-to-r from-[#161823] via-[#121212] to-[#1e1e24] border-b border-slate-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-black border border-slate-700/80 flex items-center justify-center shadow-lg relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-tr from-[#25F4EE]/20 to-[#FE2C55]/20 opacity-60"></div>
-              <svg className="w-5 h-5 fill-current text-white relative z-10" viewBox="0 0 24 24">
-                <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 3 15.7a6.34 6.34 0 0 0 10.86 4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.04z"/>
-              </svg>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-base text-white tracking-tight">
-                  Share to TikTok
-                </h3>
-                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-[#FE2C55]/15 text-[#FE2C55] border border-[#FE2C55]/30">
-                  Direct Post API
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Tài khoản: <span className="font-bold text-slate-200">@{username}</span> ({displayName})
-              </p>
-            </div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-800 bg-[#121212] text-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-800 bg-[#161823] px-6 py-4">
+          <div>
+            <h3 className="text-base font-extrabold">Share to TikTok</h3>
+            <p className="mt-1 text-xs text-slate-400">TikTok Direct Post · Xác nhận trước khi gửi video</p>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <button type="button" onClick={onClose} disabled={isPublishing} className="rounded-xl bg-slate-800 p-2 text-slate-300 hover:text-white disabled:opacity-50"><X className="h-5 w-5" /></button>
         </div>
 
-        {/* Modal Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-          
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-            
-            {/* Left Column: Phone Mockup Video Preview (5 cols) */}
-            <div className="md:col-span-5 flex flex-col items-center">
-              <div className="w-full max-w-[220px] aspect-[9/16] bg-black rounded-[28px] overflow-hidden border-[3px] border-slate-700 shadow-2xl relative flex flex-col justify-between group">
-                {card.videoUrl ? (
-                  <video src={card.videoUrl} controls autoPlay loop muted className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-slate-500">
-                    <Sparkles className="w-8 h-8 text-slate-600 mb-2" />
-                    <span className="text-xs">Chưa có Video Preview</span>
-                  </div>
-                )}
-
-                {/* TikTok UI Overlay Simulation */}
-                <div className="absolute inset-0 pointer-events-none p-3 flex flex-col justify-between bg-gradient-to-b from-black/40 via-transparent to-black/70">
-                  <div className="flex items-center justify-between text-[10px] text-white font-bold">
-                    <span className="bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/20">
-                      ♪ TikTok Direct
-                    </span>
-                    <span className="text-[#25F4EE]">LIVE</span>
-                  </div>
-                  
-                  <div className="space-y-1 text-left text-white">
-                    <p className="text-[11px] font-extrabold drop-shadow-md">@{username}</p>
-                    <p className="text-[9.5px] text-slate-200 line-clamp-2 leading-tight drop-shadow">
-                      {caption || "Mô tả bài viết TikTok..."}
-                    </p>
-                    <div className="flex items-center gap-1 text-[9px] text-slate-300">
-                      <Music className="w-2.5 h-2.5 animate-spin" />
-                      <span>Original Sound - iGen AI Studio</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <span className="text-[10px] text-slate-500 mt-2 font-mono">Xem trước diện mạo bài đăng</span>
+        <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-6">
+          {loadingCreator ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-sm text-cyan-100"><Loader2 className="h-5 w-5 animate-spin" />Đang lấy quyền đăng mới nhất từ TikTok...</div>
+          ) : creatorError ? (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+              <div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{creatorError}</span></div>
+              <button type="button" onClick={() => setReloadCreatorKey((value) => value + 1)} className="mt-3 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-bold hover:bg-red-500/30">Thử lại</button>
             </div>
-
-            {/* Right Column: Settings & Direct Post Options (7 cols) */}
-            <div className="md:col-span-7 space-y-5">
-              
-              {/* Caption & Hashtag Assist */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-extrabold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-[#25F4EE]" /> Mô tả & Hashtag
-                  </label>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    <span className={caption.length > 2000 ? "text-amber-400 font-bold" : "text-slate-300"}>
-                      {caption.length}
-                    </span> / 2200
-                  </span>
-                </div>
-                
-                <textarea
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  rows={4}
-                  maxLength={2200}
-                  className="w-full bg-[#18181c] border border-slate-700/80 rounded-2xl p-3.5 text-xs text-slate-100 focus:outline-none focus:border-[#25F4EE] transition-all resize-none font-sans leading-relaxed"
-                  placeholder="Nhập mô tả thu hút người xem và gắn hashtag #..."
-                />
-
-                {/* Quick Hashtag Suggestions */}
-                <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                  <span className="text-[10px] text-slate-500 font-bold mr-1">Gợi ý:</span>
-                  {["#iGenERP", "#MarketingAI", "#Automation", "#TikTokStudio", "#Trending"].map((tag) => (
-                    <button
-                      type="button"
-                      key={tag}
-                      onClick={() => handleAddHashtag(tag)}
-                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-mono transition-all border border-slate-700/60 cursor-pointer"
-                    >
-                      + {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Privacy Level Controls */}
-              <div className="space-y-2">
-                <label className="block text-xs font-extrabold text-slate-200 uppercase tracking-wider">
-                  Quyền riêng tư (Privacy Level)
-                </label>
-                <div className="grid grid-cols-3 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setPrivacyLevel("PUBLIC_TO_EVERYONE")}
-                    className={`p-3 rounded-2xl border text-left flex flex-col items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
-                      privacyLevel === "PUBLIC_TO_EVERYONE"
-                        ? "bg-[#25F4EE]/10 border-[#25F4EE] text-[#25F4EE] font-bold shadow-md shadow-[#25F4EE]/10"
-                        : "bg-[#18181c] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-                    }`}
-                  >
-                    <Globe className="w-4 h-4" />
-                    <span className="text-[11px]">Công khai</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPrivacyLevel("MUTUAL_FOLLOW_FRIENDS")}
-                    className={`p-3 rounded-2xl border text-left flex flex-col items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
-                      privacyLevel === "MUTUAL_FOLLOW_FRIENDS"
-                        ? "bg-[#25F4EE]/10 border-[#25F4EE] text-[#25F4EE] font-bold shadow-md shadow-[#25F4EE]/10"
-                        : "bg-[#18181c] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-                    }`}
-                  >
-                    <Users className="w-4 h-4" />
-                    <span className="text-[11px]">Bạn bè</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPrivacyLevel("SELF_ONLY")}
-                    className={`p-3 rounded-2xl border text-left flex flex-col items-center justify-center gap-1.5 text-xs transition-all cursor-pointer ${
-                      privacyLevel === "SELF_ONLY"
-                        ? "bg-[#25F4EE]/10 border-[#25F4EE] text-[#25F4EE] font-bold shadow-md shadow-[#25F4EE]/10"
-                        : "bg-[#18181c] border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700"
-                    }`}
-                  >
-                    <Lock className="w-4 h-4" />
-                    <span className="text-[11px]">Chỉ mình tôi</span>
-                  </button>
-                </div>
-              </div>
-
+          ) : creatorInfo ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-[#18181c] p-4">
+              {creatorInfo.creatorAvatarUrl ? <img src={creatorInfo.creatorAvatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 font-bold">♪</div>}
+              <div><p className="text-xs text-slate-400">Video sẽ được đăng vào</p><p className="font-extrabold">{creatorInfo.creatorNickname}</p><p className="text-xs text-slate-400">@{creatorInfo.creatorUsername}</p></div>
             </div>
-          </div>
+          ) : null}
 
-          {/* Interaction Controls */}
-          <div className="bg-[#18181c] border border-slate-800 rounded-2xl p-4 space-y-3">
-            <h4 className="text-xs font-extrabold text-slate-200 uppercase tracking-wider flex items-center justify-between">
-              <span>Quyền tương tác người xem (Interaction Permissions)</span>
-              <span className="text-[10px] text-slate-400 font-normal font-mono">Cho phép người dùng TikTok</span>
-            </h4>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <label className="flex items-center justify-between p-3 bg-[#121212] border border-slate-700/60 rounded-xl cursor-pointer hover:border-slate-600 transition-all">
-                <span className="text-xs font-semibold text-slate-200 flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-[#25F4EE]" /> Bình luận
-                </span>
-                <input
-                  type="checkbox"
-                  checked={allowComment}
-                  onChange={(e) => setAllowComment(e.target.checked)}
-                  className="rounded bg-slate-900 border-slate-700 text-[#FE2C55] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FE2C55]"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 bg-[#121212] border border-slate-700/60 rounded-xl cursor-pointer hover:border-slate-600 transition-all">
-                <span className="text-xs font-semibold text-slate-200 flex items-center gap-2">
-                  <Repeat className="w-4 h-4 text-purple-400" /> Duet
-                </span>
-                <input
-                  type="checkbox"
-                  checked={allowDuet}
-                  onChange={(e) => setAllowDuet(e.target.checked)}
-                  className="rounded bg-slate-900 border-slate-700 text-[#FE2C55] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FE2C55]"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 bg-[#121212] border border-slate-700/60 rounded-xl cursor-pointer hover:border-slate-600 transition-all">
-                <span className="text-xs font-semibold text-slate-200 flex items-center gap-2">
-                  <Scissors className="w-4 h-4 text-emerald-400" /> Stitch
-                </span>
-                <input
-                  type="checkbox"
-                  checked={allowStitch}
-                  onChange={(e) => setAllowStitch(e.target.checked)}
-                  className="rounded bg-slate-900 border-slate-700 text-[#FE2C55] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FE2C55]"
-                />
-              </label>
-            </div>
-
-            {/* Commercial Content Toggle */}
-            <div className="pt-3 border-t border-slate-800/80">
-              <label className="flex items-center justify-between cursor-pointer">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                    <Info className="w-3.5 h-3.5 text-amber-400" /> Khai báo nội dung thương mại / Quảng cáo
-                  </span>
-                  <span className="text-[11px] text-slate-400 block">
-                    Bật nếu bài viết này chứa thông tin tiếp thị sản phẩm, tài trợ thương hiệu
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={brandContent}
-                  onChange={(e) => setBrandContent(e.target.checked)}
-                  className="rounded bg-slate-900 border-slate-700 text-[#FE2C55] focus:ring-0 w-4 h-4 cursor-pointer accent-[#FE2C55]"
-                />
-              </label>
-            </div>
-          </div>
-
-          {/* TikTok Terms & Compliance Footer Banner */}
-          <div className="bg-[#18181c]/60 border border-slate-800 rounded-2xl p-3.5 text-[11px] text-slate-400 leading-relaxed flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-[#25F4EE] shrink-0 mt-0.5" />
+          <div className="grid gap-6 md:grid-cols-[260px_1fr]">
             <div>
-              Bằng việc nhấn nút <b>Share to TikTok</b>, bạn xác nhận đã rà soát nội dung và đồng ý với{" "}
-              <a
-                href="https://www.tiktok.com/legal/terms-of-service"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[#25F4EE] underline hover:text-[#25F4EE]/80 transition-colors font-medium"
-              >
-                Điều khoản dịch vụ
-              </a>{" "}
-              và{" "}
-              <a
-                href="https://www.tiktok.com/legal/privacy-policy"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[#25F4EE] underline hover:text-[#25F4EE]/80 transition-colors font-medium"
-              >
-                Chính sách bảo mật
-              </a>{" "}
-              của TikTok Developer Platform.
+              <div className="aspect-[9/16] overflow-hidden rounded-[28px] border-4 border-slate-700 bg-black">
+                <video src={card.videoUrl || ""} controls muted className="h-full w-full object-contain"
+                  onLoadedMetadata={(event) => {
+                    const duration = event.currentTarget.duration;
+                    if (Number.isFinite(duration) && duration > 0) {
+                      setVideoDurationSeconds(duration);
+                      setVideoMetadataError("");
+                    } else setVideoMetadataError("Không đọc được thời lượng video.");
+                  }}
+                  onError={() => setVideoMetadataError("Không thể tải video preview. Vui lòng upload lại video.")}
+                />
+              </div>
+              <div className={`mt-2 rounded-xl border p-2 text-center text-[11px] ${durationTooLong || videoMetadataError ? "border-red-500/30 bg-red-500/10 text-red-200" : "border-slate-700 bg-slate-800 text-slate-300"}`}>
+                {videoMetadataError || (videoDurationSeconds ? `${Math.ceil(videoDurationSeconds)} giây / tối đa ${maxDuration || "..."} giây` : "Đang kiểm tra thời lượng video...")}
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between"><label className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider"><Tag className="h-4 w-4 text-cyan-300" />Mô tả và hashtag</label><span className="text-[10px] text-slate-400">{caption.length}/2200</span></div>
+                <textarea value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={2200} rows={5} className="w-full resize-none rounded-2xl border border-slate-700 bg-[#18181c] p-3.5 text-xs outline-none focus:border-cyan-400" />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-extrabold uppercase tracking-wider">Quyền riêng tư *</label>
+                <p className="text-[11px] text-slate-400">Bạn phải tự chọn một tùy chọn TikTok đang cho phép.</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(creatorInfo?.privacyLevelOptions || []).map((option) => {
+                    const disabled = option === "SELF_ONLY" && brandContent;
+                    return <button key={option} type="button" disabled={disabled} onClick={() => setPrivacyLevel(option)} title={disabled ? "Branded content visibility cannot be set to private." : undefined} className={`flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-[11px] font-bold ${privacyLevel === option ? "border-cyan-300 bg-cyan-300/10 text-cyan-200" : "border-slate-700 bg-[#18181c] text-slate-300"} disabled:cursor-not-allowed disabled:opacity-35`}>{PRIVACY_ICONS[option]}{PRIVACY_LABELS[option]}</button>;
+                  })}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Bottom Actions */}
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Sẵn sàng đăng bài Direct Post</span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all cursor-pointer"
-              >
-                Hủy
-              </button>
-              
-              <button
-                type="submit"
-                disabled={isPublishing}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#FE2C55] to-[#E61B48] hover:from-[#e0264b] hover:to-[#cc153d] text-white font-extrabold text-xs rounded-xl shadow-lg shadow-[#FE2C55]/25 flex items-center gap-2 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
-              >
-                {isPublishing ? (
-                  <span>Đang xử lý...</span>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
-                      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 3 15.7a6.34 6.34 0 0 0 10.86 4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.04z"/>
-                    </svg>
-                    <span>Share to TikTok</span>
-                  </>
-                )}
-              </button>
+          <div className="space-y-3 rounded-2xl border border-slate-800 bg-[#18181c] p-4">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider">Cho phép tương tác</h4>
+            <p className="text-[11px] text-slate-400">Tất cả đều tắt mặc định. Tùy chọn bị TikTok vô hiệu hóa sẽ không thể bật.</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {[
+                { label: "Bình luận", icon: <MessageSquare className="h-4 w-4" />, checked: allowComment, disabled: creatorInfo?.commentDisabled, set: setAllowComment },
+                { label: "Duet", icon: <Repeat className="h-4 w-4" />, checked: allowDuet, disabled: creatorInfo?.duetDisabled, set: setAllowDuet },
+                { label: "Stitch", icon: <Scissors className="h-4 w-4" />, checked: allowStitch, disabled: creatorInfo?.stitchDisabled, set: setAllowStitch },
+              ].map((item) => <label key={item.label} className={`flex items-center justify-between rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs ${item.disabled ? "cursor-not-allowed opacity-35" : "cursor-pointer"}`}><span className="flex items-center gap-2">{item.icon}{item.label}</span><input type="checkbox" checked={item.checked} disabled={item.disabled} onChange={(event) => item.set(event.target.checked)} className="h-4 w-4 accent-[#FE2C55]" /></label>)}
             </div>
           </div>
 
+          <div className="space-y-3 rounded-2xl border border-slate-800 bg-[#18181c] p-4">
+            <label className="flex cursor-pointer items-center justify-between gap-4">
+              <span><span className="flex items-center gap-1.5 text-xs font-bold"><Info className="h-4 w-4 text-amber-300" />Nội dung thương mại</span><span className="mt-1 block text-[11px] text-slate-400">Nội dung quảng bá bản thân, thương hiệu, sản phẩm hoặc dịch vụ</span></span>
+              <input type="checkbox" checked={brandContentToggle} onChange={(event) => toggleCommercialDisclosure(event.target.checked)} className="h-4 w-4 accent-[#FE2C55]" />
+            </label>
+            {brandContentToggle && <div className="grid gap-2 border-t border-slate-700 pt-3 sm:grid-cols-2">
+              <label className="cursor-pointer rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs"><span className="flex items-center gap-2 font-bold"><input type="checkbox" checked={brandOrganic} onChange={(event) => setBrandOrganic(event.target.checked)} className="accent-[#FE2C55]" />Your Brand</span><span className="mt-1 block text-[10px] text-amber-200">Your video will be labeled as 'Promotional content'</span></label>
+              <label className="cursor-pointer rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs"><span className="flex items-center gap-2 font-bold"><input type="checkbox" checked={brandContent} onChange={(event) => setBrandedContent(event.target.checked)} className="accent-[#FE2C55]" />Branded Content</span><span className="mt-1 block text-[10px] text-amber-200">Your video will be labeled as 'Paid partnership'</span></label>
+            </div>}
+            {commercialSelectionMissing && <p className="text-[11px] text-red-300">You need to indicate if your content promotes yourself, a third party, or both.</p>}
+          </div>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-800 bg-[#18181c] p-4">
+            <input type="checkbox" checked={isAigc} onChange={(event) => setIsAigc(event.target.checked)} className="mt-0.5 h-4 w-4 accent-[#FE2C55]" />
+            <span><span className="block text-xs font-bold">Nội dung do AI tạo</span><span className="mt-1 block text-[11px] text-slate-400">Bật nếu video được tạo hoặc chỉnh sửa đáng kể bằng AI để TikTok gắn nhãn phù hợp.</span></span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 text-[11px] leading-relaxed text-slate-300">
+            <input type="checkbox" checked={consentAccepted} onChange={(event) => setConsentAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#FE2C55]" />
+            <span><ShieldCheck className="mr-1 inline h-4 w-4 text-cyan-300" />{brandContent ? <>By posting, you agree to TikTok&apos;s <a className="text-cyan-300 underline" href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer">Branded Content Policy</a> and <a className="text-cyan-300 underline" href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a>.</> : <>By posting, you agree to TikTok&apos;s <a className="text-cyan-300 underline" href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a>.</>}</span>
+          </label>
+
+          <div className="flex items-center gap-2 rounded-xl bg-slate-800/70 p-3 text-[11px] text-slate-300"><Music className="h-4 w-4 shrink-0 text-cyan-300" />Sau khi đăng, TikTok có thể cần vài phút để xử lý và hiển thị video trên hồ sơ.</div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-800 pt-4">
+            <span className="flex items-center gap-1.5 text-xs text-slate-400">{canPublish ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertTriangle className="h-4 w-4 text-amber-400" />}{canPublish ? "Sẵn sàng đăng" : "Hoàn tất các mục bắt buộc"}</span>
+            <div className="flex gap-2"><button type="button" onClick={onClose} disabled={isPublishing} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold disabled:opacity-50">Hủy</button><button type="submit" disabled={!canPublish} className="flex items-center gap-2 rounded-xl bg-[#FE2C55] px-6 py-2.5 text-xs font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40">{isPublishing ? <><Loader2 className="h-4 w-4 animate-spin" />Đang gửi...</> : "Share to TikTok"}</button></div>
+          </div>
         </form>
       </div>
     </div>

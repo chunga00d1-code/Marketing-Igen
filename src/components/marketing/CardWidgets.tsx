@@ -491,10 +491,10 @@ export function ScheduledCard({
             e.stopPropagation();
             onPublishToTikTok();
           }}
-          disabled={isPublishingTikTok || !card.videoUrl}
-          title={!card.videoUrl ? 'Cần có video để đăng lên TikTok' : (isPublishingTikTok ? 'Đang đăng...' : 'Đăng video lên TikTok')}
+          disabled={isPublishingTikTok || card.status === "processing" || !card.videoUrl}
+          title={!card.videoUrl ? 'Cần có video để đăng lên TikTok' : card.status === "processing" ? 'TikTok đang xử lý video' : (isPublishingTikTok ? 'Đang đăng...' : 'Đăng video lên TikTok')}
           className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-[10px] font-bold transition-all cursor-pointer border ${
-            !card.videoUrl
+            !card.videoUrl || card.status === "processing"
               ? 'bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed shadow-none'
               : isPublishingTikTok
               ? 'bg-slate-800 text-white border-slate-700 opacity-75 cursor-wait'
@@ -502,10 +502,12 @@ export function ScheduledCard({
           }`}
           id={`tiktok_publish_btn_${card.id}`}
         >
-          {isPublishingTikTok ? (
+          {card.status === "processing" ? (
+            <><RefreshCw className="h-3 w-3 animate-spin" /><span>TikTok đang xử lý...</span></>
+          ) : isPublishingTikTok ? (
             <><RefreshCw className="h-3 w-3 animate-spin" /><span>Đang đăng lên TikTok...</span></>
           ) : (
-            <><span className="text-sm font-sans">♪</span><span>Đăng lên TikTok {tiktokIntegration.isMock ? '(Demo)' : ''}</span></>
+            <><span className="text-sm font-sans">♪</span><span>Đăng lên TikTok</span></>
           )}
         </button>
       )}
@@ -539,6 +541,10 @@ export function ScheduledCard({
           {card.status === "failed" ? (
             <span className="px-2 py-0.5 bg-red-500 text-white border border-red-600 rounded-md text-[8px] font-bold font-mono animate-pulse">
               ⚠️ LỖI ĐĂNG
+            </span>
+          ) : card.status === "processing" ? (
+            <span className="px-2 py-0.5 bg-cyan-50 border border-cyan-200 text-cyan-800 rounded-md text-[8px] font-bold font-mono animate-pulse">
+              ĐANG XỬ LÝ
             </span>
           ) : (
             <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-md text-[9px] font-bold font-mono">
@@ -678,6 +684,30 @@ export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOp
           </div>
         )
       ) : null}
+
+      {card.tiktokShareUrl && (
+        <a
+          href={card.tiktokShareUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          title="Xem video thật trên TikTok"
+          className="text-[10px] text-[#FE2C55] font-mono bg-[#FE2C55]/10 border border-[#FE2C55]/30 px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-1.5 hover:bg-[#FE2C55]/20 transition-colors cursor-pointer"
+        >
+          <span className="flex items-center gap-1.5 font-bold">
+            <svg className="w-3.5 h-3.5 fill-current text-[#FE2C55]" viewBox="0 0 24 24">
+              <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 3 15.7a6.34 6.34 0 0 0 10.86 4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.04z"/>
+            </svg>
+            <span>Xem video trên TikTok</span>
+          </span>
+          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+        </a>
+      )}
+      {!card.tiktokShareUrl && card.channel === "TikTok" && card.status === "published" && (
+        <div className="text-[10px] text-emerald-800 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl">
+          TikTok đã xác nhận đăng thành công. Bài SELF_ONLY cần xem trong hồ sơ TikTok đã kết nối.
+        </div>
+      )}
 
       <div className="flex flex-col gap-2 border-t border-slate-100 pt-2.5 mt-auto">
         <div className="flex items-center justify-between text-gray-400 font-mono text-[8px] select-none">

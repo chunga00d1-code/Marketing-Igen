@@ -953,7 +953,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Clip ${i + 1}: ${t.start}s �  ${t.end}s | rate=${t.playbackRate || 1}x`}
+                        title={`Clip ${i + 1}: ${t.start}s - ${t.end}s | rate=${t.playbackRate || 1}x`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -982,7 +982,7 @@ export function EditVideoWorkspace({
                     return (
                       <div
                         key={i}
-                        title={`Audio ${i + 1}: ${t.start}s �  ${t.end}s | vol=${t.volume}`}
+                        title={`Audio ${i + 1}: ${t.start}s - ${t.end}s | vol=${t.volume}`}
                         onClick={() => {
                           setActiveTimelineIdx(globalIdx);
                           const el = timelineItemRefs.current[globalIdx];
@@ -1130,7 +1130,7 @@ export function EditVideoWorkspace({
             <div className="space-y-6 rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm min-w-0 overflow-hidden">
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video �ầu vào</label>
+                  <label className="text-xs font-bold text-slate-800 uppercase tracking-wide">Video đầu vào</label>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1359,7 +1359,7 @@ export function EditVideoWorkspace({
                 <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-bold text-amber-700">Professional Scene Builder</span>
-                    <span className="text-[10px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-mono">Claude �  HTML+GSAP</span>
+                    <span className="text-[10px] text-amber-500 bg-amber-100 px-2 py-0.5 rounded-full font-mono">Claude 3.5+HTML+GSAP</span>
                   </div>
 
                   {/* Outline + Brand */}

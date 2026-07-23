@@ -4,6 +4,16 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { crudService } from "../service/crud.service";
 import { SupportedModelName } from "../interface/crud.interface";
 
+function sanitizeResourceForClient(modelName: SupportedModelName, item: any) {
+  const value = typeof item?.toObject === "function" ? item.toObject() : { ...(item || {}) };
+  if (modelName === "social-integrations" && value.platform === "TikTok") {
+    delete value.accessToken;
+    delete value.refreshToken;
+    delete value.appSecret;
+  }
+  return value;
+}
+
 export const crudController = {
   async getList(req: AuthenticatedRequest, res: Response) {
     try {
@@ -31,7 +41,7 @@ export const crudController = {
 
       return res.status(200).json({
         status: "success",
-        data: result.items,
+        data: result.items.map((item: any) => sanitizeResourceForClient(modelName, item)),
         total: result.total,
         page: result.page,
         limit: result.limit,
@@ -55,7 +65,7 @@ export const crudController = {
       const item = await crudService.getById(modelName as SupportedModelName, id, companyCode, userRole);
       return res.status(200).json({
         status: "success",
-        data: item,
+        data: sanitizeResourceForClient(modelName as SupportedModelName, item),
       });
     } catch (error: any) {
       console.error("[crudController.getById] Error:", error);
@@ -75,7 +85,7 @@ export const crudController = {
       const item = await crudService.create(modelName, req.body, companyCode);
       return res.status(201).json({
         status: "success",
-        data: item,
+        data: sanitizeResourceForClient(modelName, item),
       });
     } catch (error: any) {
       console.error("[crudController.create] Error:", error);
@@ -96,7 +106,7 @@ export const crudController = {
       const item = await crudService.update(modelName as SupportedModelName, id, req.body, companyCode, userRole);
       return res.status(200).json({
         status: "success",
-        data: item,
+        data: sanitizeResourceForClient(modelName as SupportedModelName, item),
       });
     } catch (error: any) {
       console.error("[crudController.update] Error:", error);
