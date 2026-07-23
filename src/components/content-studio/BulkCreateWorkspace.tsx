@@ -1,55 +1,60 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Check,
   ChevronDown,
-  Copy,
-  FileSpreadsheet,
-  Image as ImageIcon,
-  ImagePlus,
-  Layers3,
-  Minus,
-  MousePointer2,
+  Download,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
+  Redo2,
   Sparkles,
-  Trash2,
-  Type,
-  Upload,
+  Share2,
+  Undo2,
+  Search,
+  Users,
+  Link,
+  ArrowLeft,
+  Home,
+  FilePlus2,
+  Cloud,
+  CloudCheck,
+  CloudOff,
+  LoaderCircle,
 } from 'lucide-react';
+import {
+  bulkCreateService,
+  type BulkAsset,
+  type BulkDataColumn,
+  type BulkImportedRow,
+  type BulkRenderItem,
+  type BulkRenderJob,
+  type BulkTemplate,
+  type BulkTemplatePayload,
+} from '../../services/bulkCreateService';
+import { useAuth } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
+import type { UserProfile } from '../../types';
+import { toast } from '../../pages/Toast';
 
-type EditorTool = 'background' | 'text' | 'image' | 'data';
-type LayerType = 'text' | 'image';
-
-interface TemplateLayer {
-  id: string;
-  type: LayerType;
-  label: string;
-  x: number;
-  y: number;
-  width: number;
-  fontSize: number;
-  color: string;
-}
-
-interface DataRow {
-  id: string;
-  values: Record<string, string>;
-}
-
-const BACKGROUNDS = [
-  { id: 'clean', name: 'Tối giản', className: 'bg-gradient-to-br from-white via-slate-50 to-indigo-100' },
-  { id: 'business', name: 'Doanh nghiệp', className: 'bg-gradient-to-br from-blue-950 via-indigo-700 to-sky-400' },
-  { id: 'sale', name: 'Khuyến mãi', className: 'bg-gradient-to-br from-orange-400 via-rose-500 to-fuchsia-700' },
-  { id: 'nature', name: 'Tự nhiên', className: 'bg-gradient-to-br from-emerald-800 via-teal-600 to-lime-300' },
-];
-
-const TOOLS: Array<{ id: EditorTool; label: string; icon: typeof Layers3 }> = [
-  { id: 'background', label: 'Mẫu nền', icon: Layers3 },
-  { id: 'text', label: 'Văn bản', icon: Type },
-  { id: 'image', label: 'Hình ảnh', icon: ImageIcon },
-  { id: 'data', label: 'Dữ liệu', icon: FileSpreadsheet },
-];
+import type {
+  EditorTool,
+  LayerType,
+  TemplateLayer,
+  DataRow,
+  EditorSnapshot,
+  ResizeCorner,
+  SelectionBox,
+  PageRenderState,
+} from './bulk-create/types';
+import { BACKGROUNDS, TOOLS } from './bulk-create/constants';
+import { EditorPanel } from './bulk-create/EditorPanel';
+import { clamp } from './bulk-create/utils';
+import { PropertiesToolbar } from './bulk-create/PropertiesToolbar';
+import { PageStrip } from './bulk-create/PageStrip';
+import { EditorCanvas } from './bulk-create/EditorCanvas';
+import { ContextMenu } from './bulk-create/ContextMenu';
+import {
+  BULK_SCENE_VERSION,
+  type BulkSceneDocument,
+} from './bulk-create/SceneCanvas';
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -58,69 +63,598 @@ function makeId(prefix: string) {
 function createRow(layers: TemplateLayer[], values: Record<string, string> = {}): DataRow {
   return {
     id: makeId('row'),
-    values: Object.fromEntries(layers.map((layer) => [layer.id, values[layer.id] || ''])),
+    values: Object.fromEntries(layers.map((layer) => [
+      layer.id,
+      values[layer.id] || layer.defaultValue || (layer.type === 'text' ? layer.fieldName : ''),
+    ])),
+    selected: true,
   };
 }
 
-function readImage(file: File, onLoad: (value: string) => void) {
-  const reader = new FileReader();
-  reader.onload = () => onLoad(String(reader.result || ''));
-  reader.readAsDataURL(file);
+function normalizeDataKey(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .trim()
+    .toLocaleLowerCase('vi-VN')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
+function matrixToDataSet(matrix: Array<Array<string | number | boolean>>) {
+  const data = matrix.filter((row) => row.some((cell) => String(cell ?? '').trim()));
+  if (data.length < 2) throw new Error('Dữ liệu cần một dòng tiêu đề và ít nhất một dòng nội dung.');
+  if (data[0].length > 50) throw new Error('Dữ liệu chỉ được tối đa 50 cột.');
+  const labels = data[0].map((cell) => String(cell ?? '').trim());
+  if (labels.some((label) => !label)) throw new Error('Dòng tiêu đề có cột để trống.');
+  const keys = labels.map(normalizeDataKey);
+  if (keys.some((key) => !key)) {
+    throw new Error('Tên cột cần có ít nhất một chữ cái hoặc chữ số.');
+  }
+  if (new Set(keys).size !== keys.length) throw new Error('Dòng tiêu đề có tên cột bị trùng.');
+  const sourceRows = data.slice(1).slice(0, 100);
+  const columns: BulkDataColumn[] = labels.map((label, columnIndex) => {
+    const samples = sourceRows
+      .map((row) => String(row[columnIndex] ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    return {
+      key: keys[columnIndex],
+      label,
+      type: /(ảnh|hình|image|photo|logo|avatar)/i.test(label) ? 'image' : 'text',
+      samples,
+    };
+  });
+  const rows: BulkImportedRow[] = sourceRows.map((row, rowIndex) => ({
+    id: `import-row-${rowIndex + 1}`,
+    selected: true,
+    cells: Object.fromEntries(columns.map((column, columnIndex) => [
+      column.key,
+      String(row[columnIndex] ?? '').trim(),
+    ])),
+  }));
+  return { columns, rows };
 }
 
-export function BulkCreateWorkspace() {
+function estimateTextLayerWidth(text: string, fontSize: number, canvasWidth: number) {
+  const characterCount = Math.max(1, Array.from(text.trim()).length);
+  const estimatedPixelWidth = characterCount * fontSize * 0.58 + fontSize;
+  return clamp(Math.round((estimatedPixelWidth / canvasWidth) * 100), 18, 64);
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('Không thể đọc ảnh đã chọn.'));
+    };
+    reader.onerror = () => reject(new Error('Không thể đọc ảnh đã chọn.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+
+
+
+
+interface BulkCreateWorkspaceProps {
+  onClose?: () => void;
+}
+
+type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+
+interface BulkEditorDraft {
+  version: 1;
+  templateName: string;
+  savedTemplateId: string;
+  backgroundId: string;
+  backgroundImage: string;
+  backgroundColor: string;
+  canvasSize: { width: number; height: number };
+  layers: TemplateLayer[];
+  rows: DataRow[];
+  activeRowId: string;
+  dataColumns: BulkDataColumn[];
+  dataStep: 1 | 2 | 3;
+  dataSourceName: string;
+  googleSheetUrl: string;
+  pagesCreated: boolean;
+  pageResults: Record<string, PageRenderState>;
+  activeJob: BulkRenderJob | null;
+  activeJobPageIds: string[];
+}
+
+export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const editorViewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
-  const resizeRef = useRef<{ layerId: string; startX: number; startWidth: number } | null>(null);
+  const resizeRef = useRef<{ layerId: string; corner: ResizeCorner; pointerX: number; startX: number; startY: number; startWidth: number; startHeight: number } | null>(null);
+  const selectionRef = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
+  const selectionBoxRef = useRef<SelectionBox | null>(null);
+  const undoRef = useRef<EditorSnapshot[]>([]);
+  const redoRef = useRef<EditorSnapshot[]>([]);
   const [activeTool, setActiveTool] = useState<EditorTool>('background');
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [backgroundId, setBackgroundId] = useState('business');
+  const [backgroundId, setBackgroundId] = useState('blank');
   const [backgroundImage, setBackgroundImage] = useState('');
+  const [backgroundColor, setBackgroundColor] = useState('#ffffff');
+  const [backgroundSelected, setBackgroundSelected] = useState(false);
+  const [canvasSize, setCanvasSize] = useState({ width: 1080, height: 1080 });
   const [layers, setLayers] = useState<TemplateLayer[]>([]);
   const [selectedLayerId, setSelectedLayerId] = useState('');
+  const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([]);
+  const [selectionBox, setSelectionBox] = useState<SelectionBox | null>(null);
+  const [editingLayerId, setEditingLayerId] = useState('');
   const [rows, setRows] = useState<DataRow[]>([createRow([])]);
   const [activeRowId, setActiveRowId] = useState(rows[0].id);
   const [sheetInput, setSheetInput] = useState('');
-  const [generatedCount, setGeneratedCount] = useState(0);
+  const [dataColumns, setDataColumns] = useState<BulkDataColumn[]>([]);
+  const [dataStep, setDataStep] = useState<1 | 2 | 3>(1);
+  const [dataSourceName, setDataSourceName] = useState('');
+  const [googleSheetUrl, setGoogleSheetUrl] = useState('');
+  const [loadingSheet, setLoadingSheet] = useState(false);
+  const [templateName, setTemplateName] = useState('Thiết kế chưa đặt tên');
+  const [savedTemplateId, setSavedTemplateId] = useState('');
+  const savedTemplateIdRef = useRef('');
+  const persistRequestRef = useRef<Promise<BulkTemplate> | null>(null);
+  const autoSaveVersionRef = useRef(0);
+  const designSessionRef = useRef(0);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle');
+  const [templates, setTemplates] = useState<BulkTemplate[]>([]);
+  const [communityTemplates, setCommunityTemplates] = useState<BulkTemplate[]>([]);
+  const [jobs, setJobs] = useState<BulkRenderJob[]>([]);
+  const [activeJob, setActiveJob] = useState<BulkRenderJob | null>(null);
+  const [jobItems, setJobItems] = useState<BulkRenderItem[]>([]);
+  const [pagesCreated, setPagesCreated] = useState(false);
+  const [pageResults, setPageResults] = useState<Record<string, PageRenderState>>({});
+  const [activeJobPageIds, setActiveJobPageIds] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const [zoomPercent, setZoomPercent] = useState(50);
+  const [zoomMode, setZoomMode] = useState<'fit' | 'manual'>('fit');
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; targetLayerId?: string } | null>(null);
+  const copiedLayerRef = useRef<TemplateLayer | null>(null);
+  const draftRestoredRef = useRef(false);
+  const rotateRef = useRef<{
+    layerId: string;
+    centerX: number;
+    centerY: number;
+    startAngle: number;
+    startRotation: number;
+  } | null>(null);
+
+  const [uploadedImages, setUploadedImages] = useState<BulkAsset[]>([]);
+  const [uploadingAsset, setUploadingAsset] = useState(false);
+
+  const { user } = useAuth();
+  const draftStorageKey = user
+    ? `bulk-create:draft:${user.companyCode || user.uid}`
+    : '';
+  const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (user?.companyCode) {
+      authService.getUsersByCompany(user.companyCode)
+        .then(setCompanyMembers)
+        .catch((error) => console.error('Lỗi khi tải thành viên công ty:', error));
+    }
+  }, [user?.companyCode]);
+
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    draftRestoredRef.current = false;
+    try {
+      const rawDraft = window.localStorage.getItem(draftStorageKey);
+      if (rawDraft) {
+        const draft = JSON.parse(rawDraft) as Partial<BulkEditorDraft>;
+        if (
+          draft.version === 1 &&
+          Array.isArray(draft.layers) &&
+          Array.isArray(draft.rows) &&
+          draft.rows.length > 0
+        ) {
+          const restoredTemplateId = draft.savedTemplateId || '';
+          savedTemplateIdRef.current = restoredTemplateId;
+          setSavedTemplateId(restoredTemplateId);
+          setTemplateName(draft.templateName || 'Thiết kế chưa đặt tên');
+          setBackgroundId(draft.backgroundId || 'blank');
+          setBackgroundImage(draft.backgroundImage || '');
+          setBackgroundColor(draft.backgroundColor || '#ffffff');
+          if (draft.canvasSize?.width && draft.canvasSize?.height) {
+            setCanvasSize(draft.canvasSize);
+          }
+          setLayers(draft.layers);
+          setRows(draft.rows);
+          setActiveRowId(
+            draft.rows.some((row) => row.id === draft.activeRowId)
+              ? draft.activeRowId || draft.rows[0].id
+              : draft.rows[0].id
+          );
+          setDataColumns(Array.isArray(draft.dataColumns) ? draft.dataColumns : []);
+          setDataStep(draft.dataStep === 2 || draft.dataStep === 3 ? draft.dataStep : 1);
+          setDataSourceName(draft.dataSourceName || '');
+          setGoogleSheetUrl(draft.googleSheetUrl || '');
+          setPagesCreated(Boolean(draft.pagesCreated));
+          setPageResults(draft.pageResults || {});
+          setActiveJob(draft.activeJob || null);
+          setActiveJobPageIds(
+            Array.isArray(draft.activeJobPageIds) ? draft.activeJobPageIds : []
+          );
+        }
+      }
+    } catch (error) {
+      console.warn('[BulkCreate] Không thể khôi phục bản nháp:', error);
+    } finally {
+      draftRestoredRef.current = true;
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftStorageKey || !draftRestoredRef.current) return;
+    const timer = window.setTimeout(() => {
+      const draft: BulkEditorDraft = {
+        version: 1,
+        templateName,
+        savedTemplateId,
+        backgroundId,
+        backgroundImage,
+        backgroundColor,
+        canvasSize,
+        layers,
+        rows,
+        activeRowId,
+        dataColumns,
+        dataStep,
+        dataSourceName,
+        googleSheetUrl,
+        pagesCreated,
+        pageResults,
+        activeJob,
+        activeJobPageIds,
+      };
+      try {
+        const serializedDraft = JSON.stringify(draft);
+        if (serializedDraft.length <= 3_000_000) {
+          window.localStorage.setItem(draftStorageKey, serializedDraft);
+        }
+      } catch (error) {
+        console.warn('[BulkCreate] Không thể lưu bản nháp:', error);
+      }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [
+    activeJob,
+    activeJobPageIds,
+    activeRowId,
+    backgroundColor,
+    backgroundId,
+    backgroundImage,
+    canvasSize,
+    dataColumns,
+    dataSourceName,
+    dataStep,
+    draftStorageKey,
+    googleSheetUrl,
+    layers,
+    pageResults,
+    pagesCreated,
+    rows,
+    savedTemplateId,
+    templateName,
+  ]);
 
   const selectedBackground = BACKGROUNDS.find((background) => background.id === backgroundId);
-  const selectedLayer = layers.find((layer) => layer.id === selectedLayerId) || null;
-  const activeRow = rows.find((row) => row.id === activeRowId) || rows[0];
-  const readyCount = useMemo(
-    () => rows.filter((row) => layers.length > 0 && layers.every((layer) => row.values[layer.id]?.trim())).length,
-    [layers, rows]
+  const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
+  const selectedLayers = useMemo(
+    () => layers.filter((layer) => selectedLayerIds.includes(layer.id)),
+    [layers, selectedLayerIds]
   );
+  const activeRow = rows.find((row) => row.id === activeRowId) || rows[0];
+  const isRowReady = useCallback(
+    (row: DataRow) =>
+      row.selected !== false &&
+      layers.length > 0 &&
+      layers.every((layer) => row.values[layer.id]?.trim()),
+    [layers]
+  );
+  const readyCount = useMemo(
+    () => rows.filter(isRowReady).length,
+    [isRowReady, rows]
+  );
+  const visiblePages = useMemo(() => {
+    if (!pagesCreated) return activeRow ? [activeRow] : [];
+    const selectedRows = rows.filter((row) => row.selected !== false);
+    return selectedRows.length > 0 ? selectedRows : rows.slice(0, 1);
+  }, [activeRow, pagesCreated, rows]);
+  const editorScene = useMemo<BulkSceneDocument>(() => ({
+    sceneVersion: BULK_SCENE_VERSION,
+    canvas: canvasSize,
+    background: backgroundImage
+      ? { type: 'image', imageUrl: backgroundImage }
+      : backgroundId === 'blank'
+        ? { type: 'color', color: backgroundColor }
+        : {
+            type: 'gradient',
+            colors: selectedBackground?.colors || ['#ffffff', '#ffffff'],
+          },
+    layers,
+  }), [
+    backgroundColor,
+    backgroundId,
+    backgroundImage,
+    canvasSize,
+    layers,
+    selectedBackground?.colors,
+  ]);
+  const fitZoomPercent = useMemo(() => {
+    if (!viewportSize.width || !viewportSize.height) return 50;
+    const horizontalPadding = viewportSize.width < 720 ? 48 : 96;
+    const availableWidth = Math.max(160, viewportSize.width - horizontalPadding);
+    const availableHeight = Math.max(160, viewportSize.height - 96);
+    return clamp(Math.floor(Math.min(availableWidth / canvasSize.width, availableHeight / canvasSize.height) * 100), 10, 100);
+  }, [canvasSize.height, canvasSize.width, viewportSize.height, viewportSize.width]);
+  const canvasDisplayWidth = canvasSize.width * zoomPercent / 100;
+  const canvasDisplayHeight = canvasSize.height * zoomPercent / 100;
 
-  const updateLayer = (layerId: string, updates: Partial<TemplateLayer>) => {
-    setLayers((current) => current.map((layer) => layer.id === layerId ? { ...layer, ...updates } : layer));
+  const selectLayer = useCallback((layerId: string) => {
+    setSelectedLayerId(layerId);
+    setSelectedLayerIds(layerId ? [layerId] : []);
+  }, []);
+
+  const clearLayerSelection = useCallback(() => {
+    setSelectedLayerId('');
+    setSelectedLayerIds([]);
+  }, []);
+
+  const refreshLibrary = useCallback(async () => {
+    try {
+      const [templateList, communityList, jobList, assetList] = await Promise.all([
+        bulkCreateService.listTemplates(),
+        bulkCreateService.listCommunityTemplates(),
+        bulkCreateService.listJobs(),
+        bulkCreateService.listAssets(),
+      ]);
+      setTemplates(templateList);
+      setCommunityTemplates(communityList);
+      setJobs(jobList);
+      setUploadedImages(assetList);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  useEffect(() => { void refreshLibrary(); }, [refreshLibrary]);
+
+  const syncPageResults = useCallback((
+    items: BulkRenderItem[],
+    pageIds: string[]
+  ) => {
+    if (pageIds.length === 0) return;
+    setPageResults((current) => {
+      const next = { ...current };
+      items.forEach((item) => {
+        const pageId = pageIds[item.rowIndex];
+        if (!pageId) return;
+        next[pageId] = {
+          status: item.status,
+          outputUrl: item.outputUrl,
+          errorMessage: item.errorMessage,
+        };
+      });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeJob || !['queued', 'processing'].includes(activeJob.status)) return;
+    const timer = window.setInterval(() => {
+      void Promise.all([
+        bulkCreateService.getJob(activeJob._id),
+        bulkCreateService.listItems(activeJob._id),
+      ]).then(([job, items]) => {
+        setActiveJob(job);
+        setJobItems(items);
+        syncPageResults(items, activeJobPageIds);
+        setJobs((current) => [job, ...current.filter((item) => item._id !== job._id)]);
+        if (!['queued', 'processing'].includes(job.status)) {
+          if (job.status === 'completed') {
+            toast.success(`Đã tạo xong ${job.completedItems} ảnh.`);
+          } else if (job.status === 'partial') {
+            toast.error(
+              `Đã tạo ${job.completedItems} ảnh, ${job.failedItems} ảnh bị lỗi.`
+            );
+          } else if (job.status === 'failed') {
+            toast.error(job.errorMessage || 'Không thể tạo ảnh.');
+          }
+        }
+      }).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)));
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [activeJob, activeJobPageIds, syncPageResults]);
+
+  useEffect(() => {
+    const viewport = editorViewportRef.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setViewportSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+    });
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      setZoomMode('manual');
+      setZoomPercent((current) => clamp(current + (event.deltaY > 0 ? -5 : 5), 10, 200));
+    };
+    observer.observe(viewport);
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      viewport.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (zoomMode === 'fit') setZoomPercent(fitZoomPercent);
+  }, [fitZoomPercent, zoomMode]);
+
+  const changeZoom = (nextZoom: number) => {
+    setZoomMode('manual');
+    setZoomPercent(clamp(Math.round(nextZoom), 10, 200));
   };
 
-  const addLayer = (type: LayerType, initialValue = '') => {
+  const fitCanvasToViewport = () => {
+    setZoomMode('fit');
+    setZoomPercent(fitZoomPercent);
+  };
+
+  useEffect(() => {
+    const liveIds = new Set(layers.map((layer) => layer.id));
+    setSelectedLayerIds((current) => {
+      const next = current.filter((id) => liveIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+    setSelectedLayerId((current) => (current && liveIds.has(current) ? current : ''));
+  }, [layers]);
+
+  const updateLayer = useCallback((layerId: string, updates: Partial<TemplateLayer>) => {
+    setLayers((current) => current.map((layer) => layer.id === layerId ? { ...layer, ...updates } : layer));
+  }, []);
+
+  const recordLayerHistory = useCallback(() => {
+    undoRef.current = [...undoRef.current.slice(-29), {
+      layers: layers.map((layer) => ({ ...layer })),
+      rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
+    }];
+    redoRef.current = [];
+  }, [layers, rows]);
+
+  const changeLayer = useCallback((layerId: string, updates: Partial<TemplateLayer>) => {
+    recordLayerHistory();
+    updateLayer(layerId, updates);
+  }, [recordLayerHistory, updateLayer]);
+
+  const undoLayers = () => {
+    const previous = undoRef.current.pop();
+    if (!previous) return;
+    redoRef.current.push({ layers: layers.map((layer) => ({ ...layer })), rows: rows.map((row) => ({ ...row, values: { ...row.values } })) });
+    setLayers(previous.layers);
+    setRows(previous.rows);
+    setSelectedLayerId('');
+    setSelectedLayerIds([]);
+  };
+
+  const redoLayers = () => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current.push({ layers: layers.map((layer) => ({ ...layer })), rows: rows.map((row) => ({ ...row, values: { ...row.values } })) });
+    setLayers(next.layers);
+    setRows(next.rows);
+    setSelectedLayerId('');
+    setSelectedLayerIds([]);
+  };
+
+
+
+  const addLayer = (type: LayerType, initialValue = '', overrides?: Partial<TemplateLayer>) => {
+    recordLayerHistory();
     const number = layers.filter((layer) => layer.type === type).length + 1;
+
+    const baseFieldName = overrides?.fieldName || (type === 'text' ? `Nội dung chữ ${number}` : `Hình ảnh ${number}`);
+    let finalFieldName = baseFieldName;
+    let nameNumber = 2;
+    while (layers.some((l) => l.fieldName.toLowerCase() === finalFieldName.toLowerCase())) {
+      finalFieldName = `${baseFieldName} ${nameNumber++}`;
+    }
+    const initialFontSize = overrides?.fontSize || 60;
+    const initialText = initialValue || finalFieldName;
+
     const layer: TemplateLayer = {
       id: makeId('field'),
       type,
-      label: type === 'text' ? `Nội dung chữ ${number}` : `Hình ảnh ${number}`,
+      fieldName: finalFieldName,
       x: type === 'text' ? 10 : 30,
       y: type === 'text' ? 12 + (number - 1) * 12 : 38,
-      width: type === 'text' ? 80 : 40,
-      fontSize: type === 'text' ? 34 : 24,
-      color: '#ffffff',
+      width: type === 'text'
+        ? estimateTextLayerWidth(initialText, initialFontSize, canvasSize.width)
+        : 40,
+      height: type === 'text' ? Math.max(4, Math.round(initialFontSize * 0.125)) : 40,
+      rotation: 0,
+      zIndex: layers.length,
+      locked: false,
+      fit: 'contain',
+      fontSize: type === 'text' ? 60 : 24,
+      fontFamily: 'DejaVu Sans',
+      fontWeight: 700,
+      color: '#000000',
+      textAlign: 'left',
+      defaultValue: initialValue || (type === 'text' ? finalFieldName : ''),
+      ...overrides,
     };
     setLayers((current) => [...current, layer]);
-    setRows((current) => current.map((row, index) => ({
+    setRows((current) => current.map((row) => ({
       ...row,
-      values: { ...row.values, [layer.id]: index === 0 ? initialValue : '' },
+      values: {
+        ...row.values,
+        [layer.id]: layer.defaultValue || (type === 'text' ? layer.fieldName : ''),
+      },
     })));
     setSelectedLayerId(layer.id);
+    setSelectedLayerIds([layer.id]);
+    setBackgroundSelected(false);
     setActiveTool(type);
   };
 
-  const removeLayer = (layerId: string) => {
+  const uploadLibraryAsset = async (file: File, target: 'background' | 'layer') => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Vui lòng chọn tệp hình ảnh.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Ảnh tải lên không được vượt quá 10 MB.');
+      return;
+    }
+
+    setUploadingAsset(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const asset = await bulkCreateService.uploadLibraryAsset(dataUrl, file.name);
+      setUploadedImages((current) => [asset, ...current.filter((item) => item._id !== asset._id)]);
+      if (target === 'background') {
+        setBackgroundImage(asset.url);
+        setBackgroundId('');
+        setBackgroundSelected(true);
+        clearLayerSelection();
+      } else {
+        addLayer('image', asset.url);
+      }
+      toast.success('Đã tải ảnh lên thư viện.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể tải ảnh lên thư viện.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setUploadingAsset(false);
+    }
+  };
+
+  const deleteUploadedImage = async (assetId: string) => {
+    try {
+      await bulkCreateService.archiveAsset(assetId);
+      setUploadedImages((current) => current.filter((item) => item._id !== assetId));
+      toast.success('Đã xóa ảnh khỏi lịch sử.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể xóa ảnh khỏi lịch sử.';
+      setErrorMessage(message);
+      toast.error(message);
+    }
+  };
+
+  const removeLayer = useCallback((layerId: string) => {
+    recordLayerHistory();
     setLayers((current) => current.filter((layer) => layer.id !== layerId));
     setRows((current) => current.map((row) => {
       const values = { ...row.values };
@@ -128,11 +662,208 @@ export function BulkCreateWorkspace() {
       return { ...row, values };
     }));
     setSelectedLayerId('');
+    setSelectedLayerIds([]);
+  }, [recordLayerHistory]);
+
+  const duplicateLayer = (source: TemplateLayer) => {
+    recordLayerHistory();
+    const baseName = `${source.fieldName} bản sao`;
+    let fieldName = baseName;
+    let copyNumber = 2;
+    while (layers.some((layer) => layer.fieldName.trim().toLocaleLowerCase('vi-VN') === fieldName.toLocaleLowerCase('vi-VN'))) {
+      fieldName = `${baseName} ${copyNumber++}`;
+    }
+    const duplicated = { ...source, id: makeId('field'), fieldName, x: clamp(source.x + 3, 0, 100 - source.width), y: clamp(source.y + 3, 0, 100 - source.height), zIndex: layers.length, locked: false };
+    setLayers((current) => [...current, duplicated]);
+    setRows((current) => current.map((row) => ({ ...row, values: { ...row.values, [duplicated.id]: row.values[source.id] || '' } })));
+    setSelectedLayerId(duplicated.id);
+    setSelectedLayerIds([duplicated.id]);
   };
 
+  const removeSelectedLayers = useCallback(() => {
+    if (selectedLayerIds.length === 0) return;
+    recordLayerHistory();
+    const ids = new Set(selectedLayerIds);
+    setLayers((current) => current.filter((layer) => !ids.has(layer.id)));
+    setRows((current) => current.map((row) => {
+      const values = { ...row.values };
+      ids.forEach((layerId) => {
+        delete values[layerId];
+      });
+      return { ...row, values };
+    }));
+    clearLayerSelection();
+  }, [clearLayerSelection, recordLayerHistory, selectedLayerIds]);
+
+  const duplicateSelectedLayers = useCallback(() => {
+    if (selectedLayers.length === 0) return;
+    recordLayerHistory();
+    const usedNames = new Set(layers.map((layer) => layer.fieldName.trim().toLocaleLowerCase('vi-VN')));
+    const duplicatedLayers = selectedLayers.map((source, index) => {
+      const baseName = `${source.fieldName} Copy`;
+      let fieldName = baseName;
+      let copyNumber = 2;
+      while (usedNames.has(fieldName.trim().toLocaleLowerCase('vi-VN'))) {
+        fieldName = `${baseName} ${copyNumber++}`;
+      }
+      usedNames.add(fieldName.trim().toLocaleLowerCase('vi-VN'));
+      return {
+        ...source,
+        id: makeId('field'),
+        fieldName,
+        x: clamp(source.x + 4, 0, 100 - source.width),
+        y: clamp(source.y + 4, 0, 100 - source.height),
+        zIndex: layers.length + index,
+        locked: false,
+      };
+    });
+    setLayers((current) => [...current, ...duplicatedLayers]);
+    setRows((current) => current.map((row) => {
+      const values = { ...row.values };
+      duplicatedLayers.forEach((layer, index) => {
+        values[layer.id] = row.values[selectedLayers[index].id] || '';
+      });
+      return { ...row, values };
+    }));
+    setSelectedLayerId(duplicatedLayers[duplicatedLayers.length - 1]?.id || '');
+    setSelectedLayerIds(duplicatedLayers.map((layer) => layer.id));
+  }, [layers, recordLayerHistory, selectedLayers]);
+
+  const toggleLockSelectedLayers = useCallback(() => {
+    if (selectedLayerIds.length === 0) return;
+    recordLayerHistory();
+    const ids = new Set(selectedLayerIds);
+    const shouldLock = selectedLayers.some((layer) => !layer.locked);
+    setLayers((current) => current.map((layer) => ids.has(layer.id) ? { ...layer, locked: shouldLock } : layer));
+  }, [recordLayerHistory, selectedLayerIds, selectedLayers]);
+
+  const handleCopy = useCallback(() => {
+    const selected = layers.find((l) => l.id === selectedLayerId);
+    if (selected) {
+      copiedLayerRef.current = { ...selected };
+    }
+  }, [layers, selectedLayerId]);
+
+  const handlePaste = useCallback(() => {
+    if (!copiedLayerRef.current) return;
+    recordLayerHistory();
+    const newLayer: TemplateLayer = {
+      ...copiedLayerRef.current,
+      id: makeId('field'),
+      fieldName: `${copiedLayerRef.current.fieldName} Copy`,
+      x: clamp(copiedLayerRef.current.x + 4, 0, 90),
+      y: clamp(copiedLayerRef.current.y + 4, 0, 90),
+      zIndex: layers.length,
+    };
+    setLayers((current) => [...current, newLayer]);
+    setSelectedLayerId(newLayer.id);
+    setSelectedLayerIds([newLayer.id]);
+  }, [layers, recordLayerHistory]);
+
+  const handleDuplicate = useCallback(() => {
+    if (selectedLayerIds.length > 1) {
+      duplicateSelectedLayers();
+      return;
+    }
+    const selected = layers.find((l) => l.id === selectedLayerId);
+    if (!selected) return;
+    recordLayerHistory();
+    const newLayer: TemplateLayer = {
+      ...selected,
+      id: makeId('field'),
+      fieldName: `${selected.fieldName} Copy`,
+      x: clamp(selected.x + 4, 0, 90),
+      y: clamp(selected.y + 4, 0, 90),
+      zIndex: layers.length,
+    };
+    setLayers((current) => [...current, newLayer]);
+    setSelectedLayerId(newLayer.id);
+    setSelectedLayerIds([newLayer.id]);
+  }, [
+    duplicateSelectedLayers,
+    layers,
+    recordLayerHistory,
+    selectedLayerId,
+    selectedLayerIds.length,
+  ]);
+
+  const handleDelete = useCallback(() => {
+    if (selectedLayerIds.length > 1) {
+      removeSelectedLayers();
+    } else if (selectedLayerId) {
+      removeLayer(selectedLayerId);
+    } else if (backgroundSelected) {
+      recordLayerHistory();
+      setBackgroundImage('');
+      setBackgroundId('blank');
+    }
+  }, [
+    backgroundSelected,
+    selectedLayerId,
+    selectedLayerIds.length,
+    removeSelectedLayers,
+    removeLayer,
+    recordLayerHistory,
+  ]);
+
+  const handleResize = useCallback((width: number, height: number) => {
+    setCanvasSize({ width, height });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA' ||
+          activeElement.tagName === 'SELECT' ||
+          activeElement.getAttribute('contenteditable') === 'true')
+      ) {
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey) {
+        if (event.key.toLowerCase() === 'c') {
+          event.preventDefault();
+          handleCopy();
+        } else if (event.key.toLowerCase() === 'v') {
+          event.preventDefault();
+          handlePaste();
+        } else if (event.key.toLowerCase() === 'd') {
+          event.preventDefault();
+          handleDuplicate();
+        }
+      } else if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        handleDelete();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleCopy, handlePaste, handleDuplicate, handleDelete]);
+
   const updateCell = (rowId: string, layerId: string, value: string) => {
+    const layer = layers.find((item) => item.id === layerId);
+    if (!layer) return;
+    const bindingKey = layer.dataBinding?.columnKey;
+    if (!bindingKey) {
+      setLayers((current) => current.map((item) =>
+        item.id === layerId ? { ...item, defaultValue: value } : item
+      ));
+      setRows((current) => current.map((row) => ({
+        ...row,
+        values: { ...row.values, [layerId]: value },
+      })));
+      return;
+    }
     setRows((current) => current.map((row) => row.id === rowId
-      ? { ...row, values: { ...row.values, [layerId]: value } }
+      ? {
+          ...row,
+          values: { ...row.values, [layerId]: value },
+          sourceCells: { ...row.sourceCells, [bindingKey]: value },
+        }
       : row));
   };
 
@@ -140,15 +871,26 @@ export function BulkCreateWorkspace() {
     const row = createRow(layers);
     setRows((current) => [...current, row]);
     setActiveRowId(row.id);
+    setPagesCreated(true);
   };
 
   const duplicateRow = (row: DataRow) => {
-    const duplicated = createRow(layers, row.values);
+    const duplicated = {
+      ...createRow(layers, row.values),
+      sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
+    };
     setRows((current) => [...current, duplicated]);
     setActiveRowId(duplicated.id);
+    setPagesCreated(true);
   };
 
   const removeRow = (rowId: string) => {
+    setPageResults((current) => {
+      if (!current[rowId]) return current;
+      const next = { ...current };
+      delete next[rowId];
+      return next;
+    });
     if (rows.length === 1) {
       const replacement = createRow(layers);
       setRows([replacement]);
@@ -160,22 +902,650 @@ export function BulkCreateWorkspace() {
     if (activeRowId === rowId) setActiveRowId(nextRows[0].id);
   };
 
-  const importSheet = () => {
-    const lines = sheetInput.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    if (lines.length === 0 || layers.length === 0) return;
-    const imported = lines.map((line) => {
-      const cells = line.split('\t');
-      return createRow(layers, Object.fromEntries(layers.map((layer, index) => [layer.id, cells[index]?.trim() || ''])));
+  const applyImportedData = (
+    columns: BulkDataColumn[],
+    importedRows: BulkImportedRow[],
+    sourceName: string
+  ) => {
+    const columnKeys = new Set(columns.map((column) => column.key));
+    const claimedColumnKeys = new Set<string>();
+    const nextLayers = layers.map((layer) => {
+      const currentColumn = layer.dataBinding
+        ? columns.find((column) =>
+            column.key === layer.dataBinding?.columnKey && column.type === layer.type
+          )
+        : undefined;
+      if (
+        currentColumn &&
+        columnKeys.has(currentColumn.key) &&
+        !claimedColumnKeys.has(currentColumn.key)
+      ) {
+        claimedColumnKeys.add(currentColumn.key);
+        return layer;
+      }
+      const exactColumn = columns.find((column) =>
+        column.key === normalizeDataKey(layer.fieldName) &&
+        column.type === layer.type &&
+        !claimedColumnKeys.has(column.key)
+      );
+      if (exactColumn) claimedColumnKeys.add(exactColumn.key);
+      return exactColumn
+        ? {
+            ...layer,
+            dataBinding: {
+              columnKey: exactColumn.key,
+              columnLabel: exactColumn.label,
+            },
+          }
+        : { ...layer, dataBinding: undefined };
     });
-    setRows(imported);
-    setActiveRowId(imported[0].id);
+    const nextRows: DataRow[] = importedRows.map((row) => ({
+      id: row.id || makeId('row'),
+      sourceCells: row.cells,
+      selected: row.selected !== false,
+      values: Object.fromEntries(nextLayers.map((layer) => [
+        layer.id,
+        layer.dataBinding
+          ? row.cells[layer.dataBinding.columnKey] || ''
+          : layer.defaultValue || (layer.type === 'text' ? layer.fieldName : ''),
+      ])),
+    }));
+    setLayers(nextLayers);
+    setDataColumns(columns);
+    setRows(nextRows);
+    setActiveRowId(nextRows[0]?.id || '');
+    setDataSourceName(sourceName);
+    setDataStep(2);
     setSheetInput('');
+    setPagesCreated(false);
+    setPageResults({});
+    setActiveJobPageIds([]);
   };
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>, layer: TemplateLayer) => {
+  const connectLayerData = (layerId: string, columnKey: string) => {
+    const column = dataColumns.find((item) => item.key === columnKey);
+    const layer = layers.find((item) => item.id === layerId);
+    if (!layer) return;
+    const connectedLayer = column
+      ? layers.find((item) =>
+          item.id !== layerId && item.dataBinding?.columnKey === column.key
+        )
+      : undefined;
+    if (column && connectedLayer) {
+      toast.error(`Cột “${column.label}” đã được kết nối với “${connectedLayer.fieldName}”.`);
+      return;
+    }
+    if (column && column.type !== layer.type) {
+      toast.error(
+        layer.type === 'image'
+          ? 'Khung ảnh chỉ có thể kết nối với cột ảnh.'
+          : 'Ô chữ chỉ có thể kết nối với cột văn bản.'
+      );
+      return;
+    }
+    const dataBinding = column
+      ? { columnKey: column.key, columnLabel: column.label }
+      : undefined;
+    setLayers((current) => current.map((item) =>
+      item.id === layerId ? { ...item, dataBinding } : item
+    ));
+    setRows((current) => current.map((row) => ({
+      ...row,
+      values: {
+        ...row.values,
+        [layerId]: column
+          ? row.sourceCells?.[column.key] || ''
+          : layer.defaultValue || (layer.type === 'text' ? layer.fieldName : ''),
+      },
+    })));
+  };
+
+  const autoMatchData = () => {
+    const claimedColumnKeys = new Set<string>();
+    const matchedLayers = layers.map((layer) => {
+      const currentColumn = layer.dataBinding
+        ? dataColumns.find((column) =>
+            column.key === layer.dataBinding?.columnKey && column.type === layer.type
+          )
+        : undefined;
+      if (currentColumn && !claimedColumnKeys.has(currentColumn.key)) {
+        claimedColumnKeys.add(currentColumn.key);
+        return layer;
+      }
+      const column = dataColumns.find((item) =>
+        item.key === normalizeDataKey(layer.fieldName) &&
+        item.type === layer.type &&
+        !claimedColumnKeys.has(item.key)
+      );
+      if (column) claimedColumnKeys.add(column.key);
+      return column
+        ? {
+            ...layer,
+            dataBinding: {
+              columnKey: column.key,
+              columnLabel: column.label,
+            },
+          }
+        : { ...layer, dataBinding: undefined };
+    });
+    setLayers(matchedLayers);
+    setRows((current) => current.map((row) => ({
+      ...row,
+      values: Object.fromEntries(matchedLayers.map((layer) => [
+        layer.id,
+        layer.dataBinding
+          ? row.sourceCells?.[layer.dataBinding.columnKey] || ''
+          : layer.defaultValue || row.values[layer.id] || (layer.type === 'text' ? layer.fieldName : ''),
+      ])),
+    })));
+  };
+
+  const toggleImportedRow = (rowId: string) => {
+    setRows((current) => {
+      const nextRows = current.map((row) =>
+        row.id === rowId ? { ...row, selected: row.selected === false } : row
+      );
+      const activeStillVisible = nextRows.some(
+        (row) => row.id === activeRowId && row.selected !== false
+      );
+      if (!activeStillVisible) {
+        setActiveRowId(
+          nextRows.find((row) => row.selected !== false)?.id || nextRows[0]?.id || ''
+        );
+      }
+      return nextRows;
+    });
+  };
+
+  const selectAllImportedRows = (selected: boolean) => {
+    setRows((current) => current.map((row) => ({ ...row, selected })));
+    if (selected && rows[0]) setActiveRowId(rows[0].id);
+  };
+
+  const importGoogleSheet = async () => {
+    if (!googleSheetUrl.trim()) return;
+    setLoadingSheet(true);
+    setErrorMessage('');
+    try {
+      const preview = await bulkCreateService.previewPublicGoogleSheet(
+        googleSheetUrl.trim()
+      );
+      applyImportedData(preview.columns, preview.rows, `Google Sheet · ${preview.range}`);
+      toast.success(`Đã nhập ${preview.rows.length} dòng từ Google Sheet.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể đọc Google Sheet.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setLoadingSheet(false);
+    }
+  };
+
+  const importSheet = () => {
+    const matrix = sheetInput
+      .split(/\r?\n/)
+      .filter((line) => line.trim())
+      .map((line) => line.split('\t'));
+    const dataSet = matrixToDataSet(matrix);
+    applyImportedData(dataSet.columns, dataSet.rows, 'Dữ liệu đã dán');
+  };
+
+  const importExcel = async (file: File) => {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean>>(sheet, { header: 1, raw: false });
+    const dataSet = matrixToDataSet(matrix);
+    applyImportedData(dataSet.columns, dataSet.rows, file.name);
+  };
+
+  const buildTemplatePayload = useCallback(async (): Promise<BulkTemplatePayload> => {
+    if (layers.length === 0) throw new Error('Hãy thêm ít nhất một trường chữ hoặc ảnh.');
+    const background = BACKGROUNDS.find((item) => item.id === backgroundId);
+    let uploadedBackground = backgroundImage;
+    if (uploadedBackground.startsWith('data:')) {
+      uploadedBackground = await bulkCreateService.uploadAsset(uploadedBackground, 'igen_erp/bulk-create/backgrounds');
+      setBackgroundImage(uploadedBackground);
+    }
+    return {
+      sceneVersion: BULK_SCENE_VERSION,
+      name: templateName.trim() || 'Thiết kế chưa đặt tên',
+      canvas: canvasSize,
+      background: uploadedBackground
+        ? { type: 'image', imageUrl: uploadedBackground }
+        : backgroundId === 'blank'
+          ? { type: 'color', color: backgroundColor }
+          : { type: 'gradient', colors: background?.colors || ['#ffffff', '#ffffff'] },
+      layers,
+    };
+  }, [
+    backgroundColor,
+    backgroundId,
+    backgroundImage,
+    canvasSize,
+    layers,
+    templateName,
+  ]);
+
+  const persistTemplate = useCallback(async (expectedDesignSession?: number) => {
+    const payload = await buildTemplatePayload();
+    if (persistRequestRef.current) {
+      await persistRequestRef.current.catch(() => undefined);
+    }
+    const request = savedTemplateIdRef.current
+      ? bulkCreateService.updateTemplate(savedTemplateIdRef.current, payload)
+      : bulkCreateService.createTemplate(payload);
+    persistRequestRef.current = request;
+    try {
+      const template = await request;
+      const belongsToCurrentDesign =
+        expectedDesignSession === undefined ||
+        designSessionRef.current === expectedDesignSession;
+      if (belongsToCurrentDesign) {
+        savedTemplateIdRef.current = template._id;
+        setSavedTemplateId(template._id);
+      }
+      setTemplates((current) => [template, ...current.filter((item) => item._id !== template._id)]);
+      return template;
+    } finally {
+      if (persistRequestRef.current === request) {
+        persistRequestRef.current = null;
+      }
+    }
+  }, [buildTemplatePayload]);
+
+  const saveTemplate = async () => {
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      return await persistTemplate();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+      throw error;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    autoSaveVersionRef.current += 1;
+    const version = autoSaveVersionRef.current;
+    const designSession = designSessionRef.current;
+    if (layers.length === 0) {
+      setAutoSaveStatus('idle');
+      return;
+    }
+
+    setAutoSaveStatus('dirty');
+    const timer = window.setTimeout(() => {
+      setAutoSaveStatus('saving');
+      void persistTemplate(designSession)
+        .then(() => {
+          if (autoSaveVersionRef.current === version) {
+            setAutoSaveStatus('saved');
+          }
+        })
+        .catch((error) => {
+          if (autoSaveVersionRef.current === version) {
+            setAutoSaveStatus('error');
+          }
+          console.error('[BulkCreate] Auto-save failed:', error);
+        });
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [layers.length, persistTemplate]);
+
+  const uploadReadyRows = async () => {
+    const readyRows = rows.filter(isRowReady);
+    const uploaded: Array<Record<string, string>> = [];
+    const uploadedImageUrls = new Map<string, string>();
+    for (const row of readyRows) {
+      const values = { ...row.values };
+      for (const layer of layers) {
+        const imageValue = values[layer.id] || '';
+        if (
+          layer.type === 'image' &&
+          (imageValue.startsWith('data:') ||
+            (imageValue.startsWith('https://') && !/^https:\/\/res\.cloudinary\.com\//i.test(imageValue)))
+        ) {
+          const cachedUrl = uploadedImageUrls.get(imageValue);
+          if (cachedUrl) {
+            values[layer.id] = cachedUrl;
+          } else {
+            const uploadedUrl = await bulkCreateService.uploadAsset(imageValue, 'igen_erp/bulk-create/inputs');
+            uploadedImageUrls.set(imageValue, uploadedUrl);
+            values[layer.id] = uploadedUrl;
+          }
+        }
+      }
+      uploaded.push(values);
+    }
+    setRows((current) => current.map((row) => {
+      const index = readyRows.findIndex((ready) => ready.id === row.id);
+      return index >= 0 ? { ...row, values: uploaded[index] } : row;
+    }));
+    return {
+      values: uploaded,
+      pageIds: readyRows.map((row) => row.id),
+    };
+  };
+
+  const createPages = () => {
+    const selectedRows = rows.filter((row) => row.selected !== false);
+    if (selectedRows.length === 0) return;
+    setPagesCreated(true);
+    setActiveRowId(selectedRows[0].id);
+    setSidebarOpen(false);
+    toast.success(`Đã đưa ${selectedRows.length} trang vào thiết kế.`);
+  };
+
+  const startGeneration = async () => {
+    if (readyCount === 0) return;
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      const template = await persistTemplate();
+      const uploadedRows = await uploadReadyRows();
+      const job = await bulkCreateService.createJob(template._id, uploadedRows.values);
+      setPagesCreated(true);
+      setActiveJobPageIds(uploadedRows.pageIds);
+      setPageResults((current) => {
+        const next = { ...current };
+        uploadedRows.pageIds.forEach((pageId) => {
+          next[pageId] = { status: 'queued' };
+        });
+        return next;
+      });
+      setActiveJob(job);
+      setJobItems([]);
+      setJobs((current) => [job, ...current.filter((item) => item._id !== job._id)]);
+      setShareMenuOpen(false);
+      toast.success(`Đã bắt đầu tạo ${uploadedRows.values.length} ảnh.`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadTemplate = (template: BulkTemplate) => {
+    autoSaveVersionRef.current += 1;
+    designSessionRef.current += 1;
+    savedTemplateIdRef.current = template._id;
+    setSavedTemplateId(template._id);
+    setAutoSaveStatus('saved');
+    setTemplateName(template.name);
+    setLayers(template.layers);
+    setCanvasSize(template.canvas);
+    setSelectedLayerId('');
+    setBackgroundSelected(false);
+    if (template.background.type === 'image') {
+      setBackgroundImage(template.background.imageUrl || '');
+      setBackgroundId('');
+    } else if (template.background.type === 'color') {
+      setBackgroundImage('');
+      setBackgroundId('blank');
+      setBackgroundColor(template.background.color || '#ffffff');
+    } else {
+      setBackgroundImage('');
+      const match = BACKGROUNDS.find((item) => item.colors.join(',') === (template.background.colors || []).join(','));
+      setBackgroundId(match?.id || 'blank');
+    }
+    setRows([createRow(template.layers)]);
+    setDataColumns([]);
+    setDataSourceName('');
+    setDataStep(1);
+    setPagesCreated(false);
+    setPageResults({});
+    setActiveJobPageIds([]);
+    setActiveJob(null);
+    setJobItems([]);
+  };
+
+  const createNewTemplate = () => {
+    if (draftStorageKey) {
+      window.localStorage.removeItem(draftStorageKey);
+    }
+    autoSaveVersionRef.current += 1;
+    designSessionRef.current += 1;
+    savedTemplateIdRef.current = '';
+    setSavedTemplateId('');
+    setAutoSaveStatus('idle');
+    setTemplateName('Thiết kế chưa đặt tên');
+    setLayers([]);
+    setRows([createRow([])]);
+    setDataColumns([]);
+    setDataSourceName('');
+    setDataStep(1);
+    setGoogleSheetUrl('');
+    setBackgroundId('blank');
+    setBackgroundImage('');
+    setBackgroundColor('#ffffff');
+    setCanvasSize({ width: 1080, height: 1080 });
+    setSelectedLayerId('');
+    setBackgroundSelected(false);
+    setPagesCreated(false);
+    setPageResults({});
+    setActiveJobPageIds([]);
+    setActiveJob(null);
+    setJobItems([]);
+    undoRef.current = [];
+    redoRef.current = [];
+  };
+
+  const archiveTemplate = async (templateId: string) => {
+    try {
+      await bulkCreateService.archiveTemplate(templateId);
+      setTemplates((current) => current.filter((template) => template._id !== templateId));
+      if (savedTemplateId === templateId) createNewTemplate();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const setTemplateVisibility = async (templateId: string, visibility: 'private' | 'public') => {
+    setErrorMessage('');
+    try {
+      const template = visibility === 'public'
+        ? await bulkCreateService.publishTemplate(templateId)
+        : await bulkCreateService.unpublishTemplate(templateId);
+      setTemplates((current) => current.map((item) => item._id === template._id ? template : item));
+      setCommunityTemplates((current) => visibility === 'public'
+        ? [template, ...current.filter((item) => item._id !== template._id)]
+        : current.filter((item) => item._id !== template._id));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const handleToggleVisibility = async (nextVisibility: 'private' | 'public') => {
+    try {
+      let tempId = savedTemplateId;
+      if (!tempId) {
+        const template = await saveTemplate();
+        tempId = template._id;
+      }
+      if (tempId) {
+        await setTemplateVisibility(tempId, nextVisibility);
+        toast.success(`Đã chuyển đổi quyền truy cập thành ${nextVisibility === 'public' ? 'Công khai' : 'Riêng tư'}`);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Không thể cập nhật quyền truy cập.');
+    }
+  };
+
+  const applyCommunityTemplate = async (templateId: string) => {
+    setBusy(true);
+    setErrorMessage('');
+    try {
+      const template = await bulkCreateService.useCommunityTemplate(templateId);
+      setTemplates((current) => [template, ...current]);
+      setCommunityTemplates((current) => current.map((item) => item._id === templateId ? { ...item, useCount: (item.useCount || 0) + 1 } : item));
+      loadTemplate(template);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openJob = async (job: BulkRenderJob) => {
+    setActiveJob(job);
+    setActiveJobPageIds([]);
+    setJobItems(await bulkCreateService.listItems(job._id));
+  };
+
+  const retryJob = async (jobId: string) => {
+    const job = await bulkCreateService.retry(jobId);
+    setActiveJob(job);
+    setJobItems([]);
+    if (activeJobPageIds.length > 0) {
+      setPageResults((current) => {
+        const next = { ...current };
+        activeJobPageIds.forEach((pageId) => {
+          if (next[pageId]?.status === 'failed') {
+            next[pageId] = { status: 'queued' };
+          }
+        });
+        return next;
+      });
+    }
+  };
+
+  const cancelJob = async (jobId: string) => {
+    try {
+      const job = await bulkCreateService.cancel(jobId);
+      setActiveJob(job);
+      setJobs((current) => [job, ...current.filter((item) => item._id !== job._id)]);
+      setPageResults((current) => {
+        const next = { ...current };
+        activeJobPageIds.forEach((pageId) => {
+          if (next[pageId]?.status === 'queued' || next[pageId]?.status === 'processing') {
+            next[pageId] = { status: 'cancelled' };
+          }
+        });
+        return next;
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoLayers(); else undoLayers();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoLayers();
+      } else if (selectedLayerId) {
+        const layer = layers.find((l) => l.id === selectedLayerId);
+        if (layer && layer.type === 'text' && !layer.locked) {
+          const isModifier = event.ctrlKey || event.metaKey || event.altKey;
+          if (!isModifier && (event.key === 'Backspace' || event.key.length === 1)) {
+            setEditingLayerId(selectedLayerId);
+            return;
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  const pickLayersInBox = useCallback((box: SelectionBox, additive: boolean) => {
+    const selectedIds = layers
+      .filter((layer) => {
+        const layerRight = layer.x + layer.width;
+        const layerBottom = layer.y + layer.height;
+        const boxRight = box.left + box.width;
+        const boxBottom = box.top + box.height;
+        return layer.x < boxRight && layerRight > box.left && layer.y < boxBottom && layerBottom > box.top;
+      })
+      .map((layer) => layer.id);
+
+    const nextIds = additive ? Array.from(new Set([...selectedLayerIds, ...selectedIds])) : selectedIds;
+    setSelectedLayerIds(nextIds);
+    setSelectedLayerId(nextIds[nextIds.length - 1] || '');
+    setBackgroundSelected(false);
+    setEditingLayerId('');
+  }, [layers, selectedLayerIds]);
+
+  const handleSelectionStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setSelectedLayerId(layer.id);
+    const startX = clamp((event.clientX - rect.left) / rect.width * 100, 0, 100);
+    const startY = clamp((event.clientY - rect.top) / rect.height * 100, 0, 100);
+    selectionRef.current = { startX, startY, additive: event.shiftKey };
+    const initialBox = { left: startX, top: startY, width: 0, height: 0 };
+    selectionBoxRef.current = initialBox;
+    setSelectionBox(initialBox);
+    setBackgroundSelected(false);
+    setEditingLayerId('');
+    if (!event.shiftKey) {
+      clearLayerSelection();
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleSelectionMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const selection = selectionRef.current;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!selection || !rect || event.buttons === 0) return;
+    const currentX = clamp((event.clientX - rect.left) / rect.width * 100, 0, 100);
+    const currentY = clamp((event.clientY - rect.top) / rect.height * 100, 0, 100);
+    const nextBox = {
+      left: Math.min(selection.startX, currentX),
+      top: Math.min(selection.startY, currentY),
+      width: Math.abs(currentX - selection.startX),
+      height: Math.abs(currentY - selection.startY),
+    };
+    selectionBoxRef.current = nextBox;
+    setSelectionBox(nextBox);
+  };
+
+  const handleSelectionEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const selection = selectionRef.current;
+    const box = selectionBoxRef.current;
+    if (!selection) return;
+    if (box && (box.width > 0.5 || box.height > 0.5)) {
+      pickLayersInBox(box, selection.additive);
+    } else {
+      setBackgroundSelected(true);
+      setActiveTool('background');
+    }
+    selectionRef.current = null;
+    selectionBoxRef.current = null;
+    setSelectionBox(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLElement>, layer: TemplateLayer) => {
+    event.stopPropagation();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    if (editingLayerId !== layer.id) {
+      setEditingLayerId('');
+    }
+    if (event.shiftKey) {
+      setSelectedLayerIds((current) => {
+        const next = current.includes(layer.id) ? current.filter((id) => id !== layer.id) : [...current, layer.id];
+        setSelectedLayerId(next[next.length - 1] || '');
+        return next;
+      });
+    } else {
+      selectLayer(layer.id);
+    }
+    setBackgroundSelected(false);
+    if (event.shiftKey || layer.locked || editingLayerId === layer.id) return;
+    recordLayerHistory();
     dragRef.current = {
       layerId: layer.id,
       offsetX: event.clientX - (rect.left + rect.width * layer.x / 100),
@@ -184,7 +1554,7 @@ export function BulkCreateWorkspace() {
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
     const drag = dragRef.current;
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!drag || !rect || event.buttons === 0) return;
@@ -198,14 +1568,16 @@ export function BulkCreateWorkspace() {
     });
   };
 
-  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = (event: React.PointerEvent<HTMLElement>) => {
     dragRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const handleResizeStart = (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer) => {
+  const handleResizeStart = (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer, corner: ResizeCorner) => {
     event.stopPropagation();
-    resizeRef.current = { layerId: layer.id, startX: event.clientX, startWidth: layer.width };
+    if (layer.locked) return;
+    recordLayerHistory();
+    resizeRef.current = { layerId: layer.id, corner, pointerX: event.clientX, startX: layer.x, startY: layer.y, startWidth: layer.width, startHeight: layer.height };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -216,8 +1588,38 @@ export function BulkCreateWorkspace() {
     if (!resize || !rect || event.buttons === 0) return;
     const layer = layers.find((item) => item.id === resize.layerId);
     if (!layer) return;
-    const delta = (event.clientX - resize.startX) / rect.width * 100;
-    updateLayer(layer.id, { width: clamp(resize.startWidth + delta, 10, Math.max(10, 100 - layer.x)) });
+
+    const deltaX = (event.clientX - resize.pointerX) / rect.width * 100;
+
+    if (resize.corner === 'e') {
+      const nextWidth = clamp(resize.startWidth + deltaX, 5, 100 - resize.startX);
+      updateLayer(layer.id, {
+        width: nextWidth,
+      });
+    } else if (resize.corner === 'w') {
+      const nextWidth = clamp(resize.startWidth - deltaX, 5, resize.startX + resize.startWidth);
+      const nextX = resize.startX + resize.startWidth - nextWidth;
+      updateLayer(layer.id, {
+        x: nextX,
+        width: nextWidth,
+      });
+    } else {
+      const delta = (event.clientX - resize.pointerX) / rect.width * 100;
+      const fromWest = resize.corner === 'nw' || resize.corner === 'sw';
+      const fromNorth = resize.corner === 'nw' || resize.corner === 'ne';
+      const ratio = resize.startHeight / resize.startWidth;
+      const maxWidth = fromWest ? resize.startX + resize.startWidth : 100 - resize.startX;
+      const maxHeight = fromNorth ? resize.startY + resize.startHeight : 100 - resize.startY;
+      const upperWidth = Math.max(5, Math.min(maxWidth, maxHeight / ratio));
+      const nextWidth = clamp(resize.startWidth + (fromWest ? -delta : delta), 5, upperWidth);
+      const nextHeight = nextWidth * ratio;
+      updateLayer(layer.id, {
+        x: fromWest ? resize.startX + resize.startWidth - nextWidth : resize.startX,
+        y: fromNorth ? resize.startY + resize.startHeight - nextHeight : resize.startY,
+        width: nextWidth,
+        height: nextHeight,
+      });
+    }
   };
 
   const handleResizeEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -226,10 +1628,75 @@ export function BulkCreateWorkspace() {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
+  const handleRotateStart = (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer) => {
+    event.stopPropagation();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    recordLayerHistory();
+
+    const layerCenterX = rect.left + rect.width * (layer.x + layer.width / 2) / 100;
+    const layerCenterY = rect.top + rect.height * (layer.y + layer.height / 2) / 100;
+
+    const angle = Math.atan2(event.clientY - layerCenterY, event.clientX - layerCenterX);
+
+    rotateRef.current = {
+      layerId: layer.id,
+      centerX: layerCenterX,
+      centerY: layerCenterY,
+      startAngle: angle,
+      startRotation: layer.rotation || 0,
+    };
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleRotateMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const rotate = rotateRef.current;
+    if (!rotate || event.buttons === 0) return;
+    const layer = layers.find((item) => item.id === rotate.layerId);
+    if (!layer) return;
+
+    const currentAngle = Math.atan2(event.clientY - rotate.centerY, event.clientX - rotate.centerX);
+    const deltaAngle = currentAngle - rotate.startAngle;
+    let nextRotation = Math.round(rotate.startRotation + (deltaAngle * 180) / Math.PI);
+
+    const snap = 3;
+    const targets = [0, 90, 180, 270, -90, -180, -270, 360, -360];
+    for (const t of targets) {
+      if (Math.abs(nextRotation - t) < snap) {
+        nextRotation = t;
+        break;
+      }
+    }
+
+    updateLayer(layer.id, {
+      rotation: nextRotation,
+    });
+  };
+
+  const handleRotateEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    rotateRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+
   return (
-    <div className="relative mx-auto flex h-[calc(100vh-150px)] min-h-[720px] w-full max-w-[1700px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <nav className="flex w-[88px] shrink-0 flex-col border-r border-slate-200 bg-white py-3">
-        <div className="mb-3 flex items-center justify-center"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white"><Sparkles className="h-5 w-5" /></div></div>
+    <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-white">
+      <nav className="flex w-[76px] shrink-0 flex-col border-r border-slate-200 bg-white py-3">
+        <button
+          type="button"
+          onClick={() => {
+            window.history.pushState(null, "", "/tong-quan");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}
+          className="mb-3 flex items-center justify-center transition-transform hover:scale-105"
+          title="Quay lại Trang chủ"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+            <Home className="h-5 w-5" />
+          </div>
+        </button>
         {TOOLS.map((tool) => {
           const Icon = tool.icon;
           const active = activeTool === tool.id;
@@ -242,28 +1709,69 @@ export function BulkCreateWorkspace() {
         })}
       </nav>
 
-      <aside className={`flex shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-200 ${sidebarOpen ? 'w-[340px]' : 'w-0 border-r-0'}`}>
-        <div className="w-[340px]">
+      <aside className={`flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-200 ${sidebarOpen ? 'w-[320px]' : 'w-0 border-r-0'}`}>
+        <div className="flex min-h-0 w-[320px] flex-1">
           <EditorPanel
           activeTool={activeTool}
-          backgroundId={backgroundId}
           backgroundImage={backgroundImage}
+          backgroundColor={backgroundColor}
           layers={layers}
           rows={rows}
+          dataColumns={dataColumns}
+          dataStep={dataStep}
+          dataSourceName={dataSourceName}
           activeRowId={activeRowId}
           sheetInput={sheetInput}
-          onBackground={(id) => { setBackgroundId(id); setBackgroundImage(''); }}
-          onBackgroundUpload={(value) => { setBackgroundImage(value); setBackgroundId(''); }}
+          googleSheetUrl={googleSheetUrl}
+          loadingSheet={loadingSheet}
+          readyCount={readyCount}
+          canvasSize={canvasSize}
+          templates={templates}
+          communityTemplates={communityTemplates}
+          jobs={jobs}
+          activeJob={activeJob}
+          jobItems={jobItems}
+          onBackgroundUpload={(value) => {
+            setBackgroundImage(value);
+            setBackgroundId('');
+            setBackgroundSelected(true);
+            clearLayerSelection();
+          }}
+          onUploadAsset={(file, target) => void uploadLibraryAsset(file, target)}
+          onBackgroundColor={(value) => { setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+          onRemoveBackground={() => { setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
           onAddLayer={addLayer}
-          onSelectLayer={setSelectedLayerId}
+          onSelectLayer={(id) => { selectLayer(id); setBackgroundSelected(false); }}
           onSheetInput={setSheetInput}
           onImportSheet={importSheet}
+          onDataStep={setDataStep}
+          onGoogleSheetUrl={setGoogleSheetUrl}
+          onImportGoogleSheet={() => void importGoogleSheet()}
+          onConnectLayer={connectLayerData}
+          onAutoMatch={autoMatchData}
+          onToggleRow={toggleImportedRow}
+          onSelectAllRows={selectAllImportedRows}
+          onCreatePages={createPages}
+          onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
+          onCanvasSize={setCanvasSize}
           onAddRow={addRow}
           onSelectRow={setActiveRowId}
           onUpdateCell={updateCell}
           onDuplicateRow={duplicateRow}
           onRemoveRow={removeRow}
+          onLoadTemplate={loadTemplate}
+          onArchiveTemplate={(templateId) => void archiveTemplate(templateId)}
+          onPublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'public')}
+          onUnpublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'private')}
+          onUseCommunityTemplate={(templateId) => void applyCommunityTemplate(templateId)}
+          onOpenJob={(job) => void openJob(job)}
+          onRetryJob={(jobId) => void retryJob(jobId)}
+          onCancelJob={(jobId) => void cancelJob(jobId)}
+          onDownloadJob={(job) => void bulkCreateService.downloadZip(job._id, job.templateName)}
           onClose={() => setSidebarOpen(false)}
+          uploadedImages={uploadedImages}
+          uploadingAsset={uploadingAsset}
+          onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
           />
         </div>
       </aside>
@@ -275,109 +1783,340 @@ export function BulkCreateWorkspace() {
       </div>
 
       <main className="flex min-w-0 flex-1 flex-col bg-[#f4f5f7]">
-        <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4">
-          {selectedLayer ? (
-            <div className="flex min-w-0 items-center gap-3">
-              <input value={selectedLayer.label} onChange={(event) => updateLayer(selectedLayer.id, { label: event.target.value })} className="h-10 w-48 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-indigo-500" aria-label="Tên trường" />
-              {selectedLayer.type === 'text' && <><button type="button" onClick={() => updateLayer(selectedLayer.id, { fontSize: Math.max(12, selectedLayer.fontSize - 2) })} className="rounded-lg border border-slate-200 p-2"><Minus className="h-4 w-4" /></button><span className="w-9 text-center text-sm font-bold">{selectedLayer.fontSize}</span><button type="button" onClick={() => updateLayer(selectedLayer.id, { fontSize: Math.min(80, selectedLayer.fontSize + 2) })} className="rounded-lg border border-slate-200 p-2"><Plus className="h-4 w-4" /></button><input type="color" value={selectedLayer.color} onChange={(event) => updateLayer(selectedLayer.id, { color: event.target.value })} className="h-9 w-9 cursor-pointer rounded border-0 bg-transparent" title="Màu chữ" /></>}
-              <button type="button" onClick={() => updateLayer(selectedLayer.id, { width: Math.max(15, selectedLayer.width - 5) })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold">Thu nhỏ</button>
-              <button type="button" onClick={() => updateLayer(selectedLayer.id, { width: Math.min(95, selectedLayer.width + 5) })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold">Phóng to</button>
-              <button type="button" onClick={() => removeLayer(selectedLayer.id)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50" title="Xóa"><Trash2 className="h-5 w-5" /></button>
-            </div>
-          ) : <div className="flex items-center gap-2 text-sm font-medium text-slate-500"><MousePointer2 className="h-4 w-4" /> Chọn chữ hoặc ảnh trên mẫu để chỉnh sửa</div>}
-          <button type="button" onClick={() => setGeneratedCount(readyCount)} disabled={readyCount === 0} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-extrabold text-white hover:bg-indigo-700 disabled:bg-slate-300"><Sparkles className="h-4 w-4" /> Tạo {readyCount} thiết kế</button>
-        </div>
+        <div className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-cyan-500 via-blue-600 to-violet-600 px-4 text-white shadow-sm">
+          <div className="flex shrink-0 items-center gap-2">
 
-        {generatedCount > 0 && <div className="mx-5 mt-4 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800"><span className="inline-flex items-center gap-2"><Check className="h-4 w-4" /> Đã kiểm tra thành công {generatedCount} thiết kế trong bản thử.</span><button type="button" onClick={() => setGeneratedCount(0)} className="text-emerald-700">Đóng</button></div>}
 
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-8">
-          <div>
-            <div ref={canvasRef} className={`relative aspect-square w-[min(62vh,620px)] min-w-[420px] overflow-hidden bg-white shadow-[0_10px_35px_rgba(15,23,42,0.18)] ${backgroundImage ? '' : selectedBackground?.className || ''}`} style={backgroundImage ? { backgroundImage: `url(${backgroundImage})`, backgroundPosition: 'center', backgroundSize: 'cover' } : undefined}>
-              {layers.map((layer) => {
-                const value = activeRow?.values[layer.id] || '';
-                const selected = selectedLayerId === layer.id;
-                return (
-                  <div
-                    key={layer.id}
-                    onPointerDown={(event) => handlePointerDown(event, layer)}
-                    onPointerMove={handlePointerMove}
-                    onPointerUp={handlePointerUp}
-                    onPointerCancel={handlePointerUp}
-                    className={`absolute cursor-move touch-none select-none text-left ${selected ? 'outline outline-2 outline-indigo-500' : 'hover:outline hover:outline-1 hover:outline-indigo-300'}`}
-                    style={{ left: `${layer.x}%`, top: `${layer.y}%`, width: `${layer.width}%` }}
-                  >
-                    {layer.type === 'text' ? <span className="block whitespace-pre-wrap font-black leading-tight [text-shadow:0_2px_7px_rgba(15,23,42,0.5)]" style={{ color: layer.color, fontSize: `${layer.fontSize}px` }}>{value || layer.label}</span> : value ? <img src={value} alt={layer.label} className="block h-auto w-full object-contain" draggable={false} /> : <span className="flex aspect-square w-full items-center justify-center border-2 border-dashed border-white/80 bg-slate-900/20 p-3 text-center text-sm font-bold text-white"><ImagePlus className="mr-2 h-5 w-5" /> {layer.label}</span>}
-                    {selected && <>
-                      <span className="pointer-events-none absolute -left-1.5 -top-1.5 h-3 w-3 rounded-sm border border-indigo-600 bg-white" />
-                      <span className="pointer-events-none absolute -right-1.5 -top-1.5 h-3 w-3 rounded-sm border border-indigo-600 bg-white" />
-                      <span className="pointer-events-none absolute -bottom-1.5 -left-1.5 h-3 w-3 rounded-sm border border-indigo-600 bg-white" />
-                      <button type="button" aria-label="Kéo để thay đổi kích thước" title="Kéo để thay đổi kích thước" onPointerDown={(event) => handleResizeStart(event, layer)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize touch-none rounded-sm border-2 border-white bg-indigo-600 shadow-sm" />
-                    </>}
+            {/* Back to Workspace Tab */}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-extrabold bg-white/10 hover:bg-white/20 transition-colors"
+                title="Quay lại Xưởng nội dung"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Xưởng nội dung</span>
+              </button>
+            )}
+
+            {/* Divider */}
+            {onClose && <span className="h-5 w-px bg-white/20" />}
+
+            {/* Undo / Redo */}
+            <button type="button" onClick={undoLayers} disabled={undoRef.current.length === 0} className="rounded-lg p-2.5 hover:bg-white/15 disabled:opacity-30" title="Hoàn tác"><Undo2 className="h-5 w-5" /></button>
+            <button type="button" onClick={redoLayers} disabled={redoRef.current.length === 0} className="rounded-lg p-2.5 hover:bg-white/15 disabled:opacity-30" title="Làm lại"><Redo2 className="h-5 w-5" /></button>
+            <button
+              type="button"
+              onClick={createNewTemplate}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-extrabold hover:bg-white/15"
+              title="Tạo thiết kế mới"
+            >
+              <FilePlus2 className="h-4 w-4" />
+              <span className="hidden xl:inline">Tạo mới</span>
+            </button>
+          </div>
+          <div className="flex max-w-xs flex-1 min-w-[120px] flex-col items-center justify-center md:max-w-md">
+            <input
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Thiết kế chưa đặt tên"
+              className="w-full rounded-lg border-0 border-b border-transparent bg-transparent px-2 py-0.5 text-center text-sm font-extrabold text-white outline-none transition placeholder-white/50 hover:border-white/20 hover:bg-white/10 focus:border-white focus:bg-white/15"
+              title="Đổi tên thiết kế"
+            />
+            <span
+              className={`mt-0.5 flex items-center gap-1 text-[10px] font-bold ${
+                autoSaveStatus === 'error' ? 'text-rose-100' : 'text-white/70'
+              }`}
+            >
+              {autoSaveStatus === 'saving' ? (
+                <LoaderCircle className="h-3 w-3 animate-spin" />
+              ) : autoSaveStatus === 'saved' ? (
+                <CloudCheck className="h-3 w-3" />
+              ) : autoSaveStatus === 'error' ? (
+                <CloudOff className="h-3 w-3" />
+              ) : (
+                <Cloud className="h-3 w-3" />
+              )}
+              {autoSaveStatus === 'saving'
+                ? 'Đang tự động lưu...'
+                : autoSaveStatus === 'saved'
+                  ? 'Đã tự động lưu'
+                  : autoSaveStatus === 'dirty'
+                    ? 'Sẽ tự động lưu'
+                    : autoSaveStatus === 'error'
+                      ? 'Tự động lưu thất bại'
+                      : 'Tự động lưu khi bắt đầu thiết kế'}
+            </span>
+          </div>
+          <div className="relative flex items-center gap-2">
+            {pagesCreated && (
+              <button
+                type="button"
+                onClick={() => void startGeneration()}
+                disabled={
+                  readyCount === 0 ||
+                  busy ||
+                  !!activeJob && ['queued', 'processing'].includes(activeJob.status)
+                }
+                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white shadow-sm hover:bg-slate-800 disabled:bg-white/30 disabled:text-white/70"
+              >
+                {busy ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {busy ? 'Đang chuẩn bị...' : `Tạo ${readyCount} ảnh`}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShareMenuOpen((current) => !current)}
+              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-white px-4 text-sm font-extrabold text-indigo-700 shadow-sm hover:bg-indigo-50"
+            >
+              <Share2 className="h-4 w-4" /> Chia sẻ
+            </button>
+
+            {shareMenuOpen && (
+              <div
+                className="absolute right-0 top-12 z-[1000] w-[340px] rounded-2xl border border-slate-200 bg-white p-4 text-slate-800 shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h4 className="text-sm font-extrabold text-slate-900">Chia sẻ thiết kế</h4>
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
+                    <Users className="h-3 w-3" /> {companyMembers.length} thành viên
+                  </span>
+                </div>
+
+                {/* Company Members Access */}
+                <div className="mt-3 space-y-3">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Thành viên có quyền truy cập</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Tìm thành viên công ty..."
+                      value={memberSearchQuery}
+                      onChange={(event) => setMemberSearchQuery(event.target.value)}
+                      className="h-9 w-full rounded-lg border border-slate-250 pl-9 pr-3 text-xs outline-none focus:border-indigo-500"
+                    />
                   </div>
-                );
-              })}
-              {layers.length === 0 && <div className="absolute inset-0 flex items-center justify-center"><button type="button" onClick={() => addLayer('text')} className="rounded-xl bg-white/90 px-5 py-3 text-sm font-extrabold text-slate-800 shadow-lg"><Plus className="mr-2 inline h-4 w-4" /> Thêm nội dung đầu tiên</button></div>}
-            </div>
-            <div className="mt-4 flex items-center justify-between text-sm text-slate-500"><span>Dòng dữ liệu {Math.max(1, rows.findIndex((row) => row.id === activeRowId) + 1)}/{rows.length}</span><span>Kéo nội dung để di chuyển · Kéo nút góc phải để đổi kích thước</span></div>
+
+                  <div className="max-h-[140px] overflow-y-auto space-y-2 pr-1 [scrollbar-width:thin]">
+                    {companyMembers
+                      .filter((member) => {
+                        const name = member.displayName || '';
+                        const email = member.email || '';
+                        const query = memberSearchQuery.toLowerCase();
+                        return name.toLowerCase().includes(query) || email.toLowerCase().includes(query);
+                      })
+                      .map((member) => {
+                        const initials = (member.displayName || member.email || 'US').slice(0, 2).toUpperCase();
+                        return (
+                          <div key={member.uid} className="flex items-center gap-2.5 py-1">
+                            {member.photoURL ? (
+                              <img src={member.photoURL} alt={member.displayName} className="h-7 w-7 rounded-full border border-slate-100 object-cover" />
+                            ) : (
+                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-extrabold text-indigo-700">
+                                {initials}
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <span className="block truncate text-xs font-bold text-slate-800">{member.displayName}</span>
+                              <span className="block truncate text-[10px] text-slate-500">{member.email}</span>
+                            </div>
+                            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">
+                              {member.role}
+                            </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* Access Level Option */}
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Cấp độ truy cập</label>
+                  <div className="relative">
+                    <select
+                      value={templates.find((t) => t._id === savedTemplateId)?.visibility || 'private'}
+                      onChange={(event) => void handleToggleVisibility(event.target.value as 'private' | 'public')}
+                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pl-9 pr-10 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
+                    >
+                      <option value="private">🔒 Chỉ bạn mới có quyền truy cập</option>
+                      <option value="public">🌐 Công khai (Kho mẫu cộng đồng)</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-500" />
+                  </div>
+                </div>
+
+                {/* Copy Link Button */}
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const link = `${window.location.origin}${window.location.pathname}?template=${savedTemplateId || ''}`;
+                      void navigator.clipboard.writeText(link).then(() => {
+                        toast.success('Đã sao chép liên kết thiết kế!');
+                      });
+                    }}
+                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 text-xs font-bold hover:bg-slate-50"
+                  >
+                    <Link className="h-3.5 w-3.5 text-slate-500" /> Sao chép liên kết
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="mt-4 border-t border-slate-100 pt-3 space-y-2">
+                  {activeJob && ['completed', 'partial'].includes(activeJob.status) && (
+                    <button
+                      type="button"
+                      onClick={() => void bulkCreateService.downloadZip(activeJob._id, activeJob.templateName)}
+                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      <Download className="h-4 w-4" /> Tải tất cả ảnh
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
+
+        <PropertiesToolbar
+          selectedLayer={selectedLayer}
+          recordLayerHistory={recordLayerHistory}
+          updateLayer={updateLayer}
+          changeLayer={changeLayer}
+          duplicateLayer={duplicateLayer}
+          removeLayer={removeLayer}
+        />
+
+        {errorMessage && (
+          <div className="mx-5 mt-4 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+            <span>{errorMessage}</span>
+            <button type="button" onClick={() => setErrorMessage('')}>
+              Đóng
+            </button>
+          </div>
+        )}
+        {activeJob && ['queued', 'processing'].includes(activeJob.status) && (
+          <div className="mx-5 mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+            <div className="flex items-center justify-between text-sm font-bold text-indigo-800">
+              <span>Đang tạo {activeJob.completedItems}/{activeJob.totalItems} ảnh</span>
+              <span>{activeJob.progress}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100">
+              <div
+                className="h-full rounded-full bg-indigo-600 transition-all"
+                style={{ width: `${activeJob.progress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <EditorCanvas
+          layers={layers}
+          activeRow={activeRow}
+          selectedLayerId={selectedLayerId}
+          selectedLayerIds={selectedLayerIds}
+          editingLayerId={editingLayerId}
+          selectionBox={selectionBox}
+          backgroundSelected={backgroundSelected}
+          backgroundColor={backgroundColor}
+          backgroundImage={backgroundImage}
+          canvasSize={canvasSize}
+          selectedBackground={selectedBackground}
+          canvasDisplayWidth={canvasDisplayWidth}
+          canvasDisplayHeight={canvasDisplayHeight}
+          editorViewportRef={editorViewportRef}
+          canvasRef={canvasRef}
+          setSelectedLayerId={selectLayer}
+          setEditingLayerId={setEditingLayerId}
+          setBackgroundSelected={setBackgroundSelected}
+          changeLayer={changeLayer}
+          duplicateLayer={duplicateLayer}
+          removeLayer={removeLayer}
+          removeSelectedLayers={removeSelectedLayers}
+          duplicateSelectedLayers={duplicateSelectedLayers}
+          toggleLockSelectedLayers={toggleLockSelectedLayers}
+          handlePointerDown={handlePointerDown}
+          handlePointerMove={handlePointerMove}
+          handlePointerUp={handlePointerUp}
+          handleSelectionStart={handleSelectionStart}
+          handleSelectionMove={handleSelectionMove}
+          handleSelectionEnd={handleSelectionEnd}
+          handleResizeStart={handleResizeStart}
+          handleResizeMove={handleResizeMove}
+          handleResizeEnd={handleResizeEnd}
+          handleRotateStart={handleRotateStart}
+          handleRotateMove={handleRotateMove}
+          handleRotateEnd={handleRotateEnd}
+          updateCell={updateCell}
+          recordLayerHistory={recordLayerHistory}
+          onOpenContextMenu={(clientX, clientY, targetLayerId) => {
+            setContextMenu({
+              visible: true,
+              x: clientX,
+              y: clientY,
+              targetLayerId,
+            });
+          }}
+          onDropAsset={(url, clientX, clientY) => {
+            const bounds = canvasRef.current?.getBoundingClientRect();
+            if (!bounds) {
+              addLayer('image', url);
+              return;
+            }
+            const width = 30;
+            const height = 30;
+            const x = clamp(((clientX - bounds.left) / bounds.width) * 100 - width / 2, 0, 100 - width);
+            const y = clamp(((clientY - bounds.top) / bounds.height) * 100 - height / 2, 0, 100 - height);
+            addLayer('image', url, { x, y, width, height });
+          }}
+        />
+
+        <PageStrip
+          scene={editorScene}
+          rows={visiblePages}
+          activeRowId={activeRowId}
+          pageResults={pageResults}
+          isRowReady={isRowReady}
+          onSelectRow={(rowId) => {
+            setActiveRowId(rowId);
+            clearLayerSelection();
+            setBackgroundSelected(false);
+          }}
+          onAddRow={addRow}
+          zoomPercent={zoomPercent}
+          zoomMode={zoomMode}
+          changeZoom={changeZoom}
+          fitCanvasToViewport={fitCanvasToViewport}
+        />
       </main>
-    </div>
-  );
-}
 
-interface EditorPanelProps {
-  activeTool: EditorTool;
-  backgroundId: string;
-  backgroundImage: string;
-  layers: TemplateLayer[];
-  rows: DataRow[];
-  activeRowId: string;
-  sheetInput: string;
-  onBackground: (id: string) => void;
-  onBackgroundUpload: (value: string) => void;
-  onAddLayer: (type: LayerType, initialValue?: string) => void;
-  onSelectLayer: (id: string) => void;
-  onSheetInput: (value: string) => void;
-  onImportSheet: () => void;
-  onAddRow: () => void;
-  onSelectRow: (id: string) => void;
-  onUpdateCell: (rowId: string, layerId: string, value: string) => void;
-  onDuplicateRow: (row: DataRow) => void;
-  onRemoveRow: (id: string) => void;
-  onClose: () => void;
-}
-
-function EditorPanel(props: EditorPanelProps) {
-  const { activeTool, backgroundId, backgroundImage, layers, rows, activeRowId, sheetInput } = props;
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-5"><div><h3 className="text-lg font-extrabold text-slate-900">{TOOLS.find((tool) => tool.id === activeTool)?.label}</h3><p className="mt-1 text-sm text-slate-500">{activeTool === 'data' ? 'Mỗi dòng tạo ra một thiết kế.' : 'Chọn hoặc thêm nội dung vào mẫu.'}</p></div><button type="button" onClick={props.onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-indigo-600" title="Ẩn bảng tùy chọn"><PanelLeftClose className="h-5 w-5" /></button></div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {activeTool === 'background' && <div className="space-y-4">
-          <label className={`flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-4 text-center hover:border-indigo-500 hover:bg-indigo-50 ${backgroundImage ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300'}`}><Upload className="mb-2 h-6 w-6 text-indigo-600" /><span className="text-sm font-extrabold">Tải ảnh nền của bạn</span><span className="mt-1 text-xs text-slate-500">PNG hoặc JPG</span><input type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) readImage(file, props.onBackgroundUpload); }} /></label>
-          <div><p className="mb-3 text-sm font-extrabold text-slate-700">Mẫu nền có sẵn</p><div className="grid grid-cols-2 gap-3">{BACKGROUNDS.map((background) => { const active = !backgroundImage && backgroundId === background.id; return <button key={background.id} type="button" onClick={() => props.onBackground(background.id)} className={`overflow-hidden rounded-xl border-2 text-left ${active ? 'border-indigo-500' : 'border-slate-200'}`}><div className={`h-24 ${background.className}`} /><div className="flex items-center justify-between px-3 py-2 text-xs font-bold"><span>{background.name}</span>{active && <Check className="h-4 w-4 text-indigo-600" />}</div></button>; })}</div></div>
-        </div>}
-
-        {activeTool === 'text' && <div className="space-y-3"><button type="button" onClick={() => props.onAddLayer('text')} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-extrabold text-white"><Type className="h-5 w-5" /> Thêm ô văn bản</button><p className="px-1 pt-2 text-sm font-bold text-slate-600">Văn bản trên mẫu</p>{layers.filter((layer) => layer.type === 'text').map((layer) => <button key={layer.id} type="button" onClick={() => props.onSelectLayer(layer.id)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-left hover:border-indigo-400"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><Type className="h-4 w-4" /></span><span className="text-sm font-bold">{layer.label}</span></button>)}</div>}
-
-        {activeTool === 'image' && <div className="space-y-3"><button type="button" onClick={() => props.onAddLayer('image')} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-extrabold text-white"><ImagePlus className="h-5 w-5" /> Thêm khung ảnh</button><label className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-700"><Upload className="h-4 w-4" /> Tải ảnh và thêm vào mẫu<input type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) readImage(file, (value) => props.onAddLayer('image', value)); }} /></label><p className="px-1 pt-2 text-sm font-bold text-slate-600">Hình ảnh trên mẫu</p>{layers.filter((layer) => layer.type === 'image').map((layer) => <button key={layer.id} type="button" onClick={() => props.onSelectLayer(layer.id)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-left hover:border-indigo-400"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600"><ImageIcon className="h-4 w-4" /></span><span className="text-sm font-bold">{layer.label}</span></button>)}</div>}
-
-        {activeTool === 'data' && <DataPanel layers={layers} rows={rows} activeRowId={activeRowId} sheetInput={sheetInput} {...props} />}
-      </div>
-    </div>
-  );
-}
-
-function DataPanel(props: EditorPanelProps) {
-  const { layers, rows, activeRowId, sheetInput } = props;
-  return (
-    <div className="space-y-4">
-      {layers.length === 0 ? <div className="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-500">Hãy thêm chữ hoặc ảnh trước. Các phần đó sẽ tự động thành cột dữ liệu.</div> : <>
-        <details className="rounded-xl border border-slate-200 bg-slate-50" open><summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-extrabold"><span className="inline-flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-indigo-600" /> Dán từ bảng tính</span><ChevronDown className="h-4 w-4" /></summary><div className="border-t border-slate-200 p-3"><p className="mb-2 text-xs leading-relaxed text-slate-500">Cột: {layers.map((layer) => layer.label).join(' → ')}</p><textarea value={sheetInput} onChange={(event) => props.onSheetInput(event.target.value)} rows={4} placeholder="Sao chép các ô từ Excel hoặc Google Sheets rồi dán vào đây" className="w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500" /><button type="button" onClick={props.onImportSheet} disabled={!sheetInput.trim()} className="mt-2 h-10 w-full rounded-lg bg-slate-800 text-sm font-bold text-white disabled:bg-slate-300">Dùng dữ liệu đã dán</button></div></details>
-        <div className="flex items-center justify-between"><p className="text-sm font-extrabold">Dữ liệu thiết kế</p><button type="button" onClick={props.onAddRow} className="inline-flex items-center gap-1 text-sm font-bold text-indigo-650"><Plus className="h-4 w-4" /> Thêm dòng</button></div>
-        {rows.map((row, index) => <div key={row.id} className={`rounded-xl border p-3 ${activeRowId === row.id ? 'border-indigo-500 bg-indigo-50/40' : 'border-slate-200'}`}><button type="button" onClick={() => props.onSelectRow(row.id)} className="mb-3 flex w-full items-center justify-between text-left"><span className="text-sm font-extrabold">Thiết kế {index + 1}</span>{activeRowId === row.id && <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-700">Đang xem</span>}</button><div className="space-y-3">{layers.map((layer) => <label key={layer.id} className="block"><span className="mb-1 block text-xs font-bold text-slate-600">{layer.label}</span>{layer.type === 'text' ? <input value={row.values[layer.id] || ''} onChange={(event) => props.onUpdateCell(row.id, layer.id, event.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-indigo-500" placeholder="Nhập nội dung" /> : <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white text-xs font-bold text-slate-600">{row.values[layer.id] ? <><Check className="h-4 w-4 text-emerald-600" /> Đã chọn ảnh</> : <><Upload className="h-4 w-4" /> Chọn ảnh</>}<input type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) readImage(file, (value) => props.onUpdateCell(row.id, layer.id, value)); }} /></label>}</label>)}</div><div className="mt-3 flex justify-end gap-1 border-t border-slate-100 pt-2"><button type="button" onClick={() => props.onDuplicateRow(row)} className="rounded-lg p-2 text-slate-500 hover:bg-white" title="Nhân bản"><Copy className="h-4 w-4" /></button><button type="button" onClick={() => props.onRemoveRow(row.id)} className="rounded-lg p-2 text-rose-500 hover:bg-white" title="Xóa"><Trash2 className="h-4 w-4" /></button></div></div>)}
-      </>}
+      {contextMenu?.visible && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          hasLayerSelected={!!selectedLayerId}
+          hasCopiedLayer={!!copiedLayerRef.current}
+          canvasSize={canvasSize}
+          selectedLayer={selectedLayer}
+          layers={layers}
+          dataColumns={dataColumns}
+          onClose={() => setContextMenu(null)}
+          onCopy={handleCopy}
+          onPaste={handlePaste}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onResize={handleResize}
+          onConnectData={connectLayerData}
+        />
+      )}
     </div>
   );
 }
