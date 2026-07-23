@@ -4,6 +4,7 @@ import { AIChatConfig } from "./crm";
 export type TabType =
   | "TONG QUAN"
   | "MARKETING"
+  | "XUONG NOI DUNG"
   | "SALES CRM"
   | "QUAN TRI USER"
   | "VI & NAP TIEN"

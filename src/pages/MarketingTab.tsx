@@ -21,50 +21,39 @@ import CustomTimePicker from "../components/common/CustomTimePicker";
 import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
 import TikTokPublishModal from "../components/marketing/TikTokPublishModal";
 import ErrorBoundary from "../components/common/ErrorBoundary";
+import { openContentStudio } from "../utils/contentStudioNavigation";
 
 // Lazy-loaded subcomponents
-const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
 const CampaignPlannerTab = lazy(() => import("../components/marketing/CampaignPlannerTab"));
-const ApprovalTab = lazy(() => import("../components/marketing/ApprovalTab"));
 const CalendarTab = lazy(() => import("../components/marketing/CalendarTab"));
-const ContentStudioWorkspace = lazy(() =>
-  import("../components/content-studio/ContentStudioWorkspace").then((module) => ({
-    default: module.ContentStudioWorkspace,
-  }))
-);
 const AnalyticsDashboard = lazy(() => import("../components/marketing/AnalyticsDashboard"));
 
 export default function MarketingTab() {
   const { userProfile } = useAuth();
   const isUserRole = userProfile?.role === "user" || userProfile?.role === "manager";
   const MARKETING_SUB_TAB_ROUTES = [
-    { slug: "len-y-tuong-ai", value: "LÊN Ý TƯỞNG AI" as MarketingSubTabType },
     { slug: "tao-chien-dich", value: "TẠO CHIẾN DỊCH" as MarketingSubTabType },
-    { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
-    { slug: "xuong-noi-dung", value: "XƯỞNG NỘI DUNG" as MarketingSubTabType },
     { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
-  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "LÊN Ý TƯỞNG AI");
+  const [subTab, setSubTab] = useSubTabRouter<MarketingSubTabType>(MARKETING_SUB_TAB_ROUTES as any, "TẠO CHIẾN DỊCH");
 
-  const CONTENT_STUDIO_SUB_TAB = MARKETING_SUB_TAB_ROUTES[3].value;
   const DEFAULT_HUMAN_VOICE_DURATION_SECONDS = 45;
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const legacySubTab = url.searchParams.get("sub");
+    if (legacySubTab === "xuong-noi-dung") {
+      openContentStudio();
+    } else if (["duyet-noi-dung", "len-y-tuong-ai", "y-tuong"].includes(legacySubTab || "")) {
+      url.searchParams.set("sub", "tao-chien-dich");
+      window.history.replaceState(null, "", url.toString());
+    }
+  }, []);
 
   // AI Media Generation States
   const [publishingTikTokId, setPublishingTikTokId] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
-  const [contentStudioParams, setContentStudioParams] = useState<{
-    tab: 'image' | 'video' | 'voice';
-    prompt: string;
-    cardId: string;
-    image?: string;
-    autoTrigger?: boolean;
-    videoSubTab?: 'veo' | 'heygen' | 'edit-video';
-    title?: string;
-    description?: string;
-    engineType?: string;
-    usePersonalVoice?: boolean;
-  } | null>(null);
 
   // Lightbox Preview States
   const [activeLightboxCard, setActiveLightboxCard] = useState<ContentApprovalCard | null>(null);
@@ -384,26 +373,6 @@ export default function MarketingTab() {
     }
   };
 
-  const handleMediaSaved = async (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => {
-    if (!cardId || !mediaUrl || type === 'audio') return;
-
-    const updateData = type === 'video'
-      ? { videoUrl: mediaUrl, mediaType: 'video' as const }
-      : { imageUrl: mediaUrl, mediaType: 'image' as const };
-
-    // Persist first so the live subscription cannot overwrite the optimistic card update.
-    try {
-      await marketingService.updateCard(cardId, updateData);
-      setApprovalCards(prev => prev.map(c => c.id === cardId ? {
-        ...c,
-        ...updateData,
-      } : c));
-    } catch (error) {
-      console.error("Không thể lưu media vào card marketing:", error);
-      toast.error("Video đã tạo xong nhưng chưa thể gắn vào card. Vui lòng thử lại.");
-    }
-  };
-
   const handleOpenLightbox = (card: ContentApprovalCard, type: 'image' | 'video', url: string) => {
     if (type === "video" && !isRenderableVideoUrl(url)) {
       toast.info("Video đang xử lý, chưa có URL phát hợp lệ.");
@@ -649,7 +618,7 @@ export default function MarketingTab() {
       const isAvatarThree = card.engineType === 'avatar_iii';
       const isMyVoice = isAvatarThree || card.usePersonalVoice;
       if (isMyVoice) {
-        setContentStudioParams({
+        openContentStudio({
           tab: 'video',
           videoSubTab: 'heygen',
           prompt: voiceScript,
@@ -661,7 +630,6 @@ export default function MarketingTab() {
           engineType: card.engineType,
           usePersonalVoice: card.usePersonalVoice,
         });
-        setSubTab(CONTENT_STUDIO_SUB_TAB);
         return;
       }
 
@@ -688,7 +656,7 @@ export default function MarketingTab() {
         )
       );
 
-      setContentStudioParams({
+      openContentStudio({
         tab: 'voice',
         prompt: voiceScript,
         cardId: card.id,
@@ -698,7 +666,6 @@ export default function MarketingTab() {
         title: voiceTitle,
         description: voiceDescription,
       });
-      setSubTab(CONTENT_STUDIO_SUB_TAB);
       return;
     }
 
@@ -718,14 +685,13 @@ export default function MarketingTab() {
       }
     }
 
-    setContentStudioParams({
+    openContentStudio({
       tab: selectedType,
       prompt: cleanText,
       cardId: card.id,
       image: card.referenceImage,
       autoTrigger: true
     });
-    setSubTab(CONTENT_STUDIO_SUB_TAB);
   };
 
   return (
@@ -756,59 +722,13 @@ export default function MarketingTab() {
 
       <div className="flex-1 p-6 overflow-y-auto" id="marketing_tab_content">
         <Suspense fallback={<TabLoader label="Đang tải dữ liệu marketing..." />}>
-          {/* SUB TAB 1: LÊN Ý TƯỞNG AI */}
-          <div style={{ display: subTab === "LÊN Ý TƯỞNG AI" ? "block" : "none" }}>
-            <IdeationTab
-              userProfile={userProfile}
-              setApprovalCards={setApprovalCards}
-              setSubTab={setSubTab}
-              subTab={subTab}
-            />
-          </div>
-
           {subTab === "TẠO CHIẾN DỊCH" && (
             <CampaignPlannerTab
               userProfile={userProfile}
             />
           )}
 
-          {/* SUB TAB 2: DUYỆT NỘI DUNG */}
-          {subTab === "DUYỆT NỘI DUNG" && (
-            <ApprovalTab
-              userProfile={userProfile}
-              tiktokIntegration={effectiveTikTokIntegration}
-              isUserRole={isUserRole}
-              approvalCards={approvalCards}
-              setApprovalCards={setApprovalCards}
-              updateCardStatus={updateCardStatus}
-              deleteCard={deleteCard}
-              handleInitAIGeneration={handleInitAIGeneration}
-              handleOpenLightbox={handleOpenLightbox}
-              handlePublishToTikTok={handlePublishToTikTok}
-              publishingTikTokId={publishingTikTokId}
-              setSchedulingCard={(card) => {
-                setSchedulingCard(card);
-                setPublishMode("scheduled");
-                if (card) {
-                  setScheduleDate(new Date().toISOString().split("T")[0]);
-                  setScheduleTime("09:00");
-                }
-              }}
-              setScheduleDate={setScheduleDate}
-              setScheduleTime={setScheduleTime}
-              onPublishToPlatform={async (card) => {
-                if (card.channel === "TikTok") {
-                  await handlePublishToTikTok(card);
-                } else {
-                  setSchedulingCard(card);
-                  setPublishMode("instant");
-                }
-              }}
-              isPublishing={isPublishing}
-            />
-          )}
-
-          {/* SUB TAB 3: LỊCH ĐĂNG CONTENT */}
+          {/* LỊCH ĐĂNG CONTENT */}
           {subTab === "LỊCH ĐĂNG CONTENT" && (
             <CalendarTab
               isUserRole={isUserRole}
@@ -816,16 +736,7 @@ export default function MarketingTab() {
             />
           )}
 
-          {/* SUB TAB 4: XƯỞNG NỘI DUNG */}
-          {subTab === "XƯỞNG NỘI DUNG" && (
-            <ContentStudioWorkspace
-              initialParams={contentStudioParams}
-              onClearParams={() => setContentStudioParams(null)}
-              onMediaSaved={handleMediaSaved}
-            />
-          )}
-
-          {/* SUB TAB 5: BÁO CÁO */}
+          {/* BÁO CÁO */}
           {subTab === "BÁO CÁO" && (
             <ErrorBoundary fallbackLabel="Không thể hiển thị Báo cáo Marketing">
               <AnalyticsDashboard />

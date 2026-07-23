@@ -17,6 +17,7 @@ import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink }
 
 interface CreateCampaignInput {
   sourceBrief: string;
+  campaignType?: "single" | "campaign";
   startDate: string;
   endDate: string;
   postsPerDay: number;
@@ -285,6 +286,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       createdBy,
       title: strategy.campaignTitle,
       sourceBrief: input.sourceBrief,
+      campaignType: input.campaignType || "campaign",
       researchReport,
       status: "active",
       timezone,
@@ -306,7 +308,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       imageMode,
       googleDriveFolderUrl,
       customSchedule: input.customSchedule,
-      apifySources: input.apifySources || ["google"],
+      apifySources: input.apifySources || ["google", "facebook", "tiktok"],
       contentMatrix,
       rules: input.rules || {},
       statistics: { totalSlots: schedule.length, publishedSlots: 0, failedSlots: 0, estimatedCost, actualCost: 0 },
@@ -435,6 +437,52 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         total,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  },
+
+  async getCalendar(companyCode: string, startDate: string, endDate: string) {
+    const timezone = "Asia/Bangkok";
+    const startAt = zonedLocalTimeToUtc(startDate, "00:00", timezone);
+    const endCursor = new Date(`${endDate}T00:00:00Z`);
+    if (!Number.isFinite(endCursor.getTime())) throw new Error("Khoảng ngày lịch không hợp lệ.");
+    endCursor.setUTCDate(endCursor.getUTCDate() + 1);
+    const endExclusiveDate = endCursor.toISOString().slice(0, 10);
+    const endAt = zonedLocalTimeToUtc(endExclusiveDate, "00:00", timezone);
+    if (endAt <= startAt) throw new Error("Khoảng ngày lịch không hợp lệ.");
+
+    const slots = await MarketingCampaignSlotModel.find({
+      companyCode,
+      scheduledAt: { $gte: startAt, $lt: endAt },
+    })
+      .select("campaignId scheduledAt platform status mediaType topicBrief")
+      .sort({ scheduledAt: 1 })
+      .lean();
+
+    const campaignIds = [...new Set(slots.map((slot) => String(slot.campaignId)))];
+    const campaigns = await MarketingCampaignModel.find({
+      companyCode,
+      _id: { $in: campaignIds },
+    })
+      .select("title campaignType")
+      .lean();
+    const campaignById = new Map(campaigns.map((campaign) => [String(campaign._id), campaign]));
+
+    return {
+      timezone,
+      slots: slots.map((slot) => {
+        const campaign = campaignById.get(String(slot.campaignId));
+        return {
+          _id: String(slot._id),
+          campaignId: String(slot.campaignId),
+          campaignTitle: campaign?.title || "Chiến dịch",
+          campaignType: campaign?.campaignType || "campaign",
+          scheduledAt: slot.scheduledAt,
+          platform: slot.platform,
+          status: slot.status,
+          mediaType: slot.mediaType,
+          topicBrief: slot.topicBrief,
+        };
+      }),
     };
   },
 

@@ -6,6 +6,7 @@ export interface MarketingCampaignSummary {
   _id: string;
   title: string;
   sourceBrief: string;
+  campaignType?: 'single' | 'campaign';
   status: CampaignStatus;
   timezone: string;
   startDate: string;
@@ -123,6 +124,18 @@ export interface MarketingContent {
   mediaType?: 'text' | 'image' | 'video';
 }
 
+export interface MarketingCampaignCalendarSlot {
+  _id: string;
+  campaignId: string;
+  campaignTitle: string;
+  campaignType: 'single' | 'campaign';
+  scheduledAt: string;
+  platform: 'Facebook' | 'TikTok';
+  status: string;
+  mediaType: 'text' | 'image' | 'video' | 'human-video';
+  topicBrief: string;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
@@ -144,8 +157,16 @@ export const marketingCampaignService = {
     );
   },
 
+  calendar(startDate: string, endDate: string) {
+    const query = new URLSearchParams({ startDate, endDate });
+    return request<{ timezone: string; slots: MarketingCampaignCalendarSlot[] }>(
+      `/api/v1/marketing-campaigns/calendar?${query.toString()}`
+    );
+  },
+
   create(input: {
     sourceBrief: string;
+    campaignType?: 'single' | 'campaign';
     startDate: string;
     endDate: string;
     postsPerDay: number;

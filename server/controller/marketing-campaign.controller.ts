@@ -93,6 +93,20 @@ export const marketingCampaignController = {
     }
   },
 
+  async calendar(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const result = await marketingCampaignService.getCalendar(
+        companyCode,
+        String(req.query.startDate),
+        String(req.query.endDate)
+      );
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải lịch chiến dịch." });
+    }
+  },
+
   async detail(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);
