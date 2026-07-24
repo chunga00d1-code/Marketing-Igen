@@ -46,6 +46,10 @@
     "swagger-ui-express": "^5.0.1",
     "xlsx": "^0.18.5"
   },
+  "optionalDependencies": {
+    "@img/sharp-libvips-linuxmusl-x64": "1.3.2",
+    "@img/sharp-linuxmusl-x64": "0.35.3"
+  },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@tailwindcss/vite": "^4.1.14",
