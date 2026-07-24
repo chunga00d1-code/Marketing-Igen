@@ -24,6 +24,9 @@ const VideoTemplateSyncSchema = new Schema<IVideoTemplateSync>(
   {
     provider: { type: String, enum: ["shotstack"], required: true },
     environment: { type: String, enum: ["stage", "v1"], required: true },
+    latestSuccessfulListGeneration: { type: Number, min: 1 },
+    latestSuccessfulListAt: { type: Date },
+    mutationFenceAt: { type: Date },
     lastAttemptAt: { type: Date, required: true },
     lastSuccessAt: { type: Date },
     status: {

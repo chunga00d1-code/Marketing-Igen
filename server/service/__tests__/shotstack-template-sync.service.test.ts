@@ -8,6 +8,7 @@ import {
   synchronizeShotstackTemplates,
   type ShotstackTemplateSyncRepository,
   type SyncStateInput,
+  type SyncRunContext,
   type SyncTemplateInput,
   type SyncTemplateRecord,
   type SyncVersionInput,
@@ -44,6 +45,8 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
     version: number;
   }> = [];
   public readonly states: SyncStateInput[] = [];
+  public readonly latestSuccessfulLists = new Map<string, Date>();
+  public readonly latestSuccessfulListGenerations = new Map<string, number>();
   private nextTemplateId = 1;
   private nextVersionId = 1;
 
@@ -51,7 +54,29 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
     return this.templates.get(externalId) || null;
   }
 
-  async createTemplateWithVersion(template: SyncTemplateInput, version: SyncVersionInput) {
+  async registerSuccessfulList(run: Omit<SyncRunContext, "generation">) {
+    const current = this.latestSuccessfulLists.get(run.environment);
+    if (!current || current.getTime() <= run.attemptedAt.getTime()) {
+      this.latestSuccessfulLists.set(run.environment, new Date(run.attemptedAt));
+    }
+    const generation = (this.latestSuccessfulListGenerations.get(run.environment) || 0) + 1;
+    this.latestSuccessfulListGenerations.set(run.environment, generation);
+    return generation;
+  }
+
+  async isRunCurrent(run: SyncRunContext) {
+    return this.latestSuccessfulListGenerations.get(run.environment) === run.generation;
+  }
+
+  async createTemplateWithVersion(
+    template: SyncTemplateInput,
+    version: SyncVersionInput,
+    run: SyncRunContext
+  ) {
+    if (!(await this.isRunCurrent(run))) return null;
+    if (this.templates.has(template.externalTemplateId)) {
+      throw new Error("duplicate provider template");
+    }
     const templateId = `template-${this.nextTemplateId++}`;
     const versionId = `version-${this.nextVersionId++}`;
     const record = {
@@ -131,6 +156,10 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
   }
 
   async recordSyncState(input: SyncStateInput) {
+    const latestList = this.latestSuccessfulLists.get(input.environment);
+    if (latestList && latestList.getTime() > input.lastAttemptAt.getTime()) {
+      return;
+    }
     const existingIndex = this.states.findIndex((state) => (
       state.provider === input.provider && state.environment === input.environment
     ));
@@ -407,32 +436,7 @@ test("sync state records safe attempt, success, and summary", async () => {
 });
 
 test("overlapping first imports remain idempotent", async () => {
-  let releaseReads!: () => void;
-  const readsReady = new Promise<void>((resolve) => {
-    releaseReads = resolve;
-  });
-  let initialReads = 0;
-  class RacingRepository extends MemoryRepository {
-    override async findByExternalId(externalId: string) {
-      if (!this.templates.has(externalId)) {
-        initialReads += 1;
-        if (initialReads === 2) releaseReads();
-        await readsReady;
-      }
-      return super.findByExternalId(externalId);
-    }
-
-    override async createTemplateWithVersion(
-      template: SyncTemplateInput,
-      version: SyncVersionInput
-    ) {
-      if (this.templates.has(template.externalTemplateId)) {
-        throw new Error("duplicate provider template");
-      }
-      return super.createTemplateWithVersion(template, version);
-    }
-  }
-  const repository = new RacingRepository();
+  const repository = new MemoryRepository();
   const details = [providerTemplate("one")];
 
   const results = await Promise.all([
@@ -441,31 +445,14 @@ test("overlapping first imports remain idempotent", async () => {
   ]);
 
   assert.equal(results.reduce((sum, result) => sum + result.created, 0), 1);
-  assert.equal(results.reduce((sum, result) => sum + result.unchanged, 0), 1);
+  assert.equal(results.reduce((sum, result) => sum + result.unchanged, 0), 0);
   assert.equal(results.flatMap((result) => result.failed).length, 0);
   assert.equal(repository.templates.size, 1);
   assert.equal(repository.versions.length, 1);
 });
 
 test("overlapping changed imports create only one logical version", async () => {
-  let releaseUpdates!: () => void;
-  const updatesReady = new Promise<void>((resolve) => {
-    releaseUpdates = resolve;
-  });
-  let updateCalls = 0;
-  class RacingRepository extends MemoryRepository {
-    override async createVersionAndPublish(
-      templateId: string,
-      template: SyncTemplateInput,
-      version: SyncVersionInput
-    ) {
-      updateCalls += 1;
-      if (updateCalls === 2) releaseUpdates();
-      await updatesReady;
-      return super.createVersionAndPublish(templateId, template, version);
-    }
-  }
-  const repository = new RacingRepository();
+  const repository = new MemoryRepository();
   await sync(repository, [providerTemplate("one")]);
   const changed = providerTemplate("one");
   const timeline = changed.timeline as {
@@ -479,7 +466,7 @@ test("overlapping changed imports create only one logical version", async () => 
   ]);
 
   assert.equal(results.reduce((sum, result) => sum + result.updated, 0), 1);
-  assert.equal(results.reduce((sum, result) => sum + result.unchanged, 0), 1);
+  assert.equal(results.reduce((sum, result) => sum + result.unchanged, 0), 0);
   assert.equal(repository.versions.length, 2);
 });
 
@@ -553,6 +540,53 @@ test("older sync cannot archive newer data or regress sync-state timestamps", as
   assert.equal(
     repository.states.at(-1)?.lastAttemptAt.toISOString(),
     "2026-07-24T02:00:00.000Z"
+  );
+});
+
+test("older delayed detail cannot recreate a template absent from a newer successful list", async () => {
+  let releaseOlderDetail!: () => void;
+  const allowOlderDetail = new Promise<void>((resolve) => {
+    releaseOlderDetail = resolve;
+  });
+  let markDetailStarted!: () => void;
+  const detailStarted = new Promise<void>((resolve) => {
+    markDetailStarted = resolve;
+  });
+  const repository = new MemoryRepository();
+  const removedTemplate = providerTemplate("removed");
+
+  const older = synchronizeShotstackTemplates("admin-1", {
+    client: {
+      async listTemplates() {
+        return [{ id: "removed", name: "Removed" }];
+      },
+      async getTemplate() {
+        markDetailStarted();
+        await allowOlderDetail;
+        return removedTemplate;
+      },
+    },
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T01:00:00.000Z"),
+  });
+  await detailStarted;
+
+  const newer = await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T01:00:00.000Z"),
+  });
+  releaseOlderDetail();
+  const olderResult = await older;
+
+  assert.equal(newer.archived, 0);
+  assert.equal(olderResult.created, 0);
+  assert.equal(repository.templates.has("removed"), false);
+  assert.equal(
+    repository.states.at(-1)?.lastAttemptAt.toISOString(),
+    "2026-07-24T01:00:00.000Z"
   );
 });
 

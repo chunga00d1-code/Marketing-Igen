@@ -81,12 +81,23 @@ export interface SyncStateInput {
   summary: VideoTemplateSyncSummary;
 }
 
+export interface SyncRunContext {
+  environment: ShotstackEnvironment;
+  attemptedAt: Date;
+  generation: number;
+}
+
 export interface ShotstackTemplateSyncRepository {
   findByExternalId(externalId: string): Promise<SyncTemplateRecord | null>;
+  registerSuccessfulList(
+    run: Omit<SyncRunContext, "generation">
+  ): Promise<number>;
+  isRunCurrent(run: SyncRunContext): Promise<boolean>;
   createTemplateWithVersion(
     template: SyncTemplateInput,
-    version: SyncVersionInput
-  ): Promise<SyncTemplateRecord>;
+    version: SyncVersionInput,
+    run: SyncRunContext
+  ): Promise<SyncTemplateRecord | null>;
   updateTemplateMetadata(templateId: string, input: SyncTemplateInput): Promise<void>;
   createVersionAndPublish(
     templateId: string,
@@ -270,14 +281,71 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     };
   }
 
+  async registerSuccessfulList(
+    run: Omit<SyncRunContext, "generation">
+  ): Promise<number> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const state = await VideoTemplateSyncModel.findOneAndUpdate(
+          { provider: "shotstack", environment: run.environment },
+          {
+            $inc: { latestSuccessfulListGeneration: 1 },
+            $max: {
+              latestSuccessfulListAt: run.attemptedAt,
+              lastAttemptAt: run.attemptedAt,
+            },
+            $setOnInsert: {
+              status: "partial",
+              summary: emptySummary(),
+            },
+          },
+          { upsert: true, new: true }
+        ).select({ latestSuccessfulListGeneration: 1 }).lean();
+        const generation = state?.latestSuccessfulListGeneration;
+        if (!Number.isSafeInteger(generation) || generation < 1) {
+          throw new Error("Shotstack run generation was invalid.");
+        }
+        return generation;
+      } catch {
+        if (attempt === 2) throw new Error("Shotstack run generation could not be recorded.");
+      }
+    }
+    throw new Error("Shotstack run generation could not be recorded.");
+  }
+
+  async isRunCurrent(run: SyncRunContext): Promise<boolean> {
+    const state = await VideoTemplateSyncModel.findOne({
+      provider: "shotstack",
+      environment: run.environment,
+    }).select({ latestSuccessfulListGeneration: 1 }).lean();
+    return state?.latestSuccessfulListGeneration === run.generation;
+  }
+
   async createTemplateWithVersion(
     templateInput: SyncTemplateInput,
-    versionInput: SyncVersionInput
-  ): Promise<SyncTemplateRecord> {
+    versionInput: SyncVersionInput,
+    run: SyncRunContext
+  ): Promise<SyncTemplateRecord | null> {
     const session = await mongoose.startSession();
     let created: SyncTemplateRecord | undefined;
+    let stale = false;
     try {
       await session.withTransaction(async () => {
+        created = undefined;
+        stale = false;
+        const gate = await VideoTemplateSyncModel.updateOne(
+          {
+            provider: "shotstack",
+            environment: run.environment,
+            latestSuccessfulListGeneration: run.generation,
+          },
+          { $set: { mutationFenceAt: run.attemptedAt } },
+          { session }
+        );
+        if (gate.matchedCount === 0) {
+          stale = true;
+          return;
+        }
         const [template] = await VideoTemplateModel.create(
           [{ ...templateInput, usageCount: 0 }],
           { session }
@@ -303,6 +371,7 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     } finally {
       await session.endSession();
     }
+    if (stale) return null;
     if (!created) throw new Error("Shotstack template transaction did not complete.");
     return created;
   }
@@ -532,6 +601,13 @@ export async function synchronizeShotstackTemplates(
   const uniqueSummaries = [...new Map(
     listed.map((summary) => [summary.id, summary])
   ).values()];
+  let generation: number;
+  try {
+    generation = await repository.registerSuccessfulList({ environment, attemptedAt });
+  } catch {
+    throw new ShotstackSyncStateError();
+  }
+  const run = { environment, attemptedAt, generation };
   const activeExternalIds = uniqueSummaries.map((summary) => summary.id);
   const summary = emptySummary();
   let cursor = 0;
@@ -572,6 +648,7 @@ export async function synchronizeShotstackTemplates(
   const synchronizeOne = async (listedTemplate: ShotstackTemplateSummary) => {
     try {
       const detail = await client.getTemplate(listedTemplate.id);
+      if (!(await repository.isRunCurrent(run))) return;
       const edit = providerEdit(detail);
       const conversion = converter(edit);
       const hash = sourceHash(edit);
@@ -587,9 +664,15 @@ export async function synchronizeShotstackTemplates(
       const existing = await repository.findByExternalId(listedTemplate.id);
       if (!existing) {
         try {
-          await repository.createTemplateWithVersion(inputs.template, inputs.version);
+          const created = await repository.createTemplateWithVersion(
+            inputs.template,
+            inputs.version,
+            run
+          );
+          if (!created) return;
           summary.created += 1;
         } catch {
+          if (!(await repository.isRunCurrent(run))) return;
           const concurrentlyCreated = await repository.findByExternalId(listedTemplate.id);
           if (!concurrentlyCreated) throw new Error("Shotstack template import failed.");
           await synchronizeExisting(concurrentlyCreated, inputs);
@@ -617,7 +700,9 @@ export async function synchronizeShotstackTemplates(
   await Promise.all(workers);
 
   try {
-    summary.archived = await repository.archiveMissing(activeExternalIds, attemptedAt);
+    if (await repository.isRunCurrent(run)) {
+      summary.archived = await repository.archiveMissing(activeExternalIds, attemptedAt);
+    }
   } catch {
     summary.failed.push({ externalId: "shotstack", message: ITEM_FAILURE_MESSAGE });
   }

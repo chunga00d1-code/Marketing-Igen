@@ -85,6 +85,9 @@ export interface VideoTemplateSyncSummary {
 export interface IVideoTemplateSync extends Document {
   provider: "shotstack";
   environment: "stage" | "v1";
+  latestSuccessfulListGeneration?: number;
+  latestSuccessfulListAt?: Date;
+  mutationFenceAt?: Date;
   lastAttemptAt: Date;
   lastSuccessAt?: Date;
   status: VideoTemplateSyncStatus;
