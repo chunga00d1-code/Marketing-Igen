@@ -41,7 +41,17 @@ const VideoProjectRenderSchema = new Schema<IVideoProjectRender>(
     progress: { type: Number, required: true, min: 0, max: 100, default: 0 },
     stageMessage: { type: String },
     outputUrl: { type: String },
-    engine: { type: String, enum: ["remotion", "ffmpeg"] },
+    engine: { type: String, enum: ["shotstack", "remotion", "ffmpeg"] },
+    providerRenderId: { type: String },
+    providerStatus: { type: String },
+    providerOutputUrl: { type: String },
+    providerPollAttempt: { type: Number, min: 0, default: 0 },
+    providerLastCheckedAt: { type: Date },
+    providerNextPollAt: { type: Date },
+    providerErrorCode: { type: String },
+    providerErrorMessage: { type: String },
+    transferAttempt: { type: Number, required: true, min: 0, default: 0 },
+    transferLeaseUntil: { type: Date },
     attempt: { type: Number, required: true, min: 0, default: 0 },
     idempotencyKey: { type: String, required: true },
     errorCode: { type: String },
@@ -54,6 +64,13 @@ const VideoProjectRenderSchema = new Schema<IVideoProjectRender>(
 
 VideoProjectRenderSchema.index({ projectId: 1, userId: 1, companyCode: 1, createdAt: -1 });
 VideoProjectRenderSchema.index({ userId: 1, companyCode: 1, idempotencyKey: 1 }, { unique: true });
+VideoProjectRenderSchema.index(
+  { providerRenderId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { providerRenderId: { $type: "string" } },
+  }
+);
 
 export const VideoProjectRenderModel = model<IVideoProjectRender>(
   "VideoProjectRender",

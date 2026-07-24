@@ -107,6 +107,38 @@ test("parses render identifiers", async () => {
   });
 });
 
+test("submits a complete edit to the render endpoint", async () => {
+  setShotstackEnvironment();
+  let request: Request | undefined;
+  globalThis.fetch = (async (input, init) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({
+      success: true,
+      response: { id: "render-edit-1" },
+    }));
+  }) as typeof fetch;
+  const edit = {
+    timeline: {
+      tracks: [{
+        clips: [{
+          asset: { type: "video", src: "https://cdn.example.com/video.mp4" },
+          start: 0,
+          length: 5,
+        }],
+      }],
+    },
+    output: { format: "mp4", aspectRatio: "16:9" },
+    callback: "https://app.example.com/api/v1/webhooks/shotstack/safe_secret_123456",
+  };
+
+  assert.deepEqual(await new ShotstackClient().renderEdit(edit), {
+    renderId: "render-edit-1",
+  });
+  assert.equal(request?.url, "https://api.shotstack.io/stage/render");
+  assert.equal(request?.method, "POST");
+  assert.deepEqual(await request?.json(), edit);
+});
+
 test("parses render statuses", async () => {
   setShotstackEnvironment();
   mockResponse({ success: true, response: { id: "render-1", status: "done", url: "https://example.com/video.mp4" } });

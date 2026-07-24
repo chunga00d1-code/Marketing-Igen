@@ -23,6 +23,7 @@ import { opusclipRouter } from "./opusclip.router";
 import { marketingCampaignRouter } from "./marketing-campaign.router";
 import { videoTemplateRouter } from "./video-template.router";
 import { videoProjectRouter } from "./video-project.router";
+import { shotstackWebhookRouter } from "./shotstack-webhook.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -64,6 +65,7 @@ apiRouter.get("/webhooks/tiktok", (req, res) => {
   });
 });
 apiRouter.post("/webhooks/tiktok", tiktokController.receiveWebhook as any);
+apiRouter.use(shotstackWebhookRouter);
 apiRouter.use("/tiktok", tiktokRouter);
 apiRouter.use("/tiktok-business", tiktokRouter);
 

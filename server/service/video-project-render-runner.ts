@@ -2,6 +2,10 @@ import { VideoProjectRenderModel } from "../model/video-project-render.model";
 import { runFFmpegFallback } from "./video-edit/ffmpeg";
 import { remotionService } from "./remotion.service";
 import {
+  getVideoTemplateRenderEngine,
+  submitShotstackRender,
+} from "./shotstack-render.service";
+import {
   assertRenderTransition,
   editorProjectToBlueprint,
   getRenderDimensions,
@@ -92,7 +96,7 @@ async function persistRenderFailure(renderId: string, error: unknown) {
   }
 }
 
-export async function executeVideoProjectRender(renderId: string): Promise<void> {
+async function executeLocalVideoProjectRender(renderId: string): Promise<void> {
   assertRenderTransition("queued", "rendering");
   const claimed = await VideoProjectRenderModel.findOneAndUpdate(
     {
@@ -245,4 +249,16 @@ export async function executeVideoProjectRender(renderId: string): Promise<void>
   }, async (error) => {
     await persistRenderFailure(renderId, error);
   });
+}
+
+export async function executeVideoProjectRender(renderId: string): Promise<void> {
+  const queuedRender = await VideoProjectRenderModel.findById(renderId)
+    .select({ engine: 1 })
+    .lean();
+  const engine = queuedRender?.engine || getVideoTemplateRenderEngine();
+  if (engine !== "remotion") {
+    await submitShotstackRender(renderId);
+    return;
+  }
+  await executeLocalVideoProjectRender(renderId);
 }

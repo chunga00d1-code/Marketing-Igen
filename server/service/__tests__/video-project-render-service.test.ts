@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Job } from "bullmq";
-import { serializeVideoProjectRender } from "../video-project-render.service";
+import {
+  buildVideoProjectRenderSnapshot,
+  serializeVideoProjectRender,
+} from "../video-project-render.service";
 import { sanitizeRenderError } from "../video-project-render-runner";
 
 test("classifies structured render domain errors without matching their messages", async () => {
@@ -58,6 +61,89 @@ test("serializes render records without exposing the immutable snapshot", () => 
     updatedAt: new Date("2026-07-24T01:00:00.000Z"),
   });
   assert.equal("snapshot" in serialized, false);
+});
+
+test("copies the project blueprint into the immutable render snapshot for provider round trips", () => {
+  const project = {
+    title: "Provider project",
+    aspectRatio: "16:9",
+    blueprint: {
+      timeline: {
+        tracks: [{
+          clips: [{
+            asset: { type: "video", src: "https://provider.example.com/original.mp4" },
+            start: 0,
+            length: 5,
+            transition: { in: "fade" },
+          }],
+        }],
+      },
+      output: { format: "mp4", aspectRatio: "16:9" },
+    },
+    editorState: {
+      duration: 5,
+      tracks: [{ id: "track-1" }],
+      items: [{
+        id: "video-1",
+        type: "video",
+        sourceUrl: "https://cdn.example.com/edited.mp4",
+        start: 0,
+        duration: 5,
+      }],
+    },
+  };
+
+  const immutableSnapshot = buildVideoProjectRenderSnapshot(project, "1080p");
+  (project.blueprint.timeline as { tracks: unknown[] }).tracks.length = 0;
+
+  assert.equal(immutableSnapshot.title, "Provider project");
+  assert.equal(immutableSnapshot.settings.aspectRatio, "16:9");
+  assert.equal(
+    ((immutableSnapshot.sourceEdit?.timeline as { tracks: unknown[] }).tracks).length,
+    1
+  );
+  assert.notEqual(immutableSnapshot.sourceEdit, project.blueprint);
+});
+
+test("redacts every provider-only field from public render serialization", () => {
+  const serialized = serializeVideoProjectRender({
+    _id: "render-1",
+    projectId: "project-1",
+    status: "uploading",
+    progress: 85,
+    engine: "shotstack",
+    resolution: "1080p",
+    aspectRatio: "16:9",
+    duration: 5,
+    attempt: 1,
+    transferAttempt: 2,
+    providerRenderId: "provider-render-secret",
+    providerStatus: "done",
+    providerOutputUrl: "https://cdn.shotstack.io/temporary.mp4",
+    providerErrorCode: "provider-code",
+    providerErrorMessage: "provider diagnostic",
+    snapshot: {
+      title: "Private",
+      tracks: [],
+      items: [],
+      settings: {},
+    },
+  });
+
+  assert.equal(serialized.engine, "shotstack");
+  for (const field of [
+    "snapshot",
+    "providerRenderId",
+    "providerStatus",
+    "providerOutputUrl",
+    "providerErrorCode",
+    "providerErrorMessage",
+    "transferAttempt",
+  ]) {
+    assert.equal(field in serialized, false);
+  }
+  assert.equal(JSON.stringify(serialized).includes("shotstack.io"), false);
+  assert.equal(JSON.stringify(serialized).includes("provider diagnostic"), false);
 });
 
 test("sanitizes render errors without exposing stack text or internal newlines", () => {

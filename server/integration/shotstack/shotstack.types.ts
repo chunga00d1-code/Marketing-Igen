@@ -19,6 +19,8 @@ export interface ShotstackRenderRequest extends ShotstackProviderFields {
 export interface ShotstackRenderStatus extends ShotstackProviderFields {
   id: string;
   status: string;
+  url?: string;
+  error?: string;
 }
 
 export interface ShotstackAsset extends ShotstackProviderFields {
@@ -84,4 +86,5 @@ export interface ShotstackOutput extends ShotstackProviderFields {
 export interface ShotstackEdit extends ShotstackProviderFields {
   timeline: ShotstackTimeline;
   output: ShotstackOutput;
+  callback?: string;
 }

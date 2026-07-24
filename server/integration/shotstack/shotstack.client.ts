@@ -1,5 +1,6 @@
 import type {
   ShotstackEnvironment,
+  ShotstackEdit,
   ShotstackRenderRequest,
   ShotstackRenderStatus,
   ShotstackTemplate,
@@ -117,6 +118,18 @@ export class ShotstackClient {
     const response = await this.request(`/templates/${encodeURIComponent(templateId)}/render`, {
       method: "POST",
       body: JSON.stringify(renderInput),
+    });
+    const render = requireSuccessEnvelope(response.payload, this.apiKey, response.status);
+    if (!requiredString(render.id)) {
+      throw new ShotstackProviderError("Shotstack returned a render without an ID.", { status: response.status });
+    }
+    return { renderId: render.id };
+  }
+
+  public async renderEdit(edit: ShotstackEdit): Promise<{ renderId: string }> {
+    const response = await this.request("/render", {
+      method: "POST",
+      body: JSON.stringify(edit),
     });
     const render = requireSuccessEnvelope(response.payload, this.apiKey, response.status);
     if (!requiredString(render.id)) {

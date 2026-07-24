@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import type {
   VideoProjectRenderAspectRatio,
   VideoProjectRenderResolution,
+  VideoProjectRenderSnapshot,
 } from "../interface/video-project-render.interface";
 import type { VideoTemplateIdentity } from "../interface/video-template.interface";
 import { VideoProjectRenderModel } from "../model/video-project-render.model";
@@ -11,6 +12,10 @@ import {
   assertRenderableProject,
   editorProjectToBlueprint,
 } from "./video-project-render-policy";
+import {
+  getVideoTemplateRenderEngine,
+  reconcileShotstackRender,
+} from "./shotstack-render.service";
 
 type CreateRenderInput = {
   resolution: VideoProjectRenderResolution;
@@ -68,6 +73,50 @@ function isDuplicateKeyError(error: unknown): boolean {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isShotstackSourceEdit(value: unknown): value is Record<string, unknown> {
+  if (!isRecord(value) || !isRecord(value.timeline) || !isRecord(value.output)) {
+    return false;
+  }
+  return Array.isArray(value.timeline.tracks);
+}
+
+export function buildVideoProjectRenderSnapshot(
+  project: Record<string, unknown>,
+  resolution: VideoProjectRenderResolution
+): VideoProjectRenderSnapshot & {
+  aspectRatio: VideoProjectRenderAspectRatio;
+  duration: number;
+} {
+  const editorState = isRecord(project.editorState) ? project.editorState : {};
+  const tracks = Array.isArray(editorState.tracks)
+    ? structuredClone(editorState.tracks)
+    : [];
+  const items = Array.isArray(editorState.items)
+    ? structuredClone(editorState.items)
+    : [];
+  const aspectRatio = String(project.aspectRatio) as VideoProjectRenderAspectRatio;
+  const duration = Number(editorState.duration ?? 0);
+  return {
+    title: String(project.title),
+    aspectRatio,
+    duration,
+    tracks,
+    items,
+    settings: {
+      resolution,
+      aspectRatio,
+      fps: 30,
+    },
+    ...(isShotstackSourceEdit(project.blueprint)
+      ? { sourceEdit: structuredClone(project.blueprint) }
+      : {}),
+  };
+}
+
 export function serializeVideoProjectRender(record: RenderRecord) {
   const render = asPlainRecord(record);
   return {
@@ -104,33 +153,8 @@ export async function createRender(
   const project = await getScopedProject(identity, projectId);
 
   const projectRecord = project as unknown as Record<string, unknown>;
-  const editorState = (
-    projectRecord.editorState &&
-    typeof projectRecord.editorState === "object" &&
-    !Array.isArray(projectRecord.editorState)
-  )
-    ? projectRecord.editorState as Record<string, unknown>
-    : {};
-  const tracks = Array.isArray(editorState.tracks)
-    ? structuredClone(editorState.tracks)
-    : [];
-  const items = Array.isArray(editorState.items)
-    ? structuredClone(editorState.items)
-    : [];
-  const aspectRatio = String(projectRecord.aspectRatio) as VideoProjectRenderAspectRatio;
-  const duration = Number(editorState.duration ?? 0);
-  const snapshot = {
-    title: String(projectRecord.title),
-    aspectRatio,
-    duration,
-    tracks,
-    items,
-    settings: {
-      resolution: input.resolution,
-      aspectRatio,
-      fps: 30,
-    },
-  };
+  const snapshot = buildVideoProjectRenderSnapshot(projectRecord, input.resolution);
+  const { aspectRatio, duration } = snapshot;
 
   try {
     assertRenderableProject(snapshot);
@@ -162,7 +186,9 @@ export async function createRender(
       snapshot,
       progress: 0,
       stageMessage: "Queued for video rendering.",
+      engine: getVideoTemplateRenderEngine(),
       attempt: 0,
+      transferAttempt: 0,
       idempotencyKey: input.idempotencyKey,
     });
     if (!created) {
@@ -189,7 +215,7 @@ export async function getRender(
 ) {
   assertObjectId(projectId, "ID dự án");
   assertObjectId(renderId, "ID bản kết xuất");
-  const render = await VideoProjectRenderModel.findOne({
+  let render = await VideoProjectRenderModel.findOne({
     _id: renderId,
     projectId,
     userId: identity.userId,
@@ -197,6 +223,20 @@ export async function getRender(
   }).lean();
   if (!render) {
     throw new VideoProjectRenderError(404, "Không tìm thấy bản kết xuất video.");
+  }
+  if (
+    render.engine === "shotstack" &&
+    (render.status === "rendering" || render.status === "uploading") &&
+    render.providerRenderId
+  ) {
+    await reconcileShotstackRender(renderId);
+    const reconciled = await VideoProjectRenderModel.findOne({
+      _id: renderId,
+      projectId,
+      userId: identity.userId,
+      companyCode: identity.companyCode,
+    }).lean();
+    if (reconciled) render = reconciled;
   }
   return serializeVideoProjectRender(render as unknown as RenderRecord);
 }
