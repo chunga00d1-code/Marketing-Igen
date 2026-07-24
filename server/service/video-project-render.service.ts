@@ -227,7 +227,13 @@ export async function getRender(
   if (
     render.engine === "shotstack" &&
     (render.status === "rendering" || render.status === "uploading") &&
-    render.providerRenderId
+    (
+      render.providerRenderId ||
+      (
+        render.providerSubmissionState === "attempting" &&
+        render.providerSubmissionAttemptId
+      )
+    )
   ) {
     await reconcileShotstackRender(renderId);
     const reconciled = await VideoProjectRenderModel.findOne({

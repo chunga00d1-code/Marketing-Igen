@@ -118,10 +118,15 @@ test("redacts every provider-only field from public render serialization", () =>
     attempt: 1,
     transferAttempt: 2,
     providerRenderId: "provider-render-secret",
+    providerSubmissionState: "uncertain",
+    providerSubmissionAttemptId: "private-attempt",
+    providerSubmissionStartedAt: new Date("2026-07-24T01:00:00.000Z"),
+    providerSubmissionUnknownAt: new Date("2026-07-24T01:01:00.000Z"),
     providerStatus: "done",
     providerOutputUrl: "https://cdn.shotstack.io/temporary.mp4",
     providerErrorCode: "provider-code",
     providerErrorMessage: "provider diagnostic",
+    transferLeaseOwner: "private-owner",
     snapshot: {
       title: "Private",
       tracks: [],
@@ -134,10 +139,15 @@ test("redacts every provider-only field from public render serialization", () =>
   for (const field of [
     "snapshot",
     "providerRenderId",
+    "providerSubmissionState",
+    "providerSubmissionAttemptId",
+    "providerSubmissionStartedAt",
+    "providerSubmissionUnknownAt",
     "providerStatus",
     "providerOutputUrl",
     "providerErrorCode",
     "providerErrorMessage",
+    "transferLeaseOwner",
     "transferAttempt",
   ]) {
     assert.equal(field in serialized, false);

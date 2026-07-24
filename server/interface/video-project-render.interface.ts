@@ -4,6 +4,7 @@ export type VideoProjectRenderStatus = "queued" | "rendering" | "uploading" | "c
 export type VideoProjectRenderResolution = "720p" | "1080p";
 export type VideoProjectRenderAspectRatio = "9:16" | "1:1" | "16:9" | "3:4";
 export type VideoProjectRenderEngine = "shotstack" | "remotion" | "ffmpeg";
+export type VideoProjectRenderSubmissionState = "attempting" | "confirmed" | "uncertain";
 
 export interface VideoProjectRenderSnapshot {
   title: string;
@@ -27,6 +28,10 @@ export interface IVideoProjectRender extends Document {
   outputUrl?: string;
   engine?: VideoProjectRenderEngine;
   providerRenderId?: string;
+  providerSubmissionState?: VideoProjectRenderSubmissionState;
+  providerSubmissionAttemptId?: string;
+  providerSubmissionStartedAt?: Date;
+  providerSubmissionUnknownAt?: Date;
   providerStatus?: string;
   providerOutputUrl?: string;
   providerPollAttempt?: number;
@@ -35,6 +40,7 @@ export interface IVideoProjectRender extends Document {
   providerErrorCode?: string;
   providerErrorMessage?: string;
   transferAttempt: number;
+  transferLeaseOwner?: string;
   transferLeaseUntil?: Date;
   attempt: number;
   idempotencyKey: string;

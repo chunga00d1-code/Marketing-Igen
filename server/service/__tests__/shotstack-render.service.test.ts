@@ -4,8 +4,11 @@ import type { ShotstackRenderStatus } from "../../integration/shotstack/shotstac
 import {
   buildShotstackCallbackUrl,
   createShotstackRenderService,
+  fetchShotstackOutput,
   getVideoTemplateRenderEngine,
   ShotstackWebhookError,
+  validateCloudinaryOutputUrl,
+  validateShotstackOutputUrl,
   type ShotstackRenderRecord,
   type ShotstackRenderRepository,
 } from "../shotstack-render.service";
@@ -55,7 +58,7 @@ class MemoryRepository implements ShotstackRenderRepository {
     };
   }
 
-  async claimForSubmission(renderId: string, now: Date) {
+  async claimForSubmission(renderId: string, attemptId: string, now: Date) {
     if (
       this.render._id !== renderId ||
       this.render.status !== "queued" ||
@@ -65,6 +68,9 @@ class MemoryRepository implements ShotstackRenderRepository {
       ...this.render,
       status: "rendering",
       engine: "shotstack",
+      providerSubmissionState: "attempting",
+      providerSubmissionAttemptId: attemptId,
+      providerSubmissionStartedAt: now,
       progress: Math.max(1, this.render.progress),
       attempt: this.render.attempt + 1,
       startedAt: now,
@@ -72,13 +78,41 @@ class MemoryRepository implements ShotstackRenderRepository {
     return structuredClone(this.render);
   }
 
-  async persistProviderSubmission(renderId: string, providerRenderId: string, providerStatus: string) {
+  async persistProviderSubmission(
+    renderId: string,
+    attemptId: string,
+    providerRenderId: string,
+    providerStatus: string
+  ) {
     if (
       this.render._id !== renderId ||
       this.render.status !== "rendering" ||
+      this.render.providerSubmissionState !== "attempting" ||
+      this.render.providerSubmissionAttemptId !== attemptId ||
       this.render.providerRenderId
     ) return false;
-    this.render = { ...this.render, providerRenderId, providerStatus };
+    this.render = {
+      ...this.render,
+      providerRenderId,
+      providerStatus,
+      providerSubmissionState: "confirmed",
+    };
+    return true;
+  }
+
+  async markSubmissionUncertain(
+    renderId: string,
+    attemptId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    if (
+      this.render._id !== renderId ||
+      this.render.status !== "rendering" ||
+      this.render.providerSubmissionState !== "attempting" ||
+      this.render.providerSubmissionAttemptId !== attemptId ||
+      this.render.providerRenderId
+    ) return false;
+    this.render = { ...this.render, ...patch };
     return true;
   }
 
@@ -103,19 +137,42 @@ class MemoryRepository implements ShotstackRenderRepository {
     return structuredClone(this.render);
   }
 
-  async updateActive(renderId: string, patch: Partial<ShotstackRenderRecord>) {
-    if (
-      this.render._id !== renderId ||
-      !["rendering", "uploading"].includes(this.render.status)
-    ) return null;
+  async recordProviderProgress(renderId: string, patch: Partial<ShotstackRenderRecord>) {
+    if (this.render._id !== renderId || this.render.status !== "rendering") return null;
     this.render = { ...this.render, ...patch };
     return structuredClone(this.render);
   }
 
-  async claimTransfer(renderId: string, now: Date, leaseUntil: Date) {
+  async recordProviderCompletion(renderId: string, patch: Partial<ShotstackRenderRecord>) {
     if (
       this.render._id !== renderId ||
-      !["rendering", "uploading"].includes(this.render.status) ||
+      !["rendering", "uploading"].includes(this.render.status)
+    ) return null;
+    this.render = { ...this.render, ...patch, status: "uploading" };
+    return structuredClone(this.render);
+  }
+
+  async recordProviderFailure(renderId: string, patch: Partial<ShotstackRenderRecord>) {
+    if (this.render._id !== renderId || this.render.status !== "rendering") return false;
+    this.render = { ...this.render, ...patch, status: "failed" };
+    return true;
+  }
+
+  async recordPollFailure(renderId: string, patch: Partial<ShotstackRenderRecord>) {
+    if (this.render._id !== renderId || this.render.status !== "rendering") return false;
+    this.render = { ...this.render, ...patch };
+    return true;
+  }
+
+  async claimTransfer(
+    renderId: string,
+    leaseOwner: string,
+    now: Date,
+    leaseUntil: Date
+  ) {
+    if (
+      this.render._id !== renderId ||
+      this.render.status !== "uploading" ||
       !this.render.providerOutputUrl ||
       (this.render.transferLeaseUntil && this.render.transferLeaseUntil > now)
     ) return null;
@@ -124,13 +181,23 @@ class MemoryRepository implements ShotstackRenderRepository {
       status: "uploading",
       progress: Math.max(85, this.render.progress),
       transferAttempt: this.render.transferAttempt + 1,
+      transferLeaseOwner: leaseOwner,
       transferLeaseUntil: leaseUntil,
     };
     return structuredClone(this.render);
   }
 
-  async completeTransfer(renderId: string, outputUrl: string, completedAt: Date) {
-    if (this.render._id !== renderId || this.render.status !== "uploading") return false;
+  async completeTransfer(
+    renderId: string,
+    leaseOwner: string,
+    outputUrl: string,
+    completedAt: Date
+  ) {
+    if (
+      this.render._id !== renderId ||
+      this.render.status !== "uploading" ||
+      this.render.transferLeaseOwner !== leaseOwner
+    ) return false;
     this.render = {
       ...this.render,
       status: "completed",
@@ -140,6 +207,30 @@ class MemoryRepository implements ShotstackRenderRepository {
     };
     return true;
   }
+
+  async recordTransferFailure(
+    renderId: string,
+    leaseOwner: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    if (
+      this.render._id !== renderId ||
+      this.render.status !== "uploading" ||
+      this.render.transferLeaseOwner !== leaseOwner
+    ) return false;
+    this.render = { ...this.render, ...patch };
+    return true;
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function createHarness(
@@ -179,6 +270,7 @@ function createHarness(
     getEnvironment: () => ({
       SHOTSTACK_WEBHOOK_URL: "https://app.example.com/api/v1/webhooks/shotstack",
       SHOTSTACK_WEBHOOK_SECRET: "safe_webhook_secret_12345",
+      CLOUDINARY_CLOUD_NAME: "app",
     }),
     now: () => new Date(NOW),
   });
@@ -221,6 +313,82 @@ test("submits the immutable snapshot once, preserves the provider edit, and pers
   assert.equal(repository.render.providerRenderId, "provider-render-1");
   assert.equal(repository.render.engine, "shotstack");
   assert.equal(repository.render.status, "rendering");
+});
+
+test("persists the durable attempting marker before issuing the provider POST", async () => {
+  const repository = new MemoryRepository();
+  let markerObserved = false;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        markerObserved = repository.render.providerSubmissionState === "attempting"
+          && Boolean(repository.render.providerSubmissionAttemptId)
+          && repository.render.status === "rendering";
+        return { renderId: "provider-render-1" };
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    converter: (projectSnapshot, sourceEdit) => ({
+      timeline: sourceEdit?.timeline || { tracks: [] },
+      output: {
+        ...(sourceEdit?.output || { format: "mp4" }),
+        aspectRatio: String(projectSnapshot.settings.aspectRatio),
+      },
+    }),
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  await service.submitShotstackRender("render-1");
+
+  assert.equal(markerObserved, true);
+  assert.equal(repository.render.providerSubmissionState, "confirmed");
+  assert.equal(repository.render.providerRenderId, "provider-render-1");
+});
+
+test("a simultaneous delivery does not abandon a fresh in-flight submission", async () => {
+  const repository = new MemoryRepository();
+  const postStarted = deferred<void>();
+  const providerResponse = deferred<{ renderId: string }>();
+  let posts = 0;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        posts += 1;
+        postStarted.resolve();
+        return providerResponse.promise;
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    converter: (projectSnapshot, sourceEdit) => ({
+      timeline: sourceEdit?.timeline || { tracks: [] },
+      output: {
+        ...(sourceEdit?.output || { format: "mp4" }),
+        aspectRatio: String(projectSnapshot.settings.aspectRatio),
+      },
+    }),
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  const first = service.submitShotstackRender("render-1");
+  await postStarted.promise;
+  await service.submitShotstackRender("render-1");
+
+  assert.equal(repository.render.status, "rendering");
+  assert.equal(repository.render.providerSubmissionState, "attempting");
+  providerResponse.resolve({ renderId: "provider-render-1" });
+  await first;
+
+  assert.equal(posts, 1);
+  assert.equal(repository.render.providerSubmissionState, "confirmed");
+  assert.equal(repository.render.providerRenderId, "provider-render-1");
 });
 
 test("rejects an invalid webhook secret and an unknown provider render", async () => {
@@ -353,7 +521,7 @@ test("a transfer failure keeps provider state and retries without resubmitting",
       if (uploadAttempt === 1) throw new Error("Cloudinary unavailable");
       return "https://res.cloudinary.com/app/video/upload/render-1.mp4";
     },
-    getEnvironment: () => ({}),
+    getEnvironment: () => ({ CLOUDINARY_CLOUD_NAME: "app" }),
     now: () => new Date(currentTime),
   });
 
@@ -408,4 +576,334 @@ test("a stale provider event cannot regress uploading back to rendering", async 
 
   assert.equal(repository.render.status, "uploading");
   assert.equal(repository.render.progress, 85);
+});
+
+test("a stale in-flight poll cannot regress a concurrent webhook transfer or duplicate upload", async () => {
+  const repository = new MemoryRepository({
+    status: "rendering",
+    providerRenderId: "provider-render-1",
+  });
+  const statusStarted = deferred<void>();
+  const providerStatus = deferred<ShotstackRenderStatus>();
+  const uploadStarted = deferred<void>();
+  const uploaded = deferred<string>();
+  const uploads: string[] = [];
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        throw new Error("Unexpected submission.");
+      },
+      async getRender() {
+        statusStarted.resolve();
+        return providerStatus.promise;
+      },
+    },
+    async uploadMedia(url) {
+      uploads.push(url);
+      uploadStarted.resolve();
+      return uploaded.promise;
+    },
+    getEnvironment: () => ({
+      SHOTSTACK_WEBHOOK_SECRET: "safe_webhook_secret_12345",
+      CLOUDINARY_CLOUD_NAME: "app",
+    }),
+    now: () => new Date(NOW),
+  });
+
+  const poll = service.reconcileShotstackRender("render-1");
+  await statusStarted.promise;
+  const webhook = service.acceptShotstackWebhook({
+    id: "provider-render-1",
+    status: "done",
+    url: "https://cdn.shotstack.io/au/stage/account/render-1.mp4",
+  }, "safe_webhook_secret_12345");
+  await uploadStarted.promise;
+
+  providerStatus.resolve({ id: "provider-render-1", status: "rendering" });
+  await poll;
+  assert.equal(repository.render.status, "uploading");
+
+  uploaded.resolve("https://res.cloudinary.com/app/video/upload/render-1.mp4");
+  await webhook;
+
+  assert.equal(repository.render.status, "completed");
+  assert.equal(uploads.length, 1);
+});
+
+test("a durable pre-call submission marker prevents a crash redelivery from posting", async () => {
+  const repository = new MemoryRepository({
+    status: "rendering",
+    engine: "shotstack",
+    providerSubmissionState: "attempting",
+    providerSubmissionAttemptId: "attempt-before-crash",
+  } as Partial<ShotstackRenderRecord>);
+  let posts = 0;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        posts += 1;
+        return { renderId: "must-not-submit" };
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  await service.submitShotstackRender("render-1");
+
+  assert.equal(posts, 0);
+  assert.equal(repository.render.status, "failed");
+  assert.equal(repository.render.providerSubmissionState, "uncertain");
+  assert.equal(repository.render.errorCode, "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN");
+});
+
+test("status reconciliation surfaces an abandoned pre-call marker for manual retry", async () => {
+  const repository = new MemoryRepository({
+    status: "rendering",
+    engine: "shotstack",
+    providerSubmissionState: "attempting",
+    providerSubmissionAttemptId: "attempt-before-crash",
+  } as Partial<ShotstackRenderRecord>);
+  let providerRequests = 0;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        providerRequests += 1;
+        return { renderId: "must-not-submit" };
+      },
+      async getRender() {
+        providerRequests += 1;
+        throw new Error("Must not poll without a provider ID.");
+      },
+    },
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  await service.reconcileShotstackRender("render-1");
+
+  assert.equal(providerRequests, 0);
+  assert.equal(repository.render.status, "failed");
+  assert.equal(repository.render.errorCode, "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN");
+});
+
+test("a timeout after POST is terminal-uncertain and never auto-posts again", async () => {
+  const repository = new MemoryRepository();
+  let posts = 0;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        posts += 1;
+        throw new Error("request timed out after provider acceptance");
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  await service.submitShotstackRender("render-1");
+  await service.submitShotstackRender("render-1");
+
+  assert.equal(posts, 1);
+  assert.equal(repository.render.status, "failed");
+  assert.equal(repository.render.providerSubmissionState, "uncertain");
+  assert.equal(repository.render.errorCode, "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN");
+});
+
+test("provider-ID persistence failure is terminal-uncertain and never posts twice", async () => {
+  class PersistenceFailureRepository extends MemoryRepository {
+    override async persistProviderSubmission() {
+      return false;
+    }
+  }
+  const repository = new PersistenceFailureRepository();
+  let posts = 0;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        posts += 1;
+        return { renderId: "provider-render-not-persisted" };
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  await service.submitShotstackRender("render-1");
+  await service.submitShotstackRender("render-1");
+
+  assert.equal(posts, 1);
+  assert.equal(repository.render.providerRenderId, undefined);
+  assert.equal(repository.render.providerSubmissionState, "uncertain");
+  assert.equal(repository.render.errorCode, "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN");
+});
+
+test("accepts only documented Shotstack output hosts without URL ambiguity", () => {
+  for (const url of [
+    "https://cdn.shotstack.io/au/stage/account/render.mp4",
+    "https://shotstack-api-stage-output.s3-ap-southeast-2.amazonaws.com/account/render.mp4",
+    "https://shotstack-api-v1-output.s3-ap-southeast-2.amazonaws.com/account/render.mp4",
+  ]) {
+    assert.equal(validateShotstackOutputUrl(url), url);
+  }
+
+  for (const url of [
+    "https://localhost/render.mp4",
+    "https://127.0.0.1/render.mp4",
+    "https://169.254.169.254/latest/meta-data",
+    "https://10.0.0.1/render.mp4",
+    "https://[::1]/render.mp4",
+    "https://cdn.shotstack.io.evil.example/render.mp4",
+    "https://evilcdn.shotstack.io/render.mp4",
+    "https://user:password@cdn.shotstack.io/render.mp4",
+    "https://cdn.shotstack.io:8443/render.mp4",
+  ]) {
+    assert.throws(() => validateShotstackOutputUrl(url), /Shotstack output URL/i);
+  }
+});
+
+test("manual redirect handling rejects an unapproved redirect before fetching it", async () => {
+  const requested: string[] = [];
+  const fetchImpl = (async (input: string | URL | Request) => {
+    requested.push(String(input));
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://127.0.0.1/internal" },
+    });
+  }) as typeof fetch;
+
+  await assert.rejects(
+    () => fetchShotstackOutput(
+      "https://cdn.shotstack.io/au/stage/account/render.mp4",
+      fetchImpl
+    ),
+    /Shotstack output URL/i
+  );
+  assert.deepEqual(requested, [
+    "https://cdn.shotstack.io/au/stage/account/render.mp4",
+  ]);
+});
+
+test("validates the final Cloudinary URL against the configured account path", () => {
+  assert.equal(
+    validateCloudinaryOutputUrl(
+      "https://res.cloudinary.com/app/video/upload/render-1.mp4",
+      { CLOUDINARY_CLOUD_NAME: "app" }
+    ),
+    "https://res.cloudinary.com/app/video/upload/render-1.mp4"
+  );
+  for (const url of [
+    "http://res.cloudinary.com/app/video/upload/render-1.mp4",
+    "https://res.cloudinary.com/another/video/upload/render-1.mp4",
+    "https://res.cloudinary.com.evil.example/app/video.mp4",
+    "https://user:password@res.cloudinary.com/app/video.mp4",
+    "https://res.cloudinary.com:8443/app/video.mp4",
+  ]) {
+    assert.throws(
+      () => validateCloudinaryOutputUrl(url, { CLOUDINARY_CLOUD_NAME: "app" }),
+      /Cloudinary output URL/i
+    );
+  }
+});
+
+test("does not publicly complete when the uploader returns a foreign URL", async () => {
+  const repository = new MemoryRepository({
+    status: "rendering",
+    providerRenderId: "provider-render-1",
+  });
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        throw new Error("Unexpected submission.");
+      },
+      async getRender() {
+        return {
+          id: "provider-render-1",
+          status: "done",
+          url: "https://cdn.shotstack.io/au/stage/account/render-1.mp4",
+        };
+      },
+    },
+    async uploadMedia() {
+      return "https://attacker.example/render-1.mp4";
+    },
+    getEnvironment: () => ({ CLOUDINARY_CLOUD_NAME: "app" }),
+    now: () => new Date(NOW),
+  });
+
+  await service.reconcileShotstackRender("render-1");
+
+  assert.equal(repository.render.status, "uploading");
+  assert.equal(repository.render.outputUrl, undefined);
+  assert.equal(repository.render.providerErrorCode, "CLOUDINARY_TRANSFER_FAILED");
+});
+
+test("an expired transfer lease cannot let the old owner overwrite the new result", async () => {
+  const repository = new MemoryRepository({
+    status: "uploading",
+    progress: 85,
+    providerRenderId: "provider-render-1",
+    providerOutputUrl: "https://cdn.shotstack.io/au/stage/account/render-1.mp4",
+  });
+  let currentTime = new Date(NOW);
+  const firstStarted = deferred<void>();
+  const secondStarted = deferred<void>();
+  const firstUpload = deferred<string>();
+  const secondUpload = deferred<string>();
+  let uploadCount = 0;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        throw new Error("Unexpected submission.");
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    async uploadMedia() {
+      uploadCount += 1;
+      if (uploadCount === 1) {
+        firstStarted.resolve();
+        return firstUpload.promise;
+      }
+      secondStarted.resolve();
+      return secondUpload.promise;
+    },
+    getEnvironment: () => ({ CLOUDINARY_CLOUD_NAME: "app" }),
+    now: () => new Date(currentTime),
+  });
+
+  const first = service.reconcileShotstackRender("render-1");
+  await firstStarted.promise;
+  currentTime = new Date(NOW.getTime() + 16 * 60_000);
+  const second = service.reconcileShotstackRender("render-1");
+  await secondStarted.promise;
+
+  secondUpload.resolve("https://res.cloudinary.com/app/video/upload/new.mp4");
+  await second;
+  firstUpload.resolve("https://res.cloudinary.com/app/video/upload/old.mp4");
+  await first;
+
+  assert.equal(uploadCount, 2);
+  assert.equal(repository.render.status, "completed");
+  assert.equal(
+    repository.render.outputUrl,
+    "https://res.cloudinary.com/app/video/upload/new.mp4"
+  );
 });

@@ -1,8 +1,10 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { isIP } from "node:net";
 import type {
   VideoProjectRenderEngine,
   VideoProjectRenderSnapshot,
   VideoProjectRenderStatus,
+  VideoProjectRenderSubmissionState,
 } from "../interface/video-project-render.interface";
 import { editorProjectToShotstackEdit } from "../integration/shotstack/shotstack.converter";
 import { ShotstackClient } from "../integration/shotstack/shotstack.client";
@@ -19,6 +21,16 @@ const POLL_LEASE_MS = 5_000;
 const MAX_POLL_BACKOFF_MS = 30_000;
 const TRANSFER_LEASE_MS = 15 * 60_000;
 const CLOUDINARY_RENDER_FOLDER = "igen_erp/marketing/video";
+const MAX_OUTPUT_REDIRECTS = 3;
+const MAX_OUTPUT_BYTES = 512 * 1024 * 1024;
+const OUTPUT_DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
+const PROVIDER_ID_PERSIST_ATTEMPTS = 3;
+const SUBMISSION_ATTEMPT_STALE_MS = 2 * 60_000;
+const SHOTSTACK_OUTPUT_HOSTS = new Set([
+  "cdn.shotstack.io",
+  "shotstack-api-stage-output.s3-ap-southeast-2.amazonaws.com",
+  "shotstack-api-v1-output.s3-ap-southeast-2.amazonaws.com",
+]);
 
 export type ShotstackRenderRecord = {
   _id: string;
@@ -29,6 +41,10 @@ export type ShotstackRenderRecord = {
   attempt: number;
   transferAttempt: number;
   providerRenderId?: string;
+  providerSubmissionState?: VideoProjectRenderSubmissionState;
+  providerSubmissionAttemptId?: string;
+  providerSubmissionStartedAt?: Date;
+  providerSubmissionUnknownAt?: Date;
   providerStatus?: string;
   providerOutputUrl?: string;
   providerPollAttempt?: number;
@@ -36,6 +52,7 @@ export type ShotstackRenderRecord = {
   providerNextPollAt?: Date;
   providerErrorCode?: string;
   providerErrorMessage?: string;
+  transferLeaseOwner?: string;
   transferLeaseUntil?: Date;
   outputUrl?: string;
   errorCode?: string;
@@ -46,11 +63,21 @@ export type ShotstackRenderRecord = {
 };
 
 export interface ShotstackRenderRepository {
-  claimForSubmission(renderId: string, now: Date): Promise<ShotstackRenderRecord | null>;
+  claimForSubmission(
+    renderId: string,
+    attemptId: string,
+    now: Date
+  ): Promise<ShotstackRenderRecord | null>;
   persistProviderSubmission(
     renderId: string,
+    attemptId: string,
     providerRenderId: string,
     providerStatus: string
+  ): Promise<boolean>;
+  markSubmissionUncertain(
+    renderId: string,
+    attemptId: string,
+    patch: Partial<ShotstackRenderRecord>
   ): Promise<boolean>;
   findById(renderId: string): Promise<ShotstackRenderRecord | null>;
   findByProviderRenderId(providerRenderId: string): Promise<ShotstackRenderRecord | null>;
@@ -59,16 +86,39 @@ export interface ShotstackRenderRepository {
     now: Date,
     leaseUntil: Date
   ): Promise<ShotstackRenderRecord | null>;
-  updateActive(
+  recordProviderProgress(
     renderId: string,
     patch: Partial<ShotstackRenderRecord>
   ): Promise<ShotstackRenderRecord | null>;
+  recordProviderCompletion(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ): Promise<ShotstackRenderRecord | null>;
+  recordProviderFailure(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ): Promise<boolean>;
+  recordPollFailure(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ): Promise<boolean>;
   claimTransfer(
     renderId: string,
+    leaseOwner: string,
     now: Date,
     leaseUntil: Date
   ): Promise<ShotstackRenderRecord | null>;
-  completeTransfer(renderId: string, outputUrl: string, completedAt: Date): Promise<boolean>;
+  completeTransfer(
+    renderId: string,
+    leaseOwner: string,
+    outputUrl: string,
+    completedAt: Date
+  ): Promise<boolean>;
+  recordTransferFailure(
+    renderId: string,
+    leaseOwner: string,
+    patch: Partial<ShotstackRenderRecord>
+  ): Promise<boolean>;
 }
 
 type ShotstackRenderClient = Pick<ShotstackClient, "renderEdit" | "getRender">;
@@ -81,6 +131,7 @@ type ShotstackRenderDependencies = {
     sourceEdit?: ShotstackEdit
   ) => ShotstackEdit;
   uploadMedia?: (url: string, folder: string) => Promise<string>;
+  fetchImpl?: typeof fetch;
   getEnvironment?: () => NodeJS.ProcessEnv;
   now?: () => Date;
 };
@@ -122,6 +173,8 @@ function toRenderRecord(value: unknown): ShotstackRenderRecord | null {
     attempt: Number(record.attempt || 0),
     transferAttempt: Number(record.transferAttempt || 0),
     providerPollAttempt: Number(record.providerPollAttempt || 0),
+    providerSubmissionStartedAt: asDate(record.providerSubmissionStartedAt),
+    providerSubmissionUnknownAt: asDate(record.providerSubmissionUnknownAt),
     providerLastCheckedAt: asDate(record.providerLastCheckedAt),
     providerNextPollAt: asDate(record.providerNextPollAt),
     transferLeaseUntil: asDate(record.transferLeaseUntil),
@@ -131,7 +184,7 @@ function toRenderRecord(value: unknown): ShotstackRenderRecord | null {
 }
 
 export class MongooseShotstackRenderRepository implements ShotstackRenderRepository {
-  async claimForSubmission(renderId: string, now: Date) {
+  async claimForSubmission(renderId: string, attemptId: string, now: Date) {
     const render = await VideoProjectRenderModel.findOneAndUpdate(
       {
         _id: renderId,
@@ -142,6 +195,9 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
         $set: {
           status: "rendering",
           engine: "shotstack",
+          providerSubmissionState: "attempting",
+          providerSubmissionAttemptId: attemptId,
+          providerSubmissionStartedAt: now,
           startedAt: now,
           stageMessage: "Submitting video render.",
         },
@@ -155,6 +211,7 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
 
   async persistProviderSubmission(
     renderId: string,
+    attemptId: string,
     providerRenderId: string,
     providerStatus: string
   ) {
@@ -162,16 +219,37 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
       {
         _id: renderId,
         status: "rendering",
+        providerSubmissionState: "attempting",
+        providerSubmissionAttemptId: attemptId,
         providerRenderId: { $exists: false },
       },
       {
         $set: {
           providerRenderId,
+          providerSubmissionState: "confirmed",
           providerStatus,
           stageMessage: "Video render is processing.",
         },
         $max: { progress: 5 },
       }
+    );
+    return result.matchedCount === 1;
+  }
+
+  async markSubmissionUncertain(
+    renderId: string,
+    attemptId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    const result = await VideoProjectRenderModel.updateOne(
+      {
+        _id: renderId,
+        status: "rendering",
+        providerSubmissionState: "attempting",
+        providerSubmissionAttemptId: attemptId,
+        providerRenderId: { $exists: false },
+      },
+      { $set: patch }
     );
     return result.matchedCount === 1;
   }
@@ -205,20 +283,62 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
     return toRenderRecord(render);
   }
 
-  async updateActive(renderId: string, patch: Partial<ShotstackRenderRecord>) {
+  async recordProviderProgress(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
     const render = await VideoProjectRenderModel.findOneAndUpdate(
-      { _id: renderId, status: { $in: ACTIVE_STATUSES } },
+      { _id: renderId, status: "rendering" },
       { $set: patch },
       { new: true }
     ).lean();
     return toRenderRecord(render);
   }
 
-  async claimTransfer(renderId: string, now: Date, leaseUntil: Date) {
+  async recordProviderCompletion(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    const render = await VideoProjectRenderModel.findOneAndUpdate(
+      { _id: renderId, status: { $in: ACTIVE_STATUSES } },
+      { $set: { ...patch, status: "uploading" } },
+      { new: true }
+    ).lean();
+    return toRenderRecord(render);
+  }
+
+  async recordProviderFailure(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    const result = await VideoProjectRenderModel.updateOne(
+      { _id: renderId, status: "rendering" },
+      { $set: { ...patch, status: "failed" } }
+    );
+    return result.matchedCount === 1;
+  }
+
+  async recordPollFailure(
+    renderId: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    const result = await VideoProjectRenderModel.updateOne(
+      { _id: renderId, status: "rendering" },
+      { $set: patch }
+    );
+    return result.matchedCount === 1;
+  }
+
+  async claimTransfer(
+    renderId: string,
+    leaseOwner: string,
+    now: Date,
+    leaseUntil: Date
+  ) {
     const render = await VideoProjectRenderModel.findOneAndUpdate(
       {
         _id: renderId,
-        status: { $in: ACTIVE_STATUSES },
+        status: "uploading",
         providerOutputUrl: { $type: "string" },
         $or: [
           { transferLeaseUntil: { $exists: false } },
@@ -229,6 +349,7 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
         $set: {
           status: "uploading",
           stageMessage: "Transferring rendered video.",
+          transferLeaseOwner: leaseOwner,
           transferLeaseUntil: leaseUntil,
         },
         $inc: { transferAttempt: 1 },
@@ -239,9 +360,18 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
     return toRenderRecord(render);
   }
 
-  async completeTransfer(renderId: string, outputUrl: string, completedAt: Date) {
+  async completeTransfer(
+    renderId: string,
+    leaseOwner: string,
+    outputUrl: string,
+    completedAt: Date
+  ) {
     const result = await VideoProjectRenderModel.updateOne(
-      { _id: renderId, status: "uploading" },
+      {
+        _id: renderId,
+        status: "uploading",
+        transferLeaseOwner: leaseOwner,
+      },
       {
         $set: {
           status: "completed",
@@ -255,9 +385,26 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
           errorMessage: "",
           providerErrorCode: "",
           providerErrorMessage: "",
+          transferLeaseOwner: "",
           transferLeaseUntil: "",
         },
       }
+    );
+    return result.matchedCount === 1;
+  }
+
+  async recordTransferFailure(
+    renderId: string,
+    leaseOwner: string,
+    patch: Partial<ShotstackRenderRecord>
+  ) {
+    const result = await VideoProjectRenderModel.updateOne(
+      {
+        _id: renderId,
+        status: "uploading",
+        transferLeaseOwner: leaseOwner,
+      },
+      { $set: patch }
     );
     return result.matchedCount === 1;
   }
@@ -314,12 +461,118 @@ function normalizeProviderStatus(status: string): string {
   return status.trim().toLowerCase();
 }
 
-function isHttpsUrl(value: string): boolean {
+function parsedHttpsUrl(value: string, label: string): URL {
   try {
-    return new URL(value).protocol === "https:";
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.port
+    ) {
+      throw new Error(`${label} is not safe.`);
+    }
+    return url;
   } catch {
-    return false;
+    throw new Error(`${label} is not safe.`);
   }
+}
+
+function normalizedHostname(url: URL): string {
+  return url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+}
+
+function isPrivateIpLiteral(hostname: string): boolean {
+  if (!isIP(hostname)) return false;
+  if (hostname.includes(":")) {
+    const normalized = hostname.toLowerCase();
+    return normalized === "::1"
+      || normalized === "::"
+      || normalized.startsWith("fc")
+      || normalized.startsWith("fd")
+      || normalized.startsWith("fe8")
+      || normalized.startsWith("fe9")
+      || normalized.startsWith("fea")
+      || normalized.startsWith("feb");
+  }
+  const octets = hostname.split(".").map(Number);
+  return octets[0] === 10
+    || octets[0] === 127
+    || (octets[0] === 169 && octets[1] === 254)
+    || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
+    || (octets[0] === 192 && octets[1] === 168)
+    || octets[0] === 0;
+}
+
+export function validateShotstackOutputUrl(value: string): string {
+  const url = parsedHttpsUrl(value, "Shotstack output URL");
+  const hostname = normalizedHostname(url);
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    isPrivateIpLiteral(hostname) ||
+    !SHOTSTACK_OUTPUT_HOSTS.has(hostname)
+  ) {
+    throw new Error("Shotstack output URL is not safe.");
+  }
+  return url.toString();
+}
+
+export function validateCloudinaryOutputUrl(
+  value: string,
+  environment: Readonly<Record<string, string | undefined>> = process.env
+): string {
+  const cloudName = environment.CLOUDINARY_CLOUD_NAME?.trim();
+  const url = parsedHttpsUrl(value, "Cloudinary output URL");
+  if (!cloudName || normalizedHostname(url) !== "res.cloudinary.com") {
+    throw new Error("Cloudinary output URL is not application-controlled.");
+  }
+  let firstPathSegment: string;
+  try {
+    firstPathSegment = decodeURIComponent(url.pathname.split("/")[1] || "");
+  } catch {
+    throw new Error("Cloudinary output URL is not application-controlled.");
+  }
+  if (firstPathSegment !== cloudName) {
+    throw new Error("Cloudinary output URL is not application-controlled.");
+  }
+  return url.toString();
+}
+
+export async function fetchShotstackOutput(
+  inputUrl: string,
+  fetchImpl: typeof fetch = globalThis.fetch
+): Promise<Buffer> {
+  let currentUrl = validateShotstackOutputUrl(inputUrl);
+  for (let redirectCount = 0; redirectCount <= MAX_OUTPUT_REDIRECTS; redirectCount += 1) {
+    const response = await fetchImpl(currentUrl, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(OUTPUT_DOWNLOAD_TIMEOUT_MS),
+    });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      if (redirectCount === MAX_OUTPUT_REDIRECTS) {
+        throw new Error("Shotstack output redirected too many times.");
+      }
+      const location = response.headers.get("location");
+      if (!location) throw new Error("Shotstack output redirect is invalid.");
+      currentUrl = validateShotstackOutputUrl(new URL(location, currentUrl).toString());
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(`Shotstack output download failed with HTTP ${response.status}.`);
+    }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_OUTPUT_BYTES) {
+      throw new Error("Shotstack output exceeds the transfer limit.");
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > MAX_OUTPUT_BYTES) {
+      throw new Error("Shotstack output exceeds the transfer limit.");
+    }
+    return buffer;
+  }
+  throw new Error("Shotstack output redirect is invalid.");
 }
 
 function providerProgress(status: string): number {
@@ -338,6 +591,15 @@ function isProviderCompletion(status: string): boolean {
 
 function pollBackoff(attempt: number): number {
   return Math.min(MAX_POLL_BACKOFF_MS, 2_000 * (2 ** Math.min(attempt, 4)));
+}
+
+function isAbandonedSubmissionAttempt(
+  render: ShotstackRenderRecord,
+  currentTime: Date
+): boolean {
+  return !render.providerSubmissionStartedAt
+    || render.providerSubmissionStartedAt.getTime()
+      <= currentTime.getTime() - SUBMISSION_ATTEMPT_STALE_MS;
 }
 
 function webhookPayload(payload: unknown): WebhookPayload | undefined {
@@ -377,11 +639,13 @@ export function createShotstackRenderService(
 ) {
   const repository = dependencies.repository || new MongooseShotstackRenderRepository();
   const converter = dependencies.converter || editorProjectToShotstackEdit;
-  const uploadMedia = dependencies.uploadMedia
-    || ((url: string, folder: string) => cloudinaryService.uploadMedia(url, folder));
   const getEnvironment = dependencies.getEnvironment || (() => process.env);
   const now = dependencies.now || (() => new Date());
   const getClient = () => dependencies.client || new ShotstackClient();
+  const uploadMedia = dependencies.uploadMedia || (async (url: string, folder: string) => {
+    const output = await fetchShotstackOutput(url, dependencies.fetchImpl);
+    return cloudinaryService.uploadMediaBuffer(output, folder);
+  });
 
   const recordFailure = async (
     renderId: string,
@@ -390,8 +654,7 @@ export function createShotstackRenderService(
     code?: unknown
   ) => {
     const environment = getEnvironment();
-    await repository.updateActive(renderId, {
-      status: "failed",
+    await repository.recordProviderFailure(renderId, {
       providerStatus,
       providerErrorCode: diagnosticCode(code, environment),
       providerErrorMessage: diagnosticMessage(error, environment),
@@ -402,26 +665,52 @@ export function createShotstackRenderService(
     });
   };
 
+  const markSubmissionUncertain = async (
+    renderId: string,
+    attemptId: string,
+    error: unknown
+  ) => {
+    const environment = getEnvironment();
+    await repository.markSubmissionUncertain(renderId, attemptId, {
+      status: "failed",
+      providerSubmissionState: "uncertain",
+      providerSubmissionUnknownAt: now(),
+      providerStatus: "submission_uncertain",
+      providerErrorCode: "SHOTSTACK_SUBMISSION_UNCERTAIN",
+      providerErrorMessage: diagnosticMessage(error, environment),
+      stageMessage: "Render submission needs manual retry.",
+      errorCode: "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN",
+      errorMessage: "Render submission is uncertain. Start a new render manually.",
+      completedAt: now(),
+    });
+  };
+
   const transferProviderOutput = async (renderId: string) => {
     const currentTime = now();
+    const leaseOwner = randomUUID();
     const claimed = await repository.claimTransfer(
       renderId,
+      leaseOwner,
       currentTime,
       new Date(currentTime.getTime() + TRANSFER_LEASE_MS)
     );
     if (!claimed?.providerOutputUrl) return;
     try {
-      const outputUrl = await uploadMedia(
+      const uploadedUrl = await uploadMedia(
         claimed.providerOutputUrl,
         CLOUDINARY_RENDER_FOLDER
       );
-      if (!await repository.completeTransfer(renderId, outputUrl, now())) {
-        throw new Error("Render could not transition to completed.");
-      }
+      const outputUrl = validateCloudinaryOutputUrl(uploadedUrl, getEnvironment());
+      await repository.completeTransfer(
+        renderId,
+        leaseOwner,
+        outputUrl,
+        now()
+      );
     } catch (error: unknown) {
       const environment = getEnvironment();
       const retryAt = new Date(now().getTime() + pollBackoff(claimed.transferAttempt));
-      await repository.updateActive(renderId, {
+      await repository.recordTransferFailure(renderId, leaseOwner, {
         status: "uploading",
         stageMessage: "Rendered video transfer will retry.",
         transferLeaseUntil: retryAt,
@@ -453,7 +742,15 @@ export function createShotstackRenderService(
     }
 
     if (isProviderCompletion(status)) {
-      if (!providerUrl || !isHttpsUrl(providerUrl)) {
+      let safeProviderUrl: string;
+      try {
+        safeProviderUrl = providerUrl
+          ? validateShotstackOutputUrl(providerUrl)
+          : "";
+      } catch {
+        safeProviderUrl = "";
+      }
+      if (!safeProviderUrl) {
         await recordFailure(
           render._id,
           status,
@@ -462,10 +759,9 @@ export function createShotstackRenderService(
         );
         return;
       }
-      const updated = await repository.updateActive(render._id, {
-        status: "uploading",
+      const updated = await repository.recordProviderCompletion(render._id, {
         providerStatus: status,
-        providerOutputUrl: providerUrl,
+        providerOutputUrl: safeProviderUrl,
         providerLastCheckedAt: now(),
         providerNextPollAt: undefined,
         providerErrorCode: undefined,
@@ -479,8 +775,7 @@ export function createShotstackRenderService(
 
     const attempt = (render.providerPollAttempt || 0) + 1;
     const checkedAt = now();
-    await repository.updateActive(render._id, {
-      status: render.status === "uploading" ? "uploading" : "rendering",
+    await repository.recordProviderProgress(render._id, {
       providerStatus: status,
       providerPollAttempt: attempt,
       providerLastCheckedAt: checkedAt,
@@ -496,8 +791,29 @@ export function createShotstackRenderService(
   };
 
   const submitShotstackRender = async (renderId: string): Promise<void> => {
-    const claimed = await repository.claimForSubmission(renderId, now());
-    if (!claimed) return;
+    const attemptId = randomUUID();
+    const claimed = await repository.claimForSubmission(
+      renderId,
+      attemptId,
+      now()
+    );
+    if (!claimed) {
+      const existing = await repository.findById(renderId);
+      if (
+        existing?.status === "rendering" &&
+        existing.providerSubmissionState === "attempting" &&
+        existing.providerSubmissionAttemptId &&
+        !existing.providerRenderId &&
+        isAbandonedSubmissionAttempt(existing, now())
+      ) {
+        await markSubmissionUncertain(
+          renderId,
+          existing.providerSubmissionAttemptId,
+          "A previous Shotstack submission attempt ended without a confirmed render ID."
+        );
+      }
+      return;
+    }
     try {
       const sourceEdit = toRecord(claimed.snapshot.sourceEdit) as ShotstackEdit | undefined;
       const edit = converter(claimed.snapshot, sourceEdit);
@@ -506,22 +822,50 @@ export function createShotstackRenderService(
         ...edit,
         ...(callback ? { callback } : {}),
       });
-      const persisted = await repository.persistProviderSubmission(
-        renderId,
-        submission.renderId,
-        "queued"
-      );
+      let persisted = false;
+      let persistenceError: unknown;
+      for (let persistAttempt = 0; persistAttempt < PROVIDER_ID_PERSIST_ATTEMPTS; persistAttempt += 1) {
+        try {
+          persisted = await repository.persistProviderSubmission(
+            renderId,
+            attemptId,
+            submission.renderId,
+            "queued"
+          );
+          if (persisted) break;
+        } catch (error: unknown) {
+          persistenceError = error;
+        }
+      }
       if (!persisted) {
-        throw new Error("Shotstack render ID could not be persisted.");
+        await markSubmissionUncertain(
+          renderId,
+          attemptId,
+          persistenceError || "Shotstack returned an ID that could not be persisted."
+        );
       }
     } catch (error: unknown) {
-      await recordFailure(renderId, "submission_failed", error);
+      await markSubmissionUncertain(renderId, attemptId, error);
     }
   };
 
   const reconcileShotstackRender = async (renderId: string): Promise<void> => {
     const existing = await repository.findById(renderId);
     if (!existing || TERMINAL_STATUSES.includes(existing.status)) return;
+    if (
+      existing.status === "rendering" &&
+      existing.providerSubmissionState === "attempting" &&
+      existing.providerSubmissionAttemptId &&
+      !existing.providerRenderId &&
+      isAbandonedSubmissionAttempt(existing, now())
+    ) {
+      await markSubmissionUncertain(
+        renderId,
+        existing.providerSubmissionAttemptId,
+        "A previous Shotstack submission attempt ended without a confirmed render ID."
+      );
+      return;
+    }
     if (existing.providerOutputUrl) {
       await transferProviderOutput(renderId);
       return;
@@ -540,7 +884,7 @@ export function createShotstackRenderService(
     } catch (error: unknown) {
       const environment = getEnvironment();
       const attempt = (claimed.providerPollAttempt || 0) + 1;
-      await repository.updateActive(renderId, {
+      await repository.recordPollFailure(renderId, {
         providerPollAttempt: attempt,
         providerLastCheckedAt: now(),
         providerNextPollAt: new Date(now().getTime() + pollBackoff(attempt)),
