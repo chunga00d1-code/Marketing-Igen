@@ -31,6 +31,12 @@ export interface VideoTemplateEditorItemProviderFields {
 
 export interface IVideoTemplate extends Document {
   systemKey?: string;
+  sourceProvider?: "shotstack";
+  externalTemplateId?: string;
+  providerCreatedAt?: Date;
+  providerUpdatedAt?: Date;
+  lastSyncedAt?: Date;
+  compatibilityWarnings?: string[];
   title: string;
   description: string;
   thumbnailUrl: string;
@@ -54,11 +60,37 @@ export interface IVideoTemplate extends Document {
 export interface IVideoTemplateVersion extends Document {
   templateId: Types.ObjectId;
   version: number;
+  sourceHash?: string;
+  sourceEdit?: Record<string, unknown>;
+  normalizedEditorState?: Record<string, unknown>;
+  compatibilityWarnings?: string[];
+  providerUpdatedAt?: Date;
   blueprint: Record<string, unknown>;
   slots: VideoTemplateSlot[];
   defaultValues: Record<string, unknown>;
   createdBy: string;
   createdAt: Date;
+}
+
+export type VideoTemplateSyncStatus = "success" | "partial" | "failed";
+
+export interface VideoTemplateSyncSummary {
+  created: number;
+  updated: number;
+  unchanged: number;
+  archived: number;
+  failed: Array<{ externalId: string; message: string }>;
+}
+
+export interface IVideoTemplateSync extends Document {
+  provider: "shotstack";
+  environment: "stage" | "v1";
+  lastAttemptAt: Date;
+  lastSuccessAt?: Date;
+  status: VideoTemplateSyncStatus;
+  summary: VideoTemplateSyncSummary;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface IVideoProject extends Document {
