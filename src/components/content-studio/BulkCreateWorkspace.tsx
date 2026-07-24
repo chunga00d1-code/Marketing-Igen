@@ -12,7 +12,6 @@ import {
   Users,
   Link,
   ArrowLeft,
-  Home,
   FilePlus2,
   Cloud,
   CloudCheck,
@@ -33,6 +32,7 @@ import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import type { UserProfile } from '../../types';
 import { toast } from '../../pages/Toast';
+import { BRAND_LOGO_PATH, BRAND_NAME } from '../../config/brand';
 
 import type {
   EditorTool,
@@ -60,6 +60,27 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function pageFilename(name: string, index: number) {
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `${normalized || `trang-${index + 1}`}.png`;
+}
+
+function triggerFileDownload(url: string, filename: string) {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function createRow(layers: TemplateLayer[], values: Record<string, string> = {}): DataRow {
   return {
     id: makeId('row'),
@@ -82,8 +103,42 @@ function normalizeDataKey(value: string) {
     .replace(/^-+|-+$/g, '');
 }
 
+function extractTableRegion<T>(matrix: T[][]) {
+  const populatedRows = matrix.filter((row) =>
+    row.some((cell) => String(cell ?? '').trim())
+  );
+  let bestHeaderIndex = -1;
+  let bestHeaderColumns: number[] = [];
+  let bestScore = -1;
+
+  populatedRows.slice(0, -1).forEach((row, rowIndex) => {
+    const headerColumns = row
+      .map((cell, columnIndex) => String(cell ?? '').trim() ? columnIndex : -1)
+      .filter((columnIndex) => columnIndex >= 0);
+    const supportedColumns = headerColumns.filter((columnIndex) =>
+      populatedRows.slice(rowIndex + 1).some(
+        (dataRow) => String(dataRow[columnIndex] ?? '').trim()
+      )
+    );
+    if (supportedColumns.length === 0) return;
+    const score = supportedColumns.length * 100 + headerColumns.length;
+    if (score > bestScore) {
+      bestScore = score;
+      bestHeaderIndex = rowIndex;
+      bestHeaderColumns = headerColumns;
+    }
+  });
+
+  if (bestHeaderIndex < 0 || bestHeaderColumns.length === 0) return populatedRows;
+  const firstColumn = bestHeaderColumns[0];
+  const lastColumn = bestHeaderColumns[bestHeaderColumns.length - 1];
+  return populatedRows
+    .slice(bestHeaderIndex)
+    .map((row) => row.slice(firstColumn, lastColumn + 1));
+}
+
 function matrixToDataSet(matrix: Array<Array<string | number | boolean>>) {
-  const data = matrix.filter((row) => row.some((cell) => String(cell ?? '').trim()));
+  const data = extractTableRegion(matrix);
   if (data.length < 2) throw new Error('Dữ liệu cần một dòng tiêu đề và ít nhất một dòng nội dung.');
   if (data[0].length > 50) throw new Error('Dữ liệu chỉ được tối đa 50 cột.');
   const labels = data[0].map((cell) => String(cell ?? '').trim());
@@ -102,7 +157,10 @@ function matrixToDataSet(matrix: Array<Array<string | number | boolean>>) {
     return {
       key: keys[columnIndex],
       label,
-      type: /(ảnh|hình|image|photo|logo|avatar)/i.test(label) ? 'image' : 'text',
+      type: (
+        /(ảnh|hình|image|photo|logo|avatar|thumbnail)/i.test(label) ||
+        samples.some((value) => /^https:\/\/\S+\.(png|jpe?g|webp|gif)(\?\S*)?$/i.test(value))
+      ) ? 'image' : 'text',
       samples,
     };
   });
@@ -135,8 +193,26 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-
-
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+) {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const runners = Array.from(
+    { length: Math.min(Math.max(1, concurrency), items.length) },
+    async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await worker(items[index], index);
+      }
+    }
+  );
+  await Promise.all(runners);
+  return results;
+}
 
 
 interface BulkCreateWorkspaceProps {
@@ -211,12 +287,14 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [pageResults, setPageResults] = useState<Record<string, PageRenderState>>({});
   const [activeJobPageIds, setActiveJobPageIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [assetUploadProgress, setAssetUploadProgress] = useState<{ completed: number; total: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const [zoomPercent, setZoomPercent] = useState(50);
   const [zoomMode, setZoomMode] = useState<'fit' | 'manual'>('fit');
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; targetLayerId?: string } | null>(null);
   const copiedLayerRef = useRef<TemplateLayer | null>(null);
+  const [copiedPage, setCopiedPage] = useState<DataRow | null>(null);
   const draftRestoredRef = useRef(false);
   const rotateRef = useRef<{
     layerId: string;
@@ -355,12 +433,19 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     [layers, selectedLayerIds]
   );
   const activeRow = rows.find((row) => row.id === activeRowId) || rows[0];
-  const isRowReady = useCallback(
-    (row: DataRow) =>
-      row.selected !== false &&
-      layers.length > 0 &&
-      layers.every((layer) => row.values[layer.id]?.trim()),
+  const getRowIssue = useCallback(
+    (row: DataRow) => {
+      if (row.selected === false) return 'Trang này đang bị bỏ chọn.';
+      if (layers.length === 0) return 'Thiết kế chưa có trường nội dung.';
+      const missingLayers = layers.filter((layer) => !row.values[layer.id]?.trim());
+      if (missingLayers.length === 0) return null;
+      return `Thiếu dữ liệu: ${missingLayers.map((layer) => layer.fieldName).join(', ')}`;
+    },
     [layers]
+  );
+  const isRowReady = useCallback(
+    (row: DataRow) => getRowIssue(row) === null,
+    [getRowIssue]
   );
   const readyCount = useMemo(
     () => rows.filter(isRowReady).length,
@@ -877,6 +962,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const duplicateRow = (row: DataRow) => {
     const duplicated = {
       ...createRow(layers, row.values),
+      name: row.name ? `${row.name} - bản sao` : undefined,
       sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
     };
     setRows((current) => [...current, duplicated]);
@@ -900,6 +986,89 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     const nextRows = rows.filter((row) => row.id !== rowId);
     setRows(nextRows);
     if (activeRowId === rowId) setActiveRowId(nextRows[0].id);
+  };
+
+  const copyPage = (row: DataRow) => {
+    setCopiedPage({
+      ...row,
+      values: { ...row.values },
+      sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
+    });
+    toast.success(`Đã sao chép ${row.name || 'trang'}.`);
+  };
+
+  const insertPageAfter = (source: DataRow, afterRowId: string, name?: string) => {
+    const inserted = {
+      ...createRow(layers, source.values),
+      name,
+      sourceCells: source.sourceCells ? { ...source.sourceCells } : undefined,
+      selected: true,
+    };
+    setRows((current) => {
+      const targetIndex = current.findIndex((row) => row.id === afterRowId);
+      const insertIndex = targetIndex >= 0 ? targetIndex + 1 : current.length;
+      const next = [...current];
+      next.splice(insertIndex, 0, inserted);
+      return next;
+    });
+    setActiveRowId(inserted.id);
+    setPagesCreated(true);
+  };
+
+  const pastePageAfter = (afterRowId: string) => {
+    if (!copiedPage) return;
+    insertPageAfter(
+      copiedPage,
+      afterRowId,
+      copiedPage.name ? `${copiedPage.name} - bản sao` : 'Trang đã dán'
+    );
+  };
+
+  const duplicatePage = (row: DataRow) => {
+    insertPageAfter(
+      row,
+      row.id,
+      row.name ? `${row.name} - bản sao` : 'Trang bản sao'
+    );
+  };
+
+  const renamePage = (rowId: string, name: string) => {
+    const normalizedName = name.trim().slice(0, 80);
+    if (!normalizedName) return;
+    setRows((current) => current.map((row) =>
+      row.id === rowId ? { ...row, name: normalizedName } : row
+    ));
+  };
+
+  const downloadPage = async (row: DataRow, index: number) => {
+    const name = row.name || `Trang ${index + 1}`;
+    const filename = pageFilename(name, index);
+    const result = pageResults[row.id];
+    try {
+      if (result?.status === 'completed' && result.outputUrl) {
+        triggerFileDownload(
+          `/api/v1/media/download?url=${encodeURIComponent(result.outputUrl)}&filename=${encodeURIComponent(filename)}`,
+          filename
+        );
+        return;
+      }
+      if (editorScene.layers.length === 0) {
+        toast.error('Hãy thêm ít nhất một nội dung chữ hoặc ảnh trước khi tải trang.');
+        return;
+      }
+      toast.info(`Đang chuẩn bị tải “${name}”...`);
+      const previewUrl = await bulkCreateService.previewScene({
+        name,
+        sceneVersion: editorScene.sceneVersion,
+        canvas: editorScene.canvas,
+        background: editorScene.background,
+        layers: editorScene.layers,
+      }, row.values);
+      triggerFileDownload(previewUrl, filename);
+      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 10_000);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể tải trang.');
+    }
   };
 
   const applyImportedData = (
@@ -1067,11 +1236,16 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setLoadingSheet(true);
     setErrorMessage('');
     try {
-      const preview = await bulkCreateService.previewPublicGoogleSheet(
-        googleSheetUrl.trim()
+      const preview = await bulkCreateService.previewPublicGoogleSheet(googleSheetUrl.trim());
+      applyImportedData(
+        preview.columns,
+        preview.rows,
+        `Google Sheet · ${preview.sheetName || 'Tự động'}`
       );
-      applyImportedData(preview.columns, preview.rows, `Google Sheet · ${preview.range}`);
-      toast.success(`Đã nhập ${preview.rows.length} dòng từ Google Sheet.`);
+      const imageSummary = preview.embeddedImageCount
+        ? ` và ${preview.embeddedImageCount} ảnh`
+        : '';
+      toast.success(`Đã nhập ${preview.rows.length} dòng${imageSummary} từ Google Sheet.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể đọc Google Sheet.';
       setErrorMessage(message);
@@ -1198,29 +1372,40 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
 
   const uploadReadyRows = async () => {
     const readyRows = rows.filter(isRowReady);
-    const uploaded: Array<Record<string, string>> = [];
+    const localImageSources = Array.from(new Set(
+      readyRows.flatMap((row) => layers
+        .filter((layer) => layer.type === 'image')
+        .map((layer) => row.values[layer.id] || '')
+        .filter((value) => value.startsWith('data:image/')))
+    ));
     const uploadedImageUrls = new Map<string, string>();
-    for (const row of readyRows) {
-      const values = { ...row.values };
-      for (const layer of layers) {
-        const imageValue = values[layer.id] || '';
-        if (
-          layer.type === 'image' &&
-          (imageValue.startsWith('data:') ||
-            (imageValue.startsWith('https://') && !/^https:\/\/res\.cloudinary\.com\//i.test(imageValue)))
-        ) {
-          const cachedUrl = uploadedImageUrls.get(imageValue);
-          if (cachedUrl) {
-            values[layer.id] = cachedUrl;
-          } else {
-            const uploadedUrl = await bulkCreateService.uploadAsset(imageValue, 'igen_erp/bulk-create/inputs');
-            uploadedImageUrls.set(imageValue, uploadedUrl);
-            values[layer.id] = uploadedUrl;
-          }
+    if (localImageSources.length > 0) {
+      setAssetUploadProgress({ completed: 0, total: localImageSources.length });
+      const uploadedUrls = await mapWithConcurrency(
+        localImageSources,
+        4,
+        async (source) => {
+          const url = await bulkCreateService.uploadAsset(source, 'igen_erp/bulk-create/inputs');
+          setAssetUploadProgress((current) => current
+            ? { ...current, completed: current.completed + 1 }
+            : current
+          );
+          return url;
         }
-      }
-      uploaded.push(values);
+      );
+      localImageSources.forEach((source, index) => {
+        uploadedImageUrls.set(source, uploadedUrls[index]);
+      });
     }
+    const uploaded = readyRows.map((row) => ({
+      ...row.values,
+      ...Object.fromEntries(layers
+        .filter((layer) => layer.type === 'image')
+        .map((layer) => {
+          const source = row.values[layer.id] || '';
+          return [layer.id, uploadedImageUrls.get(source) || source];
+        })),
+    }));
     setRows((current) => current.map((row) => {
       const index = readyRows.findIndex((ready) => ready.id === row.id);
       return index >= 0 ? { ...row, values: uploaded[index] } : row;
@@ -1265,6 +1450,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
+      setAssetUploadProgress(null);
       setBusy(false);
     }
   };
@@ -1681,20 +1867,33 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
+  const closeWorkspace = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    window.history.pushState(null, '', '/xuong-noi-dung/tao-hinh-anh');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-white">
       <nav className="flex w-[76px] shrink-0 flex-col border-r border-slate-200 bg-white py-3">
         <button
           type="button"
-          onClick={() => {
-            window.history.pushState(null, "", "/tong-quan");
-            window.dispatchEvent(new PopStateEvent("popstate"));
-          }}
+          onClick={closeWorkspace}
           className="mb-3 flex items-center justify-center transition-transform hover:scale-105"
-          title="Quay lại Trang chủ"
+          title="Quay lại Xưởng nội dung"
         >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
-            <Home className="h-5 w-5" />
+          <div className="relative">
+            <img
+              src={BRAND_LOGO_PATH}
+              alt={BRAND_NAME}
+              className="h-11 w-11 rounded-2xl border border-blue-100 bg-white object-cover shadow-md shadow-blue-500/10"
+            />
+            <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white">
+              <ArrowLeft className="h-2.5 w-2.5" />
+            </span>
           </div>
         </button>
         {TOOLS.map((tool) => {
@@ -1783,24 +1982,19 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       </div>
 
       <main className="flex min-w-0 flex-1 flex-col bg-[#f4f5f7]">
-        <div className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-cyan-500 via-blue-600 to-violet-600 px-4 text-white shadow-sm">
+        <div className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 px-4 text-white shadow-sm">
           <div className="flex shrink-0 items-center gap-2">
-
-
-            {/* Back to Workspace Tab */}
             {onClose && (
               <button
                 type="button"
                 onClick={onClose}
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-extrabold bg-white/10 hover:bg-white/20 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-extrabold transition-colors hover:bg-white/20"
                 title="Quay lại Xưởng nội dung"
               >
                 <ArrowLeft className="h-4 w-4" />
                 <span>Xưởng nội dung</span>
               </button>
             )}
-
-            {/* Divider */}
             {onClose && <span className="h-5 w-px bg-white/20" />}
 
             {/* Undo / Redo */}
@@ -1860,20 +2054,24 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
                   busy ||
                   !!activeJob && ['queued', 'processing'].includes(activeJob.status)
                 }
-                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-extrabold text-white shadow-sm hover:bg-slate-800 disabled:bg-white/30 disabled:text-white/70"
+                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-extrabold text-white shadow-sm hover:bg-blue-800 disabled:bg-white/30 disabled:text-white/70"
               >
                 {busy ? (
                   <LoaderCircle className="h-4 w-4 animate-spin" />
                 ) : (
                   <Sparkles className="h-4 w-4" />
                 )}
-                {busy ? 'Đang chuẩn bị...' : `Tạo ${readyCount} ảnh`}
+                {assetUploadProgress
+                  ? `Đang tải ảnh ${assetUploadProgress.completed}/${assetUploadProgress.total}`
+                  : busy
+                    ? 'Đang đưa vào hàng chờ...'
+                    : `Tạo ${readyCount} ảnh`}
               </button>
             )}
             <button
               type="button"
               onClick={() => setShareMenuOpen((current) => !current)}
-              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-white px-4 text-sm font-extrabold text-indigo-700 shadow-sm hover:bg-indigo-50"
+              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-white px-4 text-sm font-extrabold text-blue-700 shadow-sm hover:bg-blue-50"
             >
               <Share2 className="h-4 w-4" /> Chia sẻ
             </button>
@@ -2085,12 +2283,20 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           activeRowId={activeRowId}
           pageResults={pageResults}
           isRowReady={isRowReady}
+          getRowIssue={getRowIssue}
           onSelectRow={(rowId) => {
             setActiveRowId(rowId);
             clearLayerSelection();
             setBackgroundSelected(false);
           }}
           onAddRow={addRow}
+          hasCopiedPage={!!copiedPage}
+          onCopyRow={copyPage}
+          onPasteRow={pastePageAfter}
+          onDuplicateRow={duplicatePage}
+          onRenameRow={renamePage}
+          onDeleteRow={removeRow}
+          onDownloadRow={(row, index) => void downloadPage(row, index)}
           zoomPercent={zoomPercent}
           zoomMode={zoomMode}
           changeZoom={changeZoom}

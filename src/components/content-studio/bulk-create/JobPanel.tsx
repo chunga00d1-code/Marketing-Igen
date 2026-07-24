@@ -5,7 +5,7 @@ import type { BulkRenderJob, BulkRenderItem } from '../../../services/bulkCreate
 
 const STATUS_LABELS: Record<string, string> = {
   queued: 'Đang chờ',
-  processing: 'Đang tạo',
+  processing: 'Đang chuẩn bị & tạo',
   completed: 'Hoàn thành',
   partial: 'Hoàn thành một phần',
   failed: 'Có lỗi',
@@ -58,6 +58,11 @@ export function JobPanel({
               <p className="mt-1 text-xs text-slate-500">
                 {activeJob.completedItems}/{activeJob.totalItems} ảnh hoàn thành
               </p>
+              {['queued', 'processing'].includes(activeJob.status) && (
+                <p className="mt-1 text-[11px] font-medium text-indigo-700">
+                  Có thể rời trang, hệ thống sẽ tiếp tục xử lý trong nền.
+                </p>
+              )}
             </div>
             <span
               className={`rounded-full px-2 py-1 text-xs font-bold ${

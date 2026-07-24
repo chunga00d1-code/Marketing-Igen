@@ -48,7 +48,8 @@ export interface BulkImportedRow {
 export interface GoogleSheetPreview {
   spreadsheetId: string;
   sheetId: string;
-  range: string;
+  sheetName?: string;
+  embeddedImageCount?: number;
   columns: BulkDataColumn[];
   rows: BulkImportedRow[];
 }
@@ -141,11 +142,11 @@ export const bulkCreateService = {
     return (await parse<{ data: BulkAsset[] }>(response, 'Không thể tải thư viện ảnh.')).data;
   },
 
-  async previewPublicGoogleSheet(url: string, range = '') {
+  async previewPublicGoogleSheet(url: string) {
     const response = await fetch('/api/v1/bulk-create/google-sheets/preview', {
       method: 'POST',
       headers: headers(),
-      body: JSON.stringify({ url, range }),
+      body: JSON.stringify({ url }),
     });
     return (await parse<{ data: GoogleSheetPreview }>(
       response,
@@ -213,6 +214,19 @@ export const bulkCreateService = {
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { message?: string };
       throw new Error(body.message || 'Không thể tạo preview server.');
+    }
+    return URL.createObjectURL(await response.blob());
+  },
+
+  async previewScene(template: BulkTemplatePayload, values: Record<string, string>) {
+    const response = await fetch('/api/v1/bulk-create/preview', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ template, values }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { message?: string };
+      throw new Error(body.message || 'Không thể tạo ảnh cho trang.');
     }
     return URL.createObjectURL(await response.blob());
   },
