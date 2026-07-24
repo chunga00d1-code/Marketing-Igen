@@ -27,6 +27,7 @@ const VideoTemplateSyncSchema = new Schema<IVideoTemplateSync>(
     latestSuccessfulListGeneration: { type: Number, min: 1 },
     latestSuccessfulListAt: { type: Date },
     mutationFenceAt: { type: Date },
+    mutationFenceSequence: { type: Number, min: 0 },
     leaseOwnerToken: { type: String, select: false },
     leaseExpiresAt: { type: Date },
     lastAttemptAt: { type: Date, required: true },

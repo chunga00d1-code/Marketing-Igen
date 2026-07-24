@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import mongoose from "mongoose";
 import type { ShotstackTemplate } from "../../integration/shotstack/shotstack.types";
+import { VideoTemplateModel } from "../../model/video-template.model";
+import { VideoTemplateSyncModel } from "../../model/video-template-sync.model";
 import {
   shouldUseVideoTemplateSeedFallback,
 } from "../video-template.service";
 import {
+  MongooseShotstackTemplateSyncRepository,
   ShotstackSyncBusyError,
   synchronizeShotstackTemplates,
   type SyncLeaseInput,
@@ -80,6 +84,10 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
   }
 
   async registerSuccessfulList(run: Omit<SyncRunContext, "generation">) {
+    const lease = this.syncLeases.get(run.environment);
+    if (lease?.ownerToken !== run.ownerToken) {
+      throw new Error("stale sync owner");
+    }
     const current = this.latestSuccessfulLists.get(run.environment);
     if (!current || current.getTime() <= run.attemptedAt.getTime()) {
       this.latestSuccessfulLists.set(run.environment, new Date(run.attemptedAt));
@@ -90,7 +98,8 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
   }
 
   async isRunCurrent(run: SyncRunContext) {
-    return this.latestSuccessfulListGenerations.get(run.environment) === run.generation;
+    return this.latestSuccessfulListGenerations.get(run.environment) === run.generation
+      && this.syncLeases.get(run.environment)?.ownerToken === run.ownerToken;
   }
 
   async createTemplateWithVersion(
@@ -125,13 +134,14 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
     input: SyncTemplateInput,
     run: SyncRunContext
   ) {
+    if (!(await this.isRunCurrent(run))) {
+      return false;
+    }
     const record = this.byId(templateId);
     if (
       typeof record.lastSyncGeneration === "number"
       && record.lastSyncGeneration > run.generation
-    ) {
-      return false;
-    }
+    ) return false;
     Object.assign(record, structuredClone(input), {
       lastSyncGeneration: run.generation,
     });
@@ -144,13 +154,14 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
     version: SyncVersionInput,
     run: SyncRunContext
   ) {
+    if (!(await this.isRunCurrent(run))) {
+      return null;
+    }
     const record = this.byId(templateId);
     if (
       typeof record.lastSyncGeneration === "number"
       && record.lastSyncGeneration > run.generation
-    ) {
-      return null;
-    }
+    ) return null;
     if (record.sourceHash === template.sourceHash) {
       Object.assign(record, structuredClone(template), {
         lastSyncGeneration: run.generation,
@@ -179,6 +190,7 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
     lastSyncedAt: Date,
     run: SyncRunContext
   ) {
+    if (!(await this.isRunCurrent(run))) return 0;
     let archived = 0;
     for (const record of this.templates.values()) {
       if (
@@ -255,6 +267,210 @@ async function sync(repository: MemoryRepository, details: ShotstackTemplate[]) 
     now: () => new Date("2026-07-24T00:00:00.000Z"),
   });
 }
+
+function repositoryInputs(
+  externalTemplateId: string,
+  title = `Template ${externalTemplateId}`,
+  hash = `hash-${externalTemplateId}`
+): { template: SyncTemplateInput; version: SyncVersionInput } {
+  return {
+    template: {
+      sourceProvider: "shotstack",
+      externalTemplateId,
+      sourceHash: hash,
+      lastSyncedAt: new Date("2026-07-24T00:00:00.000Z"),
+      compatibilityWarnings: [],
+      title,
+      description: "",
+      thumbnailUrl: `https://cdn.example.com/${externalTemplateId}.jpg`,
+      duration: 5,
+      aspectRatio: "9:16",
+      categoryId: "shotstack",
+      categoryName: "Shotstack",
+      tags: [],
+      badges: [],
+      visibility: "system",
+      status: "published",
+    },
+    version: {
+      sourceHash: hash,
+      sourceEdit: {},
+      normalizedEditorState: {},
+      compatibilityWarnings: [],
+      blueprint: {},
+      slots: [],
+      defaultValues: {},
+      createdBy: "admin-1",
+    },
+  };
+}
+
+test("registered successor globally fences stale create, metadata, version, and archive before rows are stamped", async () => {
+  const repository = new MemoryRepository();
+  const oldAttemptedAt = new Date("2026-07-24T00:00:00.000Z");
+  await repository.acquireSyncLease({
+    environment: "stage",
+    ownerToken: "old-owner",
+    acquiredAt: oldAttemptedAt,
+    expiresAt: new Date("2026-07-24T00:01:00.000Z"),
+  });
+  const oldGeneration = await repository.registerSuccessfulList({
+    environment: "stage",
+    attemptedAt: oldAttemptedAt,
+    ownerToken: "old-owner",
+  });
+  const oldRun: SyncRunContext = {
+    environment: "stage",
+    attemptedAt: oldAttemptedAt,
+    generation: oldGeneration,
+    ownerToken: "old-owner",
+  };
+  const existing = repositoryInputs("existing", "Original title", "hash-original");
+  const created = await repository.createTemplateWithVersion(
+    existing.template,
+    existing.version,
+    oldRun
+  );
+  assert.ok(created);
+  const originalVersionId = created.publishedVersionId;
+
+  const successorAttemptedAt = new Date("2026-07-24T00:02:00.000Z");
+  await repository.acquireSyncLease({
+    environment: "stage",
+    ownerToken: "successor-owner",
+    acquiredAt: successorAttemptedAt,
+    expiresAt: new Date("2026-07-24T00:03:00.000Z"),
+  });
+  await repository.registerSuccessfulList({
+    environment: "stage",
+    attemptedAt: successorAttemptedAt,
+    ownerToken: "successor-owner",
+  });
+
+  const absent = repositoryInputs("absent");
+  const staleMetadata = repositoryInputs("existing", "Stale title", "hash-original");
+  const staleVersion = repositoryInputs("existing", "Stale version", "hash-stale");
+  assert.equal(
+    await repository.createTemplateWithVersion(absent.template, absent.version, oldRun),
+    null
+  );
+  assert.equal(
+    await repository.updateTemplateMetadata(created.id, staleMetadata.template, oldRun),
+    false
+  );
+  assert.equal(
+    await repository.createVersionAndPublish(
+      created.id,
+      staleVersion.template,
+      staleVersion.version,
+      oldRun
+    ),
+    null
+  );
+  assert.equal(await repository.archiveMissing([], successorAttemptedAt, oldRun), 0);
+
+  assert.equal(repository.templates.has("absent"), false);
+  assert.equal(repository.templates.get("existing")?.title, "Original title");
+  assert.equal(repository.templates.get("existing")?.status, "published");
+  assert.equal(repository.templates.get("existing")?.publishedVersionId, originalVersionId);
+  assert.equal(repository.templates.get("existing")?.lastSyncGeneration, oldGeneration);
+  assert.equal(repository.versions.length, 1);
+});
+
+test("Mongo mutation transactions gate on the exact active owner and generation", async (context) => {
+  const gateFilters: Array<Record<string, unknown>> = [];
+  const gateUpdates: Array<Record<string, unknown>> = [];
+  const gateSessions: unknown[] = [];
+  let templateMutationCalls = 0;
+  const session = {
+    async withTransaction(callback: () => Promise<void>) {
+      await callback();
+    },
+    async endSession() {},
+  };
+  context.mock.method(
+    mongoose,
+    "startSession",
+    async () => session as Awaited<ReturnType<typeof mongoose.startSession>>
+  );
+  context.mock.method(
+    VideoTemplateSyncModel,
+    "updateOne",
+    async (
+      filter: Record<string, unknown>,
+      update: Record<string, unknown>,
+      options: { session?: unknown }
+    ) => {
+      gateFilters.push(filter);
+      gateUpdates.push(update);
+      gateSessions.push(options.session);
+      return {
+        matchedCount: (
+          filter.provider === "shotstack"
+          && filter.environment === "stage"
+          && filter.leaseOwnerToken === "successor-owner"
+          && filter.latestSuccessfulListGeneration === 2
+        ) ? 1 : 0,
+      };
+    }
+  );
+  context.mock.method(VideoTemplateModel, "updateOne", async () => {
+    templateMutationCalls += 1;
+    return { matchedCount: 1 };
+  });
+  context.mock.method(VideoTemplateModel, "findOneAndUpdate", () => {
+    templateMutationCalls += 1;
+    return { lean: async () => null };
+  });
+  context.mock.method(VideoTemplateModel, "updateMany", async () => {
+    templateMutationCalls += 1;
+    return { modifiedCount: 1 };
+  });
+
+  const repository = new MongooseShotstackTemplateSyncRepository();
+  const oldRun: SyncRunContext = {
+    environment: "stage",
+    attemptedAt: new Date("2026-07-24T00:00:00.000Z"),
+    generation: 1,
+    ownerToken: "old-owner",
+  };
+  const absent = repositoryInputs("absent");
+  const existing = repositoryInputs("existing");
+
+  assert.equal(
+    await repository.createTemplateWithVersion(absent.template, absent.version, oldRun),
+    null
+  );
+  assert.equal(
+    await repository.updateTemplateMetadata("template-existing", existing.template, oldRun),
+    false
+  );
+  assert.equal(
+    await repository.createVersionAndPublish(
+      "template-existing",
+      existing.template,
+      existing.version,
+      oldRun
+    ),
+    null
+  );
+  assert.equal(
+    await repository.archiveMissing([], oldRun.attemptedAt, oldRun),
+    0
+  );
+
+  assert.equal(templateMutationCalls, 0);
+  assert.equal(gateFilters.length, 4);
+  assert.equal(gateUpdates.length, 4);
+  assert.equal(gateSessions.length, 4);
+  for (let index = 0; index < gateFilters.length; index += 1) {
+    const filter = gateFilters[index];
+    assert.equal(filter.leaseOwnerToken, oldRun.ownerToken);
+    assert.equal(filter.latestSuccessfulListGeneration, oldRun.generation);
+    assert.deepEqual(gateUpdates[index].$inc, { mutationFenceSequence: 1 });
+    assert.equal(gateSessions[index], session);
+  }
+});
 
 test("first import creates one published template and immutable version", async () => {
   const repository = new MemoryRepository();

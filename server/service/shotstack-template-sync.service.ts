@@ -87,6 +87,7 @@ export interface SyncRunContext {
   environment: ShotstackEnvironment;
   attemptedAt: Date;
   generation: number;
+  ownerToken: string;
 }
 
 export interface SyncLeaseInput {
@@ -280,7 +281,7 @@ function environmentWithoutCredentials(): ShotstackEnvironment {
   return process.env.SHOTSTACK_ENV?.trim() === "v1" ? "v1" : "stage";
 }
 
-class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRepository {
+export class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRepository {
   async acquireSyncLease(input: SyncLeaseInput): Promise<boolean> {
     try {
       const state = await VideoTemplateSyncModel.findOneAndUpdate(
@@ -369,19 +370,19 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const state = await VideoTemplateSyncModel.findOneAndUpdate(
-          { provider: "shotstack", environment: run.environment },
+          {
+            provider: "shotstack",
+            environment: run.environment,
+            leaseOwnerToken: run.ownerToken,
+          },
           {
             $inc: { latestSuccessfulListGeneration: 1 },
             $max: {
               latestSuccessfulListAt: run.attemptedAt,
               lastAttemptAt: run.attemptedAt,
             },
-            $setOnInsert: {
-              status: "partial",
-              summary: emptySummary(),
-            },
           },
-          { upsert: true, new: true }
+          { new: true }
         ).select({ latestSuccessfulListGeneration: 1 }).lean();
         const generation = state?.latestSuccessfulListGeneration;
         if (!Number.isSafeInteger(generation) || generation < 1) {
@@ -399,8 +400,30 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     const state = await VideoTemplateSyncModel.findOne({
       provider: "shotstack",
       environment: run.environment,
+      leaseOwnerToken: run.ownerToken,
+      latestSuccessfulListGeneration: run.generation,
     }).select({ latestSuccessfulListGeneration: 1 }).lean();
-    return state?.latestSuccessfulListGeneration === run.generation;
+    return Boolean(state);
+  }
+
+  private async mutationGate(
+    run: SyncRunContext,
+    session: mongoose.ClientSession
+  ): Promise<boolean> {
+    const gate = await VideoTemplateSyncModel.updateOne(
+      {
+        provider: "shotstack",
+        environment: run.environment,
+        leaseOwnerToken: run.ownerToken,
+        latestSuccessfulListGeneration: run.generation,
+      },
+      {
+        $set: { mutationFenceAt: run.attemptedAt },
+        $inc: { mutationFenceSequence: 1 },
+      },
+      { session }
+    );
+    return gate.matchedCount > 0;
   }
 
   async createTemplateWithVersion(
@@ -415,16 +438,7 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
       await session.withTransaction(async () => {
         created = undefined;
         stale = false;
-        const gate = await VideoTemplateSyncModel.updateOne(
-          {
-            provider: "shotstack",
-            environment: run.environment,
-            latestSuccessfulListGeneration: run.generation,
-          },
-          { $set: { mutationFenceAt: run.attemptedAt } },
-          { session }
-        );
-        if (gate.matchedCount === 0) {
+        if (!(await this.mutationGate(run, session))) {
           stale = true;
           return;
         }
@@ -479,22 +493,40 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     input: SyncTemplateInput,
     run: SyncRunContext
   ): Promise<boolean> {
-    const result = await VideoTemplateModel.updateOne(
-      {
-        _id: templateId,
-        $or: [
-          { lastSyncGeneration: { $exists: false } },
-          { lastSyncGeneration: { $lte: run.generation } },
-        ],
-      },
-      {
-        $set: {
-          ...input,
-          lastSyncGeneration: run.generation,
-        },
-      }
-    );
-    return result.matchedCount > 0;
+    const session = await mongoose.startSession();
+    let updated: boolean | undefined;
+    try {
+      await session.withTransaction(async () => {
+        updated = undefined;
+        if (!(await this.mutationGate(run, session))) {
+          updated = false;
+          return;
+        }
+        const result = await VideoTemplateModel.updateOne(
+          {
+            _id: templateId,
+            $or: [
+              { lastSyncGeneration: { $exists: false } },
+              { lastSyncGeneration: { $lte: run.generation } },
+            ],
+          },
+          {
+            $set: {
+              ...input,
+              lastSyncGeneration: run.generation,
+            },
+          },
+          { session }
+        );
+        updated = result.matchedCount > 0;
+      });
+    } finally {
+      await session.endSession();
+    }
+    if (updated === undefined) {
+      throw new Error("Shotstack metadata transaction did not complete.");
+    }
+    return updated;
   }
 
   async createVersionAndPublish(
@@ -508,6 +540,10 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     try {
       await session.withTransaction(async () => {
         outcome = undefined;
+        if (!(await this.mutationGate(run, session))) {
+          outcome = null;
+          return;
+        }
         const currentTemplate = await VideoTemplateModel.findOneAndUpdate(
           {
             _id: templateId,
@@ -582,40 +618,59 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     lastSyncedAt: Date,
     run: SyncRunContext
   ): Promise<number> {
-    const absentTemplateFilter = {
-      sourceProvider: "shotstack" as const,
-      externalTemplateId: { $nin: activeExternalIds },
-      $or: [
-        { lastSyncGeneration: { $exists: false } },
-        { lastSyncGeneration: { $lte: run.generation } },
-      ],
-    };
-    const newlyArchived = await VideoTemplateModel.updateMany(
-      {
-        ...absentTemplateFilter,
-        status: { $ne: "archived" },
-      },
-      {
-        $set: {
-          status: "archived",
-          lastSyncedAt,
-          lastSyncGeneration: run.generation,
-        },
-      }
-    );
-    await VideoTemplateModel.updateMany(
-      {
-        ...absentTemplateFilter,
-        status: "archived",
-      },
-      {
-        $set: {
-          lastSyncedAt,
-          lastSyncGeneration: run.generation,
-        },
-      }
-    );
-    return newlyArchived.modifiedCount;
+    const session = await mongoose.startSession();
+    let archived: number | undefined;
+    try {
+      await session.withTransaction(async () => {
+        archived = undefined;
+        if (!(await this.mutationGate(run, session))) {
+          archived = 0;
+          return;
+        }
+        const absentTemplateFilter = {
+          sourceProvider: "shotstack" as const,
+          externalTemplateId: { $nin: activeExternalIds },
+          $or: [
+            { lastSyncGeneration: { $exists: false } },
+            { lastSyncGeneration: { $lte: run.generation } },
+          ],
+        };
+        const newlyArchived = await VideoTemplateModel.updateMany(
+          {
+            ...absentTemplateFilter,
+            status: { $ne: "archived" },
+          },
+          {
+            $set: {
+              status: "archived",
+              lastSyncedAt,
+              lastSyncGeneration: run.generation,
+            },
+          },
+          { session }
+        );
+        await VideoTemplateModel.updateMany(
+          {
+            ...absentTemplateFilter,
+            status: "archived",
+          },
+          {
+            $set: {
+              lastSyncedAt,
+              lastSyncGeneration: run.generation,
+            },
+          },
+          { session }
+        );
+        archived = newlyArchived.modifiedCount;
+      });
+    } finally {
+      await session.endSession();
+    }
+    if (archived === undefined) {
+      throw new Error("Shotstack archive transaction did not complete.");
+    }
+    return archived;
   }
 
   async recordSyncState(input: SyncStateInput): Promise<void> {
@@ -787,11 +842,20 @@ export async function synchronizeShotstackTemplates(
   ).values()];
   let generation: number;
   try {
-    generation = await repository.registerSuccessfulList({ environment, attemptedAt });
+    generation = await repository.registerSuccessfulList({
+      environment,
+      attemptedAt,
+      ownerToken: leaseOwnerToken,
+    });
   } catch {
     throw new ShotstackSyncStateError();
   }
-  const run = { environment, attemptedAt, generation };
+  const run = {
+    environment,
+    attemptedAt,
+    generation,
+    ownerToken: leaseOwnerToken,
+  };
   const activeExternalIds = uniqueSummaries.map((summary) => summary.id);
   const summary = emptySummary();
   let cursor = 0;
