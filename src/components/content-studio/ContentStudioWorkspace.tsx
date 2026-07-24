@@ -14,7 +14,7 @@ interface ContentStudioWorkspaceProps {
     cardId: string;
     image?: string;
     autoTrigger?: boolean;
-    videoSubTab?: 'veo' | 'heygen' | 'edit-video';
+    videoSubTab?: 'veo' | 'heygen' | 'edit-video' | 'caption';
     title?: string;
     description?: string;
     engineType?: string;
@@ -28,7 +28,7 @@ interface ContentStudioWorkspaceProps {
 export function ContentStudioWorkspace({ initialParams, initialTab, onClearParams, onMediaSaved, onTabChange }: ContentStudioWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<ContentStudioTab>(initialParams?.tab || initialTab || 'image');
   const [prevTab, setPrevTab] = useState<ContentStudioTab>('image');
-  const [videoSubTab, setVideoSubTab] = useState<'veo' | 'heygen' | 'edit-video'>('veo');
+  const [videoSubTab, setVideoSubTab] = useState<'veo' | 'heygen' | 'edit-video' | 'caption'>('veo');
   const clearParamsRef = useRef(onClearParams);
 
   const changeTab = (tab: ContentStudioTab) => {

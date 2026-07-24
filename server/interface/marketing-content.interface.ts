@@ -9,6 +9,8 @@ export interface IMarketingContent extends Document {
   outline?: string;
   imageUrl?: string;
   videoUrl?: string;
+  sourceVideoUrl?: string;
+  videoCaptionProjectId?: Types.ObjectId | string;
   mediaPrompt?: string;
   voiceScript?: string;
   motionText?: string;

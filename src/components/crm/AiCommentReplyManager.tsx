@@ -9,6 +9,7 @@ import { toast } from "../../pages/Toast";
 import { getAccessToken } from "../../services/authService";
 import { useAuth } from "../../context/AuthContext";
 import { AIChatConfig } from "../../types";
+import { KnowledgeCenterSummaryCard } from "../knowledge/KnowledgeCenterSummaryCard";
 
 interface AiCommentReplyManagerProps {
   facebookPages?: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }>;
@@ -824,7 +825,7 @@ export function AiCommentReplyManager({
             </div>
 
             {/* Accordion 2: Nạp tài liệu tri thức RAG */}
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-2xs">
+            <div className="hidden">
               <button
                 onClick={() => setSectionsExpanded(prev => ({ ...prev, rag: !prev.rag }))}
                 className="w-full px-4 py-3.5 flex justify-between items-center bg-gray-50/50 hover:bg-gray-50 transition-colors border-b border-gray-150"
@@ -937,6 +938,11 @@ export function AiCommentReplyManager({
                 </div>
               )}
             </div>
+
+            <KnowledgeCenterSummaryCard
+              health={knowledgeHealth}
+              compact
+            />
 
             {/* Accordion 3: Chá»‰ dáº«n & Dá»¯ liá»‡u thá»§ cÃ´ng */}
             <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-2xs">

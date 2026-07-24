@@ -13,7 +13,7 @@ export interface ContentStudioLaunchParams {
   cardId: string;
   image?: string;
   autoTrigger?: boolean;
-  videoSubTab?: 'veo' | 'heygen' | 'edit-video';
+  videoSubTab?: 'veo' | 'heygen' | 'edit-video' | 'caption';
   title?: string;
   description?: string;
   engineType?: string;

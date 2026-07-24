@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -139,11 +140,18 @@ export function DataPanel(props: DataPanelProps) {
               Cách nhập khác
             </summary>
             <div className="space-y-3 border-t border-slate-100 p-4">
-              <label className="flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-700 hover:bg-slate-50">
-                <Upload className="h-4 w-4" /> Tải Excel hoặc CSV
+              <label className={`flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-700 ${
+                props.loadingSheet ? 'cursor-wait bg-slate-50 opacity-60' : 'cursor-pointer hover:bg-slate-50'
+              }`}>
+                {props.loadingSheet ? (
+                  <><LoaderCircle className="h-4 w-4 animate-spin" /> Đang đọc bảng tính...</>
+                ) : (
+                  <><Upload className="h-4 w-4" /> Tải Excel hoặc CSV</>
+                )}
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv"
+                  disabled={props.loadingSheet}
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -235,22 +243,12 @@ export function DataPanel(props: DataPanelProps) {
                     <option value="">Không kết nối · giữ nguyên</option>
                     {props.dataColumns
                       .filter((column) => column.type === layer.type)
-                      .map((column) => {
-                        const connectedToAnotherLayer = props.layers.some((item) =>
-                          item.id !== layer.id && item.dataBinding?.columnKey === column.key
-                        );
-                        return (
-                          <option
-                            key={column.key}
-                            value={column.key}
-                            disabled={connectedToAnotherLayer}
-                          >
-                            {column.label}
-                            {column.type === 'image' ? ' · Ảnh' : ''}
-                            {connectedToAnotherLayer ? ' · Đã kết nối' : ''}
-                          </option>
-                        );
-                      })}
+                      .map((column) => (
+                        <option key={column.key} value={column.key}>
+                          {column.label}
+                          {column.type === 'image' ? ' · Ảnh' : ''}
+                        </option>
+                      ))}
                   </select>
                 </label>
               ))}
@@ -301,6 +299,9 @@ export function DataPanel(props: DataPanelProps) {
 
           <div className="max-h-72 min-w-0 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
             {props.rows.map((row, index) => {
+              const missingFields = props.layers
+                .filter((layer) => !row.values[layer.id]?.trim())
+                .map((layer) => layer.fieldName);
               const textPreview = props.dataColumns
                 .filter((column) => column.type === 'text')
                 .slice(0, 2)
@@ -337,6 +338,15 @@ export function DataPanel(props: DataPanelProps) {
                     <span className="block text-sm font-extrabold text-slate-800">Trang {index + 1}</span>
                     <span className="block truncate text-xs text-slate-500">{previewValues || 'Chưa có dữ liệu'}</span>
                   </button>
+                  {missingFields.length > 0 && row.selected !== false && (
+                    <span
+                      className="shrink-0 text-amber-600"
+                      title={`Thiếu dữ liệu: ${missingFields.join(', ')}`}
+                      aria-label={`Thiếu dữ liệu: ${missingFields.join(', ')}`}
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -344,7 +354,8 @@ export function DataPanel(props: DataPanelProps) {
 
           {selectedRows > props.readyCount && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium leading-relaxed text-amber-800">
-              {selectedRows - props.readyCount} dòng đang thiếu dữ liệu ở phần đã kết nối nên chưa thể tạo ảnh.
+              {selectedRows - props.readyCount} dòng đang thiếu dữ liệu. Bạn vẫn có thể đưa vào thiết kế để sửa,
+              nhưng các dòng này chỉ được tạo ảnh sau khi điền đủ.
             </div>
           )}
 
@@ -356,6 +367,11 @@ export function DataPanel(props: DataPanelProps) {
           >
             <><Sparkles className="h-4 w-4" /> Đưa {selectedRows} trang vào thiết kế</>
           </button>
+          {selectedRows > 0 && (
+            <p className="text-center text-[11px] font-semibold text-slate-500">
+              {props.readyCount}/{selectedRows} trang đã sẵn sàng tạo ảnh
+            </p>
+          )}
 
           <details className="rounded-xl border border-slate-200">
             <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-slate-500">

@@ -66,9 +66,16 @@ const googleSheetPreviewSchema = {
     url: Joi.string().uri({ scheme: ["https"] }).max(2_000).required(),
   }),
 };
+const workbookPreviewSchema = {
+  body: Joi.object({
+    file: Joi.string().dataUri().max(70_000_000).required(),
+    originalName: Joi.string().trim().max(255).optional(),
+  }),
+};
 
 bulkCreateRouter.use(requireAuth as any, requirePermission("marketing:post") as any);
 bulkCreateRouter.post("/google-sheets/preview", validateRequest(googleSheetPreviewSchema), bulkCreateController.previewGoogleSheet as any);
+bulkCreateRouter.post("/workbooks/preview", validateRequest(workbookPreviewSchema), bulkCreateController.previewWorkbook as any);
 bulkCreateRouter.post("/assets", validateRequest(uploadAssetSchema), bulkCreateController.uploadAsset as any);
 bulkCreateRouter.get("/assets", bulkCreateController.listAssets as any);
 bulkCreateRouter.delete("/assets/:id", validateRequest(idSchema), bulkCreateController.archiveAsset as any);

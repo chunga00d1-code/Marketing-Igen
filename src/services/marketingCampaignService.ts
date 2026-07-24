@@ -17,6 +17,7 @@ export interface MarketingCampaignSummary {
   candidateCount: number;
   contentPillars: string[];
   publishMode?: 'auto' | 'manual';
+  captionMode?: 'none' | 'speech' | 'context' | 'combined';
   researchReport?: string;
   contentMatrix?: Array<{
     pillar: string;
@@ -181,6 +182,7 @@ export const marketingCampaignService = {
     publishNow?: boolean;
     googleDriveFolderUrl?: string;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
+    captionMode?: 'none' | 'speech' | 'context' | 'combined';
     images?: string[];
     customSchedule?: Record<string, string[]>;
     apifySources?: string[];

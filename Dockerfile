@@ -28,8 +28,9 @@ RUN yarn build
 # Step 2: Production runner stage (keeps the final image lightweight)
 FROM node:22-alpine AS runner
 
-# Cài ca-certificates (Alpine)
-RUN apk add --no-cache ca-certificates
+# Runtime media pipeline: HTTPS downloads plus ffmpeg/ffprobe for video analysis and rendering.
+RUN apk add --no-cache ca-certificates ffmpeg font-dejavu
+RUN ffprobe -version && ffmpeg -version
 
 WORKDIR /app
 

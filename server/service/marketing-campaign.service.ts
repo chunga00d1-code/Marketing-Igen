@@ -31,6 +31,7 @@ interface CreateCampaignInput {
   latePublishWindowMinutes?: number;
   minimumScore?: number;
   mediaPolicy?: "text" | "image" | "video" | "auto";
+  captionMode?: "none" | "speech" | "context" | "combined";
   images?: string[];
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
@@ -302,6 +303,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       latePublishWindowMinutes: input.latePublishWindowMinutes ?? 30,
       minimumScore: input.minimumScore ?? 80,
       mediaPolicy: input.mediaPolicy || "auto",
+      captionMode: input.captionMode || "none",
       contentPillars: strategy.contentPillars,
       qualityMode: input.qualityMode || "premium",
       publishMode: input.publishMode || "manual",

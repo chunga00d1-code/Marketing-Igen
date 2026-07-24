@@ -54,6 +54,13 @@ export interface GoogleSheetPreview {
   rows: BulkImportedRow[];
 }
 
+export type WorkbookPreview = Pick<
+  GoogleSheetPreview,
+  'sheetName' | 'embeddedImageCount' | 'columns' | 'rows'
+> & {
+  originalName?: string;
+};
+
 export interface BulkTemplatePayload {
   sceneVersion?: number;
   name: string;
@@ -151,6 +158,27 @@ export const bulkCreateService = {
     return (await parse<{ data: GoogleSheetPreview }>(
       response,
       'Không thể đọc Google Sheet. Hãy kiểm tra quyền chia sẻ.'
+    )).data;
+  },
+
+  async previewWorkbook(file: File) {
+    if (file.size > 50 * 1024 * 1024) {
+      throw new Error('Tệp XLSX chỉ được tối đa 50 MB.');
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Không thể đọc tệp XLSX.'));
+      reader.readAsDataURL(file);
+    });
+    const response = await fetch('/api/v1/bulk-create/workbooks/preview', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ file: dataUrl, originalName: file.name }),
+    });
+    return (await parse<{ data: WorkbookPreview }>(
+      response,
+      'Không thể đọc tệp XLSX.'
     )).data;
   },
 

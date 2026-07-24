@@ -3,9 +3,14 @@ import { Router } from "express";
 import Joi from "joi";
 import { geminiController } from "../controller/gemini.controller";
 import { validateRequest } from "../middleware/validation";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 
 export const geminiRouter = Router();
+const requireKnowledgeManager = requireRole([
+  "superadmin",
+  "admin",
+  "manager",
+]);
 
 // Định nghĩa schemas xác thực dữ liệu Joi
 const chatSchema = {
@@ -198,12 +203,44 @@ const uploadDocumentSchema = {
     fileName: Joi.string().required(),
     fileBase64: Joi.string().required(),
     mimeType: Joi.string().required(),
+    channelScope: Joi.array()
+      .items(Joi.string().valid("facebook", "zalo", "tiktok", "all"))
+      .min(1)
+      .optional(),
+    purposeScope: Joi.array()
+      .items(
+        Joi.string().valid(
+          "sales",
+          "support",
+          "marketing",
+          "caption",
+          "all"
+        )
+      )
+      .min(1)
+      .optional(),
   }),
 };
 
 const syncDriveSchema = {
   body: Joi.object({
     docLink: Joi.string().required(),
+    channelScope: Joi.array()
+      .items(Joi.string().valid("facebook", "zalo", "tiktok", "all"))
+      .min(1)
+      .optional(),
+    purposeScope: Joi.array()
+      .items(
+        Joi.string().valid(
+          "sales",
+          "support",
+          "marketing",
+          "caption",
+          "all"
+        )
+      )
+      .min(1)
+      .optional(),
   }),
 };
 
@@ -235,12 +272,12 @@ geminiRouter.post("/marketing-develop", requireAuth as any, validateRequest(deve
 
 // Knowledge management / auto reply endpoints
 geminiRouter.get("/knowledge-health", requireAuth as any, geminiController.getKnowledgeHealth as any);
-geminiRouter.post("/clear-knowledge", requireAuth as any, geminiController.clearKnowledge as any);
+geminiRouter.post("/clear-knowledge", requireAuth as any, requireKnowledgeManager as any, geminiController.clearKnowledge as any);
 geminiRouter.post("/test-reply", requireAuth as any, validateRequest(testReplySchema), geminiController.testReply as any);
 geminiRouter.get("/ai-reply-logs", requireAuth as any, geminiController.listAIReplyLogs as any);
 geminiRouter.patch("/ai-reply-logs/:id/feedback", requireAuth as any, validateRequest(feedbackSchema), geminiController.updateAIReplyFeedback as any);
-geminiRouter.post("/sync-drive", requireAuth as any, validateRequest(syncDriveSchema), geminiController.syncGoogleDrive as any);
-geminiRouter.post("/upload-document", requireAuth as any, validateRequest(uploadDocumentSchema), geminiController.uploadLocalDocument as any);
+geminiRouter.post("/sync-drive", requireAuth as any, requireKnowledgeManager as any, validateRequest(syncDriveSchema), geminiController.syncGoogleDrive as any);
+geminiRouter.post("/upload-document", requireAuth as any, requireKnowledgeManager as any, validateRequest(uploadDocumentSchema), geminiController.uploadLocalDocument as any);
 
 // Xưởng nội dung APIs (requireAuth bảo vệ tài khoản lưu lịch sử)
 geminiRouter.post("/generate-image", requireAuth as any, validateRequest(generateImageSchema), geminiController.generateImage);

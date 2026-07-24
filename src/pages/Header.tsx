@@ -14,6 +14,7 @@ const searchIndex = [
   { label: "Dashboard tổng quan", tab: "TONG QUAN" as TabType, keywords: "dashboard tong quan sale marketing crm publishing kenh chat" },
   { label: "Tạo nội dung & chiến dịch", tab: "MARKETING" as TabType, subTab: "TẠO CHIẾN DỊCH", keywords: "viet content y tuong campaign facebook tiktok copywriter duyet" },
   { label: "Xưởng nội dung", tab: "XUONG NOI DUNG" as TabType, keywords: "tao anh video giong noi thiet ke hang loat bulk create" },
+  { label: "Kho tri thức doanh nghiệp", tab: "KHO TRI THUC" as TabType, keywords: "rag tai lieu doanh nghiep sale reply ai caption marketing drive" },
   { label: "Lịch đăng Content", tab: "MARKETING" as TabType, subTab: "LỊCH ĐĂNG CONTENT", keywords: "lich dang content calendar publish" },
   { label: "Phễu khách hàng", tab: "SALES CRM" as TabType, subTab: "PHỄU KHÁCH HÀNG", keywords: "crm phieu khach hang lead cold warm hot" },
   { label: "Omni-Inbox Chat", tab: "SALES CRM" as TabType, subTab: "OMNI-INBOX CHAT", keywords: "chat vip mailbox tro ly ai" },

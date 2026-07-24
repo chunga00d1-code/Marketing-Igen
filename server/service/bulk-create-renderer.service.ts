@@ -1,4 +1,3 @@
-import sharp from "sharp";
 import {
   BULK_FONT_FAMILIES,
   IBulkLayer,
@@ -8,6 +7,35 @@ import { renderBulkImageInChromium } from "./bulk-create-chromium-renderer.servi
 
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 const DEFAULT_ALLOWED_HOSTS = ["res.cloudinary.com"];
+const IMAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+const configuredImageCacheMb = Number(process.env.BULK_CREATE_IMAGE_CACHE_MB || 64);
+const MAX_IMAGE_CACHE_BYTES = Math.min(
+  128 * 1024 * 1024,
+  Math.max(
+    16 * 1024 * 1024,
+    (Number.isFinite(configuredImageCacheMb) ? configuredImageCacheMb : 64) * 1024 * 1024
+  )
+);
+const imageCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
+const pendingImages = new Map<string, Promise<Buffer>>();
+let imageCacheBytes = 0;
+type SharpFactory = typeof import("sharp")["default"];
+let sharpPromise: Promise<SharpFactory> | null = null;
+
+function getSharp() {
+  if (!sharpPromise) {
+    sharpPromise = import("sharp")
+      .then((module) => module.default)
+      .catch((error) => {
+        sharpPromise = null;
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(
+          `Không thể nạp Sharp/libvips trên máy render. Hãy cài optional dependencies đúng runtime (${detail}).`
+        );
+      });
+  }
+  return sharpPromise;
+}
 
 function escapeXml(value: string) {
   return value.replace(/[<>&"']/g, (character) => ({
@@ -35,9 +63,9 @@ function getAllowedHosts() {
   return new Set([...DEFAULT_ALLOWED_HOSTS, ...configured]);
 }
 
-async function loadImage(source: string): Promise<Buffer> {
+export function assertSafeBulkImageSource(source: string) {
   const dataBuffer = parseDataUrl(source);
-  if (dataBuffer) return dataBuffer;
+  if (dataBuffer) return;
 
   let url: URL;
   try {
@@ -47,16 +75,73 @@ async function loadImage(source: string): Promise<Buffer> {
   }
   if (url.protocol !== "https:") throw new Error("Ảnh bên ngoài phải sử dụng HTTPS.");
   const allowedHosts = getAllowedHosts();
-  const isAllowed = [...allowedHosts].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  const isAllowed = [...allowedHosts].some(
+    (host) => url.hostname === host || url.hostname.endsWith(`.${host}`)
+  );
   if (!isAllowed) throw new Error(`Tên miền ảnh ${url.hostname} chưa được cho phép.`);
+}
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`Không thể tải ảnh (${response.status}).`);
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > MAX_ASSET_BYTES) throw new Error("Ảnh vượt quá giới hạn 10 MB.");
-  const buffer = Buffer.from(await response.arrayBuffer());
-  if (buffer.length > MAX_ASSET_BYTES) throw new Error("Ảnh vượt quá giới hạn 10 MB.");
-  return buffer;
+function cachedImage(source: string) {
+  const cached = imageCache.get(source);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    imageCache.delete(source);
+    imageCacheBytes = Math.max(0, imageCacheBytes - cached.buffer.length);
+    return null;
+  }
+  imageCache.delete(source);
+  imageCache.set(source, cached);
+  return cached.buffer;
+}
+
+function cacheImage(source: string, buffer: Buffer) {
+  if (buffer.length > MAX_IMAGE_CACHE_BYTES) return;
+  const previous = imageCache.get(source);
+  if (previous) imageCacheBytes = Math.max(0, imageCacheBytes - previous.buffer.length);
+  imageCache.delete(source);
+  imageCache.set(source, {
+    buffer,
+    expiresAt: Date.now() + IMAGE_CACHE_TTL_MS,
+  });
+  imageCacheBytes += buffer.length;
+  while (imageCacheBytes > MAX_IMAGE_CACHE_BYTES && imageCache.size > 0) {
+    const oldestKey = imageCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    const oldest = imageCache.get(oldestKey);
+    imageCache.delete(oldestKey);
+    imageCacheBytes = Math.max(0, imageCacheBytes - (oldest?.buffer.length || 0));
+  }
+}
+
+async function loadImage(source: string): Promise<Buffer> {
+  const dataBuffer = parseDataUrl(source);
+  if (dataBuffer) return dataBuffer;
+
+  assertSafeBulkImageSource(source);
+  const cached = cachedImage(source);
+  if (cached) return cached;
+
+  let pending = pendingImages.get(source);
+  if (!pending) {
+    pending = (async () => {
+      const response = await fetch(new URL(source), {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) throw new Error(`Không thể tải ảnh (${response.status}).`);
+      const contentLength = Number(response.headers.get("content-length") || 0);
+      if (contentLength > MAX_ASSET_BYTES) throw new Error("Ảnh vượt quá giới hạn 10 MB.");
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.length > MAX_ASSET_BYTES) throw new Error("Ảnh vượt quá giới hạn 10 MB.");
+      cacheImage(source, buffer);
+      return buffer;
+    })();
+    pendingImages.set(source, pending);
+  }
+  try {
+    return await pending;
+  } finally {
+    if (pendingImages.get(source) === pending) pendingImages.delete(source);
+  }
 }
 
 function normalizeColor(color: string | undefined, fallback: string) {
@@ -120,6 +205,7 @@ function renderTextLayer(layer: IBulkLayer, value: string, width: number, height
 }
 
 async function createBackground(snapshot: IBulkRenderJob["templateSnapshot"]) {
+  const sharp = await getSharp();
   const { width, height } = snapshot.canvas;
   if (snapshot.background.type === "image" && snapshot.background.imageUrl) {
     return sharp(await loadImage(snapshot.background.imageUrl)).resize(width, height, { fit: "cover" }).png().toBuffer();
@@ -137,6 +223,7 @@ export async function renderBulkImage(
   snapshot: IBulkRenderJob["templateSnapshot"],
   values: Record<string, string>
 ): Promise<Buffer> {
+  const sharp = await getSharp();
   const { width: canvasWidth, height: canvasHeight } = snapshot.canvas;
   if (canvasWidth < 320 || canvasHeight < 320 || canvasWidth > 4096 || canvasHeight > 4096) {
     throw new Error("Kích thước canvas không hợp lệ.");
@@ -184,8 +271,7 @@ async function renderBulkImageOptimized(
     return renderBulkImage(snapshot, values);
   }
   try {
-    const chromiumOutput = await renderBulkImageInChromium(snapshot, values);
-    return sharp(chromiumOutput).png({ compressionLevel: 9 }).toBuffer();
+    return await renderBulkImageInChromium(snapshot, values);
   } catch (error) {
     const now = Date.now();
     if (now - lastChromiumFallbackLogAt > 30_000) {
