@@ -5,6 +5,7 @@ export type TabType =
   | "TONG QUAN"
   | "MARKETING"
   | "XUONG NOI DUNG"
+  | "KHO TRI THUC"
   | "SALES CRM"
   | "QUAN TRI USER"
   | "VI & NAP TIEN"

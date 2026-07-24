@@ -5,6 +5,7 @@ import { facebookPostService } from "../facebook-post.service";
 import { tiktokService } from "../tiktok.service";
 import { resolveFacebookCredentials } from "./campaign-utils";
 import { marketingCampaignService } from "../marketing-campaign.service";
+import { assertCampaignVideoReady } from "./campaign-caption.service";
 
 export class PublisherAgentService {
   public static async publish(
@@ -35,7 +36,10 @@ export class PublisherAgentService {
       throw new Error("Đã quá cửa sổ cho phép đăng muộn của chiến dịch.");
     }
 
-    // 3. Platform specific publishing
+    // 3. Final media/caption invariant before every platform publish.
+    await assertCampaignVideoReady({ campaign, slot, content });
+
+    // 4. Platform specific publishing
     if (slot.platform === "TikTok") {
       console.log(`[PublisherAgent] Publishing slot ${slot._id} to TikTok...`);
       slot.publishRequestedAt = new Date();

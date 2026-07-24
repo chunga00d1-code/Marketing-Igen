@@ -11,6 +11,7 @@ import {
   Shield,
   Wallet,
   BookOpen,
+  LibraryBig,
 } from "lucide-react";
 import {
   BRAND_LOGO_PATH,
@@ -87,6 +88,13 @@ const baseMenuItems: MenuItem[] = [
     desc: "Tạo ảnh, video và thiết kế hàng loạt",
     icon: Palette,
     tone: "blue",
+  },
+  {
+    label: "KHO TRI THUC",
+    title: "Kho tri thức",
+    desc: "Tài liệu dùng chung toàn doanh nghiệp",
+    icon: LibraryBig,
+    tone: "indigo",
   },
   {
     label: "SALES CRM",

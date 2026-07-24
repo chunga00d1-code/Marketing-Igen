@@ -30,6 +30,11 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     latePublishWindowMinutes: { type: Number, min: 0, max: 1440, default: 30 },
     minimumScore: { type: Number, min: 0, max: 100, default: 80 },
     mediaPolicy: { type: String, enum: ["text", "image", "video", "auto"], default: "auto" },
+    captionMode: {
+      type: String,
+      enum: ["none", "speech", "context", "combined"],
+      default: "none",
+    },
     contentPillars: { type: [String], default: [] },
     rules: {
       requiredCta: { type: String },

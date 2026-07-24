@@ -25,6 +25,7 @@ export interface IMarketingCampaign extends Document {
   latePublishWindowMinutes: number;
   minimumScore: number;
   mediaPolicy: MarketingCampaignMediaPolicy;
+  captionMode?: "none" | "speech" | "context" | "combined";
   contentPillars: string[];
   rules: {
     requiredCta?: string;

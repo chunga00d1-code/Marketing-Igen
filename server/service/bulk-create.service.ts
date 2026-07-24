@@ -5,9 +5,15 @@ import { BulkRenderJobModel } from "../model/bulk-render-job.model";
 import { BulkRenderItemModel } from "../model/bulk-render-item.model";
 import { BulkAssetModel } from "../model/bulk-asset.model";
 import { IBulkBackground, IBulkCanvas, IBulkLayer } from "../interface/bulk-create.interface";
-import { bulkCreateRendererService } from "./bulk-create-renderer.service";
+import {
+  assertSafeBulkImageSource,
+  bulkCreateRendererService,
+} from "./bulk-create-renderer.service";
 import { cloudinaryService } from "./cloudinary.service";
-import { importEmbeddedGoogleSheetImages } from "./bulk-create-xlsx-image.service";
+import {
+  importEmbeddedGoogleSheetImages,
+  importUploadedWorkbookImages,
+} from "./bulk-create-xlsx-image.service";
 
 interface Actor {
   id: string;
@@ -32,8 +38,13 @@ interface JobInput {
 
 const JOB_LEASE_MS = 10 * 60 * 1000;
 const MAX_SHEET_XLSX_BYTES = 50 * 1024 * 1024;
+const MAX_JOB_INPUT_BYTES = 60 * 1024 * 1024;
 const MAX_ITEM_ATTEMPTS = 3;
 const ITEM_RETRY_DELAYS_MS = [0, 750, 2_000];
+const configuredItemConcurrency = Number(process.env.BULK_CREATE_ITEM_CONCURRENCY || 3);
+const ITEM_CONCURRENCY = Number.isFinite(configuredItemConcurrency)
+  ? Math.min(5, Math.max(1, Math.floor(configuredItemConcurrency)))
+  : 3;
 
 function isCloudinaryImage(value: string) {
   return /^https:\/\/res\.cloudinary\.com\//i.test(value);
@@ -50,6 +61,19 @@ async function waitForRetry(attempt: number) {
   }
 }
 
+function isRetryableItemError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return ![
+    /thiếu dữ liệu/i,
+    /không hợp lệ/i,
+    /phải sử dụng HTTPS/i,
+    /chưa được (?:cho phép|phép render)/i,
+    /vượt quá giới hạn/i,
+    /không thể nạp Sharp\/libvips/i,
+    /kích thước canvas/i,
+  ].some((pattern) => pattern.test(message));
+}
+
 async function normalizeRowImages(
   layers: IBulkLayer[],
   values: Record<string, string>,
@@ -64,7 +88,9 @@ async function normalizeRowImages(
     const source = String(
       normalizedValues[layer.id] ?? normalizedValues[layer.fieldName] ?? layer.defaultValue ?? ""
     ).trim();
-    if (!source || isCloudinaryImage(source) || !isUploadableImage(source)) return;
+    if (!source) return;
+    assertSafeBulkImageSource(source);
+    if (isCloudinaryImage(source) || !isUploadableImage(source)) return;
 
     let upload = uploadCache.get(source);
     if (!upload) {
@@ -152,6 +178,21 @@ export const bulkCreateService = {
       spreadsheetId,
       sheetId,
       ...imported,
+    };
+  },
+
+  async previewWorkbook(actor: Actor, input: { file: string; originalName?: string }) {
+    const match = /^data:[^;,]*;base64,([A-Za-z0-9+/=]+)$/i.exec(input.file);
+    if (!match) throw new Error("Dữ liệu tệp XLSX không hợp lệ.");
+    const buffer = Buffer.from(match[1], "base64");
+    const imported = await importUploadedWorkbookImages({
+      actor,
+      buffer,
+      maxBytes: MAX_SHEET_XLSX_BYTES,
+    });
+    return {
+      ...imported,
+      originalName: input.originalName?.trim() || "Dữ liệu.xlsx",
     };
   },
 
@@ -291,6 +332,17 @@ export const bulkCreateService = {
   async createJob(actor: Actor, input: JobInput) {
     const existing = await BulkRenderJobModel.findOne({ ...scope(actor), idempotencyKey: input.idempotencyKey });
     if (existing) return existing;
+    const inputBytes = input.rows.reduce(
+      (total, row) => total + Object.entries(row).reduce(
+        (rowTotal, [key, value]) =>
+          rowTotal + Buffer.byteLength(key, "utf8") + Buffer.byteLength(String(value), "utf8"),
+        0
+      ),
+      0
+    );
+    if (inputBytes > MAX_JOB_INPUT_BYTES) {
+      throw new Error("Tổng dữ liệu của một lượt tạo ảnh vượt quá giới hạn 60 MB.");
+    }
     const template = await getTemplate(actor, input.templateId);
     const normalizedRows = input.rows.map((row, rowIndex) => {
       const normalizedRow = { ...row };
@@ -309,27 +361,35 @@ export const bulkCreateService = {
       background: template.background,
       layers: template.layers,
     };
-    const job = await BulkRenderJobModel.create({
-      companyCode: actor.companyCode,
-      createdBy: actor.id,
-      templateId: template._id,
-      templateName: template.name,
-      templateSnapshot: snapshot,
-      status: "queued",
-      totalItems: input.rows.length,
-      idempotencyKey: input.idempotencyKey,
-    });
+    const jobId = new mongoose.Types.ObjectId();
     try {
       await BulkRenderItemModel.insertMany(normalizedRows.map((values, rowIndex) => ({
         companyCode: actor.companyCode,
-        jobId: job._id,
+        jobId,
         rowIndex,
         values,
         status: "queued",
       })));
-      return job;
+      return await BulkRenderJobModel.create({
+        _id: jobId,
+        companyCode: actor.companyCode,
+        createdBy: actor.id,
+        templateId: template._id,
+        templateName: template.name,
+        templateSnapshot: snapshot,
+        status: "queued",
+        totalItems: input.rows.length,
+        idempotencyKey: input.idempotencyKey,
+      });
     } catch (error) {
-      await BulkRenderJobModel.deleteOne({ _id: job._id });
+      await BulkRenderItemModel.deleteMany({ jobId });
+      if ((error as { code?: number }).code === 11000) {
+        const duplicate = await BulkRenderJobModel.findOne({
+          ...scope(actor),
+          idempotencyKey: input.idempotencyKey,
+        });
+        if (duplicate) return duplicate;
+      }
       throw error;
     }
   },
@@ -351,16 +411,41 @@ export const bulkCreateService = {
   },
 
   async retryFailed(actor: Actor, jobId: string) {
-    await this.getJob(actor, jobId);
+    const job = await this.getJob(actor, jobId);
+    if (job.status === "queued" || job.status === "processing") {
+      throw new Error("Job vẫn đang được xử lý, chưa thể thử lại lúc này.");
+    }
+    if (job.status === "cancelled") {
+      throw new Error("Job đã bị hủy. Hãy tạo một lượt mới nếu bạn muốn tiếp tục.");
+    }
     const result = await BulkRenderItemModel.updateMany(
-      { jobId, ...scope(actor), status: "failed", attempts: { $lt: 3 } },
-      { $set: { status: "queued", errorMessage: null, startedAt: null, completedAt: null } }
+      { jobId, ...scope(actor), status: "failed" },
+      {
+        $set: {
+          status: "queued",
+          attempts: 0,
+          errorMessage: null,
+          startedAt: null,
+          completedAt: null,
+        },
+        $unset: { outputUrl: 1 },
+      }
     );
     if (result.modifiedCount === 0) throw new Error("Không có ảnh lỗi nào có thể thử lại.");
     await BulkRenderJobModel.updateOne(
       { _id: jobId, ...scope(actor) },
-      { $set: { status: "queued", errorMessage: null, completedAt: null }, $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 } }
+      {
+        $set: { status: "queued", errorMessage: null },
+        $unset: {
+          completedAt: 1,
+          lockId: 1,
+          lockedAt: 1,
+          lockExpiresAt: 1,
+          cancelRequestedAt: 1,
+        },
+      }
     );
+    await updateJobProgress(jobId);
     return this.getJob(actor, jobId);
   },
 
@@ -371,7 +456,11 @@ export const bulkCreateService = {
       { _id: jobId, ...scope(actor) },
       { $set: { status: "cancelled", cancelRequestedAt: new Date(), completedAt: new Date() }, $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 } }
     );
-    await BulkRenderItemModel.updateMany({ jobId, status: "queued" }, { $set: { status: "cancelled", completedAt: new Date() } });
+    await BulkRenderItemModel.updateMany(
+      { jobId, ...scope(actor), status: "queued" },
+      { $set: { status: "cancelled", completedAt: new Date() } }
+    );
+    await updateJobProgress(jobId);
     return this.getJob(actor, jobId);
   },
 
@@ -412,15 +501,23 @@ export const bulkCreateService = {
     leaseHeartbeat.unref();
 
     try {
-    const items = await BulkRenderItemModel.find({ jobId, status: "queued" }).sort({ rowIndex: 1 });
-    const concurrency = 3;
+    const items = await BulkRenderItemModel.find({
+      jobId,
+      companyCode: job.companyCode,
+      status: "queued",
+    }).sort({ rowIndex: 1 });
     const uploadCache = new Map<string, Promise<string>>();
     const inputFolder = `igen_erp/bulk-create/${job.companyCode}/${job._id}/inputs`;
 
     const processItem = async (itemId: mongoose.Types.ObjectId) => {
       while (true) {
         const claimed = await BulkRenderItemModel.findOneAndUpdate(
-          { _id: itemId, status: "queued", attempts: { $lt: MAX_ITEM_ATTEMPTS } },
+          {
+            _id: itemId,
+            companyCode: job.companyCode,
+            status: "queued",
+            attempts: { $lt: MAX_ITEM_ATTEMPTS },
+          },
           { $set: { status: "processing", startedAt: new Date() }, $inc: { attempts: 1 } },
           { new: true }
         );
@@ -479,7 +576,9 @@ export const bulkCreateService = {
             return;
           }
 
-          const canRetry = claimed.attempts < MAX_ITEM_ATTEMPTS;
+          const canRetry =
+            claimed.attempts < MAX_ITEM_ATTEMPTS &&
+            isRetryableItemError(error);
           await BulkRenderItemModel.updateOne(
             { _id: claimed._id, status: "processing" },
             {
@@ -496,10 +595,10 @@ export const bulkCreateService = {
       }
     };
 
-    for (let index = 0; index < items.length; index += concurrency) {
+    for (let index = 0; index < items.length; index += ITEM_CONCURRENCY) {
       const latestJob = await BulkRenderJobModel.findOne({ _id: jobId, lockId }).select("status").lean();
       if (!latestJob || latestJob.status === "cancelled") break;
-      const chunk = items.slice(index, index + concurrency);
+      const chunk = items.slice(index, index + ITEM_CONCURRENCY);
       await Promise.all(chunk.map((item) => processItem(item._id)));
       await updateJobProgress(jobId);
       await BulkRenderJobModel.updateOne(
@@ -526,6 +625,69 @@ export const bulkCreateService = {
       },
       $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
     });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const currentJob = await BulkRenderJobModel.findById(jobId)
+        .select("status")
+        .lean()
+        .catch(() => null);
+      if (currentJob?.status === "cancelled") {
+        await BulkRenderItemModel.updateMany(
+          { jobId, companyCode: job.companyCode, status: "processing" },
+          {
+            $set: {
+              status: "cancelled",
+              errorMessage: message,
+              completedAt: new Date(),
+            },
+          }
+        );
+        await updateJobProgress(jobId);
+        return;
+      }
+      await Promise.all([
+        BulkRenderItemModel.updateMany(
+          {
+            jobId,
+            companyCode: job.companyCode,
+            status: "processing",
+            attempts: { $lt: MAX_ITEM_ATTEMPTS },
+          },
+          {
+            $set: {
+              status: "queued",
+              errorMessage: message,
+              startedAt: null,
+              completedAt: null,
+            },
+          }
+        ),
+        BulkRenderItemModel.updateMany(
+          {
+            jobId,
+            companyCode: job.companyCode,
+            status: "processing",
+            attempts: { $gte: MAX_ITEM_ATTEMPTS },
+          },
+          {
+            $set: {
+              status: "failed",
+              errorMessage: message,
+              completedAt: new Date(),
+            },
+          }
+        ),
+        BulkRenderJobModel.updateOne(
+          { _id: jobId, lockId, status: "processing" },
+          {
+            $set: { status: "queued", errorMessage: message },
+            $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
+          }
+        ),
+      ]).catch((recoveryError) => {
+        console.error(`[BulkCreate] Không thể trả job ${jobId} về hàng chờ:`, recoveryError);
+      });
+      throw error;
     } finally {
       clearInterval(leaseHeartbeat);
     }

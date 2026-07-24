@@ -23,6 +23,9 @@ const createSchema = {
     latePublishWindowMinutes: Joi.number().integer().min(0).max(1440).default(30),
     minimumScore: Joi.number().integer().min(0).max(100).default(80),
     mediaPolicy: Joi.string().valid("text", "image", "video", "auto").default("auto"),
+    captionMode: Joi.string()
+      .valid("none", "speech", "context", "combined")
+      .default("none"),
     qualityMode: Joi.string().valid("premium", "budget").default("premium"),
     publishMode: Joi.string().valid("auto", "manual").default("manual"),
     imageMode: Joi.string().valid("ai", "real").default("ai"),

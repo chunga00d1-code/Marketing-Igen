@@ -12,6 +12,7 @@ import { cloudinaryService } from "../cloudinary.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { VisualAnalystAgentService } from "./visual-analyst-agent.service";
 import { approvalNotifierService } from "../approval-notifier.service";
+import { applyCampaignVideoCaption } from "./campaign-caption.service";
 import { broadcastEvent } from "../../socket";
 
 function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: string; status: string }, extra?: Record<string, unknown>) {
@@ -420,6 +421,25 @@ export class CampaignOrchestratorService {
       return;
     }
 
+    const mediaLeaseMs = 20 * 60 * 1000;
+    const heartbeat = setInterval(() => {
+      void MarketingCampaignSlotModel.updateOne(
+        { _id: slotId, lockId, status: "generating_media" },
+        {
+          $set: {
+            lockedAt: new Date(),
+            lockExpiresAt: new Date(Date.now() + mediaLeaseMs),
+          },
+        }
+      ).catch((error: unknown) => {
+        console.error(
+          `[Orchestrator] Unable to renew media lease for slot ${slotId}:`,
+          error
+        );
+      });
+    }, Math.floor(mediaLeaseMs / 4));
+    heartbeat.unref?.();
+
     try {
       const nextStatus = campaign.publishMode === "auto" ? "verifying" : "pending_approval";
 
@@ -444,6 +464,18 @@ export class CampaignOrchestratorService {
             content.mediaType = "image";
           }
           await content.save();
+          if (
+            content.videoUrl &&
+            (slot.mediaType === "video" ||
+              slot.mediaType === "human-video")
+          ) {
+            await applyCampaignVideoCaption({
+              campaign,
+              slot,
+              content,
+              videoUrl: content.videoUrl,
+            });
+          }
         }
 
         await MarketingCampaignSlotModel.updateOne(
@@ -507,6 +539,8 @@ export class CampaignOrchestratorService {
       console.error(`[Orchestrator] Error during slot ${slotId} media phase:`, error);
       await releaseWithFailure(slotId, lockId, "media", error);
       emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "failed" });
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 
