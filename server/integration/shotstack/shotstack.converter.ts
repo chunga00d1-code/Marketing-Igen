@@ -144,16 +144,33 @@ function pointForPosition(position: string | undefined): { x: number; y: number 
   };
 }
 
+function positioningForClip(
+  asset: ShotstackAsset,
+  clip: ShotstackClip
+): {
+  level: "asset" | "clip";
+  position: string | undefined;
+  offset: { x?: number; y?: number } | undefined;
+} {
+  if (asset.position !== undefined || asset.offset !== undefined) {
+    return {
+      level: "asset",
+      position: nonEmptyString(asset.position) ? asset.position : undefined,
+      offset: asset.offset,
+    };
+  }
+  return {
+    level: "clip",
+    position: nonEmptyString(clip.position) ? clip.position : undefined,
+    offset: clip.offset,
+  };
+}
+
 function positionForAsset(asset: ShotstackAsset, clip: ShotstackClip): { x: number; y: number } {
-  const position = nonEmptyString(asset.position)
-    ? asset.position
-    : nonEmptyString(clip.position)
-      ? clip.position
-      : undefined;
-  const offset = asset.offset || clip.offset;
+  const { position, offset } = positioningForClip(asset, clip);
   const base = pointForPosition(position);
-  const x = base.x + (finiteNumber(offset?.x) ? offset.x * 50 : 0);
-  const y = base.y + (finiteNumber(offset?.y) ? offset.y * 50 : 0);
+  const x = base.x + (finiteNumber(offset?.x) ? offset.x * 100 : 0);
+  const y = base.y - (finiteNumber(offset?.y) ? offset.y * 100 : 0);
   return {
     x: Math.max(0, Math.min(100, x)),
     y: Math.max(0, Math.min(100, y)),
@@ -344,11 +361,27 @@ function applyEditorPosition(
     if (style.x === originalPoint.x && style.y === originalPoint.y) return;
   }
 
-  clip.asset.position = "center";
-  clip.asset.offset = {
-    x: (style.x - 50) / 50,
-    y: (style.y - 50) / 50,
+  const sourcePositioning = originalClip
+    ? positioningForClip(originalClip.asset, originalClip)
+    : { level: "asset" as const, position: undefined };
+  const base = pointForPosition(sourcePositioning.position);
+  const offset = {
+    x: (style.x - base.x) / 100,
+    y: (base.y - style.y) / 100,
   };
+  if (sourcePositioning.level === "asset") {
+    if (sourcePositioning.position) clip.asset.position = sourcePositioning.position;
+    else delete clip.asset.position;
+    clip.asset.offset = offset;
+    delete clip.position;
+    delete clip.offset;
+  } else {
+    if (sourcePositioning.position) clip.position = sourcePositioning.position;
+    else delete clip.position;
+    clip.offset = offset;
+    delete clip.asset.position;
+    delete clip.asset.offset;
+  }
 }
 
 function applyEditorItemToClip(
@@ -404,7 +437,9 @@ function applyEditorItemToClip(
     ? { ...deepClone(originalClip), asset, start: item.start, length: item.duration }
     : { asset, start: item.start, length: item.duration };
   const fit = fitToShotstack(item.fitMode);
-  if (fit) clip.fit = fit;
+  if (fit && (!originalClip || item.fitMode !== fitToEditor(originalClip.fit))) {
+    clip.fit = fit;
+  }
   if (finiteNumber(item.scale)) clip.scale = item.scale;
   if (finiteNumber(item.opacity)) clip.opacity = item.opacity;
   if (finiteNumber(item.rotation)) {

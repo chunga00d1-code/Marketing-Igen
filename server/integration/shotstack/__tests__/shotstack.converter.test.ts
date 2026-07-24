@@ -134,8 +134,8 @@ test("converts supported clips, soundtrack, timing, and representable properties
     align: "center",
     bold: false,
     italic: false,
-    x: 60,
-    y: 40,
+    x: 70,
+    y: 70,
   });
   assert.equal(html.text, "HTML {{COPY}}");
   assert.equal(html.replaceable, true);
@@ -188,6 +188,96 @@ test("uses stable provider IDs, preserves transitions, and clones the source edi
     in: "fade",
     out: "slideLeft",
   });
+});
+
+test("preserves every unchanged Shotstack fit mode during round trip", () => {
+  for (const fit of ["crop", "cover", "contain", "none"]) {
+    const source = visualEdit();
+    source.timeline.tracks[0].clips[0].fit = fit;
+    const converted = shotstackEditToEditorProject(source);
+
+    const output = editorProjectToShotstackEdit(converted.project, source);
+
+    assert.equal(output.timeline.tracks[0].clips[0].fit, fit);
+  }
+});
+
+test("converts and updates asset-level title positioning with Shotstack coordinates", () => {
+  const source: ShotstackEdit = {
+    timeline: {
+      tracks: [{
+        clips: [{
+          asset: {
+            type: "title",
+            text: "Positioned title",
+            position: "bottomRight",
+            offset: { x: -0.2, y: 0.2 },
+          },
+          start: 0,
+          length: 4,
+        }],
+      }],
+    },
+    output: { format: "mp4", aspectRatio: "16:9" },
+  };
+  const converted = shotstackEditToEditorProject(source);
+  const title = converted.project.items[0];
+
+  assert.equal((title.style as Record<string, unknown>).x, 80);
+  assert.equal((title.style as Record<string, unknown>).y, 80);
+
+  const output = editorProjectToShotstackEdit(
+    snapshot([{
+      ...title,
+      style: { ...(title.style as Record<string, unknown>), x: 25, y: 25 },
+    }]),
+    source
+  );
+  const clip = output.timeline.tracks[0].clips[0];
+
+  assert.equal(clip.asset.position, "bottomRight");
+  assert.deepEqual(clip.asset.offset, { x: -0.75, y: 0.75 });
+  assert.equal(clip.position, undefined);
+  assert.equal(clip.offset, undefined);
+});
+
+test("converts and updates clip-level HTML positioning without stale asset fields", () => {
+  const source: ShotstackEdit = {
+    timeline: {
+      tracks: [{
+        clips: [{
+          asset: {
+            type: "html",
+            html: "<p>Positioned HTML</p>",
+          },
+          start: 0,
+          length: 4,
+          position: "bottomRight",
+          offset: { x: -0.2, y: 0.2 },
+        }],
+      }],
+    },
+    output: { format: "mp4", aspectRatio: "16:9" },
+  };
+  const converted = shotstackEditToEditorProject(source);
+  const html = converted.project.items[0];
+
+  assert.equal((html.style as Record<string, unknown>).x, 80);
+  assert.equal((html.style as Record<string, unknown>).y, 80);
+
+  const output = editorProjectToShotstackEdit(
+    snapshot([{
+      ...html,
+      style: { ...(html.style as Record<string, unknown>), x: 25, y: 25 },
+    }]),
+    source
+  );
+  const clip = output.timeline.tracks[0].clips[0];
+
+  assert.equal(clip.position, "bottomRight");
+  assert.deepEqual(clip.offset, { x: -0.75, y: 0.75 });
+  assert.equal(clip.asset.position, undefined);
+  assert.equal(clip.asset.offset, undefined);
 });
 
 test("reports unsupported clips instead of converting them", () => {
