@@ -42,6 +42,9 @@ COPY --from=builder /app/package.json /app/yarn.lock ./
 # Install only production dependencies
 RUN yarn install --production --frozen-lockfile
 
+# Fail the image build before deployment if Sharp or its bundled musl libvips is missing.
+RUN node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"
+
 # Copy only the compiled output directory from builder
 COPY --from=builder /app/dist ./dist
 
