@@ -36,6 +36,7 @@ export interface IVideoTemplate extends Document {
   providerCreatedAt?: Date;
   providerUpdatedAt?: Date;
   lastSyncedAt?: Date;
+  lastSyncGeneration?: number;
   compatibilityWarnings?: string[];
   title: string;
   description: string;

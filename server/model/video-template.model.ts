@@ -9,6 +9,7 @@ const VideoTemplateSchema = new Schema<IVideoTemplate>(
     providerCreatedAt: { type: Date },
     providerUpdatedAt: { type: Date },
     lastSyncedAt: { type: Date },
+    lastSyncGeneration: { type: Number, min: 1 },
     compatibilityWarnings: { type: [String], default: undefined },
     title: { type: String, required: true, trim: true },
     description: { type: String, default: "" },

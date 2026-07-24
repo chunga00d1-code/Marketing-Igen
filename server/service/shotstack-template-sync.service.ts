@@ -35,6 +35,7 @@ export interface SyncTemplateRecord {
   sourceProvider: "shotstack";
   externalTemplateId: string;
   sourceHash?: string;
+  lastSyncGeneration?: number;
   status: "draft" | "published" | "archived";
   publishedVersionId?: string;
 }
@@ -111,13 +112,22 @@ export interface ShotstackTemplateSyncRepository {
     version: SyncVersionInput,
     run: SyncRunContext
   ): Promise<SyncTemplateRecord | null>;
-  updateTemplateMetadata(templateId: string, input: SyncTemplateInput): Promise<void>;
+  updateTemplateMetadata(
+    templateId: string,
+    input: SyncTemplateInput,
+    run: SyncRunContext
+  ): Promise<boolean>;
   createVersionAndPublish(
     templateId: string,
     template: SyncTemplateInput,
-    version: SyncVersionInput
-  ): Promise<"updated" | "unchanged">;
-  archiveMissing(activeExternalIds: string[], lastSyncedAt: Date): Promise<number>;
+    version: SyncVersionInput,
+    run: SyncRunContext
+  ): Promise<"updated" | "unchanged" | null>;
+  archiveMissing(
+    activeExternalIds: string[],
+    lastSyncedAt: Date,
+    run: SyncRunContext
+  ): Promise<number>;
   recordSyncState(input: SyncStateInput): Promise<void>;
 }
 
@@ -345,6 +355,7 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
       sourceProvider: "shotstack",
       externalTemplateId: externalId,
       sourceHash: publishedVersion?.sourceHash,
+      lastSyncGeneration: template.lastSyncGeneration,
       status: template.status,
       publishedVersionId: template.publishedVersionId
         ? String(template.publishedVersionId)
@@ -418,18 +429,34 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
           return;
         }
         const [template] = await VideoTemplateModel.create(
-          [{ ...templateInput, usageCount: 0 }],
+          [{
+            ...templateInput,
+            usageCount: 0,
+            lastSyncGeneration: run.generation,
+          }],
           { session }
         );
         const [version] = await VideoTemplateVersionModel.create(
           [{ ...versionInput, templateId: template._id, version: 1 }],
           { session }
         );
-        await VideoTemplateModel.updateOne(
-          { _id: template._id },
-          { $set: { publishedVersionId: version._id, status: "published" } },
+        const published = await VideoTemplateModel.updateOne(
+          {
+            _id: template._id,
+            lastSyncGeneration: { $lte: run.generation },
+          },
+          {
+            $set: {
+              publishedVersionId: version._id,
+              status: "published",
+              lastSyncGeneration: run.generation,
+            },
+          },
           { session }
         );
+        if (published.matchedCount === 0) {
+          throw new Error("Shotstack template creation was fenced.");
+        }
         created = {
           id: String(template._id),
           sourceProvider: "shotstack",
@@ -447,40 +474,59 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
     return created;
   }
 
-  async updateTemplateMetadata(templateId: string, input: SyncTemplateInput): Promise<void> {
-    await VideoTemplateModel.updateOne(
+  async updateTemplateMetadata(
+    templateId: string,
+    input: SyncTemplateInput,
+    run: SyncRunContext
+  ): Promise<boolean> {
+    const result = await VideoTemplateModel.updateOne(
       {
         _id: templateId,
         $or: [
-          { lastSyncedAt: { $exists: false } },
-          { lastSyncedAt: { $lte: input.lastSyncedAt } },
+          { lastSyncGeneration: { $exists: false } },
+          { lastSyncGeneration: { $lte: run.generation } },
         ],
       },
-      { $set: input }
+      {
+        $set: {
+          ...input,
+          lastSyncGeneration: run.generation,
+        },
+      }
     );
+    return result.matchedCount > 0;
   }
 
   async createVersionAndPublish(
     templateId: string,
     templateInput: SyncTemplateInput,
-    versionInput: SyncVersionInput
-  ): Promise<"updated" | "unchanged"> {
+    versionInput: SyncVersionInput,
+    run: SyncRunContext
+  ): Promise<"updated" | "unchanged" | null> {
     const session = await mongoose.startSession();
-    let outcome: "updated" | "unchanged" | undefined;
+    let outcome: "updated" | "unchanged" | null | undefined;
     try {
       await session.withTransaction(async () => {
         outcome = undefined;
-        const currentTemplate = await VideoTemplateModel.findById(templateId)
-          .session(session)
+        const currentTemplate = await VideoTemplateModel.findOneAndUpdate(
+          {
+            _id: templateId,
+            $or: [
+              { lastSyncGeneration: { $exists: false } },
+              { lastSyncGeneration: { $lte: run.generation } },
+            ],
+          },
+          {
+            $set: {
+              ...templateInput,
+              lastSyncGeneration: run.generation,
+            },
+          },
+          { new: true, session }
+        )
           .lean();
         if (!currentTemplate) {
-          throw new Error("Synchronized Shotstack template no longer exists.");
-        }
-        if (
-          currentTemplate.lastSyncedAt
-          && currentTemplate.lastSyncedAt.getTime() > templateInput.lastSyncedAt.getTime()
-        ) {
-          outcome = "unchanged";
+          outcome = null;
           return;
         }
         const currentVersion = currentTemplate.publishedVersionId
@@ -490,11 +536,6 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
             .lean()
           : null;
         if (currentVersion?.sourceHash === versionInput.sourceHash) {
-          await VideoTemplateModel.updateOne(
-            { _id: templateId },
-            { $set: templateInput },
-            { session }
-          );
           outcome = "unchanged";
           return;
         }
@@ -510,34 +551,71 @@ class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRe
           }],
           { session }
         );
-        await VideoTemplateModel.updateOne(
-          { _id: templateId },
-          { $set: { ...templateInput, publishedVersionId: version._id } },
+        const published = await VideoTemplateModel.updateOne(
+          {
+            _id: templateId,
+            lastSyncGeneration: { $lte: run.generation },
+          },
+          {
+            $set: {
+              ...templateInput,
+              publishedVersionId: version._id,
+              lastSyncGeneration: run.generation,
+            },
+          },
           { session }
         );
+        if (published.matchedCount === 0) {
+          throw new Error("Shotstack version publication was fenced.");
+        }
         outcome = "updated";
       });
     } finally {
       await session.endSession();
     }
-    if (!outcome) throw new Error("Shotstack version transaction did not complete.");
+    if (outcome === undefined) throw new Error("Shotstack version transaction did not complete.");
     return outcome;
   }
 
-  async archiveMissing(activeExternalIds: string[], lastSyncedAt: Date): Promise<number> {
-    const result = await VideoTemplateModel.updateMany(
+  async archiveMissing(
+    activeExternalIds: string[],
+    lastSyncedAt: Date,
+    run: SyncRunContext
+  ): Promise<number> {
+    const absentTemplateFilter = {
+      sourceProvider: "shotstack" as const,
+      externalTemplateId: { $nin: activeExternalIds },
+      $or: [
+        { lastSyncGeneration: { $exists: false } },
+        { lastSyncGeneration: { $lte: run.generation } },
+      ],
+    };
+    const newlyArchived = await VideoTemplateModel.updateMany(
       {
-        sourceProvider: "shotstack",
-        externalTemplateId: { $nin: activeExternalIds },
+        ...absentTemplateFilter,
         status: { $ne: "archived" },
-        $or: [
-          { lastSyncedAt: { $exists: false } },
-          { lastSyncedAt: { $lte: lastSyncedAt } },
-        ],
       },
-      { $set: { status: "archived", lastSyncedAt } }
+      {
+        $set: {
+          status: "archived",
+          lastSyncedAt,
+          lastSyncGeneration: run.generation,
+        },
+      }
     );
-    return result.modifiedCount;
+    await VideoTemplateModel.updateMany(
+      {
+        ...absentTemplateFilter,
+        status: "archived",
+      },
+      {
+        $set: {
+          lastSyncedAt,
+          lastSyncGeneration: run.generation,
+        },
+      }
+    );
+    return newlyArchived.modifiedCount;
   }
 
   async recordSyncState(input: SyncStateInput): Promise<void> {
@@ -723,31 +801,43 @@ export async function synchronizeShotstackTemplates(
     inputs: { template: SyncTemplateInput; version: SyncVersionInput }
   ) => {
     if (existing.sourceHash === inputs.template.sourceHash) {
-      await repository.updateTemplateMetadata(existing.id, inputs.template);
+      const refreshed = await repository.updateTemplateMetadata(
+        existing.id,
+        inputs.template,
+        run
+      );
+      if (!refreshed) return;
       summary.unchanged += 1;
       return;
     }
-    let outcome: "updated" | "unchanged";
+    let outcome: "updated" | "unchanged" | null;
     try {
       outcome = await repository.createVersionAndPublish(
         existing.id,
         inputs.template,
-        inputs.version
+        inputs.version,
+        run
       );
     } catch {
       const refreshed = await repository.findByExternalId(inputs.template.externalTemplateId);
       if (!refreshed) throw new Error("Shotstack version update failed.");
       if (refreshed.sourceHash === inputs.template.sourceHash) {
-        await repository.updateTemplateMetadata(refreshed.id, inputs.template);
-        outcome = "unchanged";
+        const updated = await repository.updateTemplateMetadata(
+          refreshed.id,
+          inputs.template,
+          run
+        );
+        outcome = updated ? "unchanged" : null;
       } else {
         outcome = await repository.createVersionAndPublish(
           refreshed.id,
           inputs.template,
-          inputs.version
+          inputs.version,
+          run
         );
       }
     }
+    if (!outcome) return;
     summary[outcome] += 1;
   };
 
@@ -807,7 +897,11 @@ export async function synchronizeShotstackTemplates(
 
   try {
     if (await repository.isRunCurrent(run)) {
-      summary.archived = await repository.archiveMissing(activeExternalIds, attemptedAt);
+      summary.archived = await repository.archiveMissing(
+        activeExternalIds,
+        attemptedAt,
+        run
+      );
     }
   } catch {
     summary.failed.push({ externalId: "shotstack", message: ITEM_FAILURE_MESSAGE });

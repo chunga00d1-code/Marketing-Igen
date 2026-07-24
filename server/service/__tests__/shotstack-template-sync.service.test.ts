@@ -108,6 +108,7 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
       ...structuredClone(template),
       id: templateId,
       publishedVersionId: versionId,
+      lastSyncGeneration: run.generation,
     };
     this.templates.set(template.externalTemplateId, record);
     this.versions.push({
@@ -119,31 +120,41 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
     return record;
   }
 
-  async updateTemplateMetadata(templateId: string, input: SyncTemplateInput) {
+  async updateTemplateMetadata(
+    templateId: string,
+    input: SyncTemplateInput,
+    run: SyncRunContext
+  ) {
     const record = this.byId(templateId);
     if (
-      record.lastSyncedAt instanceof Date
-      && record.lastSyncedAt.getTime() > input.lastSyncedAt.getTime()
+      typeof record.lastSyncGeneration === "number"
+      && record.lastSyncGeneration > run.generation
     ) {
-      return;
+      return false;
     }
-    Object.assign(record, structuredClone(input));
+    Object.assign(record, structuredClone(input), {
+      lastSyncGeneration: run.generation,
+    });
+    return true;
   }
 
   async createVersionAndPublish(
     templateId: string,
     template: SyncTemplateInput,
-    version: SyncVersionInput
+    version: SyncVersionInput,
+    run: SyncRunContext
   ) {
     const record = this.byId(templateId);
     if (
-      record.lastSyncedAt instanceof Date
-      && record.lastSyncedAt.getTime() > template.lastSyncedAt.getTime()
+      typeof record.lastSyncGeneration === "number"
+      && record.lastSyncGeneration > run.generation
     ) {
-      return "unchanged" as const;
+      return null;
     }
     if (record.sourceHash === template.sourceHash) {
-      Object.assign(record, structuredClone(template));
+      Object.assign(record, structuredClone(template), {
+        lastSyncGeneration: run.generation,
+      });
       return "unchanged" as const;
     }
     const nextVersion = this.versions
@@ -156,25 +167,36 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
       templateId,
       version: nextVersion,
     });
-    Object.assign(record, structuredClone(template), { publishedVersionId: versionId });
+    Object.assign(record, structuredClone(template), {
+      publishedVersionId: versionId,
+      lastSyncGeneration: run.generation,
+    });
     return "updated" as const;
   }
 
-  async archiveMissing(activeExternalIds: string[], lastSyncedAt: Date) {
+  async archiveMissing(
+    activeExternalIds: string[],
+    lastSyncedAt: Date,
+    run: SyncRunContext
+  ) {
     let archived = 0;
     for (const record of this.templates.values()) {
       if (
         record.sourceProvider === "shotstack"
         && !activeExternalIds.includes(record.externalTemplateId)
-        && record.status !== "archived"
+        && (
+          typeof record.lastSyncGeneration !== "number"
+          || record.lastSyncGeneration <= run.generation
+        )
         && (
           !(record.lastSyncedAt instanceof Date)
           || record.lastSyncedAt.getTime() <= lastSyncedAt.getTime()
         )
       ) {
+        if (record.status !== "archived") archived += 1;
         record.status = "archived";
         record.lastSyncedAt = lastSyncedAt;
-        archived += 1;
+        record.lastSyncGeneration = run.generation;
       }
     }
     return archived;
@@ -506,14 +528,15 @@ test("equal-timestamp overlap cannot enter an existing-row version update", asyn
     override async createVersionAndPublish(
       templateId: string,
       template: SyncTemplateInput,
-      version: SyncVersionInput
+      version: SyncVersionInput,
+      run: SyncRunContext
     ) {
       if (this.pauseNextUpdate) {
         this.pauseNextUpdate = false;
         markUpdateStarted();
         await allowUpdate;
       }
-      return super.createVersionAndPublish(templateId, template, version);
+      return super.createVersionAndPublish(templateId, template, version, run);
     }
   }
   const repository = new PausedUpdateRepository();
@@ -554,6 +577,267 @@ test("equal-timestamp overlap cannot enter an existing-row version update", asyn
   assert.equal(repository.syncLeases.size, 0);
 });
 
+test("expired old owner cannot report or apply a metadata refresh after a newer owner", async () => {
+  let releaseOldUpdate!: () => void;
+  const allowOldUpdate = new Promise<void>((resolve) => {
+    releaseOldUpdate = resolve;
+  });
+  let markOldUpdateStarted!: () => void;
+  const oldUpdateStarted = new Promise<void>((resolve) => {
+    markOldUpdateStarted = resolve;
+  });
+  class PausedMetadataRepository extends MemoryRepository {
+    private pauseNextUpdate = false;
+
+    pauseUpdate() {
+      this.pauseNextUpdate = true;
+    }
+
+    override async updateTemplateMetadata(
+      templateId: string,
+      input: SyncTemplateInput,
+      run: SyncRunContext
+    ) {
+      if (this.pauseNextUpdate) {
+        this.pauseNextUpdate = false;
+        markOldUpdateStarted();
+        await allowOldUpdate;
+      }
+      return super.updateTemplateMetadata(templateId, input, run);
+    }
+  }
+  const repository = new PausedMetadataRepository();
+  await sync(repository, [providerTemplate("one")]);
+  repository.pauseUpdate();
+
+  const oldOwner = synchronizeShotstackTemplates("admin-old", {
+    client: clientFor([providerTemplate("one", { name: "Stale title" })]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:01:00.000Z"),
+  });
+  await oldUpdateStarted;
+
+  const newerResult = await synchronizeShotstackTemplates("admin-new", {
+    client: clientFor([providerTemplate("one", { name: "Current title" })]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:32:00.000Z"),
+  });
+  releaseOldUpdate();
+  const oldResult = await oldOwner;
+
+  assert.equal(newerResult.unchanged, 1);
+  assert.deepEqual(oldResult, {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    failed: [],
+  });
+  assert.equal(repository.templates.get("one")?.title, "Current title");
+});
+
+test("newer empty catalogue establishes absence before an expired old owner can create", async () => {
+  let releaseOldCreate!: () => void;
+  const allowOldCreate = new Promise<void>((resolve) => {
+    releaseOldCreate = resolve;
+  });
+  let markOldCreateStarted!: () => void;
+  const oldCreateStarted = new Promise<void>((resolve) => {
+    markOldCreateStarted = resolve;
+  });
+  class PausedCreateRepository extends MemoryRepository {
+    private pauseNextCreate = true;
+
+    override async createTemplateWithVersion(
+      template: SyncTemplateInput,
+      version: SyncVersionInput,
+      run: SyncRunContext
+    ) {
+      if (this.pauseNextCreate) {
+        this.pauseNextCreate = false;
+        markOldCreateStarted();
+        await allowOldCreate;
+      }
+      return super.createTemplateWithVersion(template, version, run);
+    }
+  }
+  const repository = new PausedCreateRepository();
+
+  const oldOwner = synchronizeShotstackTemplates("admin-old", {
+    client: clientFor([providerTemplate("one")]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:01:00.000Z"),
+  });
+  await oldCreateStarted;
+
+  const newerResult = await synchronizeShotstackTemplates("admin-new", {
+    client: clientFor([]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:32:00.000Z"),
+  });
+  releaseOldCreate();
+  const oldResult = await oldOwner;
+
+  assert.deepEqual(newerResult, {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    failed: [],
+  });
+  assert.deepEqual(oldResult, {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    failed: [],
+  });
+  assert.equal(repository.templates.has("one"), false);
+  assert.equal(repository.versions.length, 0);
+});
+
+test("newer empty catalogue fences an already archived template from stale resurrection", async () => {
+  let releaseOldUpdate!: () => void;
+  const allowOldUpdate = new Promise<void>((resolve) => {
+    releaseOldUpdate = resolve;
+  });
+  let markOldUpdateStarted!: () => void;
+  const oldUpdateStarted = new Promise<void>((resolve) => {
+    markOldUpdateStarted = resolve;
+  });
+  class PausedArchivedMetadataRepository extends MemoryRepository {
+    private pauseNextUpdate = false;
+
+    pauseUpdate() {
+      this.pauseNextUpdate = true;
+    }
+
+    override async updateTemplateMetadata(
+      templateId: string,
+      input: SyncTemplateInput,
+      run: SyncRunContext
+    ) {
+      if (this.pauseNextUpdate) {
+        this.pauseNextUpdate = false;
+        markOldUpdateStarted();
+        await allowOldUpdate;
+      }
+      return super.updateTemplateMetadata(templateId, input, run);
+    }
+  }
+  const repository = new PausedArchivedMetadataRepository();
+  await sync(repository, [providerTemplate("one")]);
+  await sync(repository, []);
+  assert.equal(repository.templates.get("one")?.status, "archived");
+  repository.pauseUpdate();
+
+  const oldOwner = synchronizeShotstackTemplates("admin-old", {
+    client: clientFor([providerTemplate("one")]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:01:00.000Z"),
+  });
+  await oldUpdateStarted;
+
+  const newerResult = await synchronizeShotstackTemplates("admin-new", {
+    client: clientFor([]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:32:00.000Z"),
+  });
+  releaseOldUpdate();
+  const oldResult = await oldOwner;
+
+  assert.equal(newerResult.archived, 0);
+  assert.deepEqual(oldResult, {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    failed: [],
+  });
+  assert.equal(repository.templates.get("one")?.status, "archived");
+});
+
+test("expired old owner cannot publish a version over the newer owner", async () => {
+  let releaseOldPublication!: () => void;
+  const allowOldPublication = new Promise<void>((resolve) => {
+    releaseOldPublication = resolve;
+  });
+  let markOldPublicationStarted!: () => void;
+  const oldPublicationStarted = new Promise<void>((resolve) => {
+    markOldPublicationStarted = resolve;
+  });
+  class PausedPublicationRepository extends MemoryRepository {
+    private pauseNextPublication = false;
+
+    pausePublication() {
+      this.pauseNextPublication = true;
+    }
+
+    override async createVersionAndPublish(
+      templateId: string,
+      template: SyncTemplateInput,
+      version: SyncVersionInput,
+      run: SyncRunContext
+    ) {
+      if (this.pauseNextPublication) {
+        this.pauseNextPublication = false;
+        markOldPublicationStarted();
+        await allowOldPublication;
+      }
+      return super.createVersionAndPublish(templateId, template, version, run);
+    }
+  }
+  const repository = new PausedPublicationRepository();
+  await sync(repository, [providerTemplate("one")]);
+  repository.pausePublication();
+  const staleEdit = providerTemplate("one");
+  const staleTimeline = staleEdit.timeline as {
+    tracks: Array<{ clips: Array<{ length: number }> }>;
+  };
+  staleTimeline.tracks[0].clips[0].length = 9;
+  const currentEdit = providerTemplate("one");
+  const currentTimeline = currentEdit.timeline as {
+    tracks: Array<{ clips: Array<{ length: number }> }>;
+  };
+  currentTimeline.tracks[0].clips[0].length = 10;
+
+  const oldOwner = synchronizeShotstackTemplates("admin-old", {
+    client: clientFor([staleEdit]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:01:00.000Z"),
+  });
+  await oldPublicationStarted;
+
+  const newerResult = await synchronizeShotstackTemplates("admin-new", {
+    client: clientFor([currentEdit]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:32:00.000Z"),
+  });
+  const newerPublishedVersionId = repository.templates.get("one")?.publishedVersionId;
+  releaseOldPublication();
+  const oldResult = await oldOwner;
+
+  assert.equal(newerResult.updated, 1);
+  assert.deepEqual(oldResult, {
+    created: 0,
+    updated: 0,
+    unchanged: 0,
+    archived: 0,
+    failed: [],
+  });
+  assert.equal(repository.versions.length, 2);
+  assert.equal(repository.templates.get("one")?.publishedVersionId, newerPublishedVersionId);
+  assert.equal(repository.templates.get("one")?.duration, 10);
+});
+
 test("duplicate-key timing during changed import is recovered as unchanged", async () => {
   class DuplicateTimingRepository extends MemoryRepository {
     private simulateRace = true;
@@ -561,14 +845,15 @@ test("duplicate-key timing during changed import is recovered as unchanged", asy
     override async createVersionAndPublish(
       templateId: string,
       template: SyncTemplateInput,
-      version: SyncVersionInput
+      version: SyncVersionInput,
+      run: SyncRunContext
     ) {
       if (this.simulateRace) {
         this.simulateRace = false;
-        await super.createVersionAndPublish(templateId, template, version);
+        await super.createVersionAndPublish(templateId, template, version, run);
         throw new Error("E11000 duplicate key");
       }
-      return super.createVersionAndPublish(templateId, template, version);
+      return super.createVersionAndPublish(templateId, template, version, run);
     }
   }
   const repository = new DuplicateTimingRepository();
@@ -602,13 +887,17 @@ test("equal-timestamp overlap cannot enter archival after the owner reaches it",
       this.pauseNextArchive = true;
     }
 
-    override async archiveMissing(activeExternalIds: string[], lastSyncedAt: Date) {
+    override async archiveMissing(
+      activeExternalIds: string[],
+      lastSyncedAt: Date,
+      run: SyncRunContext
+    ) {
       if (this.pauseNextArchive) {
         this.pauseNextArchive = false;
         markArchiveStarted();
         await allowArchive;
       }
-      return super.archiveMissing(activeExternalIds, lastSyncedAt);
+      return super.archiveMissing(activeExternalIds, lastSyncedAt, run);
     }
   }
   const repository = new PausedArchiveRepository();
