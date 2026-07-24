@@ -7,14 +7,18 @@ import {
 } from "../../src/components/content-studio/bulk-create/SceneCanvas";
 import type { IBulkRenderJob } from "../interface/bulk-create.interface";
 
-const MAX_RENDER_CONCURRENCY = Math.min(
-  4,
-  Math.max(1, Number(process.env.BULK_CREATE_CHROMIUM_CONCURRENCY || 2))
+const configuredRenderConcurrency = Number(
+  process.env.BULK_CREATE_CHROMIUM_CONCURRENCY || 2
 );
-const RENDER_TIMEOUT_MS = Math.min(
-  60_000,
-  Math.max(5_000, Number(process.env.BULK_CREATE_CHROMIUM_TIMEOUT_MS || 30_000))
+const configuredRenderTimeout = Number(
+  process.env.BULK_CREATE_CHROMIUM_TIMEOUT_MS || 30_000
 );
+const MAX_RENDER_CONCURRENCY = Number.isFinite(configuredRenderConcurrency)
+  ? Math.min(4, Math.max(1, Math.floor(configuredRenderConcurrency)))
+  : 2;
+const RENDER_TIMEOUT_MS = Number.isFinite(configuredRenderTimeout)
+  ? Math.min(60_000, Math.max(5_000, Math.floor(configuredRenderTimeout)))
+  : 30_000;
 const MAX_DATA_URL_LENGTH = 14_000_000;
 const DEFAULT_ALLOWED_HOSTS = ["res.cloudinary.com"];
 const GOOGLE_FONT_CSS_URLS = [

@@ -14,6 +14,8 @@ interface ZipArchive {
 type ArchiverFactory = (format: "zip", options: { zlib: { level: number } }) => ZipArchive;
 
 const createArchive = ((archiverModule as unknown as { default?: ArchiverFactory }).default || archiverModule) as unknown as ArchiverFactory;
+const MAX_ZIP_IMAGE_BYTES = 20 * 1024 * 1024;
+const ZIP_FETCH_CONCURRENCY = 4;
 
 function actorFrom(req: AuthenticatedRequest) {
   if (!req.user?.id) throw new Error("Không xác định được tài khoản.");
@@ -40,10 +42,31 @@ function safeFilePart(value: string) {
     .replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 }
 
+async function fetchZipImage(value: string) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.hostname !== "res.cloudinary.com") {
+    throw new Error("URL kết quả không thuộc kho ảnh được phép.");
+  }
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > MAX_ZIP_IMAGE_BYTES) throw new Error("Ảnh vượt quá 20 MB.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_ZIP_IMAGE_BYTES) throw new Error("Ảnh vượt quá 20 MB.");
+  return buffer;
+}
+
 export const bulkCreateController = {
   async previewGoogleSheet(req: AuthenticatedRequest, res: Response) {
     try {
       const preview = await bulkCreateService.previewPublicGoogleSheet(actorFrom(req), req.body);
+      return res.json({ status: "success", data: preview });
+    } catch (error) { return handleError(res, error); }
+  },
+
+  async previewWorkbook(req: AuthenticatedRequest, res: Response) {
+    try {
+      const preview = await bulkCreateService.previewWorkbook(actorFrom(req), req.body);
       return res.json({ status: "success", data: preview });
     } catch (error) { return handleError(res, error); }
   },
@@ -205,15 +228,40 @@ export const bulkCreateController = {
       });
       archive.pipe(res);
       const usedNames = new Set<string>();
-      for (const item of completed) {
-        const response = await fetch(String(item.outputUrl), { signal: AbortSignal.timeout(30000) });
-        if (!response.ok) continue;
-        const label = Object.values(item.values).find((value) => value && !/^data:|^https?:\/\//i.test(value));
-        const base = safeFilePart(label || "") || `${safeName}-${String(item.rowIndex + 1).padStart(3, "0")}`;
-        let fileName = `${base}.png`;
-        if (usedNames.has(fileName)) fileName = `${base}-${String(item.rowIndex + 1).padStart(3, "0")}.png`;
-        usedNames.add(fileName);
-        archive.append(Buffer.from(await response.arrayBuffer()), { name: fileName });
+      const skipped: string[] = [];
+      for (let index = 0; index < completed.length; index += ZIP_FETCH_CONCURRENCY) {
+        const chunk = completed.slice(index, index + ZIP_FETCH_CONCURRENCY);
+        const downloaded = await Promise.all(chunk.map(async (item) => {
+          const label = Object.values(item.values)
+            .find((value) => value && !/^data:|^https?:\/\//i.test(value));
+          const base = safeFilePart(label || "") ||
+            `${safeName}-${String(item.rowIndex + 1).padStart(3, "0")}`;
+          let fileName = `${base}.png`;
+          if (usedNames.has(fileName)) {
+            fileName = `${base}-${String(item.rowIndex + 1).padStart(3, "0")}.png`;
+          }
+          usedNames.add(fileName);
+          try {
+            return { fileName, buffer: await fetchZipImage(String(item.outputUrl)) };
+          } catch (error) {
+            skipped.push(
+              `Ảnh ${item.rowIndex + 1}: ${error instanceof Error ? error.message : String(error)}`
+            );
+            return null;
+          }
+        }));
+        downloaded.forEach((result) => {
+          if (result) archive.append(result.buffer, { name: result.fileName });
+        });
+      }
+      if (skipped.length > 0) {
+        archive.append(
+          Buffer.from(
+            `Một số ảnh không thể tải tại thời điểm tạo ZIP:\n${skipped.join("\n")}\n`,
+            "utf8"
+          ),
+          { name: "anh-khong-tai-duoc.txt" }
+        );
       }
       await archive.finalize();
     } catch (error) {

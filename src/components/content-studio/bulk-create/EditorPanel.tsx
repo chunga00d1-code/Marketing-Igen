@@ -313,38 +313,57 @@ export function EditorPanel(props: EditorPanelProps) {
         )}
 
         {activeTool === 'text' && (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            {/* ── Kiểu chữ mặc định ── */}
             <div>
-              <p className="px-1 mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-400">Kiểu chữ mặc định</p>
+              <p className="mb-3 px-1 text-xs font-extrabold uppercase tracking-wider text-slate-400">Kiểu chữ mặc định</p>
               <div className="space-y-2">
                 <button
                   type="button"
                   onClick={() => props.onAddLayer('text', '', { fontSize: 80, fontWeight: 800, fieldName: 'Thêm tiêu đề' })}
-                  className="flex w-full items-center justify-start rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left hover:border-indigo-500 hover:shadow-sm transition active:scale-[0.98]"
+                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-indigo-50/80 to-white p-4 text-left transition-all duration-200 hover:border-indigo-400 hover:shadow-md active:scale-[0.98]"
                 >
-                  <span className="text-xl font-extrabold text-slate-900 leading-none">Thêm tiêu đề</span>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-xl font-black text-indigo-600 shadow-sm transition-colors duration-200 group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-indigo-200">
+                    H₁
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-extrabold text-slate-900">Thêm tiêu đề</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-400">Cỡ 80px · Đậm nhất</span>
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => props.onAddLayer('text', '', { fontSize: 48, fontWeight: 600, fieldName: 'Thêm tiêu đề phụ' })}
-                  className="flex w-full items-center justify-start rounded-xl border border-slate-200 bg-white px-4 py-3 text-left hover:border-indigo-500 hover:shadow-sm transition active:scale-[0.98]"
+                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-violet-50/80 to-white p-4 text-left transition-all duration-200 hover:border-violet-400 hover:shadow-md active:scale-[0.98]"
                 >
-                  <span className="text-sm font-bold text-slate-700 leading-none">Thêm tiêu đề phụ</span>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-lg font-bold text-violet-600 shadow-sm transition-colors duration-200 group-hover:bg-violet-600 group-hover:text-white group-hover:shadow-violet-200">
+                    H₂
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-slate-800">Thêm tiêu đề phụ</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-400">Cỡ 48px · Hơi đậm</span>
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => props.onAddLayer('text', '', { fontSize: 32, fontWeight: 400, fieldName: 'Thêm nội dung văn bản' })}
-                  className="flex w-full items-center justify-start rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-left hover:border-indigo-500 hover:shadow-sm transition active:scale-[0.98]"
+                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50/80 to-white p-4 text-left transition-all duration-200 hover:border-slate-400 hover:shadow-md active:scale-[0.98]"
                 >
-                  <span className="text-xs font-normal text-slate-500 leading-none">Thêm nội dung văn bản</span>
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-medium text-slate-500 shadow-sm transition-colors duration-200 group-hover:bg-slate-600 group-hover:text-white group-hover:shadow-slate-200">
+                    Aa
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs text-slate-600">Thêm nội dung văn bản</span>
+                    <span className="mt-0.5 block text-[11px] text-slate-400">Cỡ 32px · Bình thường</span>
+                  </span>
                 </button>
               </div>
             </div>
 
-            {/* Kết hợp phông chữ */}
+            {/* ── Kết hợp phông chữ ── */}
             <div>
-              <p className="px-1 mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-400">Kết hợp phông chữ</p>
-              <div className="grid grid-cols-2 gap-2">
+              <p className="mb-3 px-1 text-xs font-extrabold uppercase tracking-wider text-slate-400">Kết hợp phông chữ</p>
+              <div className="grid grid-cols-2 gap-2.5">
                 {[
                   { name: 'Thanh lịch', heading: { font: 'Playfair Display', weight: 700, text: 'Elegant' }, body: { font: 'Raleway', weight: 400, text: 'Clean & minimal style' }, bg: 'bg-gradient-to-br from-amber-50 to-orange-50', accent: 'text-amber-900' },
                   { name: 'Hiện đại', heading: { font: 'Montserrat', weight: 800, text: 'MODERN' }, body: { font: 'Inter', weight: 400, text: 'Simple and bold' }, bg: 'bg-gradient-to-br from-slate-900 to-slate-800', accent: 'text-white' },
@@ -373,21 +392,21 @@ export function EditorPanel(props: EditorPanelProps) {
                         y: 22,
                       });
                     }}
-                    className={`group relative flex flex-col items-start justify-center overflow-hidden rounded-xl border border-slate-200 p-3 text-left transition hover:border-indigo-400 hover:shadow-md active:scale-[0.97] ${combo.bg}`}
+                    className={`group relative flex min-h-[92px] flex-col items-start justify-end overflow-hidden rounded-2xl border border-slate-200/80 p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-400 hover:shadow-lg active:scale-[0.97] ${combo.bg}`}
                   >
                     <span
-                      className={`text-base leading-tight ${combo.accent}`}
+                      className={`text-[15px] leading-tight drop-shadow-sm ${combo.accent}`}
                       style={{ fontFamily: combo.heading.font, fontWeight: combo.heading.weight }}
                     >
                       {combo.heading.text}
                     </span>
                     <span
-                      className="mt-1 text-[10px] leading-tight opacity-70"
+                      className="mt-1.5 text-[10px] leading-tight opacity-60"
                       style={{ fontFamily: combo.body.font, fontWeight: combo.body.weight }}
                     >
                       {combo.body.text}
                     </span>
-                    <span className="absolute bottom-1 right-1.5 rounded bg-black/5 px-1 py-0.5 text-[8px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition">
+                    <span className="absolute inset-x-0 bottom-0 flex h-7 items-center justify-center bg-gradient-to-t from-black/25 to-transparent text-[9px] font-extrabold tracking-wide text-white opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
                       {combo.name}
                     </span>
                   </button>
@@ -395,22 +414,39 @@ export function EditorPanel(props: EditorPanelProps) {
               </div>
             </div>
 
-            <p className="px-1 pt-2 text-sm font-bold text-slate-600">Văn bản trên mẫu</p>
-            {layers
-              .filter((layer) => layer.type === 'text')
-              .map((layer) => (
-                <button
-                  key={layer.id}
-                  type="button"
-                  onClick={() => props.onSelectLayer(layer.id)}
-                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-left hover:border-indigo-400"
-                >
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                    <Type className="h-4 w-4" />
-                  </span>
-                  <span className="text-sm font-bold">{layer.fieldName}</span>
-                </button>
-              ))}
+            {/* ── Văn bản trên mẫu ── */}
+            <div>
+              <p className="mb-2 px-1 text-xs font-extrabold uppercase tracking-wider text-slate-400">Văn bản trên mẫu</p>
+              {layers.filter((layer) => layer.type === 'text').length === 0 ? (
+                <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center">
+                  <Type className="h-6 w-6 text-slate-300" />
+                  <span className="text-xs leading-relaxed text-slate-400">Chưa có văn bản nào trên mẫu.<br/>Thêm từ mục phía trên.</span>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {layers
+                    .filter((layer) => layer.type === 'text')
+                    .map((layer) => (
+                      <button
+                        key={layer.id}
+                        type="button"
+                        onClick={() => props.onSelectLayer(layer.id)}
+                        className="group flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition-all duration-200 hover:border-indigo-400 hover:bg-indigo-50/50 hover:shadow-sm"
+                      >
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-100 to-violet-100 text-indigo-600 shadow-sm transition-all duration-200 group-hover:from-indigo-500 group-hover:to-violet-500 group-hover:text-white group-hover:shadow-indigo-200">
+                          <Type className="h-4 w-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold text-slate-800">{layer.fieldName}</span>
+                          {layer.dataBinding && (
+                            <span className="mt-0.5 block truncate text-[10px] font-semibold text-violet-500">🔗 {layer.dataBinding.columnLabel}</span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

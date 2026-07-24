@@ -3,6 +3,7 @@ import { IMarketingCampaign } from "../../interface/marketing-campaign.interface
 import { MarketingContentModel } from "../../model/marketing-content.model";
 import { openrouterChat } from "../openrouter.service";
 import { assertReachableMedia, loadAgentSkill, resolveFacebookCredentials } from "./campaign-utils";
+import { assertCampaignVideoReady } from "./campaign-caption.service";
 
 export class QcAgentService {
   public static async verify(
@@ -48,6 +49,16 @@ export class QcAgentService {
           reasons.push(`Video không truy cập được: ${msg}`);
         }
       }
+    }
+
+    try {
+      await assertCampaignVideoReady({ campaign, slot, content });
+    } catch (err: unknown) {
+      reasons.push(
+        err instanceof Error
+          ? err.message
+          : "Video chiến dịch chưa sẵn sàng."
+      );
     }
 
     if (slot.mediaType === "text" && ["image", "video"].includes(campaign.mediaPolicy) && !campaign.rules?.allowTextOnlyFallback) {

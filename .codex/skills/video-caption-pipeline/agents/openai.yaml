@@ -1,0 +1,4 @@
+interface:
+  display_name: "Video Caption Pipeline"
+  short_description: "Build reliable video caption and RAG workflows"
+  default_prompt: "Use $video-caption-pipeline to implement the next safe phase of the shared video caption workflow."

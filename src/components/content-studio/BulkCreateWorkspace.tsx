@@ -103,6 +103,74 @@ function normalizeDataKey(value: string) {
     .replace(/^-+|-+$/g, '');
 }
 
+function dataMatchTokens(value: string) {
+  return normalizeDataKey(value)
+    .split('-')
+    .filter(Boolean)
+    .map((token) => {
+      if (['anh', 'hinh', 'image', 'photo', 'picture'].includes(token)) return 'image';
+      if (['chu', 'text'].includes(token)) return 'text';
+      return token;
+    });
+}
+
+function matchLayersToColumns(
+  currentLayers: TemplateLayer[],
+  columns: BulkDataColumn[]
+) {
+  const claimedColumnKeys = new Set<string>();
+  return currentLayers.map((layer) => {
+    const currentColumn = layer.dataBinding
+      ? columns.find((column) =>
+          column.key === layer.dataBinding?.columnKey && column.type === layer.type
+        )
+      : undefined;
+    if (currentColumn) {
+      claimedColumnKeys.add(currentColumn.key);
+      return {
+        ...layer,
+        dataBinding: {
+          columnKey: currentColumn.key,
+          columnLabel: currentColumn.label,
+        },
+      };
+    }
+
+    const layerKey = normalizeDataKey(layer.fieldName);
+    const layerTokens = dataMatchTokens(layer.fieldName);
+    const availableColumns = columns.filter((column) =>
+      column.type === layer.type && !claimedColumnKeys.has(column.key)
+    );
+    const ranked = availableColumns
+      .map((column, index) => {
+        const columnTokens = dataMatchTokens(column.label);
+        const sharedTokens = layerTokens.filter((token) => columnTokens.includes(token));
+        const layerNumber = layerTokens.find((token) => /^\d+$/.test(token));
+        const columnNumber = columnTokens.find((token) => /^\d+$/.test(token));
+        const score =
+          (column.key === layerKey ? 10_000 : 0) +
+          sharedTokens.length * 100 +
+          (layerNumber && layerNumber === columnNumber ? 500 : 0) +
+          (layerKey.includes(column.key) || column.key.includes(layerKey) ? 25 : 0) -
+          index;
+        return { column, score };
+      })
+      .sort((left, right) => right.score - left.score);
+    const best = ranked[0];
+    if (!best || best.score <= 0) {
+      return { ...layer, dataBinding: undefined };
+    }
+    claimedColumnKeys.add(best.column.key);
+    return {
+      ...layer,
+      dataBinding: {
+        columnKey: best.column.key,
+        columnLabel: best.column.label,
+      },
+    };
+  });
+}
+
 function extractTableRegion<T>(matrix: T[][]) {
   const populatedRows = matrix.filter((row) =>
     row.some((cell) => String(cell ?? '').trim())
@@ -275,6 +343,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [savedTemplateId, setSavedTemplateId] = useState('');
   const savedTemplateIdRef = useRef('');
   const persistRequestRef = useRef<Promise<BulkTemplate> | null>(null);
+  const generationInFlightRef = useRef(false);
   const autoSaveVersionRef = useRef(0);
   const designSessionRef = useRef(0);
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle');
@@ -535,13 +604,23 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     });
   }, []);
 
+  const polledJobId = activeJob?._id;
+  const polledJobStatus = activeJob?.status;
   useEffect(() => {
-    if (!activeJob || !['queued', 'processing'].includes(activeJob.status)) return;
-    const timer = window.setInterval(() => {
-      void Promise.all([
-        bulkCreateService.getJob(activeJob._id),
-        bulkCreateService.listItems(activeJob._id),
-      ]).then(([job, items]) => {
+    if (!polledJobId || !polledJobStatus || !['queued', 'processing'].includes(polledJobStatus)) {
+      return;
+    }
+    let cancelled = false;
+    let timer: number | undefined;
+    const jobId = polledJobId;
+
+    const poll = async () => {
+      try {
+        const [job, items] = await Promise.all([
+          bulkCreateService.getJob(jobId),
+          bulkCreateService.listItems(jobId),
+        ]);
+        if (cancelled) return;
         setActiveJob(job);
         setJobItems(items);
         syncPageResults(items, activeJobPageIds);
@@ -556,11 +635,27 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           } else if (job.status === 'failed') {
             toast.error(job.errorMessage || 'Không thể tạo ảnh.');
           }
+          return;
         }
-      }).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)));
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [activeJob, activeJobPageIds, syncPageResults]);
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
+      }
+      if (!cancelled) {
+        timer = window.setTimeout(
+          poll,
+          document.visibilityState === 'visible' ? 2_000 : 8_000
+        );
+      }
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [activeJobPageIds, polledJobId, polledJobStatus, syncPageResults]);
 
   useEffect(() => {
     const viewport = editorViewportRef.current;
@@ -1076,38 +1171,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     importedRows: BulkImportedRow[],
     sourceName: string
   ) => {
-    const columnKeys = new Set(columns.map((column) => column.key));
-    const claimedColumnKeys = new Set<string>();
-    const nextLayers = layers.map((layer) => {
-      const currentColumn = layer.dataBinding
-        ? columns.find((column) =>
-            column.key === layer.dataBinding?.columnKey && column.type === layer.type
-          )
-        : undefined;
-      if (
-        currentColumn &&
-        columnKeys.has(currentColumn.key) &&
-        !claimedColumnKeys.has(currentColumn.key)
-      ) {
-        claimedColumnKeys.add(currentColumn.key);
-        return layer;
-      }
-      const exactColumn = columns.find((column) =>
-        column.key === normalizeDataKey(layer.fieldName) &&
-        column.type === layer.type &&
-        !claimedColumnKeys.has(column.key)
-      );
-      if (exactColumn) claimedColumnKeys.add(exactColumn.key);
-      return exactColumn
-        ? {
-            ...layer,
-            dataBinding: {
-              columnKey: exactColumn.key,
-              columnLabel: exactColumn.label,
-            },
-          }
-        : { ...layer, dataBinding: undefined };
-    });
+    const nextLayers = matchLayersToColumns(layers, columns);
     const nextRows: DataRow[] = importedRows.map((row) => ({
       id: row.id || makeId('row'),
       sourceCells: row.cells,
@@ -1135,15 +1199,6 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     const column = dataColumns.find((item) => item.key === columnKey);
     const layer = layers.find((item) => item.id === layerId);
     if (!layer) return;
-    const connectedLayer = column
-      ? layers.find((item) =>
-          item.id !== layerId && item.dataBinding?.columnKey === column.key
-        )
-      : undefined;
-    if (column && connectedLayer) {
-      toast.error(`Cột “${column.label}” đã được kết nối với “${connectedLayer.fieldName}”.`);
-      return;
-    }
     if (column && column.type !== layer.type) {
       toast.error(
         layer.type === 'image'
@@ -1170,33 +1225,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   };
 
   const autoMatchData = () => {
-    const claimedColumnKeys = new Set<string>();
-    const matchedLayers = layers.map((layer) => {
-      const currentColumn = layer.dataBinding
-        ? dataColumns.find((column) =>
-            column.key === layer.dataBinding?.columnKey && column.type === layer.type
-          )
-        : undefined;
-      if (currentColumn && !claimedColumnKeys.has(currentColumn.key)) {
-        claimedColumnKeys.add(currentColumn.key);
-        return layer;
-      }
-      const column = dataColumns.find((item) =>
-        item.key === normalizeDataKey(layer.fieldName) &&
-        item.type === layer.type &&
-        !claimedColumnKeys.has(item.key)
-      );
-      if (column) claimedColumnKeys.add(column.key);
-      return column
-        ? {
-            ...layer,
-            dataBinding: {
-              columnKey: column.key,
-              columnLabel: column.label,
-            },
-          }
-        : { ...layer, dataBinding: undefined };
-    });
+    const matchedLayers = matchLayersToColumns(layers, dataColumns);
     setLayers(matchedLayers);
     setRows((current) => current.map((row) => ({
       ...row,
@@ -1265,12 +1294,47 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   };
 
   const importExcel = async (file: File) => {
+    if (/\.xlsx$/i.test(file.name)) {
+      setLoadingSheet(true);
+      setErrorMessage('');
+      try {
+        const preview = await bulkCreateService.previewWorkbook(file);
+        applyImportedData(
+          preview.columns,
+          preview.rows,
+          `${file.name} · ${preview.sheetName || 'Tự động'}`
+        );
+        const imageSummary = preview.embeddedImageCount
+          ? ` và ${preview.embeddedImageCount} ảnh`
+          : '';
+        toast.success(`Đã nhập ${preview.rows.length} dòng${imageSummary} từ ${file.name}.`);
+      } finally {
+        setLoadingSheet(false);
+      }
+      return;
+    }
     const XLSX = await import('xlsx');
     const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean>>(sheet, { header: 1, raw: false });
-    const dataSet = matrixToDataSet(matrix);
-    applyImportedData(dataSet.columns, dataSet.rows, file.name);
+    const candidates = workbook.SheetNames.map((sheetName) => {
+      try {
+        const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean>>(
+          workbook.Sheets[sheetName],
+          { header: 1, raw: false }
+        );
+        const dataSet = matrixToDataSet(matrix);
+        return {
+          sheetName,
+          dataSet,
+          score: dataSet.columns.length * 1_000 + dataSet.rows.length,
+        };
+      } catch {
+        return null;
+      }
+    }).filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+      .sort((left, right) => right.score - left.score);
+    const best = candidates[0];
+    if (!best) throw new Error('Không tìm thấy bảng dữ liệu hợp lệ trong tệp.');
+    applyImportedData(best.dataSet.columns, best.dataSet.rows, `${file.name} · ${best.sheetName}`);
   };
 
   const buildTemplatePayload = useCallback(async (): Promise<BulkTemplatePayload> => {
@@ -1426,7 +1490,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   };
 
   const startGeneration = async () => {
-    if (readyCount === 0) return;
+    if (readyCount === 0 || generationInFlightRef.current) return;
+    generationInFlightRef.current = true;
     setBusy(true);
     setErrorMessage('');
     try {
@@ -1450,6 +1515,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
+      generationInFlightRef.current = false;
       setAssetUploadProgress(null);
       setBusy(false);
     }

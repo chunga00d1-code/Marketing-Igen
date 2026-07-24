@@ -117,6 +117,17 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
+  "KHO TRI THUC": {
+    title: "Kho tri thức doanh nghiệp",
+    description:
+      "Quản lý tài liệu dùng chung cho Sale, Reply AI, Marketing và Caption video theo phạm vi doanh nghiệp.",
+    keywords:
+      "kho tri thức doanh nghiệp, RAG, tài liệu AI, company knowledge, caption AI",
+    path: "/kho-tri-thuc",
+    robots: "noindex, nofollow",
+    priority: "0.3",
+    changeFrequency: "weekly",
+  },
   "SALES CRM": {
     title: "Sales CRM - Lead, hội thoại và chăm sóc khách hàng",
     description:

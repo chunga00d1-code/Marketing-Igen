@@ -11,6 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "smoke:bulk-create": "tsx scripts/bulk-create-import-smoke.ts",
+    "smoke:video-caption": "tsx scripts/video-caption-smoke.ts",
     "debug:fb-autoreply": "tsx scripts/fb-autoreply-debug.ts",
     "fix:fb-conversation-index": "tsx scripts/fix_fb_conversation_index.ts"
   },

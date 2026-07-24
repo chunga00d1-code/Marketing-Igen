@@ -16,6 +16,7 @@ import { BRAND_NAME, BRAND_TAGLINE, BRAND_LOGO_URL, SERVICE_WEBSITE_URL } from "
 import { telegramService } from "./server/service/telegram.service";
 import { initCampaignWorkers } from "./server/queue/campaign-workers";
 import { initBulkCreateWorker } from "./server/queue/bulk-create-queue";
+import { initVideoCaptionWorker } from "./server/queue/video-caption-queue";
 import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
 
 dotenv.config();
@@ -204,6 +205,7 @@ async function startServer() {
   // Khởi động hàng đợi xử lý Campaign
   initCampaignWorkers();
   initBulkCreateWorker();
+  initVideoCaptionWorker();
 
 
 

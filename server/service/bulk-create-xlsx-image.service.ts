@@ -1,4 +1,5 @@
 import path from "path";
+import { createHash } from "crypto";
 import AdmZip from "adm-zip";
 import * as XLSX from "xlsx";
 import { cloudinaryService } from "./cloudinary.service";
@@ -32,6 +33,24 @@ interface ImportedColumn {
   samples: string[];
 }
 
+const MAX_WORKSHEETS = 50;
+const MAX_SHEET_ROWS_TO_SCAN = 5_000;
+const MAX_SHEET_COLUMNS_TO_SCAN = 200;
+const MAX_HEADER_ROWS_TO_SCAN = 500;
+const MAX_IMPORTED_COLUMNS = 50;
+const MAX_ARCHIVE_ENTRIES = 5_000;
+const MAX_ARCHIVE_UNCOMPRESSED_BYTES = 250 * 1024 * 1024;
+const MAX_ARCHIVE_IMAGE_BYTES = 150 * 1024 * 1024;
+const MAX_EMBEDDED_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMPORTED_IMAGES = 2_000;
+const configuredImageUploadConcurrency = Number(
+  process.env.BULK_CREATE_SHEET_IMAGE_CONCURRENCY || 6
+);
+const IMAGE_UPLOAD_CONCURRENCY = Number.isFinite(configuredImageUploadConcurrency)
+  ? Math.min(8, Math.max(1, Math.floor(configuredImageUploadConcurrency)))
+  : 6;
+const zipIndexes = new WeakMap<AdmZip, Map<string, AdmZip.IZipEntry>>();
+
 function decodeXml(value: string) {
   return value.replace(/&quot;/g, '"').replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
@@ -45,21 +64,23 @@ function attributes(fragment: string) {
 }
 
 function zipText(zip: AdmZip, entryName: string) {
-  const normalizedName = entryName.replace(/\\/g, "/");
-  const entry = zip.getEntry(normalizedName) ||
-    zip.getEntries().find((candidate) =>
-      candidate.entryName.toLocaleLowerCase() === normalizedName.toLocaleLowerCase()
-    );
+  const entry = zipEntry(zip, entryName);
   return entry ? entry.getData().toString("utf8") : "";
 }
 
 function zipEntry(zip: AdmZip, entryName: string) {
   const normalizedName = entryName.replace(/\\/g, "/");
-  return zip.getEntry(normalizedName) ||
-    zip.getEntries().find((candidate) =>
-      candidate.entryName.toLocaleLowerCase() === normalizedName.toLocaleLowerCase()
-    ) ||
-    null;
+  let index = zipIndexes.get(zip);
+  if (!index) {
+    index = new Map(
+      zip.getEntries().map((entry) => [
+        entry.entryName.replace(/\\/g, "/").toLocaleLowerCase(),
+        entry,
+      ])
+    );
+    zipIndexes.set(zip, index);
+  }
+  return index.get(normalizedName.toLocaleLowerCase()) || null;
 }
 
 function relationshipPart(partName: string) {
@@ -112,7 +133,7 @@ function extractDrawingImages(zip: AdmZip, worksheetPart: string) {
         Number.isInteger(row) &&
         Number.isInteger(column) &&
         mediaPart &&
-        zip.getEntry(mediaPart)
+        zipEntry(zip, mediaPart)
       ) {
         images.push({ row, column, mediaPart });
       }
@@ -233,7 +254,10 @@ function sheetMatrix(sheet: XLSX.WorkSheet) {
     defval: "",
     range: {
       s: { r: 0, c: 0 },
-      e: worksheetRange.e,
+      e: {
+        r: Math.min(worksheetRange.e.r, MAX_SHEET_ROWS_TO_SCAN - 1),
+        c: Math.min(worksheetRange.e.c, MAX_SHEET_COLUMNS_TO_SCAN - 1),
+      },
     },
   }).map((row) => row.map(normalizedCell));
 }
@@ -277,23 +301,28 @@ function automaticCandidate(workbook: XLSX.WorkBook, zip: AdmZip) {
     const matrix = sheetMatrix(workbook.Sheets[name]);
     const worksheetPart = sheetParts.get(name);
     const images = worksheetPart ? extractWorksheetImages(zip, worksheetPart) : [];
-    matrix.slice(0, -1).forEach((row, headerRow) => {
+    matrix.slice(0, Math.min(MAX_HEADER_ROWS_TO_SCAN, matrix.length - 1)).forEach((row, headerRow) => {
       const headerColumns = row.map((value, column) => normalizedCell(value) ? column : -1)
         .filter((column) => column >= 0);
       if (headerColumns.length === 0) return;
       const firstColumn = headerColumns[0];
       const lastColumn = headerColumns[headerColumns.length - 1];
       const columnCount = lastColumn - firstColumn + 1;
+      if (columnCount > MAX_IMPORTED_COLUMNS) return;
       const labels = row.slice(firstColumn, lastColumn + 1).map(normalizedCell);
       if (labels.some((label) => !label)) return;
+      const candidateRows = matrix.slice(
+        headerRow + 1,
+        Math.min(matrix.length, headerRow + 501)
+      );
       const supported = labels.filter((_, offset) => {
         const column = firstColumn + offset;
-        return matrix.slice(headerRow + 1).some((dataRow) => normalizedCell(dataRow[column])) ||
+        return candidateRows.some((dataRow) => normalizedCell(dataRow[column])) ||
           images.some((image) => image.row > headerRow && image.column === column);
       }).length;
       if (supported === 0) return;
       const dataRows = new Set<number>();
-      matrix.slice(headerRow + 1).forEach((dataRow, offset) => {
+      candidateRows.forEach((dataRow, offset) => {
         if (labels.some((_, columnOffset) => normalizedCell(dataRow[firstColumn + columnOffset]))) {
           dataRows.add(headerRow + offset + 1);
         }
@@ -330,32 +359,46 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export async function importEmbeddedGoogleSheetImages(input: {
+interface WorkbookImportInput {
   actor: SheetActor;
-  spreadsheetId: string;
+  sourceId: string;
   labels?: string[];
   sourceRows?: string[][];
   columns?: ImportedColumn[];
   maxBytes: number;
-}) {
-  const exportUrl = new URL(`https://docs.google.com/spreadsheets/d/${input.spreadsheetId}/export`);
-  exportUrl.searchParams.set("format", "xlsx");
-  const response = await fetch(exportUrl, { redirect: "follow", signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) throw new Error(`Không thể tải bản XLSX của Google Sheet (${response.status}).`);
-  const contentLength = Number(response.headers.get("content-length") || 0);
-  if (contentLength > input.maxBytes) {
-    throw new Error("Google Sheet có quá nhiều ảnh hoặc vượt quá dung lượng cho phép.");
-  }
-  const buffer = Buffer.from(await response.arrayBuffer());
+}
+
+async function importWorkbookBuffer(input: WorkbookImportInput, buffer: Buffer) {
   if (buffer.length > input.maxBytes) {
-    throw new Error("Google Sheet có quá nhiều ảnh hoặc vượt quá dung lượng cho phép.");
+    throw new Error("Bảng tính có quá nhiều ảnh hoặc vượt quá dung lượng cho phép.");
   }
   if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
-    throw new Error("Google Sheet không cho phép tải xuống hoặc chưa được chia sẻ công khai.");
+    throw new Error("Tệp không phải định dạng XLSX hợp lệ.");
   }
 
   const zip = new AdmZip(buffer);
   const workbook = XLSX.read(buffer, { type: "buffer", raw: false });
+  const entries = zip.getEntries();
+  if (entries.length > MAX_ARCHIVE_ENTRIES) {
+    throw new Error("Bảng tính chứa quá nhiều thành phần để xử lý an toàn.");
+  }
+  const uncompressedBytes = entries.reduce((total, entry) => total + entry.header.size, 0);
+  if (uncompressedBytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
+    throw new Error("Dữ liệu giải nén của bảng tính vượt quá giới hạn 250 MB.");
+  }
+  const imageEntries = entries.filter((entry) =>
+    /^xl\/media\//i.test(entry.entryName.replace(/\\/g, "/"))
+  );
+  const imageBytes = imageEntries.reduce((total, entry) => total + entry.header.size, 0);
+  if (imageBytes > MAX_ARCHIVE_IMAGE_BYTES) {
+    throw new Error("Tổng dung lượng ảnh trong bảng tính vượt quá giới hạn 150 MB.");
+  }
+  if (imageEntries.some((entry) => entry.header.size > MAX_EMBEDDED_IMAGE_BYTES)) {
+    throw new Error("Mỗi ảnh trong bảng tính chỉ được tối đa 10 MB.");
+  }
+  if (workbook.SheetNames.length > MAX_WORKSHEETS) {
+    throw new Error(`Bảng tính chỉ được tối đa ${MAX_WORKSHEETS} tab.`);
+  }
   const candidate = input.labels?.length
     ? exactCandidate(workbook, zip, input.labels, input.sourceRows || [])
     : automaticCandidate(workbook, zip);
@@ -364,6 +407,9 @@ export async function importEmbeddedGoogleSheetImages(input: {
   const labels = input.labels?.length ? input.labels :
     candidate.matrix[candidate.headerRow]
       .slice(candidate.firstColumn, candidate.firstColumn + candidate.columnCount).map(normalizedCell);
+  if (labels.length > MAX_IMPORTED_COLUMNS) {
+    throw new Error(`Bảng dữ liệu chỉ được tối đa ${MAX_IMPORTED_COLUMNS} cột.`);
+  }
   const keys = labels.map(normalizeColumnKey);
   if (labels.some((label) => !label) || keys.some((key) => !key)) {
     throw new Error("Dòng tiêu đề có cột để trống hoặc tên cột không hợp lệ.");
@@ -404,19 +450,38 @@ export async function importEmbeddedGoogleSheetImages(input: {
     includedRows.has(image.row) &&
     image.column >= candidate.firstColumn &&
     image.column < candidate.firstColumn + columns.length);
-  if (relevantImages.length > 500) {
-    throw new Error("Bảng có quá nhiều ảnh. Mỗi lần chỉ có thể nhập tối đa 500 ảnh.");
+  if (relevantImages.length > MAX_IMPORTED_IMAGES) {
+    throw new Error(
+      `Bảng có quá nhiều ảnh. Mỗi lần chỉ có thể nhập tối đa ${MAX_IMPORTED_IMAGES} ảnh.`
+    );
+  }
+  const occupiedImageCells = new Set<string>();
+  for (const image of relevantImages) {
+    const cellKey = `${image.row}:${image.column}`;
+    if (occupiedImageCells.has(cellKey)) {
+      throw new Error(
+        "Một ô đang chứa nhiều ảnh chồng lên nhau. Hãy để mỗi ô tối đa một ảnh rồi nhập lại."
+      );
+    }
+    occupiedImageCells.add(cellKey);
   }
   const safeCompanyCode = input.actor.companyCode.toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
-  const uploadedUrls = await mapWithConcurrency(relevantImages, 4, (image, index) => {
-    const entry = zipEntry(zip, image.mediaPart);
-    if (!entry) throw new Error("Không thể đọc một ảnh nhúng trong Google Sheet.");
-    return cloudinaryService.uploadMediaBuffer(
-      entry.getData(),
-      `igen_erp/bulk-create/${safeCompanyCode}/${input.actor.id}/sheet-images`,
-      `${input.spreadsheetId}-${candidate.index}-${image.row}-${image.column}-${index}`
-    );
-  });
+  const uploadedUrls = await mapWithConcurrency(
+    relevantImages,
+    IMAGE_UPLOAD_CONCURRENCY,
+    (image, index) => {
+      const entry = zipEntry(zip, image.mediaPart);
+      if (!entry) throw new Error("Không thể đọc một ảnh nhúng trong bảng tính.");
+      if (entry.header.size > MAX_EMBEDDED_IMAGE_BYTES) {
+        throw new Error("Mỗi ảnh trong bảng tính chỉ được tối đa 10 MB.");
+      }
+      return cloudinaryService.uploadMediaBuffer(
+        entry.getData(),
+        `igen_erp/bulk-create/${safeCompanyCode}/${input.actor.id}/sheet-images`,
+        `${input.sourceId}-${candidate.index}-${image.row}-${image.column}-${index}`
+      );
+    }
+  );
   const imageUrls = new Map(
     relevantImages.map((image, index) => [`${image.row}:${image.column}`, uploadedUrls[index]])
   );
@@ -439,4 +504,45 @@ export async function importEmbeddedGoogleSheetImages(input: {
     rows,
     embeddedImageCount: uploadedUrls.length,
   };
+}
+
+export async function importEmbeddedGoogleSheetImages(input: {
+  actor: SheetActor;
+  spreadsheetId: string;
+  labels?: string[];
+  sourceRows?: string[][];
+  columns?: ImportedColumn[];
+  maxBytes: number;
+}) {
+  const exportUrl = new URL(`https://docs.google.com/spreadsheets/d/${input.spreadsheetId}/export`);
+  exportUrl.searchParams.set("format", "xlsx");
+  const response = await fetch(exportUrl, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Không thể tải bản XLSX của Google Sheet (${response.status}).`);
+  }
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > input.maxBytes) {
+    throw new Error("Google Sheet có quá nhiều ảnh hoặc vượt quá dung lượng cho phép.");
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return importWorkbookBuffer({
+    ...input,
+    sourceId: input.spreadsheetId,
+  }, buffer);
+}
+
+export async function importUploadedWorkbookImages(input: {
+  actor: SheetActor;
+  buffer: Buffer;
+  maxBytes: number;
+}) {
+  const sourceId = createHash("sha256").update(input.buffer).digest("hex").slice(0, 24);
+  return importWorkbookBuffer({
+    actor: input.actor,
+    sourceId,
+    maxBytes: input.maxBytes,
+  }, input.buffer);
 }
