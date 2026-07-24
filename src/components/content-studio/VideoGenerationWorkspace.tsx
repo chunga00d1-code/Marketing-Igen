@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Suspense, lazy, useState, useEffect } from 'react';
-import { Clapperboard, Sparkles, Wand2, Film, Scissors } from 'lucide-react';
+import { Clapperboard, Sparkles, Wand2, Film, Scissors, LayoutTemplate } from 'lucide-react';
 import { SimpleVideoWorkspace } from './SimpleVideoWorkspace';
 import { EditVideoWorkspace } from './EditVideoWorkspace';
 import LongToShortTab from '../../pages/LongToShortTab';
+import { VideoTemplateLibrary } from './video-templates/VideoTemplateLibrary';
+import { TemplateEditorWorkspace } from '../template-editor/TemplateEditorWorkspace';
+import { AspectRatioType, TemplateEditorProject } from '../template-editor/types';
 
 const HeyGenWorkspace = lazy(() =>
   import('./HeyGenWorkspace').then((module) => ({ default: module.HeyGenWorkspace }))
@@ -24,13 +27,14 @@ interface VideoGenerationWorkspaceProps {
   usePersonalVoice?: boolean;
 }
 
-type VideoToolTab = 'veo' | 'heygen' | 'edit-video' | 'kling-motion' | 'long-to-short';
+export type VideoToolTab = 'templates' | 'veo' | 'heygen' | 'kling-motion' | 'edit-video' | 'long-to-short';
 
 const VIDEO_TOOL_TABS: Array<{
   id: VideoToolTab;
   label: string;
   icon: typeof Sparkles;
 }> = [
+  { id: 'templates', label: 'Mẫu video', icon: LayoutTemplate },
   { id: 'veo', label: 'Tạo video AI', icon: Sparkles },
   { id: 'heygen', label: 'Tạo video người thật', icon: Clapperboard },
   { id: 'kling-motion', label: 'Motion Control', icon: Film },
@@ -42,7 +46,7 @@ export function VideoGenerationWorkspace({
   initialPrompt,
   cardId,
   onMediaSaved,
-  initialVideoTab = 'veo',
+  initialVideoTab = 'templates',
   initialImage,
   autoTrigger,
   engineType,
@@ -50,6 +54,10 @@ export function VideoGenerationWorkspace({
 }: VideoGenerationWorkspaceProps) {
   const [activeVideoTab, setActiveVideoTab] = useState<VideoToolTab>(initialVideoTab);
   const [editVideoSourceUrl, setEditVideoSourceUrl] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [templateEditorConfig, setTemplateEditorConfig] = useState<{
+    initialData?: Partial<TemplateEditorProject>;
+  } | null>(null);
 
   useEffect(() => {
     if (initialVideoTab) {
@@ -60,15 +68,15 @@ export function VideoGenerationWorkspace({
   return (
     <div className="flex flex-col gap-4">
       <div className="mx-auto flex w-full max-w-[1500px] items-center justify-start px-2">
-        <div className="inline-flex w-fit items-center gap-1 rounded-2xl border border-slate-200 bg-white/90 p-1 shadow-sm">
+        <div className="inline-flex w-fit items-center gap-1 rounded-2xl border border-slate-200 bg-white/90 p-1 shadow-xs">
           {VIDEO_TOOL_TABS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setActiveVideoTab(id)}
-              className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${
+              className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
                 activeVideoTab === id
-                  ? 'bg-slate-950 text-white shadow-sm'
+                  ? 'bg-slate-950 text-white shadow-xs'
                   : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
               }`}
             >
@@ -78,6 +86,36 @@ export function VideoGenerationWorkspace({
           ))}
         </div>
       </div>
+
+      {activeVideoTab === 'templates' && (
+        <VideoTemplateLibrary
+          onSelectEditTab={(projectId, mediaUrl, title, aspectRatio, duration) => {
+            if (projectId) {
+              setActiveProjectId(projectId);
+            }
+            if (mediaUrl) {
+              setEditVideoSourceUrl(mediaUrl);
+            }
+            setTemplateEditorConfig({
+              initialData: {
+                id: projectId,
+                title: title || 'Dự án từ mẫu TikTok',
+                aspectRatio: (aspectRatio as AspectRatioType) || '9:16',
+                duration: duration,
+                previewVideoUrl: mediaUrl,
+                thumbnailUrl: mediaUrl,
+              },
+            });
+          }}
+        />
+      )}
+
+      {templateEditorConfig && (
+        <TemplateEditorWorkspace
+          initialProjectData={templateEditorConfig.initialData}
+          onBackToLibrary={() => setTemplateEditorConfig(null)}
+        />
+      )}
 
       {activeVideoTab === 'veo' && (
         <SimpleVideoWorkspace
@@ -138,58 +176,16 @@ export function VideoGenerationWorkspace({
       {activeVideoTab === 'edit-video' && (
         <EditVideoWorkspace
           initialVideoUrl={editVideoSourceUrl}
-          onClearInitialVideoUrl={() => setEditVideoSourceUrl(null)}
+          onClearInitialVideoUrl={() => {
+            setEditVideoSourceUrl(null);
+            setActiveProjectId(null);
+          }}
         />
       )}
 
       {activeVideoTab === 'long-to-short' && (
         <LongToShortTab />
       )}
-    </div>
-  );
-}
-
-function VideoToolPlaceholder({
-  title,
-  description,
-  badge,
-}: {
-  title: string;
-  description: string;
-  badge: string;
-}) {
-  return (
-    <div className="mx-auto w-full max-w-[1500px] px-2">
-      <div className="rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,#ffffff_0%,#f5fafc_100%)] p-8 shadow-sm">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-700">Video Studio</p>
-            <h3 className="mt-2 text-2xl font-bold text-slate-900">{title}</h3>
-          </div>
-          <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-[11px] font-semibold text-cyan-700">
-            {badge}
-          </span>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-3xl border border-slate-200 bg-white p-5">
-            <p className="text-sm font-semibold text-slate-900">Trạng thái</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-          </div>
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5">
-            <p className="text-sm font-semibold text-slate-900">Gợi ý use case</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Tách công cụ chuyển biệt khỏi lượng Video hiện tại để giao diện rõ ràng hơn cho người vận hành.
-            </p>
-          </div>
-          <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-5">
-            <p className="text-sm font-semibold text-slate-900"> sẵn sàng mở rộng</p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Khi cần, mình có thể nối tiếp API và khu preview riêng cho từng tab mà không phải sửa lại cấu trúc tổng.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

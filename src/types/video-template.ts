@@ -35,6 +35,30 @@ export interface VideoTemplateMutationResult {
   status: 'draft' | 'published';
 }
 
+export interface ShotstackSyncFailure {
+  externalId: string;
+  message: string;
+}
+
+export interface ShotstackSyncSummary {
+  created: number;
+  updated: number;
+  unchanged: number;
+  archived: number;
+  failed: ShotstackSyncFailure[];
+}
+
+export type ShotstackSyncState = 'success' | 'partial' | 'failed';
+
+export interface ShotstackSyncStatus {
+  configured: boolean;
+  environment: 'stage' | 'v1';
+  status: ShotstackSyncState | null;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  summary: ShotstackSyncSummary;
+}
+
 export interface VideoTemplateSummary {
   id: string;
   title: string;

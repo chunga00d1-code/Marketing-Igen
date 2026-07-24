@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ImageIcon, Mic, Video } from 'lucide-react';
 import { ImageGenerationWorkspace } from './ImageGenerationWorkspace';
-import { VideoGenerationWorkspace } from './VideoGenerationWorkspace';
+import { VideoGenerationWorkspace, VideoToolTab } from './VideoGenerationWorkspace';
 import { VoiceGenerationWorkspace } from './VoiceGenerationWorkspace';
 
 interface ContentStudioWorkspaceProps {
@@ -11,7 +11,7 @@ interface ContentStudioWorkspaceProps {
     cardId: string;
     image?: string;
     autoTrigger?: boolean;
-    videoSubTab?: 'veo' | 'heygen' | 'edit-video';
+    videoSubTab?: VideoToolTab;
     title?: string;
     description?: string;
     engineType?: string;
@@ -23,7 +23,7 @@ interface ContentStudioWorkspaceProps {
 
 export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSaved }: ContentStudioWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<'image' | 'video' | 'voice'>(initialParams?.tab || 'image');
-  const [videoSubTab, setVideoSubTab] = useState<'veo' | 'heygen' | 'edit-video'>('veo');
+  const [videoSubTab, setVideoSubTab] = useState<VideoToolTab>('templates');
   const clearParamsRef = useRef(onClearParams);
 
   useEffect(() => {

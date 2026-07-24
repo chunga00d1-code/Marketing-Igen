@@ -59,7 +59,7 @@ export default function MarketingTab() {
     cardId: string;
     image?: string;
     autoTrigger?: boolean;
-    videoSubTab?: 'veo' | 'heygen' | 'edit-video';
+    videoSubTab?: 'templates' | 'veo' | 'heygen' | 'edit-video' | 'kling-motion' | 'long-to-short';
     title?: string;
     description?: string;
     engineType?: string;
