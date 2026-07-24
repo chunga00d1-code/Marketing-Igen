@@ -88,6 +88,8 @@ export interface IVideoTemplateSync extends Document {
   latestSuccessfulListGeneration?: number;
   latestSuccessfulListAt?: Date;
   mutationFenceAt?: Date;
+  leaseOwnerToken?: string;
+  leaseExpiresAt?: Date;
   lastAttemptAt: Date;
   lastSuccessAt?: Date;
   status: VideoTemplateSyncStatus;

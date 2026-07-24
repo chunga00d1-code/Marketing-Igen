@@ -5,7 +5,9 @@ import {
   shouldUseVideoTemplateSeedFallback,
 } from "../video-template.service";
 import {
+  ShotstackSyncBusyError,
   synchronizeShotstackTemplates,
+  type SyncLeaseInput,
   type ShotstackTemplateSyncRepository,
   type SyncStateInput,
   type SyncRunContext,
@@ -47,8 +49,31 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
   public readonly states: SyncStateInput[] = [];
   public readonly latestSuccessfulLists = new Map<string, Date>();
   public readonly latestSuccessfulListGenerations = new Map<string, number>();
+  public readonly syncLeases = new Map<string, {
+    ownerToken: string;
+    expiresAt: Date;
+  }>();
   private nextTemplateId = 1;
   private nextVersionId = 1;
+
+  async acquireSyncLease(input: SyncLeaseInput) {
+    const current = this.syncLeases.get(input.environment);
+    if (current && current.expiresAt.getTime() > input.acquiredAt.getTime()) {
+      return false;
+    }
+    this.syncLeases.set(input.environment, {
+      ownerToken: input.ownerToken,
+      expiresAt: new Date(input.expiresAt),
+    });
+    return true;
+  }
+
+  async releaseSyncLease(environment: SyncRunContext["environment"], ownerToken: string) {
+    const current = this.syncLeases.get(environment);
+    if (current?.ownerToken === ownerToken) {
+      this.syncLeases.delete(environment);
+    }
+  }
 
   async findByExternalId(externalId: string) {
     return this.templates.get(externalId) || null;
@@ -233,6 +258,7 @@ test("first import creates one published template and immutable version", async 
   assert.equal(repository.templates.get("one")?.duration, 5);
   assert.equal(repository.templates.get("one")?.aspectRatio, "9:16");
   assert.equal(repository.templates.get("one")?.thumbnailUrl, "https://cdn.example.com/one.mp4");
+  assert.equal(repository.syncLeases.size, 0);
 });
 
 test("same canonical edit with different object key order is unchanged", async () => {
@@ -435,39 +461,97 @@ test("sync state records safe attempt, success, and summary", async () => {
   }]);
 });
 
-test("overlapping first imports remain idempotent", async () => {
+test("overlapping first imports allow one owner and reject the other safely", async () => {
   const repository = new MemoryRepository();
   const details = [providerTemplate("one")];
 
-  const results = await Promise.all([
+  const results = await Promise.allSettled([
     sync(repository, details),
     sync(repository, details),
   ]);
 
-  assert.equal(results.reduce((sum, result) => sum + result.created, 0), 1);
-  assert.equal(results.reduce((sum, result) => sum + result.unchanged, 0), 0);
-  assert.equal(results.flatMap((result) => result.failed).length, 0);
+  const fulfilled = results.filter(
+    (result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof sync>>> => (
+      result.status === "fulfilled"
+    )
+  );
+  const rejected = results.filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected"
+  );
+  assert.equal(fulfilled.length, 1);
+  assert.equal(fulfilled[0].value.created, 1);
+  assert.equal(rejected.length, 1);
+  assert.ok(rejected[0].reason instanceof ShotstackSyncBusyError);
+  assert.doesNotMatch(String(rejected[0].reason), /owner|token/i);
   assert.equal(repository.templates.size, 1);
   assert.equal(repository.versions.length, 1);
 });
 
-test("overlapping changed imports create only one logical version", async () => {
-  const repository = new MemoryRepository();
+test("equal-timestamp overlap cannot enter an existing-row version update", async () => {
+  let releaseUpdate!: () => void;
+  const allowUpdate = new Promise<void>((resolve) => {
+    releaseUpdate = resolve;
+  });
+  let markUpdateStarted!: () => void;
+  const updateStarted = new Promise<void>((resolve) => {
+    markUpdateStarted = resolve;
+  });
+  class PausedUpdateRepository extends MemoryRepository {
+    private pauseNextUpdate = false;
+
+    pauseUpdate() {
+      this.pauseNextUpdate = true;
+    }
+
+    override async createVersionAndPublish(
+      templateId: string,
+      template: SyncTemplateInput,
+      version: SyncVersionInput
+    ) {
+      if (this.pauseNextUpdate) {
+        this.pauseNextUpdate = false;
+        markUpdateStarted();
+        await allowUpdate;
+      }
+      return super.createVersionAndPublish(templateId, template, version);
+    }
+  }
+  const repository = new PausedUpdateRepository();
+  let concurrentListCalls = 0;
   await sync(repository, [providerTemplate("one")]);
+  repository.pauseUpdate();
   const changed = providerTemplate("one");
   const timeline = changed.timeline as {
     tracks: Array<{ clips: Array<{ length: number }> }>;
   };
   timeline.tracks[0].clips[0].length = 9;
 
-  const results = await Promise.all([
-    sync(repository, [changed]),
-    sync(repository, [changed]),
-  ]);
+  const owner = sync(repository, [changed]);
+  await updateStarted;
+  await assert.rejects(
+    () => synchronizeShotstackTemplates("admin-2", {
+      client: {
+        async listTemplates() {
+          concurrentListCalls += 1;
+          return [{ id: "one" }];
+        },
+        async getTemplate() {
+          return changed;
+        },
+      },
+      repository,
+      environment: "stage",
+      now: () => new Date("2026-07-24T00:00:00.000Z"),
+    }),
+    ShotstackSyncBusyError
+  );
+  assert.equal(concurrentListCalls, 0);
+  releaseUpdate();
+  const result = await owner;
 
-  assert.equal(results.reduce((sum, result) => sum + result.updated, 0), 1);
-  assert.equal(results.reduce((sum, result) => sum + result.unchanged, 0), 0);
+  assert.equal(result.updated, 1);
   assert.equal(repository.versions.length, 2);
+  assert.equal(repository.syncLeases.size, 0);
 });
 
 test("duplicate-key timing during changed import is recovered as unchanged", async () => {
@@ -502,92 +586,67 @@ test("duplicate-key timing during changed import is recovered as unchanged", asy
   assert.equal(repository.versions.length, 2);
 });
 
-test("older sync cannot archive newer data or regress sync-state timestamps", async () => {
-  let releaseOlderArchive!: () => void;
-  const allowOlderArchive = new Promise<void>((resolve) => {
-    releaseOlderArchive = resolve;
+test("equal-timestamp overlap cannot enter archival after the owner reaches it", async () => {
+  let releaseArchive!: () => void;
+  const allowArchive = new Promise<void>((resolve) => {
+    releaseArchive = resolve;
   });
-  class OrderedRepository extends MemoryRepository {
+  let markArchiveStarted!: () => void;
+  const archiveStarted = new Promise<void>((resolve) => {
+    markArchiveStarted = resolve;
+  });
+  class PausedArchiveRepository extends MemoryRepository {
+    private pauseNextArchive = false;
+
+    pauseArchive() {
+      this.pauseNextArchive = true;
+    }
+
     override async archiveMissing(activeExternalIds: string[], lastSyncedAt: Date) {
-      if (lastSyncedAt.toISOString() === "2026-07-24T01:00:00.000Z") {
-        await allowOlderArchive;
+      if (this.pauseNextArchive) {
+        this.pauseNextArchive = false;
+        markArchiveStarted();
+        await allowArchive;
       }
       return super.archiveMissing(activeExternalIds, lastSyncedAt);
     }
   }
-  const repository = new OrderedRepository();
+  const repository = new PausedArchiveRepository();
   await sync(repository, [providerTemplate("one")]);
+  repository.pauseArchive();
 
-  const older = synchronizeShotstackTemplates("admin-1", {
+  const owner = synchronizeShotstackTemplates("admin-1", {
     client: clientFor([]),
     repository,
     environment: "stage",
-    now: () => new Date("2026-07-24T01:00:00.000Z"),
+    now: () => new Date("2026-07-24T00:00:00.000Z"),
   });
-  await new Promise((resolve) => setTimeout(resolve, 5));
-  const newer = await synchronizeShotstackTemplates("admin-1", {
-    client: clientFor([providerTemplate("one")]),
-    repository,
-    environment: "stage",
-    now: () => new Date("2026-07-24T02:00:00.000Z"),
-  });
-  releaseOlderArchive();
-  const olderResult = await older;
-
-  assert.equal(newer.unchanged, 1);
-  assert.equal(olderResult.archived, 0);
-  assert.equal(repository.templates.get("one")?.status, "published");
-  assert.equal(
-    repository.states.at(-1)?.lastAttemptAt.toISOString(),
-    "2026-07-24T02:00:00.000Z"
-  );
-});
-
-test("older delayed detail cannot recreate a template absent from a newer successful list", async () => {
-  let releaseOlderDetail!: () => void;
-  const allowOlderDetail = new Promise<void>((resolve) => {
-    releaseOlderDetail = resolve;
-  });
-  let markDetailStarted!: () => void;
-  const detailStarted = new Promise<void>((resolve) => {
-    markDetailStarted = resolve;
-  });
-  const repository = new MemoryRepository();
-  const removedTemplate = providerTemplate("removed");
-
-  const older = synchronizeShotstackTemplates("admin-1", {
-    client: {
-      async listTemplates() {
-        return [{ id: "removed", name: "Removed" }];
+  await archiveStarted;
+  let concurrentListCalls = 0;
+  await assert.rejects(
+    () => synchronizeShotstackTemplates("admin-2", {
+      client: {
+        async listTemplates() {
+          concurrentListCalls += 1;
+          return [{ id: "one" }];
+        },
+        async getTemplate() {
+          return providerTemplate("one");
+        },
       },
-      async getTemplate() {
-        markDetailStarted();
-        await allowOlderDetail;
-        return removedTemplate;
-      },
-    },
-    repository,
-    environment: "stage",
-    now: () => new Date("2026-07-24T01:00:00.000Z"),
-  });
-  await detailStarted;
-
-  const newer = await synchronizeShotstackTemplates("admin-1", {
-    client: clientFor([]),
-    repository,
-    environment: "stage",
-    now: () => new Date("2026-07-24T01:00:00.000Z"),
-  });
-  releaseOlderDetail();
-  const olderResult = await older;
-
-  assert.equal(newer.archived, 0);
-  assert.equal(olderResult.created, 0);
-  assert.equal(repository.templates.has("removed"), false);
-  assert.equal(
-    repository.states.at(-1)?.lastAttemptAt.toISOString(),
-    "2026-07-24T01:00:00.000Z"
+      repository,
+      environment: "stage",
+      now: () => new Date("2026-07-24T00:00:00.000Z"),
+    }),
+    ShotstackSyncBusyError
   );
+  assert.equal(concurrentListCalls, 0);
+  releaseArchive();
+  const result = await owner;
+
+  assert.equal(result.archived, 1);
+  assert.equal(repository.templates.get("one")?.status, "archived");
+  assert.equal(repository.syncLeases.size, 0);
 });
 
 test("malformed provider list preserves cached templates and skips archival", async () => {
@@ -630,6 +689,88 @@ test("sync state persistence failure rejects with a safe error", async () => {
       return true;
     }
   );
+});
+
+test("lease is released after provider list and item failures", async () => {
+  const repository = new MemoryRepository();
+
+  const listFailure = await synchronizeShotstackTemplates("admin-1", {
+    client: {
+      async listTemplates() {
+        throw new Error("provider secret");
+      },
+      async getTemplate() {
+        throw new Error("not reached");
+      },
+    },
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:00:00.000Z"),
+  });
+  assert.equal(listFailure.failed.length, 1);
+  assert.equal(repository.syncLeases.size, 0);
+
+  const itemFailure = await sync(repository, [providerTemplate("invalid", {
+    timeline: { tracks: [] },
+  })]);
+  assert.equal(itemFailure.failed.length, 1);
+  assert.equal(repository.syncLeases.size, 0);
+
+  const recovered = await sync(repository, [providerTemplate("valid")]);
+  assert.equal(recovered.created, 1);
+});
+
+test("lease is released when sync-state recording throws", async () => {
+  class FailingOnceStateRepository extends MemoryRepository {
+    private shouldFail = true;
+
+    override async recordSyncState(input: SyncStateInput) {
+      if (this.shouldFail) {
+        this.shouldFail = false;
+        throw new Error("mongodb://user:secret@database/internal");
+      }
+      return super.recordSyncState(input);
+    }
+  }
+  const repository = new FailingOnceStateRepository();
+
+  await assert.rejects(
+    () => sync(repository, [providerTemplate("one")]),
+    /state could not be recorded/i
+  );
+  assert.equal(repository.syncLeases.size, 0);
+
+  const recovered = await sync(repository, [providerTemplate("one")]);
+  assert.equal(recovered.unchanged, 1);
+});
+
+test("only the owner can release a lease and an expired lease can be reclaimed", async () => {
+  const repository = new MemoryRepository();
+  const acquiredAt = new Date("2026-07-24T00:00:00.000Z");
+  assert.equal(await repository.acquireSyncLease({
+    environment: "stage",
+    ownerToken: "opaque-owner-one",
+    acquiredAt,
+    expiresAt: new Date("2026-07-24T00:01:00.000Z"),
+  }), true);
+
+  await repository.releaseSyncLease("stage", "different-owner");
+  await assert.rejects(
+    () => sync(repository, [providerTemplate("blocked")]),
+    ShotstackSyncBusyError
+  );
+
+  const reclaimed = await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([providerTemplate("reclaimed")]),
+    repository,
+    environment: "stage",
+    now: () => new Date("2026-07-24T00:02:00.000Z"),
+  });
+
+  assert.equal(reclaimed.created, 1);
+  assert.equal(repository.templates.has("blocked"), false);
+  assert.equal(repository.templates.has("reclaimed"), true);
+  assert.equal(repository.syncLeases.size, 0);
 });
 
 test("seed fallback requires an explicit flag and unavailable Shotstack configuration", () => {

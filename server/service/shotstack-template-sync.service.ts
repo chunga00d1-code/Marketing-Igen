@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import type {
   VideoTemplateAspectRatio,
@@ -24,6 +24,7 @@ import { VideoTemplateSyncModel } from "../model/video-template-sync.model";
 import { VideoTemplateVersionModel } from "../model/video-template-version.model";
 
 const DETAIL_CONCURRENCY = 3;
+const SYNC_LEASE_DURATION_MS = 30 * 60 * 1000;
 const ITEM_FAILURE_MESSAGE = "Shotstack template could not be synchronized.";
 const LIST_FAILURE_MESSAGE = "Shotstack template catalogue is temporarily unavailable.";
 
@@ -87,7 +88,19 @@ export interface SyncRunContext {
   generation: number;
 }
 
+export interface SyncLeaseInput {
+  environment: ShotstackEnvironment;
+  ownerToken: string;
+  acquiredAt: Date;
+  expiresAt: Date;
+}
+
 export interface ShotstackTemplateSyncRepository {
+  acquireSyncLease(input: SyncLeaseInput): Promise<boolean>;
+  releaseSyncLease(
+    environment: ShotstackEnvironment,
+    ownerToken: string
+  ): Promise<void>;
   findByExternalId(externalId: string): Promise<SyncTemplateRecord | null>;
   registerSuccessfulList(
     run: Omit<SyncRunContext, "generation">
@@ -258,6 +271,64 @@ function environmentWithoutCredentials(): ShotstackEnvironment {
 }
 
 class MongooseShotstackTemplateSyncRepository implements ShotstackTemplateSyncRepository {
+  async acquireSyncLease(input: SyncLeaseInput): Promise<boolean> {
+    try {
+      const state = await VideoTemplateSyncModel.findOneAndUpdate(
+        {
+          provider: "shotstack",
+          environment: input.environment,
+          $or: [
+            { leaseOwnerToken: { $exists: false } },
+            { leaseExpiresAt: { $exists: false } },
+            { leaseExpiresAt: { $lte: input.acquiredAt } },
+          ],
+        },
+        {
+          $set: {
+            leaseOwnerToken: input.ownerToken,
+            leaseExpiresAt: input.expiresAt,
+          },
+          $setOnInsert: {
+            lastAttemptAt: input.acquiredAt,
+            status: "partial",
+            summary: emptySummary(),
+          },
+        },
+        { upsert: true, new: true }
+      ).select({ _id: 1 }).lean();
+      return Boolean(state);
+    } catch (error: unknown) {
+      if (
+        typeof error === "object"
+        && error !== null
+        && "code" in error
+        && error.code === 11000
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  async releaseSyncLease(
+    environment: ShotstackEnvironment,
+    ownerToken: string
+  ): Promise<void> {
+    await VideoTemplateSyncModel.updateOne(
+      {
+        provider: "shotstack",
+        environment,
+        leaseOwnerToken: ownerToken,
+      },
+      {
+        $unset: {
+          leaseOwnerToken: "",
+          leaseExpiresAt: "",
+        },
+      }
+    );
+  }
+
   async findByExternalId(externalId: string): Promise<SyncTemplateRecord | null> {
     const template = await VideoTemplateModel.findOne({
       sourceProvider: "shotstack",
@@ -526,12 +597,31 @@ export class ShotstackSyncStateError extends Error {
   }
 }
 
+export class ShotstackSyncBusyError extends Error {
+  constructor() {
+    super("Shotstack template synchronization is already in progress.");
+    this.name = "ShotstackSyncBusyError";
+  }
+}
+
 async function recordState(
   repository: ShotstackTemplateSyncRepository,
   input: SyncStateInput
 ): Promise<void> {
   try {
     await repository.recordSyncState(input);
+  } catch {
+    throw new ShotstackSyncStateError();
+  }
+}
+
+async function releaseLease(
+  repository: ShotstackTemplateSyncRepository,
+  environment: ShotstackEnvironment,
+  ownerToken: string
+): Promise<void> {
+  try {
+    await repository.releaseSyncLease(environment, ownerToken);
   } catch {
     throw new ShotstackSyncStateError();
   }
@@ -546,8 +636,24 @@ export async function synchronizeShotstackTemplates(
   const converter = dependencies.converter || shotstackEditToEditorProject;
   let environment = dependencies.environment || environmentWithoutCredentials();
   let client = dependencies.client;
+  const leaseEnvironment = environment;
+  const leaseOwnerToken = randomUUID();
+  let leaseAcquired = false;
 
-  if (!client) {
+  try {
+    try {
+      leaseAcquired = await repository.acquireSyncLease({
+        environment: leaseEnvironment,
+        ownerToken: leaseOwnerToken,
+        acquiredAt: attemptedAt,
+        expiresAt: new Date(attemptedAt.getTime() + SYNC_LEASE_DURATION_MS),
+      });
+    } catch {
+      throw new ShotstackSyncStateError();
+    }
+    if (!leaseAcquired) throw new ShotstackSyncBusyError();
+
+    if (!client) {
     try {
       const config = getShotstackConfig();
       environment = config.environment;
@@ -564,7 +670,7 @@ export async function synchronizeShotstackTemplates(
       });
       return summary;
     }
-  }
+    }
 
   let listed: ShotstackTemplateSummary[];
   try {
@@ -716,5 +822,10 @@ export async function synchronizeShotstackTemplates(
     status,
     summary,
   });
-  return summary;
+    return summary;
+  } finally {
+    if (leaseAcquired) {
+      await releaseLease(repository, leaseEnvironment, leaseOwnerToken);
+    }
+  }
 }
