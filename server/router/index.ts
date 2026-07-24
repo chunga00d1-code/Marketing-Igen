@@ -21,6 +21,8 @@ import { professionalRouter } from "./professional.router";
 import { klingRouter } from "./kling.router";
 import { opusclipRouter } from "./opusclip.router";
 import { marketingCampaignRouter } from "./marketing-campaign.router";
+import { videoTemplateRouter } from "./video-template.router";
+import { videoProjectRouter } from "./video-project.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -68,6 +70,8 @@ apiRouter.use("/tiktok-business", tiktokRouter);
 // Gáº¯n káº¿t router phá»¥ cá»§a Scheduler
 apiRouter.use("/scheduler", schedulerRouter);
 apiRouter.use("/marketing-campaigns", marketingCampaignRouter);
+apiRouter.use(videoTemplateRouter);
+apiRouter.use(videoProjectRouter);
 
 // Gáº¯n káº¿t router phá»¥ cá»§a Media Cloudinary Relay
 apiRouter.use("/media", mediaRouter);

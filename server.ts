@@ -16,6 +16,7 @@ import { BRAND_NAME, BRAND_TAGLINE, BRAND_LOGO_URL, SERVICE_WEBSITE_URL } from "
 import { telegramService } from "./server/service/telegram.service";
 import { initCampaignWorkers } from "./server/queue/campaign-workers";
 import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
+import { videoProjectRenderQueue } from "./server/queue/video-project-render-queue";
 
 dotenv.config();
 
@@ -199,6 +200,9 @@ async function startServer() {
 
   // Khởi động hàng đợi xử lý Remotion
   remotionQueueService.initWorker();
+
+  // Initialize the dedicated template-editor render worker once.
+  void videoProjectRenderQueue.initWorker();
 
   // Khởi động hàng đợi xử lý Campaign
   initCampaignWorkers();
