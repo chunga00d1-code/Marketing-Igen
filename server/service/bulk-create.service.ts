@@ -7,6 +7,7 @@ import { BulkAssetModel } from "../model/bulk-asset.model";
 import { IBulkBackground, IBulkCanvas, IBulkLayer } from "../interface/bulk-create.interface";
 import { bulkCreateRendererService } from "./bulk-create-renderer.service";
 import { cloudinaryService } from "./cloudinary.service";
+import { importEmbeddedGoogleSheetImages } from "./bulk-create-xlsx-image.service";
 
 interface Actor {
   id: string;
@@ -30,7 +31,57 @@ interface JobInput {
 }
 
 const JOB_LEASE_MS = 10 * 60 * 1000;
-const MAX_SHEET_RESPONSE_BYTES = 2 * 1024 * 1024;
+const MAX_SHEET_XLSX_BYTES = 50 * 1024 * 1024;
+const MAX_ITEM_ATTEMPTS = 3;
+const ITEM_RETRY_DELAYS_MS = [0, 750, 2_000];
+
+function isCloudinaryImage(value: string) {
+  return /^https:\/\/res\.cloudinary\.com\//i.test(value);
+}
+
+function isUploadableImage(value: string) {
+  return value.startsWith("data:image/") || value.startsWith("https://");
+}
+
+async function waitForRetry(attempt: number) {
+  const delay = ITEM_RETRY_DELAYS_MS[Math.min(attempt, ITEM_RETRY_DELAYS_MS.length - 1)] || 0;
+  if (delay > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, delay));
+  }
+}
+
+async function normalizeRowImages(
+  layers: IBulkLayer[],
+  values: Record<string, string>,
+  folder: string,
+  uploadCache: Map<string, Promise<string>>
+) {
+  const normalizedValues = { ...values };
+  let changed = false;
+
+  await Promise.all(layers.map(async (layer) => {
+    if (layer.type !== "image") return;
+    const source = String(
+      normalizedValues[layer.id] ?? normalizedValues[layer.fieldName] ?? layer.defaultValue ?? ""
+    ).trim();
+    if (!source || isCloudinaryImage(source) || !isUploadableImage(source)) return;
+
+    let upload = uploadCache.get(source);
+    if (!upload) {
+      upload = cloudinaryService.uploadMedia(source, folder);
+      uploadCache.set(source, upload);
+    }
+    try {
+      normalizedValues[layer.id] = await upload;
+      changed = true;
+    } catch (error) {
+      if (uploadCache.get(source) === upload) uploadCache.delete(source);
+      throw error;
+    }
+  }));
+
+  return { values: normalizedValues, changed };
+}
 
 function parseGoogleSheetLink(value: string) {
   let url: URL;
@@ -49,54 +100,6 @@ function parseGoogleSheetLink(value: string) {
     spreadsheetId: match[1],
     sheetId: url.searchParams.get("gid") || hashParams.get("gid") || "0",
   };
-}
-
-function parseCsv(csv: string) {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let index = 0; index < csv.length; index += 1) {
-    const character = csv[index];
-    if (character === '"') {
-      if (quoted && csv[index + 1] === '"') {
-        cell += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (character === "," && !quoted) {
-      row.push(cell);
-      cell = "";
-    } else if ((character === "\n" || character === "\r") && !quoted) {
-      if (character === "\r" && csv[index + 1] === "\n") index += 1;
-      row.push(cell);
-      if (row.some((value) => value.trim())) rows.push(row);
-      row = [];
-      cell = "";
-    } else {
-      cell += character;
-    }
-  }
-  row.push(cell);
-  if (row.some((value) => value.trim())) rows.push(row);
-  return rows;
-}
-
-function normalizeColumnKey(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/gi, "d")
-    .trim()
-    .toLocaleLowerCase("vi-VN")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function looksLikeImageColumn(label: string, samples: string[]) {
-  if (/(ảnh|hình|image|photo|logo|avatar|thumbnail)/i.test(label)) return true;
-  return samples.some((value) => /^https:\/\/\S+\.(png|jpe?g|webp|gif)(\?\S*)?$/i.test(value));
 }
 
 function scope(actor: Actor) {
@@ -138,73 +141,17 @@ async function updateJobProgress(jobId: string) {
 }
 
 export const bulkCreateService = {
-  async previewPublicGoogleSheet(input: { url: string; range?: string }) {
+  async previewPublicGoogleSheet(actor: Actor, input: { url: string }) {
     const { spreadsheetId, sheetId } = parseGoogleSheetLink(input.url);
-    const exportUrl = new URL(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq`);
-    exportUrl.searchParams.set("tqx", "out:csv");
-    exportUrl.searchParams.set("gid", sheetId);
-    if (input.range?.trim()) exportUrl.searchParams.set("range", input.range.trim());
-
-    const response = await fetch(exportUrl, { signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) {
-      throw new Error("Không thể đọc Google Sheet. Hãy bật quyền 'Bất kỳ ai có liên kết đều có thể xem'.");
-    }
-    const contentLength = Number(response.headers.get("content-length") || 0);
-    if (contentLength > MAX_SHEET_RESPONSE_BYTES) {
-      throw new Error("Google Sheet quá lớn. Hãy chọn phạm vi dữ liệu nhỏ hơn.");
-    }
-    const csv = await response.text();
-    if (Buffer.byteLength(csv, "utf8") > MAX_SHEET_RESPONSE_BYTES) {
-      throw new Error("Google Sheet quá lớn. Hãy chọn phạm vi dữ liệu nhỏ hơn.");
-    }
-    const contentType = response.headers.get("content-type") || "";
-    if (/text\/html/i.test(contentType) || /^\s*(?:<!doctype html|<html)/i.test(csv)) {
-      throw new Error("Google Sheet chưa được chia sẻ công khai hoặc liên kết không hợp lệ.");
-    }
-
-    const matrix = parseCsv(csv);
-    if (matrix.length < 2) throw new Error("Google Sheet cần có một dòng tiêu đề và ít nhất một dòng dữ liệu.");
-    if (matrix[0].length > 50) throw new Error("Google Sheet chỉ được tối đa 50 cột.");
-    const labels = matrix[0].map((value, index) =>
-      (index === 0 ? value.replace(/^\uFEFF/, "") : value).trim()
-    );
-    if (labels.some((label) => !label)) throw new Error("Dòng tiêu đề có cột để trống.");
-    const keys = labels.map(normalizeColumnKey);
-    if (keys.some((key) => !key)) {
-      throw new Error("Tên cột cần có ít nhất một chữ cái hoặc chữ số.");
-    }
-    if (new Set(keys).size !== keys.length) throw new Error("Dòng tiêu đề có tên cột bị trùng.");
-
-    const sourceRows = matrix
-      .slice(1)
-      .filter((row) => row.some((value) => value.trim()))
-      .slice(0, 100);
-    const columns = labels.map((label, columnIndex) => {
-      const samples = sourceRows
-        .map((row) => String(row[columnIndex] || "").trim())
-        .filter(Boolean)
-        .slice(0, 4);
-      return {
-        key: keys[columnIndex],
-        label,
-        type: looksLikeImageColumn(label, samples) ? "image" as const : "text" as const,
-        samples,
-      };
+    const imported = await importEmbeddedGoogleSheetImages({
+      actor,
+      spreadsheetId,
+      maxBytes: MAX_SHEET_XLSX_BYTES,
     });
-    const rows = sourceRows.map((row, rowIndex) => ({
-      id: `sheet-row-${rowIndex + 1}`,
-      selected: true,
-      cells: Object.fromEntries(columns.map((column, columnIndex) => [
-        column.key,
-        String(row[columnIndex] || "").trim(),
-      ])),
-    }));
     return {
       spreadsheetId,
       sheetId,
-      range: input.range?.trim() || "Vùng dữ liệu tự động",
-      columns,
-      rows,
+      ...imported,
     };
   },
 
@@ -454,32 +401,106 @@ export const bulkCreateService = {
     );
     if (!job) return;
 
+    const leaseHeartbeat = setInterval(() => {
+      void BulkRenderJobModel.updateOne(
+        { _id: jobId, lockId, status: "processing" },
+        { $set: { lockExpiresAt: new Date(Date.now() + JOB_LEASE_MS) } }
+      ).catch((error) => {
+        console.error(`[BulkCreate] Không thể gia hạn lease cho job ${jobId}:`, error);
+      });
+    }, 60_000);
+    leaseHeartbeat.unref();
+
+    try {
     const items = await BulkRenderItemModel.find({ jobId, status: "queued" }).sort({ rowIndex: 1 });
     const concurrency = 3;
-    for (let index = 0; index < items.length; index += concurrency) {
-      const latestJob = await BulkRenderJobModel.findOne({ _id: jobId, lockId }).select("status").lean();
-      if (!latestJob || latestJob.status === "cancelled") break;
-      const chunk = items.slice(index, index + concurrency);
-      await Promise.all(chunk.map(async (item) => {
+    const uploadCache = new Map<string, Promise<string>>();
+    const inputFolder = `igen_erp/bulk-create/${job.companyCode}/${job._id}/inputs`;
+
+    const processItem = async (itemId: mongoose.Types.ObjectId) => {
+      while (true) {
         const claimed = await BulkRenderItemModel.findOneAndUpdate(
-          { _id: item._id, status: "queued", attempts: { $lt: 3 } },
+          { _id: itemId, status: "queued", attempts: { $lt: MAX_ITEM_ATTEMPTS } },
           { $set: { status: "processing", startedAt: new Date() }, $inc: { attempts: 1 } },
           { new: true }
         );
         if (!claimed) return;
+
         try {
-          const output = await bulkCreateRendererService.renderBulkImage(job.templateSnapshot, claimed.values);
+          const normalized = await normalizeRowImages(
+            job.templateSnapshot.layers,
+            claimed.values,
+            inputFolder,
+            uploadCache
+          );
+          if (normalized.changed) {
+            await BulkRenderItemModel.updateOne(
+              { _id: claimed._id, status: "processing" },
+              { $set: { values: normalized.values } }
+            );
+          }
+          const output = await bulkCreateRendererService.renderBulkImage(
+            job.templateSnapshot,
+            normalized.values
+          );
           const outputUrl = await cloudinaryService.uploadMediaBuffer(
             output,
             `igen_erp/bulk-create/${job.companyCode}/${job._id}`,
             `row-${claimed.rowIndex + 1}`
           );
-          await BulkRenderItemModel.updateOne({ _id: claimed._id }, { $set: { status: "completed", outputUrl, completedAt: new Date(), errorMessage: null } });
+          const currentJob = await BulkRenderJobModel.findById(jobId).select("status").lean();
+          if (!currentJob || currentJob.status === "cancelled") {
+            await BulkRenderItemModel.updateOne(
+              { _id: claimed._id, status: "processing" },
+              { $set: { status: "cancelled", completedAt: new Date() } }
+            );
+            return;
+          }
+          await BulkRenderItemModel.updateOne(
+            { _id: claimed._id, status: "processing" },
+            {
+              $set: {
+                status: "completed",
+                outputUrl,
+                completedAt: new Date(),
+                errorMessage: null,
+              },
+            }
+          );
+          return;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          await BulkRenderItemModel.updateOne({ _id: claimed._id }, { $set: { status: "failed", errorMessage: message, completedAt: new Date() } });
+          const currentJob = await BulkRenderJobModel.findById(jobId).select("status").lean();
+          if (!currentJob || currentJob.status === "cancelled") {
+            await BulkRenderItemModel.updateOne(
+              { _id: claimed._id, status: "processing" },
+              { $set: { status: "cancelled", errorMessage: message, completedAt: new Date() } }
+            );
+            return;
+          }
+
+          const canRetry = claimed.attempts < MAX_ITEM_ATTEMPTS;
+          await BulkRenderItemModel.updateOne(
+            { _id: claimed._id, status: "processing" },
+            {
+              $set: {
+                status: canRetry ? "queued" : "failed",
+                errorMessage: message,
+                completedAt: canRetry ? null : new Date(),
+              },
+            }
+          );
+          if (!canRetry) return;
+          await waitForRetry(claimed.attempts);
         }
-      }));
+      }
+    };
+
+    for (let index = 0; index < items.length; index += concurrency) {
+      const latestJob = await BulkRenderJobModel.findOne({ _id: jobId, lockId }).select("status").lean();
+      if (!latestJob || latestJob.status === "cancelled") break;
+      const chunk = items.slice(index, index + concurrency);
+      await Promise.all(chunk.map((item) => processItem(item._id)));
       await updateJobProgress(jobId);
       await BulkRenderJobModel.updateOne(
         { _id: jobId, lockId, status: "processing" },
@@ -505,6 +526,9 @@ export const bulkCreateService = {
       },
       $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
     });
+    } finally {
+      clearInterval(leaseHeartbeat);
+    }
   },
 
   async recoverStaleJobs() {
@@ -527,7 +551,15 @@ export const bulkCreateService = {
         { $set: { status: "queued", errorMessage: "Job được khôi phục sau khi tiến trình trước bị gián đoạn." }, $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 } }
       );
     }
-    return staleJobs.map((job) => String(job._id));
+    const queuedJobs = await BulkRenderJobModel.find({ status: "queued" })
+      .sort({ createdAt: 1 })
+      .limit(500)
+      .select("_id")
+      .lean();
+    return [...new Set([
+      ...staleJobs.map((job) => String(job._id)),
+      ...queuedJobs.map((job) => String(job._id)),
+    ])];
   },
 
   async failJob(jobId: string, error: unknown) {
@@ -537,7 +569,10 @@ export const bulkCreateService = {
         { _id: jobId, status: { $in: ["queued", "processing"] } },
         { $set: { status: "failed", errorMessage: message, completedAt: new Date() }, $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 } }
       ),
-      BulkRenderItemModel.updateMany({ jobId, status: "processing" }, { $set: { status: "failed", errorMessage: message, completedAt: new Date() } }),
+      BulkRenderItemModel.updateMany(
+        { jobId, status: { $in: ["queued", "processing"] } },
+        { $set: { status: "failed", errorMessage: message, completedAt: new Date() } }
+      ),
     ]);
   },
 };

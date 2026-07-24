@@ -31,17 +31,39 @@ async function ensureQueue() {
   return redisAvailable;
 }
 
+function runWithDatabaseFallback(jobId: string) {
+  setImmediate(() => void bulkCreateService.processJob(jobId).catch(async (error) => {
+    console.error(`[Bulk Create Fallback] Job ${jobId} lỗi:`, error);
+    await bulkCreateService.failJob(jobId, error);
+  }));
+  return { id: `direct:${jobId}` };
+}
+
 export async function enqueueBulkCreateJob(jobId: string, forceNewQueueEntry = false) {
   if (!(await ensureQueue()) || !queue) {
     console.warn(`[Bulk Create Queue] Redis không khả dụng, chạy job ${jobId} bằng background fallback.`);
-    setImmediate(() => void bulkCreateService.processJob(jobId).catch(async (error) => {
-      console.error(`[Bulk Create Fallback] Job ${jobId} lỗi:`, error);
-      await bulkCreateService.failJob(jobId, error);
-    }));
-    return { id: `direct:${jobId}` };
+    return runWithDatabaseFallback(jobId);
   }
   const queueJobId = forceNewQueueEntry ? `bulk:${jobId}:retry:${Date.now()}` : `bulk:${jobId}`;
-  return queue.add("render", { jobId }, { jobId: queueJobId, attempts: 1, removeOnComplete: true, removeOnFail: false });
+  try {
+    return await queue.add(
+      "render",
+      { jobId },
+      {
+        jobId: queueJobId,
+        attempts: 3,
+        backoff: { type: "exponential", delay: 1_000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      }
+    );
+  } catch (error) {
+    console.error(
+      `[Bulk Create Queue] Không thể đưa job ${jobId} vào Redis, chuyển sang database fallback:`,
+      error
+    );
+    return runWithDatabaseFallback(jobId);
+  }
 }
 
 export function initBulkCreateWorker() {
@@ -51,7 +73,7 @@ export function initBulkCreateWorker() {
     if (!available) {
       console.warn("[Bulk Create Worker] Redis không khả dụng, sử dụng background fallback.");
       for (const jobId of recoveredJobIds) {
-        setImmediate(() => void bulkCreateService.processJob(jobId).catch((error) => bulkCreateService.failJob(jobId, error)));
+        runWithDatabaseFallback(jobId);
       }
       return;
     }
@@ -60,15 +82,32 @@ export function initBulkCreateWorker() {
       try {
         await bulkCreateService.processJob(jobId);
       } catch (error) {
-        await bulkCreateService.failJob(jobId, error);
+        const maxAttempts = Number(job.opts.attempts || 1);
+        if (job.attemptsMade + 1 >= maxAttempts) {
+          await bulkCreateService.failJob(jobId, error);
+        }
         throw error;
       }
-    }, { connection: redisConfig, concurrency: 2, limiter: { max: 10, duration: 60000 } });
+    }, {
+      connection: redisConfig,
+      concurrency: 2,
+      limiter: { max: 10, duration: 60_000 },
+    });
     worker.on("failed", (job, error) => console.error(`[Bulk Create Worker] Job ${job?.id} lỗi:`, error));
     worker.on("error", (error) => console.error("[Bulk Create Worker] Redis lỗi:", error));
     if (queue) {
       for (const jobId of recoveredJobIds) {
-        await queue.add("render", { jobId }, { jobId: `bulk:${jobId}:recovery:${Date.now()}`, attempts: 1, removeOnComplete: true, removeOnFail: false });
+        await queue.add(
+          "render",
+          { jobId },
+          {
+            jobId: `bulk:${jobId}:recovery:${Date.now()}`,
+            attempts: 3,
+            backoff: { type: "exponential", delay: 1_000 },
+            removeOnComplete: true,
+            removeOnFail: false,
+          }
+        );
       }
     }
     console.log("[Bulk Create Worker] Đã khởi tạo worker (concurrency: 2).");

@@ -8,6 +8,7 @@ import {
   Plus,
   X,
 } from 'lucide-react';
+import { PageContextMenu } from './PageContextMenu';
 import { SceneCanvas, type BulkSceneDocument } from './SceneCanvas';
 import type { DataRow, PageRenderState } from './types';
 
@@ -17,8 +18,16 @@ interface PageStripProps {
   activeRowId: string;
   pageResults: Record<string, PageRenderState>;
   isRowReady: (row: DataRow) => boolean;
+  getRowIssue: (row: DataRow) => string | null;
   onSelectRow: (rowId: string) => void;
   onAddRow: () => void;
+  hasCopiedPage: boolean;
+  onCopyRow: (row: DataRow) => void;
+  onPasteRow: (afterRowId: string) => void;
+  onDuplicateRow: (row: DataRow) => void;
+  onRenameRow: (rowId: string, name: string) => void;
+  onDeleteRow: (rowId: string) => void;
+  onDownloadRow: (row: DataRow, index: number) => void;
   zoomPercent: number;
   zoomMode: 'fit' | 'manual';
   changeZoom: (zoom: number) => void;
@@ -28,9 +37,11 @@ interface PageStripProps {
 function PageStatus({
   result,
   ready,
+  reason,
 }: {
   result?: PageRenderState;
   ready: boolean;
+  reason?: string | null;
 }) {
   if (result?.status === 'queued' || result?.status === 'processing') {
     return (
@@ -76,7 +87,8 @@ function PageStatus({
     return (
       <span
         className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-white shadow"
-        title="Trang đang thiếu dữ liệu"
+        title={reason || 'Trang đang thiếu dữ liệu'}
+        aria-label={reason || 'Trang đang thiếu dữ liệu'}
       >
         <AlertTriangle className="h-3 w-3" />
       </span>
@@ -92,7 +104,9 @@ function PageThumbnail({
   active,
   result,
   ready,
+  issue,
   onSelect,
+  onOpenContextMenu,
 }: {
   scene: BulkSceneDocument;
   row: DataRow;
@@ -100,7 +114,9 @@ function PageThumbnail({
   active: boolean;
   result?: PageRenderState;
   ready: boolean;
+  issue?: string | null;
   onSelect: () => void;
+  onOpenContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const hostRef = useRef<HTMLButtonElement>(null);
   const [visible, setVisible] = useState(index < 8);
@@ -140,30 +156,37 @@ function PageThumbnail({
       ref={hostRef}
       type="button"
       onClick={onSelect}
-      className={`group flex h-[82px] w-[142px] shrink-0 items-end gap-2 rounded-xl border p-1 text-left transition ${
+      onContextMenu={onOpenContextMenu}
+      className={`group flex h-[96px] w-[142px] shrink-0 flex-col gap-1 rounded-xl border p-1 text-left transition ${
         active
           ? 'border-indigo-600 bg-white ring-2 ring-indigo-200 shadow-sm'
           : 'border-transparent bg-transparent hover:border-slate-300 hover:bg-white/70'
       }`}
       aria-label={`Mở trang ${index + 1}`}
     >
-      <span className="w-4 shrink-0 pb-0.5 text-center text-xs font-extrabold text-slate-500">
-        {index + 1}
-      </span>
-      <span className="relative flex h-[70px] min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        {result?.status === 'completed' && result.outputUrl ? (
-          <img
-            src={result.outputUrl}
-            alt={`Trang ${index + 1}`}
-            className="h-full w-full object-contain"
+      <span className="flex min-h-0 w-full flex-1 items-end gap-2">
+        <span className="w-4 shrink-0 pb-0.5 text-center text-xs font-extrabold text-slate-500">
+          {index + 1}
+        </span>
+        <span className="relative flex h-[70px] min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          {result?.status === 'completed' && result.outputUrl ? (
+            <img
+              src={result.outputUrl}
+              alt={`Trang ${index + 1}`}
+              className="h-full w-full object-contain"
+            />
+          ) : visible ? (
+            <SceneCanvas scene={scene} values={row.values} scale={scale} />
+          ) : null}
+          <PageStatus
+            result={result}
+            ready={ready || scene.layers.length === 0}
+            reason={issue}
           />
-        ) : visible ? (
-          <SceneCanvas scene={scene} values={row.values} scale={scale} />
-        ) : null}
-        <PageStatus
-          result={result}
-          ready={ready || scene.layers.length === 0}
-        />
+        </span>
+      </span>
+      <span className="ml-6 block w-[108px] truncate text-center text-[10px] font-bold text-slate-500">
+        {row.name || `Trang ${index + 1}`}
       </span>
     </button>
   );
@@ -175,14 +198,30 @@ export function PageStrip({
   activeRowId,
   pageResults,
   isRowReady,
+  getRowIssue,
   onSelectRow,
   onAddRow,
+  hasCopiedPage,
+  onCopyRow,
+  onPasteRow,
+  onDuplicateRow,
+  onRenameRow,
+  onDeleteRow,
+  onDownloadRow,
   zoomPercent,
   zoomMode,
   changeZoom,
   fitCanvasToViewport,
 }: PageStripProps) {
   const activeIndex = rows.findIndex((row) => row.id === activeRowId);
+  const activeRow = rows[activeIndex];
+  const activeIssue = activeRow ? getRowIssue(activeRow) : null;
+  const [pageMenu, setPageMenu] = useState<{
+    x: number;
+    y: number;
+    row: DataRow;
+    index: number;
+  } | null>(null);
 
   return (
     <div className="flex h-[148px] shrink-0 flex-col border-t border-slate-200 bg-white">
@@ -197,7 +236,18 @@ export function PageStrip({
               active={row.id === activeRowId}
               result={pageResults[row.id]}
               ready={isRowReady(row)}
+              issue={getRowIssue(row)}
               onSelect={() => onSelectRow(row.id)}
+              onOpenContextMenu={(event) => {
+                event.preventDefault();
+                onSelectRow(row.id);
+                setPageMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  row,
+                  index,
+                });
+              }}
             />
           ))}
           <button
@@ -213,9 +263,20 @@ export function PageStrip({
       </div>
 
       <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-3 sm:px-4">
-        <span className="text-xs font-bold text-slate-500">
-          Trang {Math.max(1, activeIndex + 1)} / {Math.max(1, rows.length)}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-xs font-bold text-slate-500">
+            Trang {Math.max(1, activeIndex + 1)} / {Math.max(1, rows.length)}
+          </span>
+          {activeIssue && (
+            <span
+              className="flex min-w-0 items-center gap-1.5 truncate rounded-full bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-700"
+              title={activeIssue}
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              <span className="truncate">{activeIssue}</span>
+            </span>
+          )}
+        </div>
 
         <div className="flex items-center gap-1">
           <button
@@ -265,6 +326,22 @@ export function PageStrip({
           </button>
         </div>
       </div>
+
+      {pageMenu && (
+        <PageContextMenu
+          x={pageMenu.x}
+          y={pageMenu.y}
+          pageName={pageMenu.row.name || `Trang ${pageMenu.index + 1}`}
+          hasCopiedPage={hasCopiedPage}
+          onClose={() => setPageMenu(null)}
+          onCopy={() => onCopyRow(pageMenu.row)}
+          onPaste={() => onPasteRow(pageMenu.row.id)}
+          onDuplicate={() => onDuplicateRow(pageMenu.row)}
+          onRename={(name) => onRenameRow(pageMenu.row.id, name)}
+          onDelete={() => onDeleteRow(pageMenu.row.id)}
+          onDownload={() => onDownloadRow(pageMenu.row, pageMenu.index)}
+        />
+      )}
     </div>
   );
 }

@@ -64,7 +64,6 @@ const uploadAssetSchema = {
 const googleSheetPreviewSchema = {
   body: Joi.object({
     url: Joi.string().uri({ scheme: ["https"] }).max(2_000).required(),
-    range: Joi.string().trim().max(120).allow("").optional(),
   }),
 };
 

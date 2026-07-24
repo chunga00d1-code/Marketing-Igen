@@ -43,7 +43,7 @@ function safeFilePart(value: string) {
 export const bulkCreateController = {
   async previewGoogleSheet(req: AuthenticatedRequest, res: Response) {
     try {
-      const preview = await bulkCreateService.previewPublicGoogleSheet(req.body);
+      const preview = await bulkCreateService.previewPublicGoogleSheet(actorFrom(req), req.body);
       return res.json({ status: "success", data: preview });
     } catch (error) { return handleError(res, error); }
   },
