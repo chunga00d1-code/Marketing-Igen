@@ -57,7 +57,7 @@ export function DataPanel(props: DataPanelProps) {
   const allRowsSelected = props.rows.length > 0 && selectedRows === props.rows.length;
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4 overflow-x-hidden">
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
         {STEPS.map((step) => {
           const active = props.dataStep === step.id;
@@ -117,6 +117,9 @@ export function DataPanel(props: DataPanelProps) {
               aria-label="Liên kết Google Sheet"
               className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-emerald-500"
             />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              Hệ thống tự tìm đúng tab và vùng bảng, đồng thời đọc ảnh chèn trực tiếp trong ô.
+            </p>
             <button
               type="button"
               onClick={props.onImportGoogleSheet}
@@ -296,17 +299,24 @@ export function DataPanel(props: DataPanelProps) {
             <span className="ml-auto text-xs font-bold text-slate-400">{selectedRows}/{props.rows.length}</span>
           </label>
 
-          <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-72 min-w-0 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
             {props.rows.map((row, index) => {
-              const previewValues = props.dataColumns
+              const textPreview = props.dataColumns
+                .filter((column) => column.type === 'text')
                 .slice(0, 2)
                 .map((column) => row.sourceCells?.[column.key])
-                .filter(Boolean)
-                .join(' · ');
+                .filter(Boolean);
+              const imageCount = props.dataColumns.filter(
+                (column) => column.type === 'image' && row.sourceCells?.[column.key]
+              ).length;
+              const previewValues = [
+                ...textPreview,
+                imageCount > 0 ? `${imageCount} ảnh` : '',
+              ].filter(Boolean).join(' · ');
               return (
                 <div
                   key={row.id}
-                  className={`flex items-center gap-3 rounded-xl border p-3 ${
+                  className={`flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border p-3 ${
                     props.activeRowId === row.id
                       ? 'border-indigo-500 bg-indigo-50'
                       : 'border-slate-200 bg-white'
