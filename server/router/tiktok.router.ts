@@ -13,7 +13,7 @@ tiktokRouter.get("/oauth/callback", tiktokController.oauthCallback as any);
 const publishSchema = {
   body: Joi.object({
     cardId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).required(),
-    caption: Joi.string().optional().allow(""),
+    caption: Joi.string().max(2200).optional().allow(""),
     videoUrl: Joi.string().uri().required(),
     privacyLevel: Joi.string()
       .valid("PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY")

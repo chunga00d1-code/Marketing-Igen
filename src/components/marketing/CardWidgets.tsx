@@ -560,14 +560,19 @@ export function ScheduledCard({
 interface PublishedCardProps {
   key?: string | number | null;
   card: ContentApprovalCard;
+  tiktokUsername?: string;
   onDelete: (...args: any[]) => any;
   isUserRole: boolean;
   onPreviewMedia: (type: 'image' | 'video', url: string) => void;
   onOpenDetail?: () => void;
 }
 
-export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOpenDetail }: PublishedCardProps) {
+export function PublishedCard({ card, tiktokUsername, onDelete, isUserRole, onPreviewMedia, onOpenDetail }: PublishedCardProps) {
   const canRenderVideo = isRenderableVideoUrl(card.videoUrl);
+  const normalizedTikTokUsername = String(tiktokUsername || "").replace(/^@/, "").trim();
+  const tiktokProfileUrl = normalizedTikTokUsername
+    ? `https://www.tiktok.com/@${encodeURIComponent(normalizedTikTokUsername)}`
+    : "";
 
   const channelBadgeStyles: Record<string, string> = {
     Facebook: "bg-blue-50 border-blue-250/30 text-blue-700",
@@ -704,9 +709,23 @@ export function PublishedCard({ card, onDelete, isUserRole, onPreviewMedia, onOp
         </a>
       )}
       {!card.tiktokShareUrl && card.channel === "TikTok" && card.status === "published" && (
-        <div className="text-[10px] text-emerald-800 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl">
-          TikTok đã xác nhận đăng thành công. Bài SELF_ONLY cần xem trong hồ sơ TikTok đã kết nối.
-        </div>
+        tiktokProfileUrl ? (
+          <a
+            href={tiktokProfileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            title="Mở hồ sơ TikTok để xác minh bài SELF_ONLY"
+            className="text-[10px] text-[#FE2C55] font-bold bg-[#FE2C55]/10 border border-[#FE2C55]/30 px-2.5 py-1.5 rounded-xl flex items-center justify-between gap-1.5 hover:bg-[#FE2C55]/20 transition-colors"
+          >
+            <span>Mở hồ sơ TikTok để xem bài SELF_ONLY</span>
+            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+          </a>
+        ) : (
+          <div className="text-[10px] text-emerald-800 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-xl">
+            TikTok đã xác nhận đăng thành công. Bài SELF_ONLY cần xem trong hồ sơ TikTok đã kết nối.
+          </div>
+        )
       )}
 
       <div className="flex flex-col gap-2 border-t border-slate-100 pt-2.5 mt-auto">
