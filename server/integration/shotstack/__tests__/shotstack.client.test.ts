@@ -44,6 +44,14 @@ test("uses the stage base URL by default", () => {
   });
 });
 
+test("defaults blank and whitespace Shotstack environments to stage", () => {
+  for (const environment of ["", " \t "]) {
+    setShotstackEnvironment("test-api-key", environment);
+    assert.equal(getShotstackConfig().environment, "stage");
+    assert.equal(getShotstackConfig().baseUrl, "https://api.shotstack.io/stage");
+  }
+});
+
 test("uses the v1 base URL when requested", () => {
   setShotstackEnvironment("test-api-key", "v1");
   assert.equal(getShotstackConfig().baseUrl, "https://api.shotstack.io/v1");
