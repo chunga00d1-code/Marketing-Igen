@@ -218,6 +218,7 @@ export default function ApprovalTab({
                 <PublishedCard
                   key={card.id}
                   card={card}
+                  tiktokUsername={tiktokIntegration?.username}
                   onDelete={() => handleDeleteCard(card.id)}
                   isUserRole={isUserRole}
                   onPreviewMedia={(type, url) => handleOpenLightbox(card, type, url)}

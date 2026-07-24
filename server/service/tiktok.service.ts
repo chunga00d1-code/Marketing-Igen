@@ -851,6 +851,33 @@ export const tiktokService = {
   ) {
     void scheduledTime;
 
+    const supportedPrivacyLevels = new Set([
+      "PUBLIC_TO_EVERYONE",
+      "MUTUAL_FOLLOW_FRIENDS",
+      "FOLLOWER_OF_CREATOR",
+      "SELF_ONLY",
+    ]);
+    const videoDuration = Number(postOptions.videoDurationSeconds || 0);
+    const hasCommercialDisclosure = Boolean(postOptions.brandContentToggle);
+    const brandContent = hasCommercialDisclosure && Boolean(postOptions.brandContent);
+    const brandOrganic = hasCommercialDisclosure && Boolean(postOptions.brandOrganic);
+
+    if (postOptions.consentAccepted !== true) {
+      throw new Error("Bạn phải xác nhận điều khoản TikTok trước khi đăng.");
+    }
+    if (!supportedPrivacyLevels.has(privacyLevel)) {
+      throw new Error("Quyền riêng tư TikTok không hợp lệ.");
+    }
+    if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+      throw new Error("Không đọc được thời lượng video để kiểm tra giới hạn TikTok.");
+    }
+    if (hasCommercialDisclosure && !brandContent && !brandOrganic) {
+      throw new Error("Vui lòng chọn Your Brand, Branded Content hoặc cả hai trước khi đăng.");
+    }
+    if (brandContent && privacyLevel === "SELF_ONLY") {
+      throw new Error("Branded Content không thể đăng ở chế độ Chỉ mình tôi.");
+    }
+
     if (
       process.env.NODE_ENV !== "production" &&
       String(process.env.TIKTOK_MOCK_PUBLISH).trim().toLowerCase() === "true"
@@ -894,29 +921,19 @@ export const tiktokService = {
 
     const credentials = await resolveDirectCredentials(integrationId, companyCode, accessToken, username, userId);
     const creatorInfo = await this.getCreatorInfo(credentials.accessToken);
-    if (requestUserId && postOptions.consentAccepted !== true) {
-      throw new Error("Bạn phải xác nhận điều khoản TikTok trước khi đăng.");
-    }
     const availablePrivacy = creatorInfo.data.privacyLevelOptions || [];
+    const maxDuration = Number(creatorInfo.data.maxVideoPostDurationSec || 0);
+
+    if (!creatorInfo.data.creatorNickname || availablePrivacy.length === 0 || maxDuration <= 0) {
+      throw new Error("Tài khoản TikTok hiện chưa thể đăng thêm bài. Vui lòng thử lại sau.");
+    }
 
     if (!availablePrivacy.includes(privacyLevel)) {
       throw new Error("Quyền riêng tư đã chọn không còn khả dụng. Vui lòng mở lại màn đăng TikTok và chọn lại.");
     }
 
-    const maxDuration = Number(creatorInfo.data.maxVideoPostDurationSec || 0);
-    const videoDuration = Number(postOptions.videoDurationSeconds || 0);
-    if (videoDuration > 0 && maxDuration > 0 && videoDuration > maxDuration) {
+    if (videoDuration > maxDuration) {
       throw new Error(`Video dài ${Math.ceil(videoDuration)} giây, vượt giới hạn ${maxDuration} giây của tài khoản TikTok này.`);
-    }
-
-    const hasCommercialDisclosure = Boolean(postOptions.brandContentToggle);
-    const brandContent = hasCommercialDisclosure && Boolean(postOptions.brandContent);
-    const brandOrganic = hasCommercialDisclosure && Boolean(postOptions.brandOrganic);
-    if (hasCommercialDisclosure && !brandContent && !brandOrganic) {
-      throw new Error("Vui lòng chọn Your Brand, Branded Content hoặc cả hai trước khi đăng.");
-    }
-    if (brandContent && privacyLevel === "SELF_ONLY") {
-      throw new Error("Branded Content không thể đăng ở chế độ Chỉ mình tôi.");
     }
 
     const resolveDisableFlag = (allowed: boolean | undefined, disabledByCreator: boolean) =>
