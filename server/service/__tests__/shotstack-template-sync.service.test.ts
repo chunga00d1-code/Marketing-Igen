@@ -482,6 +482,7 @@ test("first import creates one published template and immutable version", async 
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   });
   assert.equal(repository.templates.size, 1);
@@ -595,11 +596,20 @@ test("one invalid provider item does not stop valid imports", async () => {
 
   assert.equal(result.created, 1);
   assert.equal(result.failed.length, 1);
+  assert.equal((result as { failedCount?: number }).failedCount, 1);
   assert.equal(result.failed[0].externalId, "invalid");
   assert.doesNotMatch(result.failed[0].message, /audio\.mp3|no usable visual/i);
   assert.ok(repository.templates.has("valid"));
   assert.equal(repository.templates.has("invalid"), false);
   assert.equal(repository.states.at(-1)?.lastSuccessAt, undefined);
+  assert.equal(
+    (repository.states.at(-1)?.summary as { failedCount?: number } | undefined)?.failedCount,
+    1
+  );
+});
+
+test("sync-state schema persists the safe aggregate failure count", () => {
+  assert.ok(VideoTemplateSyncModel.schema.path("summary.failedCount"));
 });
 
 test("provider template without a name fails instead of inventing catalogue metadata", async () => {
@@ -694,6 +704,7 @@ test("sync state records safe attempt, success, and summary", async () => {
       updated: 0,
       unchanged: 0,
       archived: 0,
+      failedCount: 0,
       failed: [],
     },
   }]);
@@ -849,6 +860,7 @@ test("expired old owner cannot report or apply a metadata refresh after a newer 
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   });
   assert.equal(repository.templates.get("one")?.title, "Current title");
@@ -903,6 +915,7 @@ test("newer empty catalogue establishes absence before an expired old owner can 
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   });
   assert.deepEqual(oldResult, {
@@ -910,6 +923,7 @@ test("newer empty catalogue establishes absence before an expired old owner can 
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   });
   assert.equal(repository.templates.has("one"), false);
@@ -974,6 +988,7 @@ test("newer empty catalogue fences an already archived template from stale resur
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   });
   assert.equal(repository.templates.get("one")?.status, "archived");
@@ -1047,6 +1062,7 @@ test("expired old owner cannot publish a version over the newer owner", async ()
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   });
   assert.equal(repository.versions.length, 2);

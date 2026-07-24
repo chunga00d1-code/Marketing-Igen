@@ -88,6 +88,7 @@ test("sync returns the exact success envelope and passes the authenticated actor
     updated: 3,
     unchanged: 4,
     archived: 5,
+    failedCount: 0,
     failed: [],
   };
   let actorId: string | undefined;
@@ -115,6 +116,7 @@ test("sync returns the exact success envelope and passes the authenticated actor
       updated: 3,
       unchanged: 4,
       archived: 5,
+      failedCount: 0,
       failed: [],
     },
   });
@@ -209,6 +211,7 @@ test("status before the first synchronization returns null state and an empty su
           updated: 0,
           unchanged: 0,
           archived: 0,
+          failedCount: 0,
           failed: [],
         },
       },
@@ -233,6 +236,7 @@ test("status selects stage and v1 independently and never exposes credentials or
             updated: 2,
             unchanged: 3,
             archived: 4,
+            failedCount: 1,
             failed: [{
               externalId: "server-only-key",
               message: "Provider payload at C:\\internal\\shotstack.ts",
@@ -261,6 +265,7 @@ test("status selects stage and v1 independently and never exposes credentials or
             updated: 2,
             unchanged: 3,
             archived: 4,
+            failedCount: 1,
             failed: [],
           },
         },

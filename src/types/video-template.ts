@@ -45,6 +45,7 @@ export interface ShotstackSyncSummary {
   updated: number;
   unchanged: number;
   archived: number;
+  failedCount: number;
   failed: ShotstackSyncFailure[];
 }
 

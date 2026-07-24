@@ -50,6 +50,7 @@ test("parses the Shotstack synchronization summary through the authenticated adm
         updated: 3,
         unchanged: 4,
         archived: 5,
+        failedCount: 1,
         failed: [{ externalId: "template-6", message: "Mẫu không tương thích." }],
       },
     }), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -65,6 +66,7 @@ test("parses the Shotstack synchronization summary through the authenticated adm
     updated: 3,
     unchanged: 4,
     archived: 5,
+    failedCount: 1,
     failed: [{ externalId: "template-6", message: "Mẫu không tương thích." }],
   });
 });
@@ -83,6 +85,7 @@ test("parses the safe Shotstack synchronization status without provider credenti
         updated: 2,
         unchanged: 3,
         archived: 4,
+        failedCount: 2,
         failed: [],
       },
     },
@@ -101,6 +104,7 @@ test("parses the safe Shotstack synchronization status without provider credenti
       updated: 2,
       unchanged: 3,
       archived: 4,
+      failedCount: 2,
       failed: [],
     },
   });

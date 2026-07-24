@@ -94,6 +94,7 @@ function emptyShotstackSyncSummary(): VideoTemplateSyncSummary {
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   };
 }
@@ -148,6 +149,7 @@ export function createShotstackAdminHandlers(
             updated: summary.updated,
             unchanged: summary.unchanged,
             archived: summary.archived,
+            failedCount: summary.failedCount ?? summary.failed.length,
             failed: [],
           },
         };

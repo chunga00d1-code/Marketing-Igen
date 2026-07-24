@@ -14,6 +14,7 @@ import * as syncModule from "../shotstackTemplateSync";
 import { TemplateEditorProperties } from "../../../template-editor/TemplateEditorProperties";
 import { TemplateEditorTopbar } from "../../../template-editor/TemplateEditorTopbar";
 import type { TemplateEditorProject } from "../../../template-editor/types";
+import { VideoTemplateCard } from "../VideoTemplateCard";
 
 type LibraryContract = {
   ShotstackSyncControl: React.ComponentType<{
@@ -36,20 +37,21 @@ const summary: ShotstackSyncSummary = {
   updated: 2,
   unchanged: 3,
   archived: 4,
+  failedCount: 2,
   failed: [
     { externalId: "template-1", message: "Không tương thích." },
     { externalId: "template-2", message: "Thiếu media." },
   ],
 };
 
-const syncStatus: ShotstackSyncStatus = {
+const syncStatus = {
   configured: true,
   environment: "stage",
   status: "partial",
   lastAttemptAt: "2026-07-24T01:00:00.000Z",
   lastSuccessAt: "2026-07-24T00:59:00.000Z",
-  summary: { ...summary, failed: [] },
-};
+  summary: { ...summary, failedCount: 2, failed: [] },
+} as unknown as ShotstackSyncStatus;
 
 test("allows only admin and superadmin roles to manage Shotstack synchronization", () => {
   assert.equal(typeof syncSubject.canManageShotstackTemplates, "function");
@@ -95,6 +97,18 @@ test("disables the Shotstack synchronization control and shows a loading label w
 
   assert.match(markup, /disabled=""/);
   assert.match(markup, /Đang đồng bộ/);
+});
+
+test("shows the persisted safe failure count after a status reload", () => {
+  const markup = renderToStaticMarkup(createElement(subject.ShotstackSyncControl, {
+    canManageTemplates: true,
+    isSyncing: false,
+    status: syncStatus,
+    onSync: () => undefined,
+  }));
+
+  assert.match(markup, /2 mẫu lỗi/);
+  assert.doesNotMatch(markup, /template-1|template-2|Không tương thích|Thiếu media/);
 });
 
 test("refreshes the catalogue and status after a successful synchronization", async () => {
@@ -216,11 +230,39 @@ test("has no active create-template navigation or submission modal wiring", () =
   const activeSources = [
     "src/components/content-studio/VideoGenerationWorkspace.tsx",
     "src/components/content-studio/video-templates/VideoTemplateLibrary.tsx",
+    "src/components/content-studio/video-templates/VideoTemplateCard.tsx",
     "src/components/template-editor/TemplateEditorWorkspace.tsx",
   ].map((path) => readFileSync(path, "utf8")).join("\n");
 
   assert.doesNotMatch(
     activeSources,
     /onCreateTemplate|mode:\s*['"]create-template['"]|TemplateSubmissionModal|onOpenSubmission/
+  );
+});
+
+test("does not render personal-template authoring copy or the mine badge", () => {
+  const markup = renderToStaticMarkup(createElement(VideoTemplateCard, {
+    template: {
+      id: "template-1",
+      title: "System template",
+      description: "Description",
+      thumbnailUrl: "https://cdn.example.com/template.jpg",
+      duration: 15,
+      aspectRatio: "9:16",
+      category: { id: "sales", name: "Sales" },
+      tags: [],
+      usageCount: 10,
+      isFavorite: false,
+      ownerType: "system",
+      canEdit: false,
+      badges: ["mine"],
+    },
+    onClick: () => undefined,
+  }));
+
+  assert.doesNotMatch(markup, /Mẫu của tôi/);
+  assert.doesNotMatch(
+    readFileSync("src/components/content-studio/video-templates/VideoTemplateCard.tsx", "utf8"),
+    /badges\?\.includes\(['"]mine['"]\)|Mẫu của tôi/
   );
 });

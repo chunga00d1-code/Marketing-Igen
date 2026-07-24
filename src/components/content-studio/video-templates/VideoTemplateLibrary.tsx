@@ -55,7 +55,7 @@ function syncStateLabel(status: ShotstackSyncStatus['status']): string {
 }
 
 function formatSyncSummary(summary: ShotstackSyncSummary): string {
-  return `Đồng bộ hoàn tất: ${summary.created} tạo mới, ${summary.updated} cập nhật, ${summary.unchanged} không đổi, ${summary.archived} lưu trữ, ${summary.failed.length} lỗi.`;
+  return `Đồng bộ hoàn tất: ${summary.created} tạo mới, ${summary.updated} cập nhật, ${summary.unchanged} không đổi, ${summary.archived} lưu trữ, ${summary.failedCount} lỗi.`;
 }
 
 export function ShotstackSyncControl({
@@ -69,7 +69,7 @@ export function ShotstackSyncControl({
   if (!canManageTemplates) return null;
 
   const visibleSummary = latestSummary || status?.summary;
-  const failedCount = visibleSummary?.failed.length ?? 0;
+  const failedCount = visibleSummary?.failedCount ?? visibleSummary?.failed.length ?? 0;
 
   return (
     <div className="flex flex-col items-end gap-2">

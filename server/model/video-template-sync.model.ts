@@ -15,6 +15,7 @@ const SyncSummarySchema = new Schema(
     updated: { type: Number, required: true, min: 0 },
     unchanged: { type: Number, required: true, min: 0 },
     archived: { type: Number, required: true, min: 0 },
+    failedCount: { type: Number, required: true, min: 0, default: 0 },
     failed: { type: [SyncFailureSchema], default: [] },
   },
   { _id: false }

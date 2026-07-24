@@ -80,6 +80,7 @@ export interface VideoTemplateSyncSummary {
   updated: number;
   unchanged: number;
   archived: number;
+  failedCount: number;
   failed: Array<{ externalId: string; message: string }>;
 }
 

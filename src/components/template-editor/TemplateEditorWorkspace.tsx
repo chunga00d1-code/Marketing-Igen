@@ -8,9 +8,14 @@ import { TemplateEditorTimeline } from './TemplateEditorTimeline';
 import { TemplateEditorProperties } from './TemplateEditorProperties';
 import { TemplateExportModal } from './TemplateExportModal';
 import { TemplateEditorMode, TemplateEditorProject } from './types';
+import {
+  createTemplateEditorAutosaveQueue,
+  type TemplateEditorAutosaveQueue,
+} from './template-editor-autosave';
 import { Monitor } from 'lucide-react';
 import { videoTemplateService } from '../../services/videoTemplateService';
 import { toast } from '../../pages/Toast';
+import type { SaveVideoProjectInput } from '../../types/video-template';
 
 interface TemplateEditorWorkspaceProps {
   initialMode?: TemplateEditorMode;
@@ -24,9 +29,10 @@ export function TemplateEditorWorkspace({
   onBackToLibrary,
 }: TemplateEditorWorkspaceProps) {
   const [saveStatus, setSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
-  const revisionRef = useRef(0);
   const readyRef = useRef(false);
   const lastSavedRef = useRef('');
+  const latestSnapshotRef = useRef('');
+  const autosaveRef = useRef<TemplateEditorAutosaveQueue<SaveVideoProjectInput> | null>(null);
   const {
     project,
     selectedItem,
@@ -66,6 +72,9 @@ export function TemplateEditorWorkspace({
 
   useEffect(() => {
     let cancelled = false;
+    let autosaveQueue: TemplateEditorAutosaveQueue<SaveVideoProjectInput> | null = null;
+    autosaveRef.current?.dispose();
+    autosaveRef.current = null;
     readyRef.current = false;
     setSaveStatus('loading');
 
@@ -93,9 +102,33 @@ export function TemplateEditorWorkspace({
           tracks: data.tracks,
           items: data.items,
         } as unknown as TemplateEditorProject;
-        revisionRef.current = data.revision;
-        lastSavedRef.current = JSON.stringify(loadedProject);
+        const loadedSnapshot = JSON.stringify(loadedProject);
+        lastSavedRef.current = loadedSnapshot;
+        latestSnapshotRef.current = loadedSnapshot;
         hydrateProject(loadedProject);
+        autosaveQueue = createTemplateEditorAutosaveQueue<SaveVideoProjectInput>({
+          initialRevision: data.revision,
+          persist: (input, expectedRevision) => videoTemplateService.updateProject(
+            data.id,
+            { ...input, expectedRevision }
+          ),
+          onAttempt: () => {
+            if (!cancelled) setSaveStatus('saving');
+          },
+          onPersisted: (serialized) => {
+            if (cancelled) return;
+            lastSavedRef.current = serialized;
+            if (latestSnapshotRef.current === serialized) {
+              setSaveStatus('saved');
+            }
+          },
+          onError: (error) => {
+            if (cancelled) return;
+            setSaveStatus('error');
+            toast.error(error instanceof Error ? error.message : 'Không thể tự động lưu dự án.');
+          },
+        });
+        autosaveRef.current = autosaveQueue;
         readyRef.current = true;
         setSaveStatus('saved');
       } catch (error) {
@@ -107,6 +140,11 @@ export function TemplateEditorWorkspace({
     void load();
     return () => {
       cancelled = true;
+      readyRef.current = false;
+      autosaveQueue?.dispose();
+      if (autosaveRef.current === autosaveQueue) {
+        autosaveRef.current = null;
+      }
     };
     // Initialization is intentionally scoped to the selected project.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,11 +153,13 @@ export function TemplateEditorWorkspace({
   useEffect(() => {
     if (!readyRef.current) return;
     const snapshot = JSON.stringify(project);
+    latestSnapshotRef.current = snapshot;
     if (snapshot === lastSavedRef.current) return;
     setSaveStatus('saving');
-    const timer = window.setTimeout(async () => {
-      try {
-        const saved = await videoTemplateService.updateProject(project.id, {
+    const timer = window.setTimeout(() => {
+      autosaveRef.current?.enqueue({
+        serialized: snapshot,
+        value: {
           title: project.title,
           description: project.description,
           categoryId: project.categoryId,
@@ -130,15 +170,8 @@ export function TemplateEditorWorkspace({
           tracks: project.tracks,
           items: project.items,
           coverUrl: project.coverUrl,
-          expectedRevision: revisionRef.current,
-        });
-        revisionRef.current = saved.revision;
-        lastSavedRef.current = snapshot;
-        setSaveStatus('saved');
-      } catch (error) {
-        setSaveStatus('error');
-        toast.error(error instanceof Error ? error.message : 'Không thể tự động lưu dự án.');
-      }
+        },
+      });
     }, 800);
     return () => window.clearTimeout(timer);
   }, [project]);

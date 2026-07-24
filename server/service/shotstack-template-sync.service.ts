@@ -719,8 +719,17 @@ function emptySummary(): VideoTemplateSyncSummary {
     updated: 0,
     unchanged: 0,
     archived: 0,
+    failedCount: 0,
     failed: [],
   };
+}
+
+function addFailure(
+  summary: VideoTemplateSyncSummary,
+  failure: { externalId: string; message: string }
+): void {
+  summary.failed.push(failure);
+  summary.failedCount = summary.failed.length;
 }
 
 export class ShotstackSyncStateError extends Error {
@@ -793,7 +802,7 @@ export async function synchronizeShotstackTemplates(
       client = new ShotstackClient(config);
     } catch {
       const summary = emptySummary();
-      summary.failed.push({ externalId: "shotstack", message: LIST_FAILURE_MESSAGE });
+      addFailure(summary, { externalId: "shotstack", message: LIST_FAILURE_MESSAGE });
       await recordState(repository, {
         provider: "shotstack",
         environment,
@@ -810,7 +819,7 @@ export async function synchronizeShotstackTemplates(
     listed = await client.listTemplates();
   } catch {
     const summary = emptySummary();
-    summary.failed.push({ externalId: "shotstack", message: LIST_FAILURE_MESSAGE });
+    addFailure(summary, { externalId: "shotstack", message: LIST_FAILURE_MESSAGE });
     await recordState(repository, {
       provider: "shotstack",
       environment,
@@ -826,7 +835,7 @@ export async function synchronizeShotstackTemplates(
     || listed.some((summary) => !isRecord(summary) || !nonEmptyString(summary.id))
   ) {
     const summary = emptySummary();
-    summary.failed.push({ externalId: "shotstack", message: LIST_FAILURE_MESSAGE });
+    addFailure(summary, { externalId: "shotstack", message: LIST_FAILURE_MESSAGE });
     await recordState(repository, {
       provider: "shotstack",
       environment,
@@ -941,7 +950,7 @@ export async function synchronizeShotstackTemplates(
         await synchronizeExisting(existing, inputs);
       }
     } catch {
-      summary.failed.push({
+      addFailure(summary, {
         externalId: listedTemplate.id,
         message: ITEM_FAILURE_MESSAGE,
       });
@@ -968,7 +977,7 @@ export async function synchronizeShotstackTemplates(
       );
     }
   } catch {
-    summary.failed.push({ externalId: "shotstack", message: ITEM_FAILURE_MESSAGE });
+    addFailure(summary, { externalId: "shotstack", message: ITEM_FAILURE_MESSAGE });
   }
 
   const status = summary.failed.length > 0 ? "partial" : "success";

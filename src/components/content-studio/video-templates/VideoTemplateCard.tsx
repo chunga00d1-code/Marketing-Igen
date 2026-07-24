@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Heart, Play, Clock, Eye, Sparkles, User, Flame } from 'lucide-react';
+import { Heart, Play, Clock, Eye, Sparkles, Flame } from 'lucide-react';
 import { VideoTemplateSummary } from '../../../types/video-template';
 
 interface VideoTemplateCardProps {
@@ -133,12 +133,6 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
             <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
               <Flame className="h-2.5 w-2.5" />
               Hot
-            </span>
-          )}
-          {template.badges?.includes('mine') && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
-              <User className="h-2.5 w-2.5" />
-              Mẫu của tôi
             </span>
           )}
         </div>
