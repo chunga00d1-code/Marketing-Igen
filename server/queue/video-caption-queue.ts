@@ -6,7 +6,7 @@ import { videoCaptionService } from "../service/video-caption.service";
 
 const QUEUE_NAME = "video-caption-pipeline-queue";
 const REDIS_RECHECK_MS = 30_000;
-const TRANSCRIPTION_RECONCILE_MS = 60_000;
+const TRANSCRIPTION_RECONCILE_MS = 15_000;
 const FALLBACK_CONCURRENCY = 2;
 const WORKER_CONCURRENCY = Math.min(
   4,

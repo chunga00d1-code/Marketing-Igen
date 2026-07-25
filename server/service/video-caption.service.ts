@@ -1634,7 +1634,7 @@ export const videoCaptionService = {
           providerRequestId: submission.providerRequestId,
         });
 
-        await VideoCaptionJobModel.updateOne(
+        const awaitingProviderUpdate = await VideoCaptionJobModel.updateOne(
           { _id: job._id, lockId },
           {
             $set: {
@@ -1651,8 +1651,21 @@ export const videoCaptionService = {
             $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
           }
         );
+        if (!awaitingProviderUpdate.modifiedCount) {
+          logCaptionStt("awaiting_webhook_skipped", {
+            jobId: String(job._id),
+            projectId: String(project._id),
+            providerRequestId: submission.providerRequestId,
+            reason: "job_lease_changed",
+          });
+          return;
+        }
         await VideoCaptionProjectModel.updateOne(
-          { _id: project._id, companyCode: project.companyCode },
+          {
+            _id: project._id,
+            companyCode: project.companyCode,
+            status: "transcribing",
+          },
           {
             $set: {
               progress: {
@@ -1958,10 +1971,19 @@ export const videoCaptionService = {
     const job = await VideoCaptionJobModel.findOneAndUpdate(
       {
         _id: existing._id,
-        status: "awaiting_provider",
         $or: [
-          { providerRequestId: input.providerRequestId },
-          { providerRequestId: { $exists: false } },
+          {
+            status: "awaiting_provider",
+            providerRequestId: input.providerRequestId,
+          },
+          {
+            status: "awaiting_provider",
+            providerRequestId: { $exists: false },
+          },
+          {
+            status: "processing",
+            providerRequestId: { $exists: false },
+          },
         ],
       },
       {
@@ -2035,7 +2057,7 @@ export const videoCaptionService = {
       operation: "transcribe",
       status: "awaiting_provider",
       providerRequestId: { $exists: true, $ne: "" },
-      updatedAt: { $lte: new Date(Date.now() - 2 * 60 * 1000) },
+      updatedAt: { $lte: new Date(Date.now() - 15_000) },
     })
       .sort({ updatedAt: 1 })
       .limit(limit);
