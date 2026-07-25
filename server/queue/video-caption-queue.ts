@@ -142,7 +142,7 @@ export async function enqueueVideoCaptionJob(
     return enqueueDatabaseFallback(jobId);
   }
 
-  const queueJobId = `video-caption:${jobId}`;
+  const queueJobId = `video-caption-${jobId}`;
   try {
     const existing = await queue.getJob(queueJobId);
     if (existing) {
