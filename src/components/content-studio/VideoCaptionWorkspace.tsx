@@ -210,6 +210,7 @@ export function VideoCaptionWorkspace() {
   const [actionBusy, setActionBusy] = useState(false);
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const captionPreviewRef = useRef<HTMLDivElement | null>(null);
   const [playerUrl, setPlayerUrl] = useState("");
   const [playerDurationMs, setPlayerDurationMs] = useState<number>();
   const [playerDurationWarning, setPlayerDurationWarning] = useState("");
@@ -656,6 +657,12 @@ export function VideoCaptionWorkspace() {
     );
   }
 
+  function openCaptionPreviewFullscreen() {
+    captionPreviewRef.current?.requestFullscreen().catch(() => {
+      setError("Không thể mở bản xem thử toàn màn hình.");
+    });
+  }
+
   function updateContext(
     updates: Partial<
       Pick<
@@ -915,10 +922,14 @@ export function VideoCaptionWorkspace() {
               </div>
             )}
 
-            <p className="mb-2 text-xs font-semibold text-slate-600">
-              Chế độ caption
-            </p>
-            <div className="space-y-2">
+            <details className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <summary className="cursor-pointer text-xs font-bold text-slate-700">
+                Kiểu phụ đề: {MODE_OPTIONS.find((option) => option.id === mode)?.title || "Phụ đề theo lời nói"}
+              </summary>
+              <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                Mặc định phù hợp với hầu hết video. Chỉ đổi khi bạn muốn thêm chữ AI theo ngữ cảnh.
+              </p>
+              <div className="mt-3 space-y-2">
               {MODE_OPTIONS.map((option) => {
                 const Icon = modeIcon(option.id);
                 const active = mode === option.id;
@@ -955,7 +966,8 @@ export function VideoCaptionWorkspace() {
                   </button>
                 );
               })}
-            </div>
+              </div>
+            </details>
 
             <button
               type="button"
@@ -971,14 +983,12 @@ export function VideoCaptionWorkspace() {
               {creating ? "Đang khởi tạo..." : "Phân tích video"}
             </button>
 
-            <div className="my-5 border-t border-slate-200" />
-            <div className="mb-3 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-slate-500" />
-                <h3 className="text-sm font-bold text-slate-900">
-                  Dự án gần đây
-                </h3>
-              </div>
+            <details className="mt-5 border-t border-slate-200 pt-4">
+            <summary className="mb-3 flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
+              <History className="h-4 w-4 text-slate-500" />
+              Dự án gần đây
+            </summary>
+            <div className="mb-3 flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => void loadProjects()}
@@ -1029,6 +1039,7 @@ export function VideoCaptionWorkspace() {
                 );
               })}
             </div>
+            </details>
           </aside>
 
           <main className="min-w-0 p-5 md:p-7">
@@ -1080,7 +1091,10 @@ export function VideoCaptionWorkspace() {
 
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
                   <div className="space-y-2">
-                    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
+                    <div
+                      ref={captionPreviewRef}
+                      className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950"
+                    >
                       <div className="relative flex aspect-video items-center justify-center">
                       {previewUrl ? (
                         <video
@@ -1088,6 +1102,7 @@ export function VideoCaptionWorkspace() {
                           key={previewUrl}
                           src={previewUrl}
                           controls
+                          controlsList="nofullscreen"
                           preload="metadata"
                           onLoadedMetadata={(event) =>
                             handlePlayerMetadata(event.currentTarget)
@@ -1142,6 +1157,17 @@ export function VideoCaptionWorkspace() {
                           </div>
                         );
                         })}
+                        {previewUrl && detail.segments.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={openCaptionPreviewFullscreen}
+                            className="absolute right-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-lg bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-slate-800"
+                            title="Mở bản xem thử cùng phụ đề ở toàn màn hình"
+                          >
+                            <MonitorPlay className="h-3.5 w-3.5" />
+                            Toàn màn hình
+                          </button>
+                        )}
                       </div>
                     </div>
                     {playerDurationWarning && (
@@ -1550,7 +1576,7 @@ export function VideoCaptionWorkspace() {
                             className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100 disabled:opacity-60"
                           >
                             <MonitorPlay className="h-4 w-4" />
-                            Xem thử 15 giây
+                            Xem thử video đã ghép (15 giây)
                           </button>
                           <button
                             type="button"
@@ -1562,48 +1588,6 @@ export function VideoCaptionWorkspace() {
                           >
                             <Download className="h-4 w-4" />
                             Tạo video có phụ đề
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void videoCaptionService
-                                .downloadSubtitles(
-                                  detail.project.id,
-                                  "srt"
-                                )
-                                .catch((downloadError) =>
-                                  setError(
-                                    downloadError instanceof Error
-                                      ? downloadError.message
-                                      : "Không thể tải SRT."
-                                  )
-                                )
-                            }
-                            className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100"
-                          >
-                            <Download className="h-4 w-4" />
-                            SRT
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void videoCaptionService
-                                .downloadSubtitles(
-                                  detail.project.id,
-                                  "vtt"
-                                )
-                                .catch((downloadError) =>
-                                  setError(
-                                    downloadError instanceof Error
-                                      ? downloadError.message
-                                      : "Không thể tải VTT."
-                                  )
-                                )
-                            }
-                            className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100"
-                          >
-                            <Download className="h-4 w-4" />
-                            VTT
                           </button>
                         </>
                       )}
@@ -1617,13 +1601,20 @@ export function VideoCaptionWorkspace() {
                     {detail.project.output.previewUrl && (
                       <div className="rounded-2xl border border-slate-200 bg-white p-4">
                         <p className="mb-3 text-sm font-bold text-slate-900">
-                          Bản xem thử 15 giây
+                          Bản xem thử đã ghép phụ đề
                         </p>
-                        <video
-                          src={detail.project.output.previewUrl}
-                          controls
-                          className="aspect-video w-full rounded-xl bg-slate-950 object-contain"
-                        />
+                        <p className="text-xs leading-5 text-slate-500">
+                          Đây là file video 15 giây đã burn caption thật vào khung hình.
+                        </p>
+                        <a
+                          href={detail.project.output.previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100"
+                        >
+                          <MonitorPlay className="h-4 w-4" />
+                          Mở bản xem thử
+                        </a>
                       </div>
                     )}
                     {detail.project.output.captionedVideoUrl && (
