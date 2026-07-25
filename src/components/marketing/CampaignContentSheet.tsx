@@ -93,11 +93,9 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     sensitive: false,
     useKnowledge: false,
   });
-  const [aiLoadingKey, setAiLoadingKey] = useState('');
   const [aiJob, setAiJob] = useState<CampaignSheetAIJob | null>(null);
   const [applyingAI, setApplyingAI] = useState(false);
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-  const [bulkFieldKey, setBulkFieldKey] = useState('title');
   const [runningJob, setRunningJob] = useState<CampaignSheetAIJob | null>(null);
   const [creatingBulkJob, setCreatingBulkJob] = useState(false);
   const [reverting, setReverting] = useState(false);
@@ -427,29 +425,6 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     }
   }
 
-  async function generateAI(row: CampaignSheetRow, targetColumns: CampaignSheetColumn[]) {
-    if (targetColumns.length === 0) {
-      toast.warning('Không còn trường trống nào được phép dùng AI.');
-      return;
-    }
-    const key = `${row.slotId}:${targetColumns.map((column) => column.key).join(',')}`;
-    setAiLoadingKey(key);
-    try {
-      const job = await marketingCampaignService.previewSheetAI(campaignId, {
-        slotId: row.slotId,
-        targetFieldKeys: targetColumns.map((column) => column.key),
-        expectedRevision: row.revision,
-        overwritePolicy: 'empty_only',
-        idempotencyKey: createIdempotencyKey(),
-      });
-      setAiJob(job);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'AI không thể tạo đề xuất.');
-    } finally {
-      setAiLoadingKey('');
-    }
-  }
-
   async function applyAI(fieldKeys?: string[]) {
     if (!aiJob) return;
     setApplyingAI(true);
@@ -469,25 +444,29 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     }
   }
 
-  async function createBulkAIJob() {
-    if (selectedRows.size === 0) {
-      toast.warning('Hãy chọn ít nhất một dòng.');
+  async function createBulkAIJob(targetFieldKeys = bulkAIColumns.map((column) => column.key), label = 'toàn bộ trường AI') {
+    const slotIds = visibleRows
+      .filter((row) => !row.readOnly && (selectedRows.size === 0 || selectedRows.has(row.slotId)))
+      .map((row) => row.slotId);
+
+    if (slotIds.length === 0) {
+      toast.warning('Không có dòng nào có thể dùng AI.');
       return;
     }
-    if (!bulkFieldKey) {
-      toast.warning('Hãy chọn trường cần AI tạo.');
+    if (targetFieldKeys.length === 0) {
+      toast.warning('Chưa có trường nào được bật AI.');
       return;
     }
     setCreatingBulkJob(true);
     try {
       const job = await marketingCampaignService.createSheetAIJob(campaignId, {
-        slotIds: Array.from(selectedRows),
-        targetFieldKeys: [bulkFieldKey],
+        slotIds,
+        targetFieldKeys,
         overwritePolicy: 'suggest_only',
         idempotencyKey: createIdempotencyKey(),
       });
       setRunningJob(job);
-      toast.success(`Đã đưa ${selectedRows.size} dòng vào hàng đợi AI.`);
+      toast.success(`Đã đưa ${slotIds.length} dòng tạo ${label} vào hàng đợi AI.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Không thể tạo AI job hàng loạt.');
     } finally {
@@ -644,21 +623,17 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
         </span>
       </div>
 
-      {selectedRows.size > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-bold text-violet-800">{selectedRows.size} dòng đã chọn</span>
-            <select
-              value={bulkFieldKey}
-              onChange={(event) => setBulkFieldKey(event.target.value)}
-              className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs text-slate-700"
-            >
-              {bulkAIColumns.map((column) => (
-                <option key={column.key} value={column.key}>AI tạo: {column.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+        <div>
+          <p className="text-xs font-bold text-violet-800">AI hoàn thiện nội dung hàng loạt</p>
+          <p className="mt-1 text-[10px] text-violet-700">
+            {selectedRows.size > 0
+              ? `Tạo đề xuất cho ${selectedRows.size} dòng đã chọn.`
+              : 'Chưa chọn dòng: AI sẽ tạo đề xuất cho toàn bộ dòng đang hiển thị.'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedRows.size > 0 && (
             <button
               type="button"
               onClick={() => setSelectedRows(new Set())}
@@ -666,18 +641,18 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
             >
               Bỏ chọn
             </button>
-            <button
-              type="button"
-              disabled={creatingBulkJob || Boolean(runningJob)}
-              onClick={() => void createBulkAIJob()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50"
-            >
-              {creatingBulkJob ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              AI tạo hàng loạt
-            </button>
-          </div>
+          )}
+          <button
+            type="button"
+            disabled={creatingBulkJob || Boolean(runningJob) || bulkAIColumns.length === 0}
+            onClick={() => void createBulkAIJob()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            {creatingBulkJob ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            AI điền toàn dòng
+          </button>
         </div>
-      )}
+      </div>
 
       {runningJob && (
         <div className={`rounded-xl border p-4 ${
@@ -773,23 +748,24 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                   </div>
                   <div className="mt-1 flex items-center gap-1 text-[9px] font-medium uppercase tracking-wide text-slate-400">
                     {column.kind === 'system' ? 'Hệ thống' : 'Tùy chỉnh'}
-                    {column.ai.enabled && <Sparkles className="h-2.5 w-2.5 text-violet-500" />}
+                    {column.ai.enabled && !READ_ONLY_KEYS.has(column.key) && (
+                      <button
+                        type="button"
+                        disabled={creatingBulkJob || Boolean(runningJob)}
+                        onClick={() => void createBulkAIJob([column.key], column.label)}
+                        className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 font-bold normal-case tracking-normal text-violet-700 hover:bg-violet-200 disabled:opacity-50"
+                        title={`AI tạo ${column.label} hàng loạt`}
+                      >
+                        <Sparkles className="h-2.5 w-2.5" /> AI điền
+                      </button>
+                    )}
                   </div>
                 </th>
               ))}
-              <th className="sticky right-0 z-30 w-32 border-b border-slate-200 bg-slate-100 px-3 py-2 text-center font-bold text-slate-700">
-                AI hỗ trợ
-              </th>
             </tr>
           </thead>
           <tbody>
             {visibleRows.map((row, rowIndex) => {
-              const emptyAIColumns = columns.filter((column) =>
-                column.ai.enabled &&
-                !READ_ONLY_KEYS.has(column.key) &&
-                !row.fields[column.key]?.locked &&
-                !currentValue(row, column)
-              );
               return (
                 <tr key={row.slotId} className="group border-b border-slate-100 last:border-b-0 hover:bg-teal-50/20">
                   <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-2 py-2 text-center font-mono text-[10px] text-slate-400 group-hover:bg-teal-50/50">
@@ -866,20 +842,6 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                             )}
 
                             <div className="absolute right-1 top-1 hidden items-center gap-0.5 rounded bg-white/95 p-0.5 shadow-xs group-hover/cell:flex">
-                              {column.ai.enabled && (
-                                <button
-                                  type="button"
-                                  disabled={Boolean(aiLoadingKey)}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={() => void generateAI(row, [column])}
-                                  className="rounded p-1 text-violet-600 hover:bg-violet-50 disabled:opacity-50"
-                                  title="AI tạo ô này"
-                                >
-                                  {aiLoadingKey === `${row.slotId}:${column.key}`
-                                    ? <Loader2 className="h-3 w-3 animate-spin" />
-                                    : <Sparkles className="h-3 w-3" />}
-                                </button>
-                              )}
                               <button
                                 type="button"
                                 onMouseDown={(event) => event.preventDefault()}
@@ -908,19 +870,6 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                       </td>
                     );
                   })}
-                  <td className="sticky right-0 z-10 border-l border-slate-200 bg-white p-2 text-center group-hover:bg-teal-50/50">
-                    <button
-                      type="button"
-                      disabled={row.readOnly || emptyAIColumns.length === 0 || Boolean(aiLoadingKey)}
-                      onClick={() => void generateAI(row, emptyAIColumns)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-[10px] font-bold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      {aiLoadingKey.startsWith(`${row.slotId}:`)
-                        ? <Loader2 className="h-3 w-3 animate-spin" />
-                        : <Sparkles className="h-3 w-3" />}
-                      Hoàn thiện dòng
-                    </button>
-                  </td>
                 </tr>
               );
             })}
