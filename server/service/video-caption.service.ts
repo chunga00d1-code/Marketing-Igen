@@ -2057,62 +2057,45 @@ export const videoCaptionService = {
       operation: "transcribe",
       status: "awaiting_provider",
       providerRequestId: { $exists: true, $ne: "" },
-      updatedAt: { $lte: new Date(Date.now() - 15_000) },
+      updatedAt: { $lte: new Date(Date.now() - 10 * 60 * 1000) },
     })
       .sort({ updatedAt: 1 })
       .limit(limit);
     if (jobs.length) {
-      logCaptionStt("reconcile_batch_started", {
+      logCaptionStt("webhook_timeout_batch_started", {
         jobCount: jobs.length,
         limit,
       });
     }
 
-    let completed = 0;
+    let failed = 0;
     for (const job of jobs) {
       try {
-        const project = await VideoCaptionProjectModel.findOne({
-          _id: job.projectId,
-          companyCode: job.companyCode,
-        });
-        if (!project || !job.providerRequestId) continue;
-        const provider = createSpeechTranscriptionProvider(project.createdBy);
-        const transcript = await provider.retrieve(job.providerRequestId);
-        if (!transcript) continue;
-        await this.completeTranscriptionWebhook({
-          jobId: String(job._id),
-          projectId: String(project._id),
-          companyCode: project.companyCode,
-          providerRequestId: job.providerRequestId,
-          transcription: {
-            language_code: transcript.language,
-            words: transcript.words.map((word) => ({
-              text: word.text,
-              start: word.startMs / 1000,
-              end: word.endMs / 1000,
-              type: "word" as const,
-              logprob:
-                word.confidence && word.confidence > 0
-                  ? Math.log(word.confidence)
-                  : undefined,
-            })),
-          },
-        });
-        completed += 1;
+        await this.failJob(
+          String(job._id),
+          new VideoCaptionError(
+            "Không nhận được webhook ElevenLabs sau 10 phút. Hãy kiểm tra URL, sự kiện Transcription completed, webhook ID và secret.",
+            "ELEVENLABS_WEBHOOK_TIMEOUT",
+            "provider",
+            true,
+            504
+          )
+        );
+        failed += 1;
       } catch (error) {
         console.error(
-          `[Video Caption Reconcile] Job ${job._id} failed:`,
+          `[Video Caption Webhook Timeout] Job ${job._id} failed:`,
           error
         );
       }
     }
     if (jobs.length) {
-      logCaptionStt("reconcile_batch_finished", {
+      logCaptionStt("webhook_timeout_batch_finished", {
         jobCount: jobs.length,
-        completed,
+        failed,
       });
     }
-    return completed;
+    return failed;
   },
 
   async recoverStaleJobs() {

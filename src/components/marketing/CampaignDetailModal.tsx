@@ -246,7 +246,7 @@ export default function CampaignDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300">
-      <div className={`relative w-full ${activeSlot ? 'max-w-7xl' : 'max-w-5xl'} max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 animate-scaleIn`}>
+      <div className="relative w-full max-w-7xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 animate-scaleIn">
 
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-150 px-6 py-4 bg-slate-50/50 shrink-0">
@@ -282,7 +282,7 @@ export default function CampaignDetailModal({
         {/* Modal Navigation Tabs Header */}
         {!loadingDetail && campaignDetail && (
           <div className="sticky top-0 z-10 shrink-0 border-b border-slate-200 bg-slate-100/90 px-6 pt-2.5 flex items-center gap-1.5 select-none overflow-x-auto whitespace-nowrap scrollbar-none">
-            <button
+            {/* <button
               type="button"
               onClick={() => setActiveMainTab('published_links')}
               className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'published_links'
@@ -291,7 +291,7 @@ export default function CampaignDetailModal({
                 }`}
             >
               Link theo dõi bài đăng FB ({publishedSlotsList.length})
-            </button>
+            </button> */}
             <button
               type="button"
               onClick={() => setActiveMainTab('research')}
