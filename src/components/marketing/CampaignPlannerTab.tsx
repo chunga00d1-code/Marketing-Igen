@@ -53,20 +53,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [apifySources, setApifySources] = useState<string[]>(['google', 'facebook', 'tiktok']);
   const isSinglePost = creationMode === 'single';
 
-  const toggleApifySource = (source: string) => {
-    setApifySources((prev) => {
-      if (prev.includes(source)) {
-        return prev.filter((s) => s !== source);
-      } else {
-        if (prev.length >= 3) {
-          toast.warning('Chỉ được chọn tối đa 3 nguồn dữ liệu nghiên cứu.');
-          return prev;
-        }
-        return [...prev, source];
-      }
-    });
-  };
-
   // Cleanup customSchedule when date range changes
   useEffect(() => {
     const start = new Date(`${startDate}T00:00:00`);
@@ -856,35 +842,31 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {[
-                    { id: 'google', label: 'Tìm kiếm Google', icon: Globe, disabled: false },
-                    { id: 'facebook', label: 'Bài viết Facebook', icon: Facebook, disabled: false },
-                    { id: 'tiktok', label: 'Xu hướng TikTok', icon: Sparkles, disabled: false }
+                    { id: 'google', label: 'Tìm kiếm Google', icon: Globe },
+                    { id: 'facebook', label: 'Bài viết Facebook', icon: Facebook },
+                    { id: 'tiktok', label: 'Xu hướng TikTok', icon: Sparkles }
                   ].map((source) => {
                     const isSelected = apifySources.includes(source.id);
                     const IconComp = source.icon;
                     return (
-                      <button
-                        type="button"
+                      <div
                         key={source.id}
-                        disabled={source.disabled}
-                        onClick={() => !source.disabled && toggleApifySource(source.id)}
-                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border transition-all select-none relative ${source.disabled
-                          ? 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed opacity-60'
-                          : isSelected
-                            ? 'border-indigo-300 bg-indigo-50/50 text-indigo-950 shadow-2xs font-bold'
-                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-600 cursor-pointer'
-                          }`}
+                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border select-none relative opacity-65 cursor-default ${
+                          isSelected
+                            ? 'border-indigo-300 bg-indigo-50/50 text-indigo-950 font-bold'
+                            : 'border-slate-200 bg-white text-slate-400'
+                        }`}
                       >
-                        <div className={`rounded-lg p-1.5 ${source.disabled ? 'bg-slate-200 text-slate-450' : isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                        <div className={`rounded-lg p-1.5 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                           <IconComp size={15} />
                         </div>
-                        <span className={`text-xs font-bold ${source.disabled ? 'text-slate-400' : 'text-slate-800'}`}>{source.label}</span>
-                        {isSelected && !source.disabled && (
+                        <span className="text-xs font-bold text-slate-800">{source.label}</span>
+                        {isSelected && (
                           <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
                             ✓
                           </span>
                         )}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>

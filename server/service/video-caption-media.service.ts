@@ -252,6 +252,43 @@ function parseFrameRate(value?: string) {
   return numerator / denominator;
 }
 
+function positiveDuration(value?: string) {
+  const duration = Number(value || 0);
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+}
+
+export function resolveVideoCaptionDurations(
+  probe: ProbeResult,
+  videoStream?: ProbeStream,
+  audioStream?: ProbeStream
+) {
+  const containerDurationSeconds = positiveDuration(probe.format?.duration);
+  const videoStreamDurationSeconds = positiveDuration(videoStream?.duration);
+  const audioStreamDurationSeconds = positiveDuration(audioStream?.duration);
+  const candidates = [
+    { source: "video_stream" as const, value: videoStreamDurationSeconds },
+    { source: "audio_stream" as const, value: audioStreamDurationSeconds },
+    { source: "container" as const, value: containerDurationSeconds },
+  ].filter(
+    (item): item is {
+      source: "video_stream" | "audio_stream" | "container";
+      value: number;
+    } => item.value !== undefined
+  );
+  const selected = candidates.reduce(
+    (current, candidate) =>
+      !current || candidate.value > current.value ? candidate : current,
+    undefined as (typeof candidates)[number] | undefined
+  );
+  return {
+    durationSeconds: selected?.value,
+    durationSource: selected?.source,
+    containerDurationSeconds,
+    videoStreamDurationSeconds,
+    audioStreamDurationSeconds,
+  };
+}
+
 function runFfprobe(videoUrl: string) {
   return new Promise<ProbeResult>((resolve, reject) => {
     const child = spawn(
@@ -351,6 +388,52 @@ function buildCloudinaryProxyUrl(videoUrl: string) {
   );
 }
 
+async function buildVerifiedProxyUrl(
+  sourceUrl: string,
+  sourceDurationSeconds: number
+) {
+  const candidate = buildCloudinaryProxyUrl(sourceUrl);
+  if (candidate === sourceUrl) return undefined;
+  try {
+    const probe = await runFfprobe(candidate);
+    const videoStream = probe.streams?.find(
+      (stream) => stream.codec_type === "video"
+    );
+    const audioStream = probe.streams?.find(
+      (stream) => stream.codec_type === "audio"
+    );
+    const proxyDuration = resolveVideoCaptionDurations(
+      probe,
+      videoStream,
+      audioStream
+    ).durationSeconds;
+    const toleranceSeconds = Math.max(0.75, sourceDurationSeconds * 0.05);
+    if (
+      !proxyDuration ||
+      Math.abs(proxyDuration - sourceDurationSeconds) > toleranceSeconds
+    ) {
+      console.warn(
+        "[Video Caption Media] proxy_duration_mismatch",
+        JSON.stringify({
+          sourceDurationSeconds,
+          proxyDurationSeconds: proxyDuration || null,
+          toleranceSeconds,
+        })
+      );
+      return undefined;
+    }
+    return candidate;
+  } catch (error) {
+    console.warn(
+      "[Video Caption Media] proxy_validation_failed",
+      JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+      })
+    );
+    return undefined;
+  }
+}
+
 export const videoCaptionMediaService = {
   async inspect(videoUrl: string): Promise<{
     sourceUrl: string;
@@ -376,10 +459,13 @@ export const videoCaptionMediaService = {
       );
     }
 
-    const durationSeconds = Number(
-      probe.format?.duration || videoStream.duration || 0
+    const durations = resolveVideoCaptionDurations(
+      probe,
+      videoStream,
+      audioStream
     );
-    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    const durationSeconds = durations.durationSeconds;
+    if (!durationSeconds) {
       throw new VideoCaptionError(
         "Không xác định được thời lượng video.",
         "VIDEO_DURATION_MISSING",
@@ -411,19 +497,35 @@ export const videoCaptionMediaService = {
         ].join("|")
       )
       .digest("hex");
+    const proxyUrl = await buildVerifiedProxyUrl(
+      remote.finalUrl,
+      durationSeconds
+    );
+    const durationToMs = (value?: number) =>
+      value === undefined ? undefined : Math.round(value * 1000);
 
     return {
       sourceUrl: remote.finalUrl,
       fingerprint,
       metadata: {
         durationMs: Math.round(durationSeconds * 1000),
+        containerDurationMs: durationToMs(
+          durations.containerDurationSeconds
+        ),
+        videoStreamDurationMs: durationToMs(
+          durations.videoStreamDurationSeconds
+        ),
+        audioStreamDurationMs: durationToMs(
+          durations.audioStreamDurationSeconds
+        ),
+        durationSource: durations.durationSource,
         width: videoStream.width,
         height: videoStream.height,
         fps: parseFrameRate(
           videoStream.avg_frame_rate || videoStream.r_frame_rate
         ),
         hasAudio: Boolean(audioStream),
-        proxyUrl: buildCloudinaryProxyUrl(remote.finalUrl),
+        proxyUrl,
         contentType: remote.contentType,
         contentLength:
           remote.contentLength || Number(probe.format?.size || 0) || undefined,

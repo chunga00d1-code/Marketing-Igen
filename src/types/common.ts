@@ -29,6 +29,9 @@ export interface UserProfile {
     voiceId?: string;
     apiKey?: string;
   } | null;
+  elevenlabsAccess?: {
+    apiKey?: string;
+  } | null;
   jobTitle?: string;
   department?: string;
   phone?: string;

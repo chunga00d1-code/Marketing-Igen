@@ -4,11 +4,18 @@ import {
   SpeechTranscriptionProvider,
 } from "../../shared/video-caption.contract";
 import { VideoCaptionError } from "./video-caption-error";
+import { createHash } from "crypto";
 
 const ELEVENLABS_STT_URL =
   "https://api.elevenlabs.io/v1/speech-to-text";
 const ELEVENLABS_STT_MODEL =
   process.env.VIDEO_CAPTION_STT_MODEL?.trim() || "scribe_v2";
+const DIRECT_TRANSCRIPTION_MAX_DURATION_MS = Math.max(
+  10_000,
+  (Number(
+    process.env.VIDEO_CAPTION_STT_DIRECT_MAX_DURATION_SECONDS
+  ) || 120) * 1000
+);
 
 type ElevenLabsWord = {
   text?: string;
@@ -24,12 +31,50 @@ type ElevenLabsTranscript = {
   words?: ElevenLabsWord[];
 };
 
-async function resolveElevenLabsApiKey(userId: string) {
+type ElevenLabsWebhookResponse = {
+  request_id?: string;
+};
+
+type ElevenLabsKeySource = "user" | "company" | "env" | "missing";
+
+function logStt(event: string, data: Record<string, unknown>) {
+  console.info(`[Video Caption STT] ${event}`, JSON.stringify(data));
+}
+
+function keyFingerprint(apiKey: string) {
+  return apiKey
+    ? createHash("sha256").update(apiKey).digest("hex").slice(0, 10)
+    : "missing";
+}
+
+function providerErrorDetail(payload: unknown) {
+  if (!payload || typeof payload !== "object") return undefined;
+  const value = payload as {
+    detail?:
+      | string
+      | { message?: string; status?: string }
+      | Array<{ msg?: string }>;
+    message?: string;
+  };
+  if (Array.isArray(value.detail)) {
+    return value.detail.map((item) => item.msg).filter(Boolean).join("; ");
+  }
+  if (typeof value.detail === "string") return value.detail;
+  if (value.detail && typeof value.detail === "object") {
+    return value.detail.message || value.detail.status;
+  }
+  return value.message;
+}
+
+export async function resolveElevenLabsApiKey(userId: string): Promise<{
+  apiKey: string;
+  source: ElevenLabsKeySource;
+}> {
   const user = await UserModel.findById(userId)
     .select("elevenlabsAccess companyCode")
     .lean();
   const userKey = user?.elevenlabsAccess?.apiKey?.trim();
-  if (userKey) return userKey;
+  if (userKey) return { apiKey: userKey, source: "user" };
 
   if (user?.companyCode && user.companyCode !== "SYSTEM") {
     const company = await CompanyModel.findOne({
@@ -38,10 +83,14 @@ async function resolveElevenLabsApiKey(userId: string) {
       .select("elevenlabsConfig")
       .lean();
     const companyKey = company?.elevenlabsConfig?.apiKey?.trim();
-    if (companyKey) return companyKey;
+    if (companyKey) return { apiKey: companyKey, source: "company" };
   }
 
-  return process.env.ELEVENLABS_API_KEY?.trim() || "";
+  const environmentKey = process.env.ELEVENLABS_API_KEY?.trim() || "";
+  return {
+    apiKey: environmentKey,
+    source: environmentKey ? "env" : "missing",
+  };
 }
 
 function logProbabilityToConfidence(logprob?: number) {
@@ -49,6 +98,29 @@ function logProbabilityToConfidence(logprob?: number) {
     return undefined;
   }
   return Math.max(0, Math.min(1, Math.exp(logprob)));
+}
+
+export function normalizeElevenLabsTranscript(
+  transcript: ElevenLabsTranscript
+) {
+  return {
+    language: transcript.language_code,
+    words: (transcript.words || [])
+      .filter(
+        (word) =>
+          word.type === "word" &&
+          typeof word.start === "number" &&
+          typeof word.end === "number" &&
+          Boolean(word.text?.trim())
+      )
+      .map((word) => ({
+        text: String(word.text).trim(),
+        startMs: Math.max(0, Math.round(Number(word.start) * 1000)),
+        endMs: Math.max(1, Math.round(Number(word.end) * 1000)),
+        confidence: logProbabilityToConfidence(word.logprob),
+      })),
+    cost: undefined,
+  };
 }
 
 class ElevenLabsSpeechTranscriptionProvider
@@ -60,12 +132,22 @@ class ElevenLabsSpeechTranscriptionProvider
     private readonly userId: string
   ) {}
 
-  async transcribe(input: {
+  async start(input: {
     videoUrl: string;
     language?: string;
     idempotencyKey: string;
+    webhookMetadata: Record<string, string>;
+    delivery: "direct" | "webhook";
   }) {
-    const apiKey = await resolveElevenLabsApiKey(this.userId);
+    const { apiKey, source: keySource } =
+      await resolveElevenLabsApiKey(this.userId);
+    const fingerprint = keyFingerprint(apiKey);
+    logStt("key_resolved", {
+      userId: this.userId,
+      keySource,
+      keyFingerprint: fingerprint,
+      keyLength: apiKey.length,
+    });
     if (!apiKey) {
       throw new VideoCaptionError(
         "Chưa cấu hình ElevenLabs API key cho tài khoản hoặc doanh nghiệp.",
@@ -83,39 +165,81 @@ class ElevenLabsSpeechTranscriptionProvider
     body.append("tag_audio_events", "false");
     body.append("diarize", "false");
     body.append("no_verbatim", "true");
+    const useWebhook = input.delivery === "webhook";
+    body.append("webhook", String(useWebhook));
+    const webhookId = process.env.ELEVENLABS_STT_WEBHOOK_ID?.trim();
+    if (useWebhook) {
+      body.append(
+        "webhook_metadata",
+        JSON.stringify(input.webhookMetadata)
+      );
+      if (webhookId) body.append("webhook_id", webhookId);
+    }
     if (input.language) body.append("language_code", input.language);
 
-    const response = await fetch(ELEVENLABS_STT_URL, {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Idempotency-Key": input.idempotencyKey,
-      },
-      body,
-      signal: AbortSignal.timeout(30 * 60 * 1000),
+    const startedAt = Date.now();
+    logStt("request_started", {
+      jobId: input.webhookMetadata.jobId,
+      projectId: input.webhookMetadata.projectId,
+      companyCode: input.webhookMetadata.companyCode,
+      model: ELEVENLABS_STT_MODEL,
+      language: input.language || "auto",
+      sourceHost: new URL(input.videoUrl).hostname,
+      delivery: input.delivery,
+      webhookIdConfigured: useWebhook && Boolean(webhookId),
+      keySource,
+      keyFingerprint: fingerprint,
     });
+    let response: Response;
+    try {
+      response = await fetch(ELEVENLABS_STT_URL, {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Idempotency-Key": input.idempotencyKey,
+        },
+        body,
+        signal: AbortSignal.timeout(30 * 60 * 1000),
+      });
+    } catch (error) {
+      logStt("request_network_error", {
+        jobId: input.webhookMetadata.jobId,
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     const requestId =
       response.headers.get("request-id") ||
       response.headers.get("x-request-id") ||
       undefined;
     const payload = (await response.json().catch(() => ({}))) as
+      | ElevenLabsWebhookResponse
       | ElevenLabsTranscript
-      | { detail?: string | Array<{ msg?: string }>; message?: string };
+      | {
+          detail?:
+            | string
+            | { message?: string; status?: string }
+            | Array<{ msg?: string }>;
+          message?: string;
+        };
+
+    const errorDetail = providerErrorDetail(payload);
+    logStt("response_received", {
+      jobId: input.webhookMetadata.jobId,
+      status: response.status,
+      ok: response.ok,
+      requestId: requestId || null,
+      elapsedMs: Date.now() - startedAt,
+      providerError: response.ok ? null : errorDetail || null,
+      keySource,
+      keyFingerprint: fingerprint,
+    });
 
     if (!response.ok) {
-      const detail =
-        "detail" in payload && Array.isArray(payload.detail)
-          ? payload.detail.map((item) => item.msg).filter(Boolean).join("; ")
-          : "detail" in payload
-            ? payload.detail
-            : "message" in payload
-              ? payload.message
-              : undefined;
-      const detailText =
-        typeof detail === "string" ? detail : undefined;
       throw new VideoCaptionError(
-        detailText || `ElevenLabs STT trả về HTTP ${response.status}.`,
+        errorDetail || `ElevenLabs STT trả về HTTP ${response.status}.`,
         `ELEVENLABS_STT_${response.status}`,
         response.status === 401 || response.status === 403
           ? "authentication"
@@ -127,34 +251,63 @@ class ElevenLabsSpeechTranscriptionProvider
       );
     }
 
-    const transcript = payload as ElevenLabsTranscript;
+    if (!useWebhook) {
+      const transcription = normalizeElevenLabsTranscript(
+        payload as ElevenLabsTranscript
+      );
+      logStt("direct_completed", {
+        jobId: input.webhookMetadata.jobId,
+        providerRequestId: requestId || null,
+        elapsedMs: Date.now() - startedAt,
+        language: transcription.language || null,
+        wordCount: transcription.words.length,
+      });
+      return {
+        delivery: "direct" as const,
+        providerRequestId: requestId,
+        transcription,
+      };
+    }
+
+    const providerRequestId =
+      (payload as ElevenLabsWebhookResponse).request_id || requestId;
+    if (!providerRequestId) {
+      throw new VideoCaptionError(
+        "ElevenLabs không trả về mã tác vụ transcription.",
+        "ELEVENLABS_STT_REQUEST_ID_MISSING",
+        "provider",
+        false,
+        502
+      );
+    }
+    logStt("request_accepted", {
+      jobId: input.webhookMetadata.jobId,
+      providerRequestId,
+      elapsedMs: Date.now() - startedAt,
+    });
     return {
-      language: transcript.language_code,
-      words: (transcript.words || [])
-        .filter(
-          (word) =>
-            word.type === "word" &&
-            typeof word.start === "number" &&
-            typeof word.end === "number" &&
-            Boolean(word.text?.trim())
-        )
-        .map((word) => ({
-          text: String(word.text).trim(),
-          startMs: Math.max(0, Math.round(Number(word.start) * 1000)),
-          endMs: Math.max(1, Math.round(Number(word.end) * 1000)),
-          confidence: logProbabilityToConfidence(word.logprob),
-        })),
-      providerRequestId: requestId,
-      cost: undefined,
+      delivery: "webhook" as const,
+      providerRequestId,
     };
   }
+
 }
 
 export function createSpeechTranscriptionProvider(userId: string) {
   return new ElevenLabsSpeechTranscriptionProvider(userId);
 }
 
+export function getVideoCaptionTranscriptionDelivery(
+  durationMs?: number
+): "direct" | "webhook" {
+  return durationMs &&
+    durationMs <= DIRECT_TRANSCRIPTION_MAX_DURATION_MS
+    ? "direct"
+    : "webhook";
+}
+
 export const videoCaptionTranscriptionConfig = {
   provider: "elevenlabs",
   model: ELEVENLABS_STT_MODEL,
+  directMaxDurationMs: DIRECT_TRANSCRIPTION_MAX_DURATION_MS,
 };

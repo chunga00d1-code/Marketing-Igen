@@ -15,6 +15,12 @@ export default function CustomTimePicker({ value, onChange, disabled }: CustomTi
   const timeString = typeof value === "string" && value.includes(":") ? value : "09:00";
   const [hour, minute] = timeString.split(":");
 
+  const [inputValue, setInputValue] = useState(timeString);
+
+  useEffect(() => {
+    setInputValue(timeString);
+  }, [timeString]);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -26,6 +32,82 @@ export default function CustomTimePicker({ value, onChange, disabled }: CustomTi
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [isOpen]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+
+    // 1. Only allow digits and colon
+    val = val.replace(/[^0-9:]/g, "");
+
+    // 2. Prevent multiple colons (keep only the first one)
+    const parts = val.split(":");
+    if (parts.length > 2) {
+      val = parts[0] + ":" + parts.slice(1).join("");
+    }
+
+    // 3. Limit to max 5 characters (HH:MM)
+    val = val.slice(0, 5);
+
+    setInputValue(val);
+
+    // Strict HH:MM check (24h format) to update parent immediately
+    const strictTimeRegex = /^(0\d|1\d|2[0-3]):[0-5]\d$/;
+    if (strictTimeRegex.test(val)) {
+      onChange(val);
+    }
+  };
+
+  const handleInputBlur = () => {
+    const val = inputValue.trim();
+
+    // 1. Try standard flexible HH:MM format first
+    const flexibleTimeRegex = /^(\d{1,2}):(\d{1,2})$/;
+    const match = val.match(flexibleTimeRegex);
+    if (match) {
+      const h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+        const formatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        setInputValue(formatted);
+        onChange(formatted);
+        return;
+      }
+    }
+
+    // 2. Try parsing pure digits if no colon is present (e.g. "930" -> "09:30")
+    if (/^\d{1,4}$/.test(val)) {
+      let h = 0;
+      let m = 0;
+      if (val.length === 4) {
+        h = parseInt(val.slice(0, 2), 10);
+        m = parseInt(val.slice(2, 4), 10);
+      } else if (val.length === 3) {
+        h = parseInt(val.slice(0, 1), 10);
+        m = parseInt(val.slice(1, 3), 10);
+      } else {
+        h = parseInt(val, 10);
+        m = 0;
+      }
+
+      if (h >= 0 && h < 24 && m >= 0 && m < 60) {
+        const formatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+        setInputValue(formatted);
+        onChange(formatted);
+        return;
+      }
+    }
+
+    // If not a valid format, reset to current timeString
+    setInputValue(timeString);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+      setIsOpen(false);
+    }
+  };
 
   const hours = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
   
@@ -47,15 +129,28 @@ export default function CustomTimePicker({ value, onChange, disabled }: CustomTi
 
   return (
     <div className="relative font-sans w-full" ref={containerRef} id="custom_time_picker_container">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
-        className="mt-1.5 flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-mono font-semibold text-slate-750 outline-none transition hover:bg-slate-50 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
-      >
-        <span>{timeString}</span>
-        <Clock size={14} className="text-slate-400" />
-      </button>
+      <div className="relative mt-1.5 w-full">
+        <input
+          type="text"
+          disabled={disabled}
+          value={inputValue}
+          onChange={handleInputChange}
+          onBlur={handleInputBlur}
+          onKeyDown={handleKeyDown}
+          onFocus={() => !disabled && setIsOpen(true)}
+          placeholder="HH:MM"
+          className="block w-full rounded-xl border border-slate-200 bg-white pl-3.5 pr-10 py-2.5 text-xs font-mono font-semibold text-slate-750 outline-none transition hover:bg-slate-50 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          disabled={disabled}
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-450 hover:text-indigo-600 transition disabled:text-slate-350 cursor-pointer disabled:cursor-not-allowed"
+        >
+          <Clock size={14} />
+        </button>
+      </div>
 
       {isOpen && (
         <div className="absolute right-0 md:left-0 z-50 mt-1.5 flex w-44 rounded-2xl border border-slate-150 bg-white p-3 shadow-xl animate-fadeIn">

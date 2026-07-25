@@ -27,6 +27,13 @@ const SourceSchema = new Schema(
 const VideoMetadataSchema = new Schema(
   {
     durationMs: { type: Number, min: 0 },
+    containerDurationMs: { type: Number, min: 0 },
+    videoStreamDurationMs: { type: Number, min: 0 },
+    audioStreamDurationMs: { type: Number, min: 0 },
+    durationSource: {
+      type: String,
+      enum: ["container", "video_stream", "audio_stream"],
+    },
     width: { type: Number, min: 1 },
     height: { type: Number, min: 1 },
     fps: { type: Number, min: 0 },

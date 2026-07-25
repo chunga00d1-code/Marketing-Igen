@@ -59,6 +59,7 @@ export default function UserAdminTab() {
   const [userHeyGenAvatarIds, setUserHeyGenAvatarIds] = useState("");
   const [userHeyGenVoiceId, setUserHeyGenVoiceId] = useState("");
   const [userHeyGenApiKey, setUserHeyGenApiKey] = useState("");
+  const [userElevenLabsApiKey, setUserElevenLabsApiKey] = useState("");
   const [submittingUser, setSubmittingUser] = useState(false);
   const [isHeyGenModalOpen, setIsHeyGenModalOpen] = useState(false);
   const [editingHeyGenUser, setEditingHeyGenUser] = useState<UserProfile | null>(null);
@@ -83,6 +84,7 @@ export default function UserAdminTab() {
     setUserHeyGenAvatarIds("");
     setUserHeyGenVoiceId("");
     setUserHeyGenApiKey("");
+    setUserElevenLabsApiKey("");
   };
   const formatAvatarIds = (user?: UserProfile | null) =>
     Array.isArray(user?.heygenAccess?.avatarIds) && user?.heygenAccess?.avatarIds.length > 0
@@ -561,6 +563,9 @@ export default function UserAdminTab() {
         voiceId: userHeyGenVoiceId.trim() || undefined,
         apiKey: userHeyGenApiKey.trim() || undefined,
       };
+      const elevenlabsAccessPayload = {
+        apiKey: userElevenLabsApiKey.trim(),
+      };
 
       if (editingUser) {
         await authService.updateUser(editingUser.uid, {
@@ -574,6 +579,7 @@ export default function UserAdminTab() {
           division: userDepartment.trim() || "",
           phone: editingUser.phone || "",
           heygenAccess: heygenAccessPayload,
+          elevenlabsAccess: elevenlabsAccessPayload,
         });
 
         toast.success(`Đã cập nhật tài khoản "${userDisplayName}".`);
@@ -590,7 +596,8 @@ export default function UserAdminTab() {
           userDepartment.trim() || undefined,
           userDepartment.trim() || undefined,
           undefined,
-          heygenAccessPayload
+          heygenAccessPayload,
+          elevenlabsAccessPayload
         );
 
         toast.success(`Đăng ký tài khoản cho "${userDisplayName}" thành công!`);
@@ -629,6 +636,7 @@ export default function UserAdminTab() {
     setUserHeyGenAvatarIds(formatAvatarIds(user) === "-" ? "" : formatAvatarIds(user));
     setUserHeyGenVoiceId(user.heygenAccess?.voiceId || "");
     setUserHeyGenApiKey(user.heygenAccess?.apiKey || "");
+    setUserElevenLabsApiKey(user.elevenlabsAccess?.apiKey || "");
     setIsUserModalOpen(true);
   };
 
@@ -1277,6 +1285,8 @@ export default function UserAdminTab() {
         setUserHeyGenVoiceId={setUserHeyGenVoiceId}
         userHeyGenApiKey={userHeyGenApiKey}
         setUserHeyGenApiKey={setUserHeyGenApiKey}
+        userElevenLabsApiKey={userElevenLabsApiKey}
+        setUserElevenLabsApiKey={setUserElevenLabsApiKey}
         getAvailableRoles={getAvailableRoles}
         userProfile={userProfile}
         companies={companies}

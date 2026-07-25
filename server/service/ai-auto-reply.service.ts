@@ -779,6 +779,7 @@ export const aiAutoReplyService = {
               companyCode,
               query: queryText,
               channel,
+              pageId: channel === "facebook" ? resolvedPlatformId : undefined,
               topK: 5,
             });
 

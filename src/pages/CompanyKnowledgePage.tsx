@@ -19,9 +19,15 @@ import {
   CompanyKnowledgeDocument,
   CompanyKnowledgeHealth,
   KnowledgeChannelScope,
+  KnowledgeDocumentType,
+  KnowledgePageScope,
   KnowledgePurposeScope,
   companyKnowledgeService,
 } from "../services/companyKnowledgeService";
+import {
+  SocialIntegration,
+  socialIntegrationService,
+} from "../services/socialIntegrationService";
 import { toast } from "./Toast";
 
 const PURPOSES: Array<{
@@ -43,6 +49,17 @@ const CHANNELS: Array<{
   { id: "facebook", label: "Facebook" },
   { id: "zalo", label: "Zalo" },
   { id: "tiktok", label: "TikTok" },
+];
+
+const DOCUMENT_TYPES: Array<{ id: KnowledgeDocumentType; label: string }> = [
+  { id: "general", label: "Tự động nhận diện / tài liệu chung" },
+  { id: "company_profile", label: "Thông tin công ty" },
+  { id: "product", label: "Sản phẩm" },
+  { id: "service", label: "Dịch vụ" },
+  { id: "pricing", label: "Bảng giá" },
+  { id: "policy", label: "Chính sách" },
+  { id: "faq", label: "Câu hỏi thường gặp" },
+  { id: "brand_guideline", label: "Nhận diện thương hiệu" },
 ];
 
 function toggleScope<T extends string>(current: T[], value: T) {
@@ -93,6 +110,75 @@ function ScopePicker<T extends string>({
   );
 }
 
+function PageScopePicker({
+  pages,
+  pageScope,
+  pageIds,
+  onScopeChange,
+  onPageIdsChange,
+}: {
+  pages: SocialIntegration[];
+  pageScope: KnowledgePageScope;
+  pageIds: string[];
+  onScopeChange: (scope: KnowledgePageScope) => void;
+  onPageIdsChange: (ids: string[]) => void;
+}) {
+  return (
+    <fieldset className="md:col-span-2">
+      <legend className="mb-2 text-xs font-semibold text-slate-700">
+        Facebook Page sử dụng tài liệu
+      </legend>
+      <div className="flex flex-wrap gap-2">
+        {([
+          ["all", "Đồng bộ cho mọi Page"],
+          ["selected", "Chỉ Page được chọn"],
+        ] as const).map(([scope, label]) => (
+          <button
+            key={scope}
+            type="button"
+            onClick={() => {
+              onScopeChange(scope);
+              if (scope === "all") onPageIdsChange([]);
+            }}
+            className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold ${
+              pageScope === scope
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-slate-200 bg-white text-slate-500"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {pageScope === "selected" && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {pages.length === 0 ? (
+            <p className="text-xs text-amber-600">
+              Chưa có Facebook Page nào đang kết nối.
+            </p>
+          ) : pages.map((page) => {
+            const pageId = page.username || "";
+            return (
+              <label key={page._id || pageId} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={pageIds.includes(pageId)}
+                  onChange={() => onPageIdsChange(
+                    pageIds.includes(pageId)
+                      ? pageIds.filter((id) => id !== pageId)
+                      : [...pageIds, pageId]
+                  )}
+                />
+                <span className="truncate">{page.displayName}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+    </fieldset>
+  );
+}
+
 export default function CompanyKnowledgePage() {
   const { userProfile } = useAuth();
   const canManage = Boolean(
@@ -101,6 +187,7 @@ export default function CompanyKnowledgePage() {
   );
   const [health, setHealth] = useState<CompanyKnowledgeHealth | null>(null);
   const [documents, setDocuments] = useState<CompanyKnowledgeDocument[]>([]);
+  const [facebookPages, setFacebookPages] = useState<SocialIntegration[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
@@ -111,6 +198,9 @@ export default function CompanyKnowledgePage() {
   const [channelScope, setChannelScope] = useState<KnowledgeChannelScope[]>([
     "all",
   ]);
+  const [pageScope, setPageScope] = useState<KnowledgePageScope>("all");
+  const [pageIds, setPageIds] = useState<string[]>([]);
+  const [documentType, setDocumentType] = useState<KnowledgeDocumentType>("general");
   const [editingId, setEditingId] = useState("");
   const [editPurposeScope, setEditPurposeScope] = useState<
     KnowledgePurposeScope[]
@@ -118,16 +208,21 @@ export default function CompanyKnowledgePage() {
   const [editChannelScope, setEditChannelScope] = useState<
     KnowledgeChannelScope[]
   >(["all"]);
+  const [editPageScope, setEditPageScope] = useState<KnowledgePageScope>("all");
+  const [editPageIds, setEditPageIds] = useState<string[]>([]);
+  const [editDocumentType, setEditDocumentType] = useState<KnowledgeDocumentType>("general");
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextHealth, nextDocuments] = await Promise.all([
+      const [nextHealth, nextDocuments, integrations] = await Promise.all([
         companyKnowledgeService.health(),
         companyKnowledgeService.listDocuments(),
+        socialIntegrationService.getIntegrations("Facebook").catch(() => []),
       ]);
       setHealth(nextHealth);
       setDocuments(nextDocuments);
+      setFacebookPages(integrations.filter((item) => item.isConnected && item.username));
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -159,11 +254,15 @@ export default function CompanyKnowledgePage() {
       toast.error("Hãy nhập link Google Drive, Doc hoặc Sheet công khai.");
       return;
     }
+    if (pageScope === "selected" && pageIds.length === 0) {
+      toast.error("Hãy chọn ít nhất một Facebook Page.");
+      return;
+    }
     setBusy(true);
     try {
       const result = await companyKnowledgeService.syncDrive(
         driveLink.trim(),
-        { purposeScope, channelScope }
+        { purposeScope, channelScope, pageScope, pageIds, documentType }
       );
       toast.success(
         `Đã nhập ${result.documentsCount || 1} tài liệu vào kho tri thức.`
@@ -182,11 +281,18 @@ export default function CompanyKnowledgePage() {
       toast.error("Tài liệu vượt quá giới hạn 10 MB.");
       return;
     }
+    if (pageScope === "selected" && pageIds.length === 0) {
+      toast.error("Hãy chọn ít nhất một Facebook Page.");
+      return;
+    }
     setBusy(true);
     try {
       const result = await companyKnowledgeService.upload(file, {
         purposeScope,
         channelScope,
+        pageScope,
+        pageIds,
+        documentType,
       });
       toast.success(`Đã nhập ${result.title} vào kho tri thức.`);
       await loadData();
@@ -200,11 +306,18 @@ export default function CompanyKnowledgePage() {
   }
 
   async function saveScopes(documentId: string) {
+    if (editPageScope === "selected" && editPageIds.length === 0) {
+      toast.error("Hãy chọn ít nhất một Facebook Page.");
+      return;
+    }
     setBusy(true);
     try {
       await companyKnowledgeService.updateScopes(documentId, {
         purposeScope: editPurposeScope,
         channelScope: editChannelScope,
+        pageScope: editPageScope,
+        pageIds: editPageIds,
+        documentType: editDocumentType,
       });
       setEditingId("");
       toast.success("Đã cập nhật phạm vi sử dụng.");
@@ -303,12 +416,12 @@ export default function CompanyKnowledgePage() {
                     Chọn file từ máy
                   </span>
                   <span className="text-[11px] text-slate-500">
-                    PDF, DOCX, XLSX, TXT, CSV · tối đa 10 MB
+                    PDF, DOCX, XLSX, TXT, CSV, PNG, JPG, WEBP · tối đa 10 MB
                   </span>
                 </span>
                 <input
                   type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.png,.jpg,.jpeg,.webp"
                   className="hidden"
                   disabled={busy}
                   onChange={(event) => {
@@ -353,6 +466,18 @@ export default function CompanyKnowledgePage() {
                 Tùy chọn phạm vi sử dụng
               </summary>
               <div className="mt-4 grid gap-4 rounded-xl bg-slate-50 p-4 md:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-700">
+                  Loại tài liệu
+                  <select
+                    value={documentType}
+                    onChange={(event) => setDocumentType(event.target.value as KnowledgeDocumentType)}
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal"
+                  >
+                    {DOCUMENT_TYPES.map((type) => (
+                      <option key={type.id} value={type.id}>{type.label}</option>
+                    ))}
+                  </select>
+                </label>
                 <ScopePicker
                   label="Nghiệp vụ"
                   options={PURPOSES}
@@ -364,6 +489,13 @@ export default function CompanyKnowledgePage() {
                   options={CHANNELS}
                   value={channelScope}
                   onChange={setChannelScope}
+                />
+                <PageScopePicker
+                  pages={facebookPages}
+                  pageScope={pageScope}
+                  pageIds={pageIds}
+                  onScopeChange={setPageScope}
+                  onPageIdsChange={setPageIds}
                 />
               </div>
             </details>
@@ -433,6 +565,13 @@ export default function CompanyKnowledgePage() {
                             : "Tệp tải lên"}{" "}
                           · v{document.version} · {document.chunksCount} khối
                         </p>
+                        <p className="mt-1 text-[11px] font-medium text-blue-650">
+                          {DOCUMENT_TYPES.find((type) => type.id === document.documentType)?.label || "Tài liệu chung"}
+                          {" · "}
+                          {document.pageScope === "selected"
+                            ? `${document.pageIds.length} Facebook Page`
+                            : "Mọi Facebook Page"}
+                        </p>
                       </div>
                     </div>
 
@@ -458,6 +597,9 @@ export default function CompanyKnowledgePage() {
                               );
                               setEditPurposeScope(document.purposeScope);
                               setEditChannelScope(document.channelScope);
+                              setEditPageScope(document.pageScope || "all");
+                              setEditPageIds(document.pageIds || []);
+                              setEditDocumentType(document.documentType || "general");
                             }}
                             className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-blue-650"
                             title="Phạm vi sử dụng"
@@ -481,6 +623,18 @@ export default function CompanyKnowledgePage() {
                   {editingId === document.id && (
                     <div className="border-t border-slate-100 bg-slate-50 px-5 py-4">
                       <div className="grid gap-4 md:grid-cols-2">
+                        <label className="text-xs font-semibold text-slate-700">
+                          Loại tài liệu
+                          <select
+                            value={editDocumentType}
+                            onChange={(event) => setEditDocumentType(event.target.value as KnowledgeDocumentType)}
+                            className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal"
+                          >
+                            {DOCUMENT_TYPES.map((type) => (
+                              <option key={type.id} value={type.id}>{type.label}</option>
+                            ))}
+                          </select>
+                        </label>
                         <ScopePicker
                           label="Nghiệp vụ"
                           options={PURPOSES}
@@ -492,6 +646,13 @@ export default function CompanyKnowledgePage() {
                           options={CHANNELS}
                           value={editChannelScope}
                           onChange={setEditChannelScope}
+                        />
+                        <PageScopePicker
+                          pages={facebookPages}
+                          pageScope={editPageScope}
+                          pageIds={editPageIds}
+                          onScopeChange={setEditPageScope}
+                          onPageIdsChange={setEditPageIds}
                         />
                       </div>
                       <div className="mt-4 flex justify-end gap-2">

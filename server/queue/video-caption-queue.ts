@@ -6,6 +6,7 @@ import { videoCaptionService } from "../service/video-caption.service";
 
 const QUEUE_NAME = "video-caption-pipeline-queue";
 const REDIS_RECHECK_MS = 30_000;
+const TRANSCRIPTION_RECONCILE_MS = 60_000;
 const FALLBACK_CONCURRENCY = 2;
 const WORKER_CONCURRENCY = Math.min(
   4,
@@ -29,6 +30,7 @@ let redisCheckedAt = 0;
 let workerStarting = false;
 let workerRetryTimer: NodeJS.Timeout | null = null;
 let fallbackActive = 0;
+let transcriptionReconcileTimer: NodeJS.Timeout | null = null;
 const fallbackPending: string[] = [];
 const fallbackScheduled = new Set<string>();
 const fallbackRunning = new Set<string>();
@@ -140,7 +142,7 @@ export async function enqueueVideoCaptionJob(
     return enqueueDatabaseFallback(jobId);
   }
 
-  const queueJobId = `video-caption:${jobId}`;
+  const queueJobId = `video-caption-${jobId}`;
   try {
     const existing = await queue.getJob(queueJobId);
     if (existing) {
@@ -191,6 +193,14 @@ function scheduleWorkerRetry() {
 export function initVideoCaptionWorker() {
   if (worker || workerStarting) return;
   workerStarting = true;
+
+  if (!transcriptionReconcileTimer) {
+    void videoCaptionService.reconcileAwaitingTranscriptions();
+    transcriptionReconcileTimer = setInterval(() => {
+      void videoCaptionService.reconcileAwaitingTranscriptions();
+    }, TRANSCRIPTION_RECONCILE_MS);
+    transcriptionReconcileTimer.unref();
+  }
 
   void ensureQueue()
     .then(async (available) => {

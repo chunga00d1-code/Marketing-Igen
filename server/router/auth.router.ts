@@ -209,6 +209,9 @@ const registerUserSchema = {
       voiceId: Joi.string().optional().allow(""),
       apiKey: Joi.string().optional().allow(""),
     }).optional(),
+    elevenlabsAccess: Joi.object({
+      apiKey: Joi.string().optional().allow(""),
+    }).optional(),
     phone: Joi.string().pattern(vnPhoneRegex).optional().allow("").messages({
       "string.pattern.base": "Số điện thoại Việt Nam không đúng định dạng (ví dụ: 0987654321).",
     }),
@@ -346,6 +349,9 @@ const updateUserSchema = {
       avatarIds: Joi.array().items(Joi.string().allow("")).optional(),
       avatarId: Joi.string().optional().allow(""),
       voiceId: Joi.string().optional().allow(""),
+      apiKey: Joi.string().optional().allow(""),
+    }).optional(),
+    elevenlabsAccess: Joi.object({
       apiKey: Joi.string().optional().allow(""),
     }).optional(),
     phone: Joi.string().pattern(vnPhoneRegex).optional().allow("").messages({

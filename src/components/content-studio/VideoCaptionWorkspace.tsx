@@ -21,6 +21,7 @@ import {
   XCircle,
   Play,
   Search,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -32,7 +33,6 @@ import type {
 import {
   videoCaptionService,
   type VideoCaptionContextOptions,
-  type VideoCaptionLibraryItem,
   type VideoCaptionProjectDetailDto,
   type VideoCaptionProjectDto,
 } from "../../services/videoCaptionService";
@@ -175,16 +175,27 @@ export function VideoCaptionWorkspace() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [creating, setCreating] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const uploadProgressRef = useRef(0);
+  const uploadTargetRef = useRef(0);
+  const uploadProgressTimerRef = useRef<number | null>(null);
+  const uploadProgressResolverRef = useRef<(() => void) | null>(null);
   const [error, setError] = useState("");
-  const [sourceType, setSourceType] = useState<
-    "upload" | "library" | "url"
-  >("upload");
+  const [sourceType, setSourceType] = useState<"upload" | "url">("upload");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [libraryItems, setLibraryItems] = useState<
-    VideoCaptionLibraryItem[]
-  >([]);
-  const [selectedLibraryId, setSelectedLibraryId] = useState("");
-  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (selectedFile) {
+      const url = URL.createObjectURL(selectedFile);
+      setLocalVideoUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } else {
+      setLocalVideoUrl(null);
+    }
+  }, [selectedFile]);
+
   const [contextOptions, setContextOptions] =
     useState<VideoCaptionContextOptions>({
       contents: [],
@@ -199,8 +210,68 @@ export function VideoCaptionWorkspace() {
   const [actionBusy, setActionBusy] = useState(false);
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playerUrl, setPlayerUrl] = useState("");
+  const [playerDurationMs, setPlayerDurationMs] = useState<number>();
+  const [playerDurationWarning, setPlayerDurationWarning] = useState("");
   const [segmentSearchQuery, setSegmentSearchQuery] = useState("");
   const [segmentLaneFilter, setSegmentLaneFilter] = useState<"all" | "speech" | "context">("all");
+
+  const clearUploadProgress = useCallback(() => {
+    if (uploadProgressTimerRef.current !== null) {
+      window.clearTimeout(uploadProgressTimerRef.current);
+      uploadProgressTimerRef.current = null;
+    }
+    uploadProgressResolverRef.current?.();
+    uploadProgressResolverRef.current = null;
+  }, []);
+
+  const resetUploadProgress = useCallback(() => {
+    clearUploadProgress();
+    uploadProgressRef.current = 0;
+    uploadTargetRef.current = 0;
+    setUploadProgress(0);
+  }, [clearUploadProgress]);
+
+  const updateUploadProgressTarget = useCallback((nextProgress: number) => {
+    uploadTargetRef.current = Math.max(
+      uploadTargetRef.current,
+      Math.min(100, Math.max(0, Math.round(nextProgress)))
+    );
+    if (uploadProgressTimerRef.current !== null) return;
+
+    const tick = () => {
+      const current = uploadProgressRef.current;
+      if (current >= uploadTargetRef.current) {
+        uploadProgressTimerRef.current = null;
+        if (current >= 100) {
+          uploadProgressResolverRef.current?.();
+          uploadProgressResolverRef.current = null;
+        }
+        return;
+      }
+
+      const next = Math.min(uploadTargetRef.current, current + 1);
+      uploadProgressRef.current = next;
+      setUploadProgress(next);
+      uploadProgressTimerRef.current = window.setTimeout(tick, 18);
+    };
+
+    tick();
+  }, []);
+
+  const waitForUploadProgress = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        if (uploadProgressRef.current >= 100) {
+          resolve();
+          return;
+        }
+        uploadProgressResolverRef.current = resolve;
+      }),
+    []
+  );
+
+  useEffect(() => clearUploadProgress, [clearUploadProgress]);
 
   const mergeProject = useCallback((project: VideoCaptionProjectDto) => {
     setProjects((current) => {
@@ -275,15 +346,6 @@ export function VideoCaptionWorkspace() {
   }, [loadProjects]);
 
   useEffect(() => {
-    setLoadingLibrary(true);
-    void videoCaptionService
-      .listVideoLibrary()
-      .then(setLibraryItems)
-      .catch(() => setLibraryItems([]))
-      .finally(() => setLoadingLibrary(false));
-  }, []);
-
-  useEffect(() => {
     void videoCaptionService
       .contextOptions()
       .then(setContextOptions)
@@ -300,6 +362,19 @@ export function VideoCaptionWorkspace() {
     }, 2500);
     return () => window.clearInterval(timer);
   }, [detail?.project, openProject]);
+
+  useEffect(() => {
+    const preferredUrl =
+      detail?.project.video.proxyUrl || detail?.project.source.url || "";
+    setPlayerUrl(preferredUrl);
+    setPlayerDurationMs(undefined);
+    setPlayerDurationWarning("");
+  }, [
+    detail?.project.id,
+    detail?.project.source.url,
+    detail?.project.video.durationMs,
+    detail?.project.video.proxyUrl,
+  ]);
 
   useEffect(() => {
     const project = detail?.project;
@@ -339,10 +414,6 @@ export function VideoCaptionWorkspace() {
       setError("Hãy nhập URL video HTTPS.");
       return;
     }
-    if (sourceType === "library" && !selectedLibraryId) {
-      setError("Hãy chọn một video trong thư viện.");
-      return;
-    }
     if (
       selectedFile &&
       (!selectedFile.type.startsWith("video/") ||
@@ -353,44 +424,35 @@ export function VideoCaptionWorkspace() {
     }
 
     setCreating(true);
-    setUploadProgress(0);
+    resetUploadProgress();
     try {
-      const selectedLibrary = libraryItems.find(
-        (item) => item.id === selectedLibraryId
-      );
       let uploadedUrl = sourceUrl.trim();
       if (sourceType === "upload" && selectedFile) {
+        updateUploadProgressTarget(1);
         uploadedUrl = await videoCaptionService.uploadVideo(
           selectedFile,
-          setUploadProgress
+          updateUploadProgressTarget
         );
-      } else if (sourceType === "library" && selectedLibrary) {
-        uploadedUrl = await videoCaptionService.ensureStoredVideo(
-          selectedLibrary.url
-        );
+        updateUploadProgressTarget(100);
+        await waitForUploadProgress();
       }
 
       if (!createIdempotencyKeyRef.current) {
-        createIdempotencyKeyRef.current = `caption-create:${crypto.randomUUID()}`;
+        createIdempotencyKeyRef.current = `caption-create-${crypto.randomUUID()}`;
       }
 
       const created = await videoCaptionService.create({
         name:
           projectName.trim() ||
           selectedFile?.name.replace(/\.[^.]+$/, "") ||
-          selectedLibrary?.metadata?.title ||
-          selectedLibrary?.prompt.slice(0, 120) ||
           "Dự án caption mới",
         mode,
         source: {
           kind:
             sourceType === "upload"
               ? "upload"
-              : sourceType === "library"
-                ? "generated"
-                : "media_library",
+              : "media_library",
           url: uploadedUrl,
-          mediaId: selectedLibrary?.id,
           originalName: selectedFile?.name,
         },
         autoAnalyze: true,
@@ -406,10 +468,8 @@ export function VideoCaptionWorkspace() {
         created.project.id
       );
       setSelectedFile(null);
-      setSelectedLibraryId("");
       setSourceUrl("");
       setProjectName("");
-      setUploadProgress(0);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -417,6 +477,7 @@ export function VideoCaptionWorkspace() {
           : "Không thể tạo dự án caption."
       );
     } finally {
+      resetUploadProgress();
       setCreating(false);
     }
   }
@@ -606,11 +667,67 @@ export function VideoCaptionWorkspace() {
     );
   }
 
+  function handlePlayerMetadata(video: HTMLVideoElement) {
+    if (!detail || !Number.isFinite(video.duration) || video.duration <= 0) {
+      return;
+    }
+    const actualDurationMs = Math.round(video.duration * 1000);
+    const expectedDurationMs = detail.project.video.durationMs;
+    setPlayerDurationMs(actualDurationMs);
+    if (!expectedDurationMs) return;
+    const toleranceMs = Math.max(750, expectedDurationMs * 0.05);
+    const mismatch =
+      Math.abs(actualDurationMs - expectedDurationMs) > toleranceMs;
+    if (!mismatch) {
+      setPlayerDurationWarning("");
+      return;
+    }
+
+    const sourceUrl = detail.project.source.url;
+    const isUsingProxy =
+      Boolean(detail.project.video.proxyUrl) &&
+      playerUrl === detail.project.video.proxyUrl;
+    console.warn(
+      "[Video Caption Player] duration_mismatch",
+      {
+        projectId: detail.project.id,
+        expectedDurationMs,
+        actualDurationMs,
+        source: isUsingProxy ? "proxy" : "original",
+      }
+    );
+    if (isUsingProxy && sourceUrl && sourceUrl !== playerUrl) {
+      setPlayerDurationWarning(
+        `Proxy chỉ phát ${formatDuration(actualDurationMs)} trong khi nguồn được phân tích là ${formatDuration(expectedDurationMs)}. Đã tự chuyển sang video gốc.`
+      );
+      setPlayerUrl(sourceUrl);
+      return;
+    }
+    setPlayerDurationWarning(
+      `Video thực phát ${formatDuration(actualDurationMs)}, lệch với metadata ${formatDuration(expectedDurationMs)}. Hãy tải lại file nguồn trước khi tạo caption.`
+    );
+  }
+
+  function handlePlayerError() {
+    if (!detail) return;
+    const sourceUrl = detail.project.source.url;
+    if (
+      detail.project.video.proxyUrl &&
+      playerUrl === detail.project.video.proxyUrl &&
+      sourceUrl &&
+      sourceUrl !== playerUrl
+    ) {
+      setPlayerDurationWarning(
+        "Không phát được proxy video. Hệ thống đã tự chuyển sang video gốc."
+      );
+      setPlayerUrl(sourceUrl);
+    }
+  }
+
   const currentStatus = detail
     ? STATUS_LABELS[detail.project.status]
     : null;
-  const previewUrl =
-    detail?.project.video.proxyUrl || detail?.project.source.url;
+  const previewUrl = playerUrl;
   const activePreviewSegments =
     detail?.segments.filter(
       (segment) =>
@@ -668,7 +785,28 @@ export function VideoCaptionWorkspace() {
         )}
 
         <div className="grid min-h-[680px] lg:grid-cols-[370px_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200 bg-white p-5 lg:border-b-0 lg:border-r">
+          <aside className="relative overflow-hidden border-b border-slate-200 bg-white p-5 lg:border-b-0 lg:border-r">
+            {creating && (
+              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm p-6 text-center">
+                <div className="relative mb-4 flex items-center justify-center">
+                  <div className="h-20 w-20 rounded-full border-4 border-slate-100 border-t-cyan-600 animate-spin" />
+                  <span className="absolute text-sm font-extrabold text-cyan-800">
+                    {uploadProgress}%
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-slate-800">
+                  {sourceType === "upload"
+                    ? "Đang tải video lên..."
+                    : "Đang khởi tạo dự án..."}
+                </h4>
+                <p className="mt-1.5 max-w-[200px] text-[11px] leading-relaxed text-slate-500">
+                  {sourceType === "upload"
+                    ? "Vui lòng không đóng tab cho đến khi tải lên 100%."
+                    : "Đang xác minh video và chuẩn bị dự án caption."}
+                </p>
+              </div>
+            )}
+
             <div className="mb-4 flex items-center gap-2">
               <Plus className="h-4 w-4 text-cyan-700" />
               <h3 className="text-sm font-bold text-slate-900">
@@ -686,7 +824,7 @@ export function VideoCaptionWorkspace() {
               className="mb-4 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
             />
 
-            <div className="mb-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+            <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
               <button
                 type="button"
                 onClick={() => setSourceType("upload")}
@@ -698,18 +836,6 @@ export function VideoCaptionWorkspace() {
               >
                 <UploadCloud className="h-3.5 w-3.5" />
                 Tải video
-              </button>
-              <button
-                type="button"
-                onClick={() => setSourceType("library")}
-                className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
-                  sourceType === "library"
-                    ? "bg-white text-cyan-700 shadow-sm"
-                    : "text-slate-500"
-                }`}
-              >
-                <History className="h-3.5 w-3.5" />
-                Thư viện
               </button>
               <button
                 type="button"
@@ -726,81 +852,55 @@ export function VideoCaptionWorkspace() {
             </div>
 
             {sourceType === "upload" ? (
-              <label className="mb-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center transition hover:border-cyan-400 hover:bg-cyan-50/40">
-                <FileVideo className="mb-2 h-7 w-7 text-cyan-700" />
-                <span className="max-w-full truncate text-sm font-semibold text-slate-800">
-                  {selectedFile?.name || "Chọn video từ máy"}
-                </span>
-                <span className="mt-1 text-xs text-slate-500">
-                  Tối đa 1 GB, tải trực tiếp lên kho media
-                </span>
-                <input
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(event) =>
-                    setSelectedFile(event.target.files?.[0] || null)
-                  }
-                />
-              </label>
-            ) : sourceType === "library" ? (
-              <div className="mb-5 max-h-48 space-y-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2">
-                {loadingLibrary && (
-                  <div className="flex items-center justify-center gap-2 py-6 text-xs text-slate-500">
-                    <LoaderCircle className="h-4 w-4 animate-spin" />
-                    Đang tải thư viện...
-                  </div>
-                )}
-                {!loadingLibrary && libraryItems.length === 0 && (
-                  <p className="px-3 py-6 text-center text-xs leading-5 text-slate-500">
-                    Chưa có video hoàn tất trong thư viện.
-                  </p>
-                )}
-                {libraryItems.map((item) => (
+              localVideoUrl ? (
+                <div className="relative mb-5 overflow-hidden rounded-2xl border border-slate-250 bg-slate-950 aspect-video flex items-center justify-center group shadow-sm">
+                  <video
+                    src={localVideoUrl}
+                    className="h-full w-full object-contain"
+                    controls
+                  />
                   <button
-                    key={item.id}
                     type="button"
-                    onClick={() => setSelectedLibraryId(item.id)}
-                    className={`flex w-full items-center gap-3 rounded-xl border p-2 text-left transition ${
-                      selectedLibraryId === item.id
-                        ? "border-cyan-500 bg-white ring-2 ring-cyan-100"
-                        : "border-transparent bg-white hover:border-slate-200"
-                    }`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedFile(null);
+                    }}
+                    className="absolute right-2.5 top-2.5 rounded-full bg-slate-900/70 p-1.5 text-white hover:bg-slate-900 transition opacity-0 group-hover:opacity-100 duration-150 shadow"
+                    title="Gỡ video"
                   >
-                    <div className="flex h-12 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-900">
-                      {item.metadata?.thumbnailUrl ? (
-                        <img
-                          src={item.metadata.thumbnailUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <FileVideo className="h-5 w-5 text-slate-400" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-slate-800">
-                        {item.metadata?.title ||
-                          item.prompt ||
-                          "Video đã tạo"}
-                      </p>
-                      <p className="mt-1 text-[10px] text-slate-400">
-                        {projectDate(item.createdAt)}
-                      </p>
-                    </div>
+                    <X className="h-3.5 w-3.5" />
                   </button>
-                ))}
-              </div>
+                </div>
+              ) : (
+                <label className="mb-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition hover:border-cyan-400 hover:bg-cyan-50/40">
+                  <FileVideo className="mb-2 h-7 w-7 text-cyan-700 animate-pulse" />
+                  <span className="max-w-full truncate text-sm font-semibold text-slate-800">
+                    Chọn video từ máy
+                  </span>
+                  <span className="mt-1 text-xs text-slate-500">
+                    Tối đa 1 GB, tải trực tiếp lên kho media
+                  </span>
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(event) =>
+                      setSelectedFile(event.target.files?.[0] || null)
+                    }
+                  />
+                </label>
+              )
             ) : (
               <div className="mb-5">
                 <input
                   value={sourceUrl}
                   onChange={(event) => setSourceUrl(event.target.value)}
-                  placeholder="https://res.cloudinary.com/..."
+                  placeholder="https://drive.google.com/file/d/.../view hoặc ID Google Drive"
                   className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
                 />
                 <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                  URL phải là HTTPS thuộc kho media đã được hệ thống cho phép.
+                  Đường dẫn chia sẻ công khai hoặc mã ID tệp tin từ Google Drive.
                 </p>
               </div>
             )}
@@ -846,21 +946,6 @@ export function VideoCaptionWorkspace() {
                 );
               })}
             </div>
-
-            {creating && uploadProgress > 0 && (
-              <div className="mt-4">
-                <div className="mb-1 flex justify-between text-xs font-medium text-slate-600">
-                  <span>Đang tải video</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-cyan-600 transition-all"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
 
             <button
               type="button"
@@ -984,8 +1069,9 @@ export function VideoCaptionWorkspace() {
                 </div>
 
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-                  <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
-                    <div className="relative flex aspect-video items-center justify-center">
+                  <div className="space-y-2">
+                    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
+                      <div className="relative flex aspect-video items-center justify-center">
                       {previewUrl ? (
                         <video
                           ref={videoRef}
@@ -993,6 +1079,10 @@ export function VideoCaptionWorkspace() {
                           src={previewUrl}
                           controls
                           preload="metadata"
+                          onLoadedMetadata={(event) =>
+                            handlePlayerMetadata(event.currentTarget)
+                          }
+                          onError={handlePlayerError}
                           onTimeUpdate={(event) =>
                             setCurrentTimeMs(
                               event.currentTarget.currentTime * 1000
@@ -1003,7 +1093,7 @@ export function VideoCaptionWorkspace() {
                       ) : (
                         <FileVideo className="h-12 w-12 text-slate-600" />
                       )}
-                      {activePreviewSegments.map((segment) => {
+                        {activePreviewSegments.map((segment) => {
                         const style = {
                           ...detail.project.style,
                           ...(segment.styleOverride || {}),
@@ -1041,8 +1131,15 @@ export function VideoCaptionWorkspace() {
                             </span>
                           </div>
                         );
-                      })}
+                        })}
+                      </div>
                     </div>
+                    {playerDurationWarning && (
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{playerDurationWarning}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -1062,6 +1159,30 @@ export function VideoCaptionWorkspace() {
                             )}
                           </dd>
                         </div>
+                        {playerDurationMs !== undefined && (
+                          <div className="flex items-center justify-between gap-3">
+                            <dt className="text-slate-500">
+                              Thực tế trình phát
+                            </dt>
+                            <dd
+                              className={`font-semibold ${
+                                detail.project.video.durationMs &&
+                                Math.abs(
+                                  playerDurationMs -
+                                    detail.project.video.durationMs
+                                ) >
+                                  Math.max(
+                                    750,
+                                    detail.project.video.durationMs * 0.05
+                                  )
+                                  ? "text-amber-700"
+                                  : "text-slate-800"
+                              }`}
+                            >
+                              {formatDuration(playerDurationMs)}
+                            </dd>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between gap-3">
                           <dt className="flex items-center gap-2 text-slate-500">
                             <MonitorPlay className="h-4 w-4" />
