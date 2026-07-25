@@ -10,6 +10,7 @@ import {
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
+import { MarketingCandidateModel } from "../model/marketing-candidate.model";
 import {
   CampaignSheetDataType,
   CampaignSheetFieldPolicy,
@@ -28,7 +29,14 @@ const MAX_ROWS = 500;
 const MAX_AI_ROWS = 100;
 const MAX_BULK_CELLS = 1000;
 const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-const EDITABLE_SLOT_STATUSES = new Set(["planned", "queued", "needs_attention", "failed", "skipped"]);
+const EDITABLE_SLOT_STATUSES = new Set([
+  "planned",
+  "queued",
+  "pending_approval",
+  "needs_attention",
+  "failed",
+  "skipped",
+]);
 const EDITABLE_CANONICAL_FIELDS = new Set(["pillar", "objective", "topicBrief", "funnelStage", "mediaType"]);
 
 const DEFAULT_COLUMNS: ICampaignSheetColumn[] = [
@@ -233,14 +241,34 @@ export const campaignContentSheetService = {
       .populate("integrationId", "displayName username")
       .lean();
     const slotIds = slots.map((slot) => slot._id);
-    const [storedRows, contents] = await Promise.all([
+    const contentIds = slots
+      .map((slot) => slot.marketingContentId)
+      .filter(Boolean);
+    const candidateIds = slots
+      .map((slot) => slot.selectedCandidateId)
+      .filter(Boolean);
+    const [storedRows, contents, candidates] = await Promise.all([
       CampaignSheetRowModel.find({ companyCode, campaignId, slotId: { $in: slotIds } }).lean(),
-      MarketingContentModel.find({ companyCode, campaignSlotId: { $in: slotIds } })
+      MarketingContentModel.find({
+        companyCode,
+        $or: [
+          { campaignSlotId: { $in: slotIds } },
+          ...(contentIds.length ? [{ _id: { $in: contentIds } }] : []),
+        ],
+      })
         .select("campaignSlotId title bodyText outline mediaPrompt mediaUrls status")
+        .lean(),
+      MarketingCandidateModel.find({
+        companyCode,
+        ...(candidateIds.length ? { _id: { $in: candidateIds } } : { _id: { $in: [] } }),
+      })
+        .select("title bodyText outline mediaPrompt")
         .lean(),
     ]);
     const rowMap = new Map(storedRows.map((row) => [String(row.slotId), row]));
     const contentMap = new Map(contents.map((content) => [String(content.campaignSlotId), content]));
+    const contentById = new Map(contents.map((content) => [String(content._id), content]));
+    const candidateById = new Map(candidates.map((candidate) => [String(candidate._id), candidate]));
 
     return {
       campaign: {
@@ -256,13 +284,14 @@ export const campaignContentSheetService = {
       limits: this.limits,
       rows: slots.map((slot) => {
         const row = rowMap.get(String(slot._id));
-        const content = contentMap.get(String(slot._id));
+        const content = contentMap.get(String(slot._id)) || contentById.get(String(slot.marketingContentId || ""));
+        const candidate = candidateById.get(String(slot.selectedCandidateId || ""));
         const customFields = Object.fromEntries((row?.fields || []).map((field) => [field.key, field]));
         return {
           slotId: String(slot._id),
           revision: row?.revision || 0,
           readOnly: !EDITABLE_SLOT_STATUSES.has(slot.status),
-          system: projectSystemValues(slot, content),
+          system: projectSystemValues(slot, content || candidate),
           fields: customFields,
           updatedAt: row?.updatedAt || slot.updatedAt,
         };

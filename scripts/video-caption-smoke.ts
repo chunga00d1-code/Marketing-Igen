@@ -83,6 +83,16 @@ assert.deepEqual(
 assert.equal(getVideoCaptionTranscriptionDelivery(19_000), "direct");
 assert.equal(getVideoCaptionTranscriptionDelivery(121_000), "webhook");
 assert.deepEqual(normalizeCaptionStyle(), DEFAULT_VIDEO_CAPTION_STYLE);
+assert.deepEqual(
+  normalizeCaptionStyle({
+    backgroundColor: undefined,
+    textColor: "#112233",
+  }),
+  {
+    ...DEFAULT_VIDEO_CAPTION_STYLE,
+    textColor: "#112233",
+  }
+);
 assert.equal(
   buildCaptionJobIdempotencyKey({
     companyCode: " acme ",

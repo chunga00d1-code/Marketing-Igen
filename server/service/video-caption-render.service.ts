@@ -3,6 +3,7 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import {
+  DEFAULT_VIDEO_CAPTION_STYLE,
   VideoCaptionRenderProvider,
   VideoCaptionSegmentDto,
   VideoCaptionStyle,
@@ -26,8 +27,22 @@ function assTime(milliseconds: number) {
   ).padStart(2, "0")}.${String(centiseconds).padStart(2, "0")}`;
 }
 
-function assColor(hex: string, opacity = 1) {
-  const normalized = hex.replace("#", "").padEnd(6, "0").slice(0, 6);
+function definedStyleValues(style?: Partial<VideoCaptionStyle>) {
+  return Object.fromEntries(
+    Object.entries(style || {}).filter(([, value]) => value !== undefined && value !== null)
+  ) as Partial<VideoCaptionStyle>;
+}
+
+function normalizeRenderStyle(style?: Partial<VideoCaptionStyle>): VideoCaptionStyle {
+  return {
+    ...DEFAULT_VIDEO_CAPTION_STYLE,
+    ...definedStyleValues(style),
+  };
+}
+
+function assColor(hex: string | undefined, opacity = 1) {
+  const safeHex = typeof hex === "string" && hex.trim() ? hex : "#000000";
+  const normalized = safeHex.replace("#", "").padEnd(6, "0").slice(0, 6);
   const red = normalized.slice(0, 2);
   const green = normalized.slice(2, 4);
   const blue = normalized.slice(4, 6);
@@ -37,8 +52,8 @@ function assColor(hex: string, opacity = 1) {
   return `&H${alpha}${blue}${green}${red}`.toUpperCase();
 }
 
-function escapeAssText(value: string) {
-  return value
+function escapeAssText(value: string | undefined) {
+  return String(value || "")
     .replace(/\\/g, "\\\\")
     .replace(/\{/g, "\\{")
     .replace(/\}/g, "\\}")
@@ -63,13 +78,14 @@ function buildAss(
   width = 1920,
   height = 1080
 ) {
+  const projectStyle = normalizeRenderStyle(style);
   const fontSize = Math.max(
     18,
-    Math.round(style.fontSize * (width / 1920))
+    Math.round(projectStyle.fontSize * (width / 1920))
   );
   const marginV = Math.max(
     20,
-    Math.round((height * style.safeAreaPercent) / 100)
+    Math.round((height * projectStyle.safeAreaPercent) / 100)
   );
   const header = `[Script Info]
 ScriptType: v4.00+
@@ -80,7 +96,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,${style.fontFamily || "DejaVu Sans"},${fontSize},${assColor(style.textColor)},${assColor(style.textColor)},${assColor(style.backgroundColor)},${assColor(style.backgroundColor, style.backgroundOpacity)},${style.fontWeight >= 600 ? -1 : 0},0,0,0,100,100,0,0,3,1,0,2,80,80,${marginV},1
+Style: Caption,${projectStyle.fontFamily || "DejaVu Sans"},${fontSize},${assColor(projectStyle.textColor)},${assColor(projectStyle.textColor)},${assColor(projectStyle.backgroundColor)},${assColor(projectStyle.backgroundColor, projectStyle.backgroundOpacity)},${projectStyle.fontWeight >= 600 ? -1 : 0},0,0,0,100,100,0,0,3,1,0,2,80,80,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`;
@@ -92,8 +108,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
         segments.some((item) => item.lane === "speech") &&
         segments.some((item) => item.lane === "context");
       const segmentStyle = {
-        ...style,
-        ...(segment.styleOverride || {}),
+        ...projectStyle,
+        ...definedStyleValues(segment.styleOverride),
       };
       const tags = [
         `\\an${alignment(
