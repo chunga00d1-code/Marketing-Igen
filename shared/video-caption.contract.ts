@@ -335,16 +335,6 @@ export interface SpeechTranscriptionProvider {
   }): Promise<{
     providerRequestId: string;
   }>;
-  retrieve(providerRequestId: string): Promise<{
-    language?: string;
-    words: Array<{
-      text: string;
-      startMs: number;
-      endMs: number;
-      confidence?: number;
-    }>;
-    cost?: number;
-  } | null>;
 }
 
 export interface VideoSceneAnalysisProvider {
