@@ -16,20 +16,6 @@ type ApiEnvelope<T> = {
   code?: string;
 };
 
-export interface VideoCaptionLibraryItem {
-  id: string;
-  url: string;
-  prompt: string;
-  createdAt: string;
-  metadata?: {
-    title?: string;
-    provider?: string;
-    status?: string;
-    thumbnailUrl?: string;
-    duration?: number | string;
-  };
-}
-
 export interface VideoCaptionContextOptions {
   contents: Array<{
     id: string;
@@ -80,44 +66,37 @@ async function request<T>(
   return result.data;
 }
 
-export const videoCaptionService = {
-  async listVideoLibrary() {
-    const response = await fetch(
-      "/api/v1/gemini/media-history?type=video",
-      { headers: authHeaders(false) }
-    );
-    const result = (await response.json().catch(() => ({}))) as {
-      message?: string;
-      history?: Array<{
-        _id?: string;
-        id?: string;
-        url?: string;
-        prompt?: string;
-        createdAt?: string;
-        metadata?: VideoCaptionLibraryItem["metadata"];
-      }>;
+function uploadChunk(
+  url: string,
+  formData: FormData,
+  headers: Record<string, string>,
+  onProgress: (loadedBytes: number) => void
+) {
+  return new Promise<Response>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", url);
+    Object.entries(headers).forEach(([name, value]) => {
+      request.setRequestHeader(name, value);
+    });
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded);
     };
-    if (!response.ok) {
-      throw new Error(
-        result.message || "Không thể tải thư viện video."
+    request.onerror = () => {
+      reject(new Error("Không thể kết nối tới dịch vụ tải video."));
+    };
+    request.onload = () => {
+      resolve(
+        new Response(request.responseText, {
+          status: request.status,
+          statusText: request.statusText,
+        })
       );
-    }
-    return (result.history || [])
-      .filter(
-        (item) =>
-          item.url?.startsWith("https://") &&
-          item.metadata?.status !== "processing"
-      )
-      .map((item) => ({
-        id: String(item._id || item.id),
-        url: String(item.url),
-        prompt: item.prompt || "",
-        createdAt: item.createdAt || new Date().toISOString(),
-        metadata: item.metadata,
-      }))
-      .slice(0, 30);
-  },
+    };
+    request.send(formData);
+  });
+}
 
+export const videoCaptionService = {
   list(options?: {
     page?: number;
     limit?: number;
@@ -318,15 +297,21 @@ export const videoCaptionService = {
       formData.append("signature", signResult.signature);
       formData.append("folder", folder);
 
-      const response = await fetch(
+      const response = await uploadChunk(
         `https://api.cloudinary.com/v1_1/${signResult.cloudName}/video/upload`,
+        formData,
         {
-          method: "POST",
-          headers: {
-            "X-Unique-Upload-Id": uploadId,
-            "Content-Range": `bytes ${start}-${end - 1}/${file.size}`,
-          },
-          body: formData,
+          "X-Unique-Upload-Id": uploadId,
+          "Content-Range": `bytes ${start}-${end - 1}/${file.size}`,
+        },
+        (loadedBytes) => {
+          const uploadedBytes = start + loadedBytes;
+          onProgress?.(
+            Math.min(
+              99,
+              Math.max(1, Math.round((uploadedBytes / file.size) * 100))
+            )
+          );
         }
       );
       const result = (await response.json().catch(() => ({}))) as {
@@ -350,41 +335,6 @@ export const videoCaptionService = {
     return secureUrl;
   },
 
-  async ensureStoredVideo(videoUrl: string) {
-    try {
-      const parsed = new URL(videoUrl);
-      if (
-        parsed.hostname === "res.cloudinary.com" ||
-        parsed.hostname.endsWith(".res.cloudinary.com")
-      ) {
-        return videoUrl;
-      }
-    } catch {
-      throw new Error("URL video trong thư viện không hợp lệ.");
-    }
-
-    const response = await fetch("/api/v1/media/upload", {
-      method: "POST",
-      headers: authHeaders(true),
-      body: JSON.stringify({
-        file: videoUrl,
-        folder: "igen_erp/video-captions",
-      }),
-    });
-    const result = (await response.json().catch(() => ({}))) as {
-      url?: string;
-      message?: string;
-      details?: string;
-    };
-    if (!response.ok || !result.url) {
-      throw new Error(
-        result.message ||
-          result.details ||
-          "Không thể đồng bộ video vào kho media."
-      );
-    }
-    return result.url;
-  },
 };
 
 export type {
