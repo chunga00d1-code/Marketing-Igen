@@ -26,10 +26,15 @@ export function normalizeCaptionCompanyCode(companyCode: string) {
 export function normalizeCaptionStyle(
   style?: Partial<VideoCaptionStyle>
 ): VideoCaptionStyle {
-  return {
-    ...DEFAULT_VIDEO_CAPTION_STYLE,
-    ...(style || {}),
-  };
+  return Object.entries(style || {}).reduce<VideoCaptionStyle>(
+    (normalized, [key, value]) => {
+      if (value !== undefined && value !== null) {
+        normalized[key as keyof VideoCaptionStyle] = value as never;
+      }
+      return normalized;
+    },
+    { ...DEFAULT_VIDEO_CAPTION_STYLE }
+  );
 }
 
 export function hashCaptionInput(value: unknown) {

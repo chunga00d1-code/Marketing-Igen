@@ -215,6 +215,7 @@ export function VideoCaptionWorkspace() {
   const [playerDurationWarning, setPlayerDurationWarning] = useState("");
   const [segmentSearchQuery, setSegmentSearchQuery] = useState("");
   const [segmentLaneFilter, setSegmentLaneFilter] = useState<"all" | "speech" | "context">("all");
+  const [advancedEditorOpen, setAdvancedEditorOpen] = useState(false);
 
   const clearUploadProgress = useCallback(() => {
     if (uploadProgressTimerRef.current !== null) {
@@ -506,10 +507,19 @@ export function VideoCaptionWorkspace() {
           contextLinks: detail.project.contextLinks || {},
         });
         await videoCaptionService.generateContext(detail.project.id);
-      } else if (action === "renderPreview") {
-        await videoCaptionService.render(detail.project.id, true);
-      } else if (action === "renderFinal") {
-        await videoCaptionService.render(detail.project.id, false);
+      } else if (action === "renderPreview" || action === "renderFinal") {
+        const { project } = await videoCaptionService.update(
+          detail.project.id,
+          { style: detail.project.style }
+        );
+        setDetail((current) =>
+          current ? { ...current, project } : current
+        );
+        mergeProject(project);
+        await videoCaptionService.render(
+          detail.project.id,
+          action === "renderPreview"
+        );
       } else if (action === "retry") {
         await videoCaptionService.retry(detail.project.id);
       } else {
@@ -1235,6 +1245,119 @@ export function VideoCaptionWorkspace() {
                         }
                       </p>
                     </div>
+
+                    {detail.segments.length > 0 && (
+                      <section className="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider text-cyan-800">
+                              Kiểu phụ đề
+                            </p>
+                            <p className="mt-1 text-[10px] leading-4 text-cyan-700">
+                              Thay đổi hiển thị ngay trên video và tự lưu khi xuất.
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-cyan-700">
+                            Preview trực tiếp
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                          {[
+                            { id: "clean", label: "Clean", textColor: "#FFFFFF", backgroundColor: "#000000", backgroundOpacity: 0.72 },
+                            { id: "classic", label: "Classic", textColor: "#FFFFFF", backgroundColor: "#000000", backgroundOpacity: 0 },
+                            { id: "highlight", label: "Highlight", textColor: "#FBBF24", backgroundColor: "#000000", backgroundOpacity: 0 },
+                          ].map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => updateStyle({
+                                preset: preset.id as VideoCaptionStyle["preset"],
+                                textColor: preset.textColor,
+                                backgroundColor: preset.backgroundColor,
+                                backgroundOpacity: preset.backgroundOpacity,
+                              })}
+                              className={`rounded-xl border px-2 py-2 text-[10px] font-bold transition ${
+                                detail.project.style.preset === preset.id
+                                  ? "border-cyan-500 bg-white text-cyan-800 ring-2 ring-cyan-100"
+                                  : "border-cyan-100 bg-white/70 text-slate-600 hover:border-cyan-300"
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Màu chữ
+                            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                              <input
+                                type="color"
+                                value={detail.project.style.textColor}
+                                onChange={(event) => updateStyle({ textColor: event.target.value, preset: "custom" })}
+                                className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                              />
+                              <span className="text-[10px] font-semibold normal-case text-slate-600">
+                                {detail.project.style.textColor}
+                              </span>
+                            </div>
+                          </label>
+                          <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            Màu nền
+                            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                              <input
+                                type="color"
+                                value={detail.project.style.backgroundColor}
+                                onChange={(event) => updateStyle({ backgroundColor: event.target.value, preset: "custom" })}
+                                className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
+                              />
+                              <span className="text-[10px] font-semibold normal-case text-slate-600">
+                                {detail.project.style.backgroundColor}
+                              </span>
+                            </div>
+                          </label>
+                        </div>
+
+                        <div className="mt-4">
+                          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            <span>Độ đậm nền</span>
+                            <span className="text-cyan-700">
+                              {Math.round(detail.project.style.backgroundOpacity * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={detail.project.style.backgroundOpacity}
+                            onChange={(event) => updateStyle({
+                              backgroundOpacity: Number(event.target.value),
+                              preset: "custom",
+                            })}
+                            className="mt-2 h-1.5 w-full cursor-pointer accent-cyan-700"
+                          />
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-white p-1">
+                          {(["top", "center", "bottom"] as const).map((position) => (
+                            <button
+                              key={position}
+                              type="button"
+                              onClick={() => updateStyle({ position, preset: "custom" })}
+                              className={`rounded-lg px-1 py-1.5 text-[10px] font-bold ${
+                                detail.project.style.position === position
+                                  ? "bg-cyan-600 text-white"
+                                  : "text-slate-500 hover:bg-cyan-50"
+                              }`}
+                            >
+                              {position === "top" ? "Trên" : position === "center" ? "Giữa" : "Dưới"}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
+                    )}
                   </div>
                 </div>
 
@@ -1438,7 +1561,7 @@ export function VideoCaptionWorkspace() {
                             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-60"
                           >
                             <Download className="h-4 w-4" />
-                            Kết xuất video
+                            Tạo video có phụ đề
                           </button>
                           <button
                             type="button"
@@ -1526,7 +1649,27 @@ export function VideoCaptionWorkspace() {
                 )}
 
                 {detail.segments.length > 0 && (
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-950">
+                          Chỉnh sửa nâng cao
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Chỉ mở khi cần chỉnh câu chữ, mốc thời gian hoặc kiểu hiển thị phụ đề.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAdvancedEditorOpen((current) => !current)}
+                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        {advancedEditorOpen ? "Thu gọn chỉnh sửa" : "Mở chỉnh sửa nâng cao"}
+                      </button>
+                    </div>
+
+                    {advancedEditorOpen && (
+                      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
                     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div>
@@ -2009,7 +2152,9 @@ export function VideoCaptionWorkspace() {
                         </button>
                       </div>
                     </section>
-                  </div>
+                      </div>
+                    )}
+                  </section>
                 )}
 
                 {detail.project.progress && (
