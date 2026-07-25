@@ -34,6 +34,7 @@ import { videoCaptionMediaService } from "./video-caption-media.service";
 import { buildSpeechCaptionSegments } from "./video-caption-segmentation.service";
 import {
   createSpeechTranscriptionProvider,
+  getVideoCaptionTranscriptionDelivery,
   normalizeElevenLabsTranscript,
   videoCaptionTranscriptionConfig,
 } from "./video-caption-transcription.service";
@@ -46,6 +47,7 @@ import { videoCaptionContextService } from "./video-caption-context.service";
 
 const JOB_LEASE_MS = 2 * 60 * 1000;
 const MAX_TRANSITIONS = 100;
+const VIDEO_CAPTION_ANALYSIS_VERSION = "duration-proxy-v2";
 const DAILY_PROJECT_LIMIT = Math.max(
   1,
   Number(process.env.VIDEO_CAPTION_DAILY_PROJECT_LIMIT) || 100
@@ -85,6 +87,10 @@ function projectDto(project: IVideoCaptionProject): VideoCaptionProjectDto {
     },
     video: {
       durationMs: project.video?.durationMs,
+      containerDurationMs: project.video?.containerDurationMs,
+      videoStreamDurationMs: project.video?.videoStreamDurationMs,
+      audioStreamDurationMs: project.video?.audioStreamDurationMs,
+      durationSource: project.video?.durationSource,
       width: project.video?.width,
       height: project.video?.height,
       fps: project.video?.fps,
@@ -772,6 +778,7 @@ export const videoCaptionService = {
     }
 
     const settingsHash = hashCaptionInput({
+      analysisVersion: VIDEO_CAPTION_ANALYSIS_VERSION,
       source: project.source,
       style: project.style,
     });
@@ -890,10 +897,14 @@ export const videoCaptionService = {
       );
     }
 
+    const delivery = getVideoCaptionTranscriptionDelivery(
+      project.video.durationMs
+    );
     const settingsHash = hashCaptionInput({
       sourceFingerprint: project.source.fingerprint,
       language: project.video.language,
       model: videoCaptionTranscriptionConfig.model,
+      delivery,
     });
     const idempotencyKey = buildCaptionJobIdempotencyKey({
       companyCode: project.companyCode,
@@ -1608,10 +1619,15 @@ export const videoCaptionService = {
           });
         }
 
+        const delivery = getVideoCaptionTranscriptionDelivery(
+          project.video.durationMs
+        );
         await updateProgress(
           "transcribing",
           25,
-          "Đang nhận diện lời nói và timestamp theo từng từ."
+          delivery === "direct"
+            ? "Đang nhận diện trực tiếp lời nói trong video ngắn."
+            : "Đang nhận diện lời nói và timestamp theo từng từ."
         );
         const provider = createSpeechTranscriptionProvider(
           project.createdBy
@@ -1625,6 +1641,7 @@ export const videoCaptionService = {
             projectId: String(project._id),
             companyCode: project.companyCode,
           },
+          delivery,
         });
         logCaptionStt("provider_accepted", {
           jobId: String(job._id),
@@ -1632,7 +1649,36 @@ export const videoCaptionService = {
           companyCode: project.companyCode,
           provider: provider.name,
           providerRequestId: submission.providerRequestId,
+          delivery: submission.delivery,
         });
+
+        if (submission.delivery === "direct") {
+          if (submission.providerRequestId) {
+            job.providerRequestId = submission.providerRequestId;
+            await VideoCaptionJobModel.updateOne(
+              { _id: job._id, lockId },
+              {
+                $set: {
+                  providerRequestId: submission.providerRequestId,
+                  provider: provider.name,
+                  providerModel: videoCaptionTranscriptionConfig.model,
+                },
+              }
+            );
+          }
+          await updateProgress(
+            "processing_transcription",
+            70,
+            "Đã nhận kết quả. Đang chuẩn hóa timestamp phụ đề."
+          );
+          await completeSpeechTranscription({
+            job,
+            project,
+            transcript: submission.transcription,
+            lockId,
+          });
+          return;
+        }
 
         const awaitingProviderUpdate = await VideoCaptionJobModel.updateOne(
           { _id: job._id, lockId },
@@ -1795,6 +1841,16 @@ export const videoCaptionService = {
       const classified = classifyVideoCaptionError(error);
       const shouldRetry =
         classified.retryable && job.attempt < job.maxAttempts;
+      const latestProgress = await VideoCaptionJobModel.findById(job._id)
+        .select("progress.percent")
+        .lean();
+      const failedPercent = Math.max(
+        0,
+        Math.min(
+          99,
+          Number(latestProgress?.progress?.percent ?? job.progress?.percent ?? 0)
+        )
+      );
       await VideoCaptionJobModel.updateOne(
         { _id: job._id, lockId },
         {
@@ -1806,7 +1862,7 @@ export const videoCaptionService = {
             },
             progress: {
               stage: shouldRetry ? "retrying" : "failed",
-              percent: 0,
+              percent: failedPercent,
               message: classified.message,
             },
             ...(shouldRetry ? {} : { completedAt: new Date() }),
@@ -1836,7 +1892,7 @@ export const videoCaptionService = {
             },
             progress: {
               stage: shouldRetry ? "retrying" : "failed",
-              percent: 0,
+              percent: failedPercent,
               message: classified.message,
             },
           },
@@ -1851,8 +1907,14 @@ export const videoCaptionService = {
   async failJob(jobId: string, error: unknown) {
     if (!mongoose.Types.ObjectId.isValid(jobId)) return;
     const classified = classifyVideoCaptionError(error);
-    const job = await VideoCaptionJobModel.findByIdAndUpdate(
-      jobId,
+    const job = await VideoCaptionJobModel.findById(jobId);
+    if (!job) return;
+    const failedPercent = Math.max(
+      0,
+      Math.min(99, Number(job.progress?.percent || 0))
+    );
+    await VideoCaptionJobModel.updateOne(
+      { _id: job._id },
       {
         $set: {
           status: "failed",
@@ -1863,7 +1925,7 @@ export const videoCaptionService = {
           },
           progress: {
             stage: "failed",
-            percent: 0,
+            percent: failedPercent,
             message: classified.message,
           },
         },
@@ -1872,10 +1934,8 @@ export const videoCaptionService = {
           lockedAt: 1,
           lockExpiresAt: 1,
         },
-      },
-      { returnDocument: "after" }
+      }
     );
-    if (!job) return;
     const project = await VideoCaptionProjectModel.findOne({
       _id: job.projectId,
       companyCode: job.companyCode,
@@ -1894,7 +1954,7 @@ export const videoCaptionService = {
           },
           progress: {
             stage: "failed",
-            percent: 0,
+            percent: failedPercent,
             message: classified.message,
           },
         },

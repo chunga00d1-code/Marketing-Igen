@@ -117,6 +117,10 @@ export interface VideoCaptionSource {
 
 export interface VideoCaptionMetadata {
   durationMs?: number;
+  containerDurationMs?: number;
+  videoStreamDurationMs?: number;
+  audioStreamDurationMs?: number;
+  durationSource?: "container" | "video_stream" | "audio_stream";
   width?: number;
   height?: number;
   fps?: number;
@@ -332,9 +336,27 @@ export interface SpeechTranscriptionProvider {
     language?: string;
     idempotencyKey: string;
     webhookMetadata: Record<string, string>;
-  }): Promise<{
-    providerRequestId: string;
-  }>;
+    delivery: "direct" | "webhook";
+  }): Promise<
+    | {
+        delivery: "webhook";
+        providerRequestId: string;
+      }
+    | {
+        delivery: "direct";
+        providerRequestId?: string;
+        transcription: {
+          language?: string;
+          words: Array<{
+            text: string;
+            startMs: number;
+            endMs: number;
+            confidence?: number;
+          }>;
+          cost?: number;
+        };
+      }
+  >;
 }
 
 export interface VideoSceneAnalysisProvider {

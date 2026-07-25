@@ -342,8 +342,11 @@ async function parseUploadedDocument(base64Data: string, mimeType: string, fileN
     normMime.includes("powerpoint") ||
     fileName.endsWith(".pptx") ||
     fileName.endsWith(".ppt");
+  const isImage =
+    normMime.startsWith("image/") ||
+    /\.(png|jpe?g|webp)$/i.test(fileName);
 
-  if (isPdf || isDocx || isPptx) {
+  if (isPdf || isDocx || isPptx || isImage) {
     if (!process.env.OPENROUTER_API_KEY) {
       throw new Error("OPENROUTER_API_KEY is not configured");
     }
@@ -355,6 +358,7 @@ async function parseUploadedDocument(base64Data: string, mimeType: string, fileN
     if (isPdf) cleanMime = "application/pdf";
     else if (isDocx) cleanMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     else if (isPptx) cleanMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    else if (!cleanMime.startsWith("image/")) cleanMime = "image/jpeg";
 
     const result = await openrouterChat({
       model,
@@ -1053,6 +1057,9 @@ export const geminiController = {
         mimeType,
         channelScope = ["all"],
         purposeScope = ["all"],
+        pageScope = "all",
+        pageIds = [],
+        documentType = "general",
       } = req.body;
       if (!fileName || !fileBase64 || !mimeType) {
         return res.status(400).json({
@@ -1090,6 +1097,9 @@ export const geminiController = {
         createdBy: req.user?.id,
         channelScope,
         purposeScope,
+        pageScope,
+        pageIds,
+        documentType,
       });
 
       await walletService.deductBalance(userId, API_COSTS.GEMINI_FAQ, `Chi phí trích xuất & nạp tài liệu upload (${fileName})`);
@@ -1116,6 +1126,9 @@ export const geminiController = {
         docLink,
         channelScope = ["all"],
         purposeScope = ["all"],
+        pageScope = "all",
+        pageIds = [],
+        documentType = "general",
       } = req.body;
       if (!docLink) {
         return res.status(400).json({
@@ -1195,6 +1208,9 @@ export const geminiController = {
               createdBy: req.user?.id,
               channelScope,
               purposeScope,
+              pageScope,
+              pageIds,
+              documentType,
             });
 
             syncedDocuments.push({

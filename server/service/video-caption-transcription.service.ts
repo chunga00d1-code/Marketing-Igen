@@ -10,6 +10,12 @@ const ELEVENLABS_STT_URL =
   "https://api.elevenlabs.io/v1/speech-to-text";
 const ELEVENLABS_STT_MODEL =
   process.env.VIDEO_CAPTION_STT_MODEL?.trim() || "scribe_v2";
+const DIRECT_TRANSCRIPTION_MAX_DURATION_MS = Math.max(
+  10_000,
+  (Number(
+    process.env.VIDEO_CAPTION_STT_DIRECT_MAX_DURATION_SECONDS
+  ) || 120) * 1000
+);
 
 type ElevenLabsWord = {
   text?: string;
@@ -131,6 +137,7 @@ class ElevenLabsSpeechTranscriptionProvider
     language?: string;
     idempotencyKey: string;
     webhookMetadata: Record<string, string>;
+    delivery: "direct" | "webhook";
   }) {
     const { apiKey, source: keySource } =
       await resolveElevenLabsApiKey(this.userId);
@@ -158,13 +165,16 @@ class ElevenLabsSpeechTranscriptionProvider
     body.append("tag_audio_events", "false");
     body.append("diarize", "false");
     body.append("no_verbatim", "true");
-    body.append("webhook", "true");
-    body.append(
-      "webhook_metadata",
-      JSON.stringify(input.webhookMetadata)
-    );
+    const useWebhook = input.delivery === "webhook";
+    body.append("webhook", String(useWebhook));
     const webhookId = process.env.ELEVENLABS_STT_WEBHOOK_ID?.trim();
-    if (webhookId) body.append("webhook_id", webhookId);
+    if (useWebhook) {
+      body.append(
+        "webhook_metadata",
+        JSON.stringify(input.webhookMetadata)
+      );
+      if (webhookId) body.append("webhook_id", webhookId);
+    }
     if (input.language) body.append("language_code", input.language);
 
     const startedAt = Date.now();
@@ -175,7 +185,8 @@ class ElevenLabsSpeechTranscriptionProvider
       model: ELEVENLABS_STT_MODEL,
       language: input.language || "auto",
       sourceHost: new URL(input.videoUrl).hostname,
-      webhookIdConfigured: Boolean(webhookId),
+      delivery: input.delivery,
+      webhookIdConfigured: useWebhook && Boolean(webhookId),
       keySource,
       keyFingerprint: fingerprint,
     });
@@ -205,6 +216,7 @@ class ElevenLabsSpeechTranscriptionProvider
       undefined;
     const payload = (await response.json().catch(() => ({}))) as
       | ElevenLabsWebhookResponse
+      | ElevenLabsTranscript
       | {
           detail?:
             | string
@@ -239,6 +251,24 @@ class ElevenLabsSpeechTranscriptionProvider
       );
     }
 
+    if (!useWebhook) {
+      const transcription = normalizeElevenLabsTranscript(
+        payload as ElevenLabsTranscript
+      );
+      logStt("direct_completed", {
+        jobId: input.webhookMetadata.jobId,
+        providerRequestId: requestId || null,
+        elapsedMs: Date.now() - startedAt,
+        language: transcription.language || null,
+        wordCount: transcription.words.length,
+      });
+      return {
+        delivery: "direct" as const,
+        providerRequestId: requestId,
+        transcription,
+      };
+    }
+
     const providerRequestId =
       (payload as ElevenLabsWebhookResponse).request_id || requestId;
     if (!providerRequestId) {
@@ -255,7 +285,10 @@ class ElevenLabsSpeechTranscriptionProvider
       providerRequestId,
       elapsedMs: Date.now() - startedAt,
     });
-    return { providerRequestId };
+    return {
+      delivery: "webhook" as const,
+      providerRequestId,
+    };
   }
 
 }
@@ -264,7 +297,17 @@ export function createSpeechTranscriptionProvider(userId: string) {
   return new ElevenLabsSpeechTranscriptionProvider(userId);
 }
 
+export function getVideoCaptionTranscriptionDelivery(
+  durationMs?: number
+): "direct" | "webhook" {
+  return durationMs &&
+    durationMs <= DIRECT_TRANSCRIPTION_MAX_DURATION_MS
+    ? "direct"
+    : "webhook";
+}
+
 export const videoCaptionTranscriptionConfig = {
   provider: "elevenlabs",
   model: ELEVENLABS_STT_MODEL,
+  directMaxDurationMs: DIRECT_TRANSCRIPTION_MAX_DURATION_MS,
 };

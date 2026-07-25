@@ -3,6 +3,7 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../model/ai-knowledge.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
+import { SocialIntegrationModel } from "../model/social-integration.model";
 
 const EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_TOP_K = 5;
@@ -16,6 +17,69 @@ type PurposeScope =
   | "marketing"
   | "caption"
   | "all";
+type PageScope = "all" | "selected";
+export type KnowledgeDocumentType =
+  | "company_profile" | "product" | "service" | "policy" | "pricing"
+  | "faq" | "brand_guideline" | "general";
+
+function inferDocumentType(
+  requestedType: KnowledgeDocumentType | undefined,
+  sourceTitle: string,
+  text: string
+): KnowledgeDocumentType {
+  if (requestedType && requestedType !== "general") return requestedType;
+
+  const normalizedTitle = normalizeForLookup(sourceTitle);
+  const normalizedText = normalizeForLookup(text.slice(0, 12000));
+  const hasPricingTitle = /\b(bang gia|bao gia|price list|pricing|retail price|wholesale price)\b/.test(normalizedTitle);
+  const isSpreadsheet =
+    /\.(xlsx?|csv)$/i.test(sourceTitle) ||
+    /\bsheet\s*:|\btieu de cot\s*:|\bgoogle sheet\b/i.test(text);
+  const hasPriceColumn =
+    /\b(gia|gia ban|gia le|gia si|don gia|price|retail price|wholesale price|vnd|vnđ)\b/.test(normalizedText);
+  const hasProductColumn =
+    /\b(san pham|ten hang|ten hang hoa|ma hang|sku|model|product)\b/.test(normalizedText);
+  const structuredRows = (text.match(/^(Sản phẩm|Dòng)\s+\d+\s*:/gim) || []).length;
+
+  if (
+    hasPricingTitle ||
+    (isSpreadsheet && hasPriceColumn && (hasProductColumn || structuredRows >= 2))
+  ) {
+    return "pricing";
+  }
+  return requestedType || "general";
+}
+
+function normalizePageTarget(pageScope?: PageScope, pageIds?: string[]) {
+  const normalizedIds = Array.from(new Set((pageIds || []).map((id) => String(id).trim()).filter(Boolean)));
+  const normalizedScope: PageScope = pageScope === "selected" ? "selected" : "all";
+  if (normalizedScope === "selected" && normalizedIds.length === 0) {
+    const error = new Error("Vui lòng chọn ít nhất một Facebook Page.");
+    (error as Error & { status?: number }).status = 400;
+    throw error;
+  }
+  return {
+    pageScope: normalizedScope,
+    pageIds: normalizedScope === "selected" ? normalizedIds : [],
+  };
+}
+
+async function validateCompanyFacebookPages(companyCode: string, pageScope: PageScope, pageIds: string[]) {
+  if (pageScope !== "selected") return;
+  const validPageIds = await SocialIntegrationModel.distinct("username", {
+    companyCode,
+    platform: "Facebook",
+    isConnected: true,
+    username: { $in: pageIds },
+  });
+  const validSet = new Set(validPageIds.map(String));
+  const invalidPageIds = pageIds.filter((id) => !validSet.has(id));
+  if (invalidPageIds.length > 0) {
+    const error = new Error("Một hoặc nhiều Facebook Page không thuộc doanh nghiệp hoặc đã ngắt kết nối.");
+    (error as Error & { status?: number }).status = 400;
+    throw error;
+  }
+}
 
 const CANDIDATE_STOPWORDS = new Set([
   "toi", "muon", "dat", "mua", "ban", "cai", "cho", "cua", "co", "shop",
@@ -142,8 +206,9 @@ function buildRankedContextItems(params: {
   normalizedQuery: string;
   queryVector: number[];
   queryTokens: string[];
+  pageId?: string;
 }) {
-  const { chunks, documentMap, normalizedQuery, queryVector, queryTokens } = params;
+  const { chunks, documentMap, normalizedQuery, queryVector, queryTokens, pageId } = params;
 
   return chunks.map((chunk) => {
     const doc = documentMap.get(String(chunk.documentId));
@@ -163,8 +228,13 @@ function buildRankedContextItems(params: {
         /\b(gia|gia ban|don gia|bao gia|price|vnd|vnđ)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
         ? 0.35
         : 0;
+    const pageBoost =
+      pageId && doc?.pageScope === "selected" && doc?.pageIds?.includes(pageId)
+        ? 0.2
+        : 0;
     const score =
-      semanticScore + lexicalScore * 0.9 + titleBoost * 0.6 + looseMatchScore * 0.7 + productDocBoost + pricingBoost;
+      semanticScore + lexicalScore * 0.9 + titleBoost * 0.6 + looseMatchScore * 0.7 +
+      productDocBoost + pricingBoost + pageBoost;
 
     return {
       chunkId: chunk._id,
@@ -334,6 +404,9 @@ export const aiKnowledgeService = {
     createdBy?: string;
     channelScope?: ChannelScope[];
     purposeScope?: PurposeScope[];
+    pageScope?: PageScope;
+    pageIds?: string[];
+    documentType?: KnowledgeDocumentType;
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
     const text = normalizeText(params.text);
@@ -342,6 +415,13 @@ export const aiKnowledgeService = {
     const purposeScope = params.purposeScope?.length
       ? params.purposeScope
       : ["all"];
+    const pageTarget = normalizePageTarget(params.pageScope, params.pageIds);
+    const documentType = inferDocumentType(
+      params.documentType,
+      params.sourceTitle,
+      text
+    );
+    await validateCompanyFacebookPages(companyCode, pageTarget.pageScope, pageTarget.pageIds);
 
     if (!text) {
       await AIKnowledgeDocumentModel.deleteMany({
@@ -374,10 +454,13 @@ export const aiKnowledgeService = {
         version,
         channelScope,
         purposeScope,
+        pageScope: pageTarget.pageScope,
+        pageIds: pageTarget.pageIds,
+        documentType,
         contentHash,
         createdBy: params.createdBy || "",
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
     );
 
     await AIKnowledgeChunkModel.deleteMany({ documentId: document._id });
@@ -394,6 +477,8 @@ export const aiKnowledgeService = {
           tokensApprox: Math.ceil(chunk.length / 4),
           channelScope,
           purposeScope,
+          pageScope: pageTarget.pageScope,
+          pageIds: pageTarget.pageIds,
           version,
         }))
       );
@@ -408,6 +493,8 @@ export const aiKnowledgeService = {
     channel?: "facebook" | "zalo" | "tiktok";
     purpose?: Exclude<PurposeScope, "all">;
     topK?: number;
+    pageId?: string;
+    documentTypes?: KnowledgeDocumentType[];
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
     const normalizedQuery = normalizeText(params.query);
@@ -429,6 +516,16 @@ export const aiKnowledgeService = {
     let chunks: any[] = [];
 
     // Luôn luôn tìm kiếm ngữ cảnh tài liệu RAG trong mọi trường hợp (kể cả câu hỏi về sản phẩm)
+    let permittedDocumentIds: mongoose.Types.ObjectId[] | undefined;
+    if (params.documentTypes?.length) {
+      const permittedDocuments = await AIKnowledgeDocumentModel.find({
+        companyCode,
+        documentType: { $in: params.documentTypes },
+        status: "active",
+      }).select("_id").lean();
+      permittedDocumentIds = permittedDocuments.map((document) => document._id);
+    }
+
     const filter: any = {
       companyCode,
       channelScope: { $in: ["all", channel] },
@@ -439,8 +536,23 @@ export const aiKnowledgeService = {
             { purposeScope: { $exists: false } },
           ],
         },
+        {
+          $or: params.pageId
+            ? [
+                { pageScope: "selected", pageIds: params.pageId },
+                { pageScope: "all" },
+                { pageScope: { $exists: false } },
+              ]
+            : [
+                { pageScope: "all" },
+                { pageScope: { $exists: false } },
+              ],
+        },
       ],
     };
+    if (permittedDocumentIds) {
+      filter.documentId = { $in: permittedDocumentIds };
+    }
 
     if (queryTokens.length > 0) {
       filter.$or = queryTokens.map((token) => ({
@@ -457,11 +569,30 @@ export const aiKnowledgeService = {
       const fallbackFilter = {
         companyCode,
         channelScope: { $in: ["all", channel] },
-        $or: [
-          { purposeScope: { $in: ["all", purpose] } },
-          { purposeScope: { $exists: false } },
+        $and: [
+          {
+            $or: [
+              { purposeScope: { $in: ["all", purpose] } },
+              { purposeScope: { $exists: false } },
+            ],
+          },
+          {
+            $or: params.pageId
+              ? [
+                  { pageScope: "selected", pageIds: params.pageId },
+                  { pageScope: "all" },
+                  { pageScope: { $exists: false } },
+                ]
+              : [
+                  { pageScope: "all" },
+                  { pageScope: { $exists: false } },
+                ],
+          },
         ],
       };
+      if (permittedDocumentIds) {
+        (fallbackFilter as any).documentId = { $in: permittedDocumentIds };
+      }
       chunks = await AIKnowledgeChunkModel.find(fallbackFilter as any)
         .sort({ updatedAt: -1 })
         .limit(MAX_CHUNKS_TO_RANK)
@@ -472,7 +603,7 @@ export const aiKnowledgeService = {
     const documents = await AIKnowledgeDocumentModel.find({
       _id: { $in: documentIds },
     })
-      .select("_id sourceTitle sourceUrl")
+      .select("_id sourceTitle sourceUrl pageScope pageIds")
       .lean();
     const documentMap = new Map(documents.map((doc) => [String(doc._id), doc]));
 
@@ -482,6 +613,7 @@ export const aiKnowledgeService = {
       normalizedQuery,
       queryVector,
       queryTokens,
+      pageId: params.pageId,
     })
       .filter((item) => item.score > 0.12)
       .sort((a, b) => b.score - a.score)
@@ -495,6 +627,7 @@ export const aiKnowledgeService = {
             normalizedQuery,
             queryVector,
             queryTokens,
+            pageId: params.pageId,
           })
             .filter((item) => item.score > 0.04)
             .sort((a, b) => b.score - a.score)
@@ -713,6 +846,9 @@ export const aiKnowledgeService = {
         version: document.version,
         channelScope: document.channelScope || ["all"],
         purposeScope: document.purposeScope || ["all"],
+        pageScope: document.pageScope || "all",
+        pageIds: document.pageIds || [],
+        documentType: document.documentType || "general",
         chunksCount: countByDocumentId.get(String(document._id)) || 0,
         createdBy: document.createdBy || "",
         createdAt: document.createdAt,
@@ -726,17 +862,33 @@ export const aiKnowledgeService = {
     documentId: string;
     channelScope: ChannelScope[];
     purposeScope: PurposeScope[];
+    pageScope?: PageScope;
+    pageIds?: string[];
+    documentType?: KnowledgeDocumentType;
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
+    const existing = await AIKnowledgeDocumentModel.findOne({
+      _id: params.documentId,
+      companyCode,
+    }).select("pageScope pageIds documentType");
+    if (!existing) return null;
+    const pageTarget = normalizePageTarget(
+      params.pageScope || existing.pageScope || "all",
+      params.pageIds ?? existing.pageIds ?? []
+    );
+    await validateCompanyFacebookPages(companyCode, pageTarget.pageScope, pageTarget.pageIds);
     const document = await AIKnowledgeDocumentModel.findOneAndUpdate(
       { _id: params.documentId, companyCode },
       {
         $set: {
           channelScope: params.channelScope,
           purposeScope: params.purposeScope,
+          pageScope: pageTarget.pageScope,
+          pageIds: pageTarget.pageIds,
+          documentType: params.documentType || existing.documentType || "general",
         },
       },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!document) return null;
     await AIKnowledgeChunkModel.updateMany(
@@ -745,6 +897,8 @@ export const aiKnowledgeService = {
         $set: {
           channelScope: params.channelScope,
           purposeScope: params.purposeScope,
+          pageScope: pageTarget.pageScope,
+          pageIds: pageTarget.pageIds,
         },
       }
     );
@@ -752,6 +906,9 @@ export const aiKnowledgeService = {
       id: String(document._id),
       channelScope: document.channelScope,
       purposeScope: document.purposeScope,
+      pageScope: document.pageScope,
+      pageIds: document.pageIds,
+      documentType: document.documentType,
       version: document.version,
       updatedAt: document.updatedAt,
     };

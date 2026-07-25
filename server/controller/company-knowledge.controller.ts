@@ -25,6 +25,9 @@ export const companyKnowledgeController = {
         documentId: req.params.id,
         channelScope: req.body.channelScope,
         purposeScope: req.body.purposeScope,
+        pageScope: req.body.pageScope,
+        pageIds: req.body.pageIds,
+        documentType: req.body.documentType,
       });
       if (!result) {
         return res.status(404).json({
@@ -35,9 +38,14 @@ export const companyKnowledgeController = {
       return res.status(200).json({ status: "success", document: result });
     } catch (error: unknown) {
       console.error("[CompanyKnowledge] updateScopes error:", error);
-      return res.status(500).json({
+      const status = typeof error === "object" && error && "status" in error
+        ? Number(error.status)
+        : 500;
+      return res.status(status).json({
         status: "error",
-        message: "Không thể cập nhật phạm vi sử dụng tài liệu.",
+        message: error instanceof Error
+          ? error.message
+          : "Không thể cập nhật phạm vi sử dụng tài liệu.",
       });
     }
   },
