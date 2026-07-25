@@ -1,0 +1,4 @@
+interface:
+  display_name: "Campaign Content Sheet"
+  short_description: "Thiết kế sheet nội dung chiến dịch có AI"
+  default_prompt: "Use $campaign-content-sheet to plan or implement the campaign content spreadsheet and AI-assisted field generation."

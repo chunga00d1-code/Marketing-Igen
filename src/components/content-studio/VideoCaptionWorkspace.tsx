@@ -210,6 +210,9 @@ export function VideoCaptionWorkspace() {
   const [actionBusy, setActionBusy] = useState(false);
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [playerUrl, setPlayerUrl] = useState("");
+  const [playerDurationMs, setPlayerDurationMs] = useState<number>();
+  const [playerDurationWarning, setPlayerDurationWarning] = useState("");
   const [segmentSearchQuery, setSegmentSearchQuery] = useState("");
   const [segmentLaneFilter, setSegmentLaneFilter] = useState<"all" | "speech" | "context">("all");
 
@@ -359,6 +362,19 @@ export function VideoCaptionWorkspace() {
     }, 2500);
     return () => window.clearInterval(timer);
   }, [detail?.project, openProject]);
+
+  useEffect(() => {
+    const preferredUrl =
+      detail?.project.video.proxyUrl || detail?.project.source.url || "";
+    setPlayerUrl(preferredUrl);
+    setPlayerDurationMs(undefined);
+    setPlayerDurationWarning("");
+  }, [
+    detail?.project.id,
+    detail?.project.source.url,
+    detail?.project.video.durationMs,
+    detail?.project.video.proxyUrl,
+  ]);
 
   useEffect(() => {
     const project = detail?.project;
@@ -651,11 +667,67 @@ export function VideoCaptionWorkspace() {
     );
   }
 
+  function handlePlayerMetadata(video: HTMLVideoElement) {
+    if (!detail || !Number.isFinite(video.duration) || video.duration <= 0) {
+      return;
+    }
+    const actualDurationMs = Math.round(video.duration * 1000);
+    const expectedDurationMs = detail.project.video.durationMs;
+    setPlayerDurationMs(actualDurationMs);
+    if (!expectedDurationMs) return;
+    const toleranceMs = Math.max(750, expectedDurationMs * 0.05);
+    const mismatch =
+      Math.abs(actualDurationMs - expectedDurationMs) > toleranceMs;
+    if (!mismatch) {
+      setPlayerDurationWarning("");
+      return;
+    }
+
+    const sourceUrl = detail.project.source.url;
+    const isUsingProxy =
+      Boolean(detail.project.video.proxyUrl) &&
+      playerUrl === detail.project.video.proxyUrl;
+    console.warn(
+      "[Video Caption Player] duration_mismatch",
+      {
+        projectId: detail.project.id,
+        expectedDurationMs,
+        actualDurationMs,
+        source: isUsingProxy ? "proxy" : "original",
+      }
+    );
+    if (isUsingProxy && sourceUrl && sourceUrl !== playerUrl) {
+      setPlayerDurationWarning(
+        `Proxy chỉ phát ${formatDuration(actualDurationMs)} trong khi nguồn được phân tích là ${formatDuration(expectedDurationMs)}. Đã tự chuyển sang video gốc.`
+      );
+      setPlayerUrl(sourceUrl);
+      return;
+    }
+    setPlayerDurationWarning(
+      `Video thực phát ${formatDuration(actualDurationMs)}, lệch với metadata ${formatDuration(expectedDurationMs)}. Hãy tải lại file nguồn trước khi tạo caption.`
+    );
+  }
+
+  function handlePlayerError() {
+    if (!detail) return;
+    const sourceUrl = detail.project.source.url;
+    if (
+      detail.project.video.proxyUrl &&
+      playerUrl === detail.project.video.proxyUrl &&
+      sourceUrl &&
+      sourceUrl !== playerUrl
+    ) {
+      setPlayerDurationWarning(
+        "Không phát được proxy video. Hệ thống đã tự chuyển sang video gốc."
+      );
+      setPlayerUrl(sourceUrl);
+    }
+  }
+
   const currentStatus = detail
     ? STATUS_LABELS[detail.project.status]
     : null;
-  const previewUrl =
-    detail?.project.video.proxyUrl || detail?.project.source.url;
+  const previewUrl = playerUrl;
   const activePreviewSegments =
     detail?.segments.filter(
       (segment) =>
@@ -997,8 +1069,9 @@ export function VideoCaptionWorkspace() {
                 </div>
 
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-                  <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
-                    <div className="relative flex aspect-video items-center justify-center">
+                  <div className="space-y-2">
+                    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950">
+                      <div className="relative flex aspect-video items-center justify-center">
                       {previewUrl ? (
                         <video
                           ref={videoRef}
@@ -1006,6 +1079,10 @@ export function VideoCaptionWorkspace() {
                           src={previewUrl}
                           controls
                           preload="metadata"
+                          onLoadedMetadata={(event) =>
+                            handlePlayerMetadata(event.currentTarget)
+                          }
+                          onError={handlePlayerError}
                           onTimeUpdate={(event) =>
                             setCurrentTimeMs(
                               event.currentTarget.currentTime * 1000
@@ -1016,7 +1093,7 @@ export function VideoCaptionWorkspace() {
                       ) : (
                         <FileVideo className="h-12 w-12 text-slate-600" />
                       )}
-                      {activePreviewSegments.map((segment) => {
+                        {activePreviewSegments.map((segment) => {
                         const style = {
                           ...detail.project.style,
                           ...(segment.styleOverride || {}),
@@ -1054,8 +1131,15 @@ export function VideoCaptionWorkspace() {
                             </span>
                           </div>
                         );
-                      })}
+                        })}
+                      </div>
                     </div>
+                    {playerDurationWarning && (
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>{playerDurationWarning}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -1075,6 +1159,30 @@ export function VideoCaptionWorkspace() {
                             )}
                           </dd>
                         </div>
+                        {playerDurationMs !== undefined && (
+                          <div className="flex items-center justify-between gap-3">
+                            <dt className="text-slate-500">
+                              Thực tế trình phát
+                            </dt>
+                            <dd
+                              className={`font-semibold ${
+                                detail.project.video.durationMs &&
+                                Math.abs(
+                                  playerDurationMs -
+                                    detail.project.video.durationMs
+                                ) >
+                                  Math.max(
+                                    750,
+                                    detail.project.video.durationMs * 0.05
+                                  )
+                                  ? "text-amber-700"
+                                  : "text-slate-800"
+                              }`}
+                            >
+                              {formatDuration(playerDurationMs)}
+                            </dd>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between gap-3">
                           <dt className="flex items-center gap-2 text-slate-500">
                             <MonitorPlay className="h-4 w-4" />

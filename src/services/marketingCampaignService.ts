@@ -125,6 +125,136 @@ export interface MarketingContent {
   mediaType?: 'text' | 'image' | 'video';
 }
 
+export type CampaignSheetDataType =
+  | 'short_text'
+  | 'long_text'
+  | 'number'
+  | 'currency'
+  | 'date'
+  | 'datetime'
+  | 'select'
+  | 'multi_select'
+  | 'url'
+  | 'media_url'
+  | 'boolean';
+
+export interface CampaignSheetColumn {
+  id: string;
+  key: string;
+  label: string;
+  kind: 'system' | 'custom';
+  dataType: CampaignSheetDataType;
+  systemField?: string;
+  required: boolean;
+  archived: boolean;
+  options?: string[];
+  fieldPolicy: 'input' | 'constraint' | 'approved_override' | 'note';
+  ai: {
+    enabled: boolean;
+    instruction?: string;
+    allowedSources: Array<'row' | 'campaign' | 'knowledge'>;
+    sensitiveBusinessField: boolean;
+    knowledgeDocumentTypes?: string[];
+  };
+  display: {
+    order: number;
+    width?: number;
+    hidden?: boolean;
+    frozen?: boolean;
+  };
+}
+
+export interface CampaignSheetField {
+  key: string;
+  value: unknown;
+  source: 'system' | 'user' | 'ai' | 'knowledge' | 'import';
+  locked: boolean;
+  updatedBy: string;
+  updatedAt: string;
+  generationId?: string;
+  references?: Array<{
+    kind: 'campaign' | 'slot' | 'knowledge_document' | 'knowledge_chunk';
+    id: string;
+    title?: string;
+    version?: string;
+    excerpt?: string;
+  }>;
+}
+
+export interface CampaignSheetRow {
+  slotId: string;
+  revision: number;
+  readOnly: boolean;
+  system: Record<string, unknown>;
+  fields: Record<string, CampaignSheetField>;
+  updatedAt: string;
+}
+
+export interface CampaignSheetData {
+  campaign: {
+    id: string;
+    title: string;
+    timezone: string;
+    status: CampaignStatus;
+    startDate: string;
+    endDate: string;
+    platforms: Array<'Facebook' | 'TikTok'>;
+  };
+  config: {
+    id: string;
+    revision: number;
+    columns: CampaignSheetColumn[];
+  };
+  limits: {
+    maxCustomColumns: number;
+    maxRows: number;
+    maxAiRows: number;
+    maxBulkCells: number;
+  };
+  rows: CampaignSheetRow[];
+}
+
+export interface CampaignSheetAIJob {
+  _id: string;
+  status: string;
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  conflictedItems: number;
+  progress: number;
+  estimatedCost: number;
+  actualCost: number;
+  errorMessage?: string;
+  proposals: Array<{
+    slotId: string;
+    expectedRevision: number;
+    fields: Array<{
+      key: string;
+      value: unknown;
+      confidence: number;
+      references: CampaignSheetField['references'];
+      warning?: string;
+    }>;
+    warnings: string[];
+    status: string;
+  }>;
+}
+
+export interface CampaignSheetRevision {
+  _id: string;
+  actorType: 'user' | 'ai';
+  actorId: string;
+  operation: string;
+  baseRevision: number;
+  changes: Array<{
+    slotId: string;
+    fieldKey: string;
+    before?: unknown;
+    after?: unknown;
+  }>;
+  createdAt: string;
+}
+
 export interface MarketingCampaignCalendarSlot {
   _id: string;
   campaignId: string;
@@ -348,6 +478,158 @@ export const marketingCampaignService = {
       method: 'POST',
       body: JSON.stringify({ googleDriveFolderUrl }),
     });
+  },
+
+  getSheet(campaignId: string) {
+    return request<CampaignSheetData>(`/api/v1/marketing-campaigns/${campaignId}/sheet`);
+  },
+
+  addSheetColumn(campaignId: string, input: {
+    label: string;
+    key?: string;
+    dataType: CampaignSheetDataType;
+    required?: boolean;
+    options?: string[];
+    fieldPolicy?: CampaignSheetColumn['fieldPolicy'];
+    ai?: Partial<CampaignSheetColumn['ai']>;
+  }) {
+    return request<CampaignSheetData['config']>(`/api/v1/marketing-campaigns/${campaignId}/sheet/columns`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  addSheetRow(campaignId: string, input: {
+    date: string;
+    time: string;
+    platform: 'Facebook' | 'TikTok';
+    pillar?: string;
+    objective: string;
+    topicBrief: string;
+    funnelStage?: 'TOFU' | 'MOFU' | 'BOFU';
+    mediaType: 'text' | 'image' | 'video' | 'human-video';
+  }) {
+    return request<CampaignSlot>(`/api/v1/marketing-campaigns/${campaignId}/sheet/rows`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  updateSheetColumn(campaignId: string, columnId: string, input: Partial<CampaignSheetColumn>) {
+    return request<CampaignSheetData['config']>(`/api/v1/marketing-campaigns/${campaignId}/sheet/columns/${encodeURIComponent(columnId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+
+  archiveSheetColumn(campaignId: string, columnId: string) {
+    return request<CampaignSheetData['config']>(`/api/v1/marketing-campaigns/${campaignId}/sheet/columns/${encodeURIComponent(columnId)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  updateSheetRow(campaignId: string, slotId: string, input: {
+    expectedRevision: number;
+    changes: Array<{ key: string; value?: unknown; locked?: boolean }>;
+  }) {
+    return request<{
+      slotId: string;
+      revision: number;
+      system: Record<string, unknown>;
+      fields: Record<string, CampaignSheetField>;
+    }>(`/api/v1/marketing-campaigns/${campaignId}/sheet/rows/${slotId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+
+  updateSheetCells(campaignId: string, input: {
+    rows: Array<{
+      slotId: string;
+      expectedRevision: number;
+      changes: Array<{ key: string; value?: unknown; locked?: boolean }>;
+    }>;
+  }) {
+    return request<{
+      results: Array<{
+        slotId: string;
+        revision: number;
+        system: Record<string, unknown>;
+        fields: Record<string, CampaignSheetField>;
+      }>;
+      conflicts: Array<{ slotId: string; code?: string; message: string }>;
+      updatedCells: number;
+    }>(`/api/v1/marketing-campaigns/${campaignId}/sheet/cells`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+
+  previewSheetAI(campaignId: string, input: {
+    slotId: string;
+    targetFieldKeys: string[];
+    expectedRevision: number;
+    overwritePolicy?: 'empty_only' | 'suggest_only' | 'replace_selected';
+    instruction?: string;
+    idempotencyKey: string;
+  }) {
+    return request<CampaignSheetAIJob>(`/api/v1/marketing-campaigns/${campaignId}/sheet/ai/preview`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  applySheetAI(campaignId: string, jobId: string, fieldKeys?: string[]) {
+    return request<{ job: CampaignSheetAIJob; applied: number; conflicted: number }>(
+      `/api/v1/marketing-campaigns/${campaignId}/sheet/ai/jobs/${jobId}/apply`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ fieldKeys }),
+      }
+    );
+  },
+
+  createSheetAIJob(campaignId: string, input: {
+    slotIds: string[];
+    targetFieldKeys: string[];
+    overwritePolicy?: 'empty_only' | 'suggest_only' | 'replace_selected';
+    idempotencyKey: string;
+  }) {
+    return request<CampaignSheetAIJob>(`/api/v1/marketing-campaigns/${campaignId}/sheet/ai/jobs`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  getSheetAIJob(campaignId: string, jobId: string) {
+    return request<CampaignSheetAIJob>(`/api/v1/marketing-campaigns/${campaignId}/sheet/ai/jobs/${jobId}`);
+  },
+
+  cancelSheetAIJob(campaignId: string, jobId: string) {
+    return request<CampaignSheetAIJob>(`/api/v1/marketing-campaigns/${campaignId}/sheet/ai/jobs/${jobId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  retrySheetAIJob(campaignId: string, jobId: string) {
+    return request<CampaignSheetAIJob>(`/api/v1/marketing-campaigns/${campaignId}/sheet/ai/jobs/${jobId}/retry`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  listSheetRevisions(campaignId: string, limit = 50) {
+    return request<CampaignSheetRevision[]>(
+      `/api/v1/marketing-campaigns/${campaignId}/sheet/revisions?limit=${limit}`
+    );
+  },
+
+  revertSheetRevision(campaignId: string, revisionId: string) {
+    return request<{ revertedRows: number; conflicts: string[] }>(
+      `/api/v1/marketing-campaigns/${campaignId}/sheet/revisions/${revisionId}/revert`,
+      { method: 'POST', body: JSON.stringify({}) }
+    );
   },
 };
 

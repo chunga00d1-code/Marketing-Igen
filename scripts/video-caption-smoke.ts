@@ -13,8 +13,10 @@ import {
   buildCaptionJobIdempotencyKey,
   normalizeCaptionStyle,
 } from "../server/service/video-caption-domain.service";
+import { resolveVideoCaptionDurations } from "../server/service/video-caption-media.service";
 import { buildSpeechCaptionSegments } from "../server/service/video-caption-segmentation.service";
 import { serializeVideoCaptionSubtitles } from "../server/service/video-caption-subtitle.service";
+import { getVideoCaptionTranscriptionDelivery } from "../server/service/video-caption-transcription.service";
 
 const words = [
   { text: "Xin", startMs: 0, endMs: 220, confidence: 0.9 },
@@ -64,6 +66,22 @@ assert.equal(
   canTransitionVideoCaptionStatus("draft", "completed"),
   false
 );
+assert.deepEqual(
+  resolveVideoCaptionDurations(
+    { format: { duration: "19" } },
+    { codec_type: "video", duration: "3" },
+    { codec_type: "audio", duration: "19" }
+  ),
+  {
+    durationSeconds: 19,
+    durationSource: "audio_stream",
+    containerDurationSeconds: 19,
+    videoStreamDurationSeconds: 3,
+    audioStreamDurationSeconds: 19,
+  }
+);
+assert.equal(getVideoCaptionTranscriptionDelivery(19_000), "direct");
+assert.equal(getVideoCaptionTranscriptionDelivery(121_000), "webhook");
 assert.deepEqual(normalizeCaptionStyle(), DEFAULT_VIDEO_CAPTION_STYLE);
 assert.equal(
   buildCaptionJobIdempotencyKey({

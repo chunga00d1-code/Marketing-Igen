@@ -86,6 +86,7 @@ export const facebookCommentService = {
         companyCode,
         query: message,
         channel: "facebook",
+        pageId,
         topK: 5,
       });
 

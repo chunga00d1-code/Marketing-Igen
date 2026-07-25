@@ -8,12 +8,24 @@ import { validateRequest } from "../middleware/validation";
 export const companyKnowledgeRouter = Router();
 
 const managerOnly = requireRole(["superadmin", "admin", "manager"]);
+const pageScope = Joi.string().valid("all", "selected");
+const pageIds = Joi.array().items(Joi.string().trim().min(1)).max(100);
+const documentType = Joi.string().valid(
+  "company_profile", "product", "service", "policy", "pricing", "faq", "brand_guideline", "general"
+);
 const scopeSchema = {
   body: Joi.object({
     channelScope: Joi.array()
       .items(Joi.string().valid("facebook", "zalo", "tiktok", "all"))
       .min(1)
       .required(),
+    pageScope: pageScope.optional(),
+    pageIds: pageIds.when("pageScope", {
+      is: "selected",
+      then: Joi.array().items(Joi.string().trim().min(1)).min(1).max(100).required(),
+      otherwise: Joi.array().items(Joi.string()).max(0).optional(),
+    }),
+    documentType: documentType.optional(),
     purposeScope: Joi.array()
       .items(
         Joi.string().valid(
@@ -47,6 +59,9 @@ const uploadSchema = {
     mimeType: Joi.string().required(),
     channelScope: scopeSchema.body.extract("channelScope").optional(),
     purposeScope: scopeSchema.body.extract("purposeScope").optional(),
+    pageScope: pageScope.optional(),
+    pageIds: pageIds.optional(),
+    documentType: documentType.optional(),
   }),
 };
 const syncSchema = {
@@ -54,6 +69,9 @@ const syncSchema = {
     docLink: Joi.string().required(),
     channelScope: scopeSchema.body.extract("channelScope").optional(),
     purposeScope: scopeSchema.body.extract("purposeScope").optional(),
+    pageScope: pageScope.optional(),
+    pageIds: pageIds.optional(),
+    documentType: documentType.optional(),
   }),
 };
 

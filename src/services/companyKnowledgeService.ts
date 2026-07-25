@@ -11,6 +11,24 @@ export type KnowledgePurposeScope =
   | "marketing"
   | "caption"
   | "all";
+export type KnowledgePageScope = "all" | "selected";
+export type KnowledgeDocumentType =
+  | "company_profile"
+  | "product"
+  | "service"
+  | "policy"
+  | "pricing"
+  | "faq"
+  | "brand_guideline"
+  | "general";
+
+export type KnowledgeScopes = {
+  channelScope: KnowledgeChannelScope[];
+  purposeScope: KnowledgePurposeScope[];
+  pageScope: KnowledgePageScope;
+  pageIds: string[];
+  documentType: KnowledgeDocumentType;
+};
 
 export type CompanyKnowledgeHealth = {
   companyCode: string;
@@ -30,6 +48,9 @@ export type CompanyKnowledgeDocument = {
   version: number;
   channelScope: KnowledgeChannelScope[];
   purposeScope: KnowledgePurposeScope[];
+  pageScope: KnowledgePageScope;
+  pageIds: string[];
+  documentType: KnowledgeDocumentType;
   chunksCount: number;
   createdBy?: string;
   createdAt: string;
@@ -81,10 +102,7 @@ export const companyKnowledgeService = {
 
   async upload(
     file: File,
-    scopes: {
-      channelScope: KnowledgeChannelScope[];
-      purposeScope: KnowledgePurposeScope[];
-    }
+    scopes: KnowledgeScopes
   ) {
     return requestJson<{
       status: "success";
@@ -103,10 +121,7 @@ export const companyKnowledgeService = {
 
   syncDrive(
     docLink: string,
-    scopes: {
-      channelScope: KnowledgeChannelScope[];
-      purposeScope: KnowledgePurposeScope[];
-    }
+    scopes: KnowledgeScopes
   ) {
     return requestJson<{
       status: "success";
@@ -121,10 +136,7 @@ export const companyKnowledgeService = {
 
   updateScopes(
     documentId: string,
-    scopes: {
-      channelScope: KnowledgeChannelScope[];
-      purposeScope: KnowledgePurposeScope[];
-    }
+    scopes: KnowledgeScopes
   ) {
     return requestJson(`/api/v1/company-knowledge/documents/${documentId}/scopes`, {
       method: "PATCH",
