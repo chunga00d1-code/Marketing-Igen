@@ -42,6 +42,7 @@ export type VideoCaptionJobOperation =
 export const VIDEO_CAPTION_JOB_STATUSES = [
   "queued",
   "processing",
+  "awaiting_provider",
   "retrying",
   "completed",
   "failed",
@@ -326,11 +327,15 @@ export function isTerminalVideoCaptionStatus(
 
 export interface SpeechTranscriptionProvider {
   readonly name: string;
-  transcribe(input: {
+  start(input: {
     videoUrl: string;
     language?: string;
     idempotencyKey: string;
+    webhookMetadata: Record<string, string>;
   }): Promise<{
+    providerRequestId: string;
+  }>;
+  retrieve(providerRequestId: string): Promise<{
     language?: string;
     words: Array<{
       text: string;
@@ -338,9 +343,8 @@ export interface SpeechTranscriptionProvider {
       endMs: number;
       confidence?: number;
     }>;
-    providerRequestId?: string;
     cost?: number;
-  }>;
+  } | null>;
 }
 
 export interface VideoSceneAnalysisProvider {

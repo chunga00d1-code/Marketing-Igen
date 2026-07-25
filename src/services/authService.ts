@@ -299,6 +299,9 @@ export const authService = {
       avatarId?: string;
       voiceId?: string;
       apiKey?: string;
+    },
+    elevenlabsAccess?: {
+      apiKey?: string;
     }
   ): Promise<string> {
     const res = await fetch("/api/v1/auth/register-user", {
@@ -320,6 +323,7 @@ export const authService = {
         division,
         phone,
         heygenAccess,
+        elevenlabsAccess,
       }),
     });
 

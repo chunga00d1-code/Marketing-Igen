@@ -34,6 +34,7 @@ import { videoCaptionMediaService } from "./video-caption-media.service";
 import { buildSpeechCaptionSegments } from "./video-caption-segmentation.service";
 import {
   createSpeechTranscriptionProvider,
+  normalizeElevenLabsTranscript,
   videoCaptionTranscriptionConfig,
 } from "./video-caption-transcription.service";
 import {
@@ -53,6 +54,10 @@ const CAMPAIGN_DAILY_PROJECT_LIMIT = Math.max(
   1,
   Number(process.env.VIDEO_CAPTION_CAMPAIGN_DAILY_PROJECT_LIMIT) || 500
 );
+
+function logCaptionStt(event: string, data: Record<string, unknown>) {
+  console.info(`[Video Caption STT Job] ${event}`, JSON.stringify(data));
+}
 
 function estimateDurationCost(
   durationMs: number | undefined,
@@ -274,7 +279,7 @@ async function transitionProject(input: {
         },
       },
     },
-    { new: true, runValidators: true }
+    { returnDocument: "after", runValidators: true }
   );
 
   if (!updated) {
@@ -380,6 +385,150 @@ async function replaceGeneratedLane(input: {
     });
   }
   return nextVersion;
+}
+
+type NormalizedSpeechTranscript = {
+  language?: string;
+  words: Array<{
+    text: string;
+    startMs: number;
+    endMs: number;
+    confidence?: number;
+  }>;
+  cost?: number;
+};
+
+async function completeSpeechTranscription(input: {
+  job: IVideoCaptionJob;
+  project: IVideoCaptionProject;
+  transcript: NormalizedSpeechTranscript;
+  lockId: string;
+}) {
+  const { job, transcript, lockId } = input;
+  let project = input.project;
+  const refreshedJob = await VideoCaptionJobModel.findById(job._id);
+  if (refreshedJob?.cancelRequestedAt || refreshedJob?.status === "cancelled") {
+    await VideoCaptionJobModel.updateOne(
+      { _id: job._id, lockId },
+      {
+        $set: {
+          status: "cancelled",
+          completedAt: new Date(),
+          progress: {
+            stage: "cancelled",
+            percent: 0,
+            message: "Tác vụ đã được hủy.",
+          },
+        },
+        $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
+      }
+    );
+    return;
+  }
+
+  await Promise.all([
+    VideoCaptionJobModel.updateOne(
+      { _id: job._id, lockId },
+      {
+        $set: {
+          progress: {
+            stage: "segmenting",
+            percent: 80,
+            message: "Đang chia lời nói thành các đoạn phụ đề dễ đọc.",
+          },
+          lockExpiresAt: new Date(Date.now() + JOB_LEASE_MS),
+        },
+      }
+    ),
+    VideoCaptionProjectModel.updateOne(
+      { _id: project._id, companyCode: project.companyCode },
+      {
+        $set: {
+          progress: {
+            stage: "segmenting",
+            percent: 80,
+            message: "Đang chia lời nói thành các đoạn phụ đề dễ đọc.",
+          },
+        },
+      }
+    ),
+  ]);
+
+  const segments = buildSpeechCaptionSegments(
+    transcript.words,
+    project.video.durationMs
+  ).map((segment) => ({
+    ...segment,
+    sourceReferences: segment.sourceReferences.map((reference) => ({
+      ...reference,
+      sourceId: String(job._id),
+    })),
+  }));
+
+  let nextVersion = project.currentVersion;
+  if (segments.length) {
+    nextVersion = await replaceGeneratedLane({
+      project,
+      lane: "speech",
+      segments,
+    });
+  }
+
+  project = await VideoCaptionProjectModel.findById(project._id);
+  if (!project || project.status === "cancelled") return;
+  const noSpeech = segments.length === 0;
+  await transitionProject({
+    project,
+    to: "ready_for_review",
+    operation: "transcribe",
+    jobId: String(job._id),
+    message: noSpeech
+      ? "Không phát hiện lời nói trong video."
+      : `Đã tạo ${segments.length} đoạn phụ đề lời nói.`,
+    set: {
+      currentVersion: nextVersion,
+      "video.language": transcript.language || project.video.language,
+      progress: {
+        stage: noSpeech ? "no_speech" : "transcription_completed",
+        percent: 100,
+        message: noSpeech
+          ? "Không phát hiện lời nói. Bạn vẫn có thể dùng caption ngữ cảnh."
+          : `Đã tạo ${segments.length} đoạn phụ đề. Hãy kiểm tra trước khi kết xuất.`,
+      },
+      lastError: null,
+    },
+  });
+
+  await VideoCaptionJobModel.updateOne(
+    { _id: job._id, lockId },
+    {
+      $set: {
+        status: "completed",
+        completedAt: new Date(),
+        providerModel: videoCaptionTranscriptionConfig.model,
+        actualCost: transcript.cost,
+        progress: {
+          stage: noSpeech ? "no_speech" : "completed",
+          percent: 100,
+          message: noSpeech
+            ? "Không phát hiện lời nói."
+            : "Nhận diện lời nói hoàn tất.",
+        },
+      },
+      $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
+    }
+  );
+  logCaptionStt("completed", {
+    jobId: String(job._id),
+    projectId: String(project._id),
+    companyCode: project.companyCode,
+    providerRequestId: job.providerRequestId || null,
+    language: transcript.language || null,
+    inputWordCount: transcript.words.length,
+    segmentCount: segments.length,
+    noSpeech,
+    version: nextVersion,
+  });
 }
 
 export const videoCaptionService = {
@@ -578,7 +727,7 @@ export const videoCaptionService = {
           },
         },
       },
-      { new: true, runValidators: true }
+      { returnDocument: "after", runValidators: true }
     );
 
     if (!updated) {
@@ -608,7 +757,9 @@ export const videoCaptionService = {
         companyCode: project.companyCode,
         projectId: project._id,
         operation: "analyze",
-        status: { $in: ["queued", "processing", "retrying"] },
+        status: {
+          $in: ["queued", "processing", "awaiting_provider", "retrying"],
+        },
       }).sort({ createdAt: -1 });
       if (running) return jobDto(running);
       throw new VideoCaptionError(
@@ -716,7 +867,9 @@ export const videoCaptionService = {
         companyCode: project.companyCode,
         projectId: project._id,
         operation: "transcribe",
-        status: { $in: ["queued", "processing", "retrying"] },
+        status: {
+          $in: ["queued", "processing", "awaiting_provider", "retrying"],
+        },
       }).sort({ createdAt: -1 });
       if (running) return jobDto(running);
       throw new VideoCaptionError(
@@ -1123,7 +1276,7 @@ export const videoCaptionService = {
         },
         $inc: { attempt: 1 },
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!job) return;
@@ -1463,113 +1616,58 @@ export const videoCaptionService = {
         const provider = createSpeechTranscriptionProvider(
           project.createdBy
         );
-        const transcript = await provider.transcribe({
+        const submission = await provider.start({
           videoUrl: project.source.url,
           language: project.video.language,
           idempotencyKey: job.idempotencyKey,
-        });
-
-        const refreshedJob = await VideoCaptionJobModel.findById(job._id);
-        if (refreshedJob?.cancelRequestedAt) {
-          await VideoCaptionJobModel.updateOne(
-            { _id: job._id, lockId },
-            {
-              $set: {
-                status: "cancelled",
-                completedAt: new Date(),
-                progress: {
-                  stage: "cancelled",
-                  percent: 0,
-                  message: "Tác vụ đã được hủy.",
-                },
-              },
-              $unset: {
-                lockId: 1,
-                lockedAt: 1,
-                lockExpiresAt: 1,
-              },
-            }
-          );
-          return;
-        }
-
-        await updateProgress(
-          "segmenting",
-          80,
-          "Đang chia lời nói thành các đoạn phụ đề dễ đọc."
-        );
-        const segments = buildSpeechCaptionSegments(
-          transcript.words,
-          project.video.durationMs
-        ).map((segment) => ({
-          ...segment,
-          sourceReferences: segment.sourceReferences.map((reference) => ({
-            ...reference,
-            sourceId: String(job._id),
-          })),
-        }));
-
-        let nextVersion = project.currentVersion;
-        if (segments.length) {
-          nextVersion = await replaceGeneratedLane({
-            project,
-            lane: "speech",
-            segments,
-          });
-        }
-
-        project = await VideoCaptionProjectModel.findById(project._id);
-        if (!project || project.status === "cancelled") return;
-
-        const noSpeech = segments.length === 0;
-        await transitionProject({
-          project,
-          to: "ready_for_review",
-          operation: "transcribe",
-          jobId: String(job._id),
-          message: noSpeech
-            ? "Không phát hiện lời nói trong video."
-            : `Đã tạo ${segments.length} đoạn phụ đề lời nói.`,
-          set: {
-            currentVersion: nextVersion,
-            "video.language":
-              transcript.language || project.video.language,
-            progress: {
-              stage: noSpeech ? "no_speech" : "transcription_completed",
-              percent: 100,
-              message: noSpeech
-                ? "Không phát hiện lời nói. Bạn vẫn có thể dùng caption ngữ cảnh."
-                : `Đã tạo ${segments.length} đoạn phụ đề. Hãy kiểm tra trước khi kết xuất.`,
-            },
-            lastError: null,
+          webhookMetadata: {
+            jobId: String(job._id),
+            projectId: String(project._id),
+            companyCode: project.companyCode,
           },
+        });
+        logCaptionStt("provider_accepted", {
+          jobId: String(job._id),
+          projectId: String(project._id),
+          companyCode: project.companyCode,
+          provider: provider.name,
+          providerRequestId: submission.providerRequestId,
         });
 
         await VideoCaptionJobModel.updateOne(
           { _id: job._id, lockId },
           {
             $set: {
-              status: "completed",
-              completedAt: new Date(),
+              status: "awaiting_provider",
               provider: provider.name,
               providerModel: videoCaptionTranscriptionConfig.model,
-              providerRequestId: transcript.providerRequestId,
-              actualCost: transcript.cost,
+              providerRequestId: submission.providerRequestId,
               progress: {
-                stage: noSpeech ? "no_speech" : "completed",
-                percent: 100,
-                message: noSpeech
-                  ? "Không phát hiện lời nói."
-                  : "Nhận diện lời nói hoàn tất.",
+                stage: "awaiting_provider",
+                percent: 45,
+                message: "ElevenLabs đang xử lý. Kết quả sẽ được nhận qua webhook.",
               },
             },
-            $unset: {
-              lockId: 1,
-              lockedAt: 1,
-              lockExpiresAt: 1,
+            $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
+          }
+        );
+        await VideoCaptionProjectModel.updateOne(
+          { _id: project._id, companyCode: project.companyCode },
+          {
+            $set: {
+              progress: {
+                stage: "awaiting_provider",
+                percent: 45,
+                message: "ElevenLabs đang xử lý phụ đề ở chế độ nền.",
+              },
             },
           }
         );
+        logCaptionStt("awaiting_webhook", {
+          jobId: String(job._id),
+          projectId: String(project._id),
+          providerRequestId: submission.providerRequestId,
+        });
         return;
       }
 
@@ -1762,7 +1860,7 @@ export const videoCaptionService = {
           lockExpiresAt: 1,
         },
       },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!job) return;
     const project = await VideoCaptionProjectModel.findOne({
@@ -1791,8 +1889,235 @@ export const videoCaptionService = {
     }
   },
 
+  async completeTranscriptionWebhook(input: {
+    jobId: string;
+    projectId: string;
+    companyCode: string;
+    providerRequestId: string;
+    transcription: Parameters<typeof normalizeElevenLabsTranscript>[0];
+  }) {
+    if (
+      !mongoose.Types.ObjectId.isValid(input.jobId) ||
+      !mongoose.Types.ObjectId.isValid(input.projectId)
+    ) {
+      throw new VideoCaptionError(
+        "Webhook ElevenLabs không chứa mã tác vụ hợp lệ.",
+        "ELEVENLABS_WEBHOOK_INVALID_METADATA",
+        "validation",
+        false,
+        400
+      );
+    }
+
+    const existing = await VideoCaptionJobModel.findOne({
+      _id: input.jobId,
+      projectId: input.projectId,
+      companyCode: normalizeCaptionCompanyCode(input.companyCode),
+      operation: "transcribe",
+    });
+    logCaptionStt("webhook_job_lookup", {
+      jobId: input.jobId,
+      projectId: input.projectId,
+      companyCode: input.companyCode,
+      providerRequestId: input.providerRequestId,
+      found: Boolean(existing),
+      status: existing?.status || null,
+      storedProviderRequestId: existing?.providerRequestId || null,
+    });
+    if (!existing) {
+      throw new VideoCaptionError(
+        "Không tìm thấy tác vụ caption tương ứng với webhook ElevenLabs.",
+        "ELEVENLABS_WEBHOOK_JOB_NOT_FOUND",
+        "validation",
+        false,
+        404
+      );
+    }
+    if (existing.status === "completed" || existing.status === "cancelled") {
+      logCaptionStt("webhook_duplicate_terminal", {
+        jobId: input.jobId,
+        status: existing.status,
+      });
+      return { duplicate: true };
+    }
+    if (
+      existing.providerRequestId &&
+      existing.providerRequestId !== input.providerRequestId
+    ) {
+      throw new VideoCaptionError(
+        "Mã yêu cầu ElevenLabs không khớp với tác vụ caption.",
+        "ELEVENLABS_WEBHOOK_REQUEST_MISMATCH",
+        "permission",
+        false,
+        403
+      );
+    }
+
+    const lockId = randomUUID();
+    const now = new Date();
+    const job = await VideoCaptionJobModel.findOneAndUpdate(
+      {
+        _id: existing._id,
+        status: "awaiting_provider",
+        $or: [
+          { providerRequestId: input.providerRequestId },
+          { providerRequestId: { $exists: false } },
+        ],
+      },
+      {
+        $set: {
+          status: "processing",
+          providerRequestId: input.providerRequestId,
+          lockId,
+          lockedAt: now,
+          lockExpiresAt: new Date(now.getTime() + JOB_LEASE_MS),
+          progress: {
+            stage: "processing_webhook",
+            percent: 70,
+            message: "Đã nhận kết quả từ ElevenLabs.",
+          },
+        },
+      },
+      { returnDocument: "after" }
+    );
+    if (!job) return { duplicate: true };
+    logCaptionStt("webhook_job_claimed", {
+      jobId: String(job._id),
+      projectId: String(job.projectId),
+      providerRequestId: input.providerRequestId,
+      lockId,
+    });
+
+    const project = await VideoCaptionProjectModel.findOne({
+      _id: job.projectId,
+      companyCode: job.companyCode,
+    });
+    if (!project || project.status === "cancelled") {
+      await VideoCaptionJobModel.updateOne(
+        { _id: job._id, lockId },
+        {
+          $set: { status: "cancelled", completedAt: new Date() },
+          $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
+        }
+      );
+      return { duplicate: false };
+    }
+
+    try {
+      await completeSpeechTranscription({
+        job,
+        project,
+        transcript: normalizeElevenLabsTranscript(input.transcription),
+        lockId,
+      });
+      return { duplicate: false };
+    } catch (error) {
+      await VideoCaptionJobModel.updateOne(
+        { _id: job._id, lockId },
+        {
+          $set: {
+            status: "awaiting_provider",
+            progress: {
+              stage: "awaiting_provider",
+              percent: 45,
+              message: "Đang chờ xử lý lại kết quả webhook ElevenLabs.",
+            },
+          },
+          $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
+        }
+      );
+      throw error;
+    }
+  },
+
+  async reconcileAwaitingTranscriptions(limit = 20) {
+    const jobs = await VideoCaptionJobModel.find({
+      operation: "transcribe",
+      status: "awaiting_provider",
+      providerRequestId: { $exists: true, $ne: "" },
+      updatedAt: { $lte: new Date(Date.now() - 2 * 60 * 1000) },
+    })
+      .sort({ updatedAt: 1 })
+      .limit(limit);
+    if (jobs.length) {
+      logCaptionStt("reconcile_batch_started", {
+        jobCount: jobs.length,
+        limit,
+      });
+    }
+
+    let completed = 0;
+    for (const job of jobs) {
+      try {
+        const project = await VideoCaptionProjectModel.findOne({
+          _id: job.projectId,
+          companyCode: job.companyCode,
+        });
+        if (!project || !job.providerRequestId) continue;
+        const provider = createSpeechTranscriptionProvider(project.createdBy);
+        const transcript = await provider.retrieve(job.providerRequestId);
+        if (!transcript) continue;
+        await this.completeTranscriptionWebhook({
+          jobId: String(job._id),
+          projectId: String(project._id),
+          companyCode: project.companyCode,
+          providerRequestId: job.providerRequestId,
+          transcription: {
+            language_code: transcript.language,
+            words: transcript.words.map((word) => ({
+              text: word.text,
+              start: word.startMs / 1000,
+              end: word.endMs / 1000,
+              type: "word" as const,
+              logprob:
+                word.confidence && word.confidence > 0
+                  ? Math.log(word.confidence)
+                  : undefined,
+            })),
+          },
+        });
+        completed += 1;
+      } catch (error) {
+        console.error(
+          `[Video Caption Reconcile] Job ${job._id} failed:`,
+          error
+        );
+      }
+    }
+    if (jobs.length) {
+      logCaptionStt("reconcile_batch_finished", {
+        jobCount: jobs.length,
+        completed,
+      });
+    }
+    return completed;
+  },
+
   async recoverStaleJobs() {
     const now = new Date();
+    await VideoCaptionJobModel.updateMany(
+      {
+        operation: "transcribe",
+        status: "processing",
+        providerRequestId: { $exists: true, $ne: "" },
+        lockExpiresAt: { $lte: now },
+      },
+      {
+        $set: {
+          status: "awaiting_provider",
+          progress: {
+            stage: "awaiting_provider",
+            percent: 45,
+            message: "Khôi phục trạng thái chờ kết quả từ ElevenLabs.",
+          },
+        },
+        $unset: {
+          lockId: 1,
+          lockedAt: 1,
+          lockExpiresAt: 1,
+        },
+      }
+    );
     await VideoCaptionJobModel.updateMany(
       {
         status: "processing",
@@ -1846,7 +2171,7 @@ export const videoCaptionService = {
       {
         companyCode: project.companyCode,
         projectId: project._id,
-        status: { $in: ["queued", "retrying"] },
+        status: { $in: ["queued", "awaiting_provider", "retrying"] },
       },
       {
         $set: {
@@ -2030,7 +2355,7 @@ export const videoCaptionService = {
           status: "ready_for_review",
         },
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updated) {

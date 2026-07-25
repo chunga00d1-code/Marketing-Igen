@@ -49,6 +49,12 @@ export const authService = {
     };
   },
 
+  normalizeElevenLabsAccess(elevenlabsAccess?: any) {
+    return {
+      apiKey: String(elevenlabsAccess?.apiKey || "").trim(),
+    };
+  },
+
   /**
    * Tạo bộ đôi Access Token và Refresh Token
    */
@@ -211,7 +217,7 @@ export const authService = {
    * Cập nhật thông tin tài khoản người dùng
    */
   async updateProfile(id: string, updateData: any): Promise<IUser | null> {
-    return await UserModel.findByIdAndUpdate(id, { $set: updateData }, { new: true }).select("-password");
+    return await UserModel.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: "after" }).select("-password");
   },
 
   /**
@@ -472,6 +478,7 @@ export const authService = {
       division,
       phone,
       heygenAccess,
+      elevenlabsAccess,
     } = data;
 
     const finalCompanyCode = companyCode?.toUpperCase().trim() || "SYSTEM";
@@ -522,6 +529,7 @@ export const authService = {
       jobTitle: role === "admin" ? "CEO" : (role === "manager" ? "Quản lý phòng ban" : "Nhân viên"),
       phone: phone || "Chưa cập nhật",
       heygenAccess: this.normalizeHeyGenAccess(heygenAccess),
+      elevenlabsAccess: this.normalizeElevenLabsAccess(elevenlabsAccess),
       createdAt: new Date(),
       status: "offline",
       photoURL: `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName.trim())}&background=random&color=fff`
@@ -581,8 +589,11 @@ export const authService = {
     if (updateData.heygenAccess) {
       updateData.heygenAccess = this.normalizeHeyGenAccess(updateData.heygenAccess);
     }
+    if (updateData.elevenlabsAccess) {
+      updateData.elevenlabsAccess = this.normalizeElevenLabsAccess(updateData.elevenlabsAccess);
+    }
 
-    return await UserModel.findByIdAndUpdate(userId, { $set: updateData }, { new: true }).select("-password");
+    return await UserModel.findByIdAndUpdate(userId, { $set: updateData }, { returnDocument: "after" }).select("-password");
   },
 
   /**
