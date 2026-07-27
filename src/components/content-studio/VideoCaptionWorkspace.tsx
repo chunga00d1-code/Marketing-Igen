@@ -198,6 +198,19 @@ function getReadableCaptionError(message?: string, code?: string) {
   return message || "Không thể tạo phụ đề. Hãy thử lại hoặc kiểm tra cấu hình dịch vụ.";
 }
 
+function getSegmentsSnapshot(segments: VideoCaptionSegmentDto[]) {
+  return JSON.stringify(
+    segments.map((segment) => ({
+      id: segment.id,
+      lane: segment.lane,
+      startMs: segment.startMs,
+      endMs: segment.endMs,
+      text: segment.text,
+      styleOverride: segment.styleOverride,
+    }))
+  );
+}
+
 export function VideoCaptionWorkspace() {
   const [projects, setProjects] = useState<VideoCaptionProjectDto[]>([]);
   const [detail, setDetail] =
@@ -647,6 +660,10 @@ export function VideoCaptionWorkspace() {
         );
         setDetail(updatedDetail);
         mergeProject(updatedDetail.project);
+        autosaveSegmentsRef.current = {
+          projectId: updatedDetail.project.id,
+          snapshot: getSegmentsSnapshot(updatedDetail.segments),
+        };
         const { project } = await videoCaptionService.update(
           detail.project.id,
           { style: detail.project.style }
@@ -655,6 +672,10 @@ export function VideoCaptionWorkspace() {
           current ? { ...current, project } : current
         );
         mergeProject(project);
+        autosaveStyleRef.current = {
+          projectId: project.id,
+          snapshot: JSON.stringify(project.style),
+        };
         await videoCaptionService.render(detail.project.id, false);
       } else if (action === "retry") {
         await videoCaptionService.retry(detail.project.id);
@@ -715,6 +736,10 @@ export function VideoCaptionWorkspace() {
       );
       setDetail(updated);
       mergeProject(updated.project);
+      autosaveSegmentsRef.current = {
+        projectId: updated.project.id,
+        snapshot: getSegmentsSnapshot(updated.segments),
+      };
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -737,6 +762,10 @@ export function VideoCaptionWorkspace() {
         current ? { ...current, project } : current
       );
       mergeProject(project);
+      autosaveStyleRef.current = {
+        projectId: project.id,
+        snapshot: JSON.stringify(project.style),
+      };
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -880,23 +909,12 @@ export function VideoCaptionWorkspace() {
     );
   const noSpeechDetected = detail?.project.progress?.stage === "no_speech";
 
-  const segmentsSnapshot = detail
-    ? JSON.stringify(
-        detail.segments.map((segment) => ({
-          id: segment.id,
-          lane: segment.lane,
-          startMs: segment.startMs,
-          endMs: segment.endMs,
-          text: segment.text,
-          styleOverride: segment.styleOverride,
-        }))
-      )
-    : "";
+  const segmentsSnapshot = detail ? getSegmentsSnapshot(detail.segments) : "";
   const styleSnapshot = detail ? JSON.stringify(detail.project.style) : "";
 
   useEffect(() => {
     const projectId = detail?.project.id;
-    if (!projectId || !segmentsSnapshot) return;
+    if (!projectId || !segmentsSnapshot || isCaptionJobActive) return;
     const previous = autosaveSegmentsRef.current;
 
     if (!previous || previous.projectId !== projectId) {
@@ -910,7 +928,6 @@ export function VideoCaptionWorkspace() {
     }
     autosaveSegmentsTimerRef.current = window.setTimeout(() => {
       void saveTimelineRef.current?.();
-      autosaveSegmentsRef.current = { projectId, snapshot: segmentsSnapshot };
       autosaveSegmentsTimerRef.current = null;
     }, 700);
 
@@ -920,11 +937,11 @@ export function VideoCaptionWorkspace() {
         autosaveSegmentsTimerRef.current = null;
       }
     };
-  }, [detail?.project.id, segmentsSnapshot]);
+  }, [detail?.project.id, detail?.project.status, isCaptionJobActive, segmentsSnapshot]);
 
   useEffect(() => {
     const projectId = detail?.project.id;
-    if (!projectId || !styleSnapshot) return;
+    if (!projectId || !styleSnapshot || isCaptionJobActive) return;
     const previous = autosaveStyleRef.current;
 
     if (!previous || previous.projectId !== projectId) {
@@ -938,7 +955,6 @@ export function VideoCaptionWorkspace() {
     }
     autosaveStyleTimerRef.current = window.setTimeout(() => {
       void saveStyleRef.current?.();
-      autosaveStyleRef.current = { projectId, snapshot: styleSnapshot };
       autosaveStyleTimerRef.current = null;
     }, 700);
 
@@ -948,7 +964,7 @@ export function VideoCaptionWorkspace() {
         autosaveStyleTimerRef.current = null;
       }
     };
-  }, [detail?.project.id, styleSnapshot]);
+  }, [detail?.project.id, detail?.project.status, isCaptionJobActive, styleSnapshot]);
 
   useEffect(() => {
     if (!timelineDrag) return;
