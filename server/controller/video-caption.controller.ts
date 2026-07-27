@@ -319,4 +319,40 @@ export const videoCaptionController = {
       return sendError(res, error);
     }
   },
+
+  async resolveDriveFolder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { url } = req.body;
+      if (!url) {
+        throw new VideoCaptionError(
+          "Đường dẫn thư mục Google Drive không được để trống.",
+          "DRIVE_URL_REQUIRED",
+          "validation",
+          false,
+          400
+        );
+      }
+
+      const { listGoogleDriveFolderFiles, getGoogleDriveDirectLink } = await import("../service/marketing-campaign-helper");
+      const files = await listGoogleDriveFolderFiles(url);
+
+      const videoFiles = files
+        .filter((f: { id: string; name: string }) => {
+          const lowerName = f.name.toLowerCase();
+          return /\.(mp4|mov|avi|webm|mkv)$/.test(lowerName);
+        })
+        .map((f: { id: string; name: string }) => ({
+          id: f.id,
+          name: f.name,
+          directUrl: getGoogleDriveDirectLink(f.id, "video"),
+        }));
+
+      return res.status(200).json({
+        status: "success",
+        data: videoFiles,
+      });
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
 };

@@ -29,14 +29,10 @@ const MAX_ROWS = 500;
 const MAX_AI_ROWS = 100;
 const MAX_BULK_CELLS = 1000;
 const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-const EDITABLE_SLOT_STATUSES = new Set([
-  "planned",
-  "queued",
-  "pending_approval",
-  "needs_attention",
-  "failed",
-  "skipped",
-]);
+// Sheet is the planning and review surface for a slot. A slot remains editable
+// while it is in the campaign pipeline; only terminal slots are immutable.
+// This must match the bulk-AI eligibility query below.
+const READ_ONLY_SLOT_STATUSES = new Set(["published", "cancelled"]);
 const EDITABLE_CANONICAL_FIELDS = new Set(["pillar", "objective", "topicBrief", "funnelStage", "mediaType"]);
 
 const DEFAULT_COLUMNS: ICampaignSheetColumn[] = [
@@ -290,7 +286,7 @@ export const campaignContentSheetService = {
         return {
           slotId: String(slot._id),
           revision: row?.revision || 0,
-          readOnly: !EDITABLE_SLOT_STATUSES.has(slot.status),
+          readOnly: READ_ONLY_SLOT_STATUSES.has(slot.status),
           system: projectSystemValues(slot, content || candidate),
           fields: customFields,
           updatedAt: row?.updatedAt || slot.updatedAt,
@@ -462,8 +458,8 @@ export const campaignContentSheetService = {
     const campaign = await assertCampaign(companyCode, campaignId);
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw httpError("Không tìm thấy bài viết trong chiến dịch.", 404);
-    if (!EDITABLE_SLOT_STATUSES.has(slot.status)) {
-      throw httpError("Bài viết đang xử lý, chờ duyệt hoặc đã xuất bản nên chưa thể chỉnh sửa Sheet.", 409, "ROW_READ_ONLY");
+    if (READ_ONLY_SLOT_STATUSES.has(slot.status)) {
+      throw httpError("Bài viết đã xuất bản hoặc đã hủy nên không thể chỉnh sửa Sheet.", 409, "ROW_READ_ONLY");
     }
     const config = await getOrCreateConfig(companyCode, campaignId);
     const columnMap = new Map(config.columns.filter((column) => !column.archived).map((column) => [column.key, column]));

@@ -3,10 +3,10 @@ export const HEYGEN_THEME = {
   surfaceMuted: "bg-slate-50",
   surfaceSoft: "bg-slate-100",
   border: "border-slate-200",
-  accentBorder: "border-cyan-400",
-  accentBg: "bg-cyan-50",
-  accentSolid: "bg-cyan-600",
-  accentSolidHover: "hover:bg-cyan-700",
+  accentBorder: "border-indigo-400",
+  accentBg: "bg-indigo-50",
+  accentSolid: "bg-indigo-600",
+  accentSolidHover: "hover:bg-indigo-700",
   textMuted: "text-slate-500",
 } as const;
 

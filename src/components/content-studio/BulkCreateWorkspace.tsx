@@ -289,27 +289,6 @@ interface BulkCreateWorkspaceProps {
 
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
-interface BulkEditorDraft {
-  version: 1;
-  templateName: string;
-  savedTemplateId: string;
-  backgroundId: string;
-  backgroundImage: string;
-  backgroundColor: string;
-  canvasSize: { width: number; height: number };
-  layers: TemplateLayer[];
-  rows: DataRow[];
-  activeRowId: string;
-  dataColumns: BulkDataColumn[];
-  dataStep: 1 | 2 | 3;
-  dataSourceName: string;
-  googleSheetUrl: string;
-  pagesCreated: boolean;
-  pageResults: Record<string, PageRenderState>;
-  activeJob: BulkRenderJob | null;
-  activeJobPageIds: string[];
-}
-
 export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const editorViewportRef = useRef<HTMLDivElement>(null);
@@ -364,7 +343,6 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; targetLayerId?: string } | null>(null);
   const copiedLayerRef = useRef<TemplateLayer | null>(null);
   const [copiedPage, setCopiedPage] = useState<DataRow | null>(null);
-  const draftRestoredRef = useRef(false);
   const rotateRef = useRef<{
     layerId: string;
     centerX: number;
@@ -377,9 +355,6 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [uploadingAsset, setUploadingAsset] = useState(false);
 
   const { user } = useAuth();
-  const draftStorageKey = user
-    ? `bulk-create:draft:${user.companyCode || user.uid}`
-    : '';
   const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
@@ -391,109 +366,6 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         .catch((error) => console.error('Lỗi khi tải thành viên công ty:', error));
     }
   }, [user?.companyCode]);
-
-  useEffect(() => {
-    if (!draftStorageKey) return;
-    draftRestoredRef.current = false;
-    try {
-      const rawDraft = window.localStorage.getItem(draftStorageKey);
-      if (rawDraft) {
-        const draft = JSON.parse(rawDraft) as Partial<BulkEditorDraft>;
-        if (
-          draft.version === 1 &&
-          Array.isArray(draft.layers) &&
-          Array.isArray(draft.rows) &&
-          draft.rows.length > 0
-        ) {
-          const restoredTemplateId = draft.savedTemplateId || '';
-          savedTemplateIdRef.current = restoredTemplateId;
-          setSavedTemplateId(restoredTemplateId);
-          setTemplateName(draft.templateName || 'Thiết kế chưa đặt tên');
-          setBackgroundId(draft.backgroundId || 'blank');
-          setBackgroundImage(draft.backgroundImage || '');
-          setBackgroundColor(draft.backgroundColor || '#ffffff');
-          if (draft.canvasSize?.width && draft.canvasSize?.height) {
-            setCanvasSize(draft.canvasSize);
-          }
-          setLayers(draft.layers);
-          setRows(draft.rows);
-          setActiveRowId(
-            draft.rows.some((row) => row.id === draft.activeRowId)
-              ? draft.activeRowId || draft.rows[0].id
-              : draft.rows[0].id
-          );
-          setDataColumns(Array.isArray(draft.dataColumns) ? draft.dataColumns : []);
-          setDataStep(draft.dataStep === 2 || draft.dataStep === 3 ? draft.dataStep : 1);
-          setDataSourceName(draft.dataSourceName || '');
-          setGoogleSheetUrl(draft.googleSheetUrl || '');
-          setPagesCreated(Boolean(draft.pagesCreated));
-          setPageResults(draft.pageResults || {});
-          setActiveJob(draft.activeJob || null);
-          setActiveJobPageIds(
-            Array.isArray(draft.activeJobPageIds) ? draft.activeJobPageIds : []
-          );
-        }
-      }
-    } catch (error) {
-      console.warn('[BulkCreate] Không thể khôi phục bản nháp:', error);
-    } finally {
-      draftRestoredRef.current = true;
-    }
-  }, [draftStorageKey]);
-
-  useEffect(() => {
-    if (!draftStorageKey || !draftRestoredRef.current) return;
-    const timer = window.setTimeout(() => {
-      const draft: BulkEditorDraft = {
-        version: 1,
-        templateName,
-        savedTemplateId,
-        backgroundId,
-        backgroundImage,
-        backgroundColor,
-        canvasSize,
-        layers,
-        rows,
-        activeRowId,
-        dataColumns,
-        dataStep,
-        dataSourceName,
-        googleSheetUrl,
-        pagesCreated,
-        pageResults,
-        activeJob,
-        activeJobPageIds,
-      };
-      try {
-        const serializedDraft = JSON.stringify(draft);
-        if (serializedDraft.length <= 3_000_000) {
-          window.localStorage.setItem(draftStorageKey, serializedDraft);
-        }
-      } catch (error) {
-        console.warn('[BulkCreate] Không thể lưu bản nháp:', error);
-      }
-    }, 800);
-    return () => window.clearTimeout(timer);
-  }, [
-    activeJob,
-    activeJobPageIds,
-    activeRowId,
-    backgroundColor,
-    backgroundId,
-    backgroundImage,
-    canvasSize,
-    dataColumns,
-    dataSourceName,
-    dataStep,
-    draftStorageKey,
-    googleSheetUrl,
-    layers,
-    pageResults,
-    pagesCreated,
-    rows,
-    savedTemplateId,
-    templateName,
-  ]);
 
   const selectedBackground = BACKGROUNDS.find((background) => background.id === backgroundId);
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
@@ -1556,9 +1428,6 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   };
 
   const createNewTemplate = () => {
-    if (draftStorageKey) {
-      window.localStorage.removeItem(draftStorageKey);
-    }
     autoSaveVersionRef.current += 1;
     designSessionRef.current += 1;
     savedTemplateIdRef.current = '';

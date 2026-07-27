@@ -226,3 +226,12 @@ videoCaptionRouter.put(
   validateRequest(replaceSegmentsSchema),
   videoCaptionController.replaceSegments as never
 );
+videoCaptionRouter.post(
+  "/resolve-drive-folder",
+  validateRequest({
+    body: Joi.object({
+      url: Joi.string().uri({ scheme: ["https"] }).required(),
+    }),
+  }),
+  videoCaptionController.resolveDriveFolder as never
+);
