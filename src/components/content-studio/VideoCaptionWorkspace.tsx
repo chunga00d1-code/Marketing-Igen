@@ -240,10 +240,8 @@ export function VideoCaptionWorkspace() {
   const [selectedDriveFileId, setSelectedDriveFileId] = useState("");
   const [fontSizeDraft, setFontSizeDraft] = useState("48");
   const [fontSizeMenuOpen, setFontSizeMenuOpen] = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [muted, setMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [exportFormat, setExportFormat] = useState("MP4");
 
   useEffect(() => {
     if (!detail) {
@@ -602,7 +600,6 @@ export function VideoCaptionWorkspace() {
       | "analyze"
       | "transcribe"
       | "generateContext"
-      | "renderPreview"
       | "renderFinal"
       | "retry"
       | "cancel"
@@ -621,7 +618,35 @@ export function VideoCaptionWorkspace() {
           contextLinks: detail.project.contextLinks || {},
         });
         await videoCaptionService.generateContext(detail.project.id);
-      } else if (action === "renderPreview" || action === "renderFinal") {
+      } else if (action === "renderFinal") {
+        if (autosaveSegmentsTimerRef.current !== null) {
+          window.clearTimeout(autosaveSegmentsTimerRef.current);
+          autosaveSegmentsTimerRef.current = null;
+        }
+        if (autosaveStyleTimerRef.current !== null) {
+          window.clearTimeout(autosaveStyleTimerRef.current);
+          autosaveStyleTimerRef.current = null;
+        }
+        const updatedDetail = await videoCaptionService.replaceSegments(
+          detail.project.id,
+          {
+            expectedVersion: detail.project.currentVersion,
+            segments: detail.segments.map((segment, index) => ({
+              lane: segment.lane,
+              startMs: Math.max(0, Math.round(segment.startMs)),
+              endMs: Math.max(1, Math.round(segment.endMs)),
+              text: segment.text,
+              sceneId: segment.sceneId,
+              confidence: segment.confidence,
+              sourceReferences: segment.sourceReferences,
+              styleOverride: segment.styleOverride,
+              lockedByUser: true,
+              sortOrder: index,
+            })),
+          }
+        );
+        setDetail(updatedDetail);
+        mergeProject(updatedDetail.project);
         const { project } = await videoCaptionService.update(
           detail.project.id,
           { style: detail.project.style }
@@ -630,10 +655,7 @@ export function VideoCaptionWorkspace() {
           current ? { ...current, project } : current
         );
         mergeProject(project);
-        await videoCaptionService.render(
-          detail.project.id,
-          action === "renderPreview"
-        );
+        await videoCaptionService.render(detail.project.id, false);
       } else if (action === "retry") {
         await videoCaptionService.retry(detail.project.id);
       } else {
@@ -2192,15 +2214,9 @@ export function VideoCaptionWorkspace() {
             <div className="h-10 bg-slate-900 border-t border-slate-800/80 px-4 flex items-center justify-between text-white shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Định dạng xuất</span>
-                <select
-                  value={exportFormat}
-                  onChange={(e) => setExportFormat(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 text-[10px] font-extrabold rounded px-2 py-0.5 outline-none focus:border-indigo-500"
-                >
-                  <option value="MP4">MP4</option>
-                  <option value="MKV">MKV</option>
-                  <option value="WEBM">WEBM</option>
-                </select>
+                <span className="rounded border border-slate-800 bg-slate-950 px-2 py-0.5 text-[10px] font-extrabold text-slate-300">
+                  MP4
+                </span>
                 <div className="ml-2 flex items-center gap-1 rounded-md border border-slate-800 bg-slate-950 px-1 py-0.5 text-[10px] font-bold text-slate-400">
                   <span className="px-1 text-[9px] uppercase tracking-wider text-slate-500">
                     Timeline
@@ -2242,46 +2258,31 @@ export function VideoCaptionWorkspace() {
                 </span>
               </div>
 
-              {/* Export Button with Popover */}
-              <div className="relative">
+              <div className="flex items-center gap-2">
+                {detail.project.output?.captionedVideoUrl && (
+                  <a
+                    href={detail.project.output.captionedVideoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 rounded-full border border-emerald-500/50 bg-emerald-950/40 px-3 py-1 text-xs font-bold text-emerald-200 transition hover:bg-emerald-900/60"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Tải video đã xuất
+                  </a>
+                )}
                 <button
                   type="button"
-                  onClick={() => setExportMenuOpen(!exportMenuOpen)}
-                  className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-1 rounded-full cursor-pointer transition shadow"
+                  disabled={actionBusy || isCaptionJobActive || !hasSegments}
+                  onClick={() => void runAction("renderFinal")}
+                  className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-4 py-1 text-xs font-bold text-white shadow transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
+                  {actionBusy ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
                   Xuất video
-                  <ChevronDown className="h-3.5 w-3.5" />
                 </button>
-
-                {exportMenuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setExportMenuOpen(false)} />
-                    <div className="absolute right-0 bottom-full mb-2 w-52 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl z-50 animate-fade-in">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExportMenuOpen(false);
-                          void runAction("renderPreview");
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-900 hover:text-white transition flex items-center gap-2"
-                      >
-                        <MonitorPlay className="h-3.5 w-3.5 text-indigo-500" />
-                        Xem thử 15 giây
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setExportMenuOpen(false);
-                          void runAction("renderFinal");
-                        }}
-                        className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-300 border-t border-slate-900 hover:bg-slate-900 hover:text-white transition flex items-center gap-2"
-                      >
-                        <Download className="h-3.5 w-3.5 text-emerald-500" />
-                        Xuất video hoàn chỉnh
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
             </div>
           </footer>
