@@ -253,6 +253,17 @@ export const videoCaptionService = {
     );
   },
 
+  resolveDriveFolder(url: string) {
+    return request<Array<{ id: string; name: string; directUrl: string }>>(
+      "/api/v1/video-caption-projects/resolve-drive-folder",
+      {
+        method: "POST",
+        body: JSON.stringify({ url }),
+      },
+      "Không thể quét thư mục Google Drive."
+    );
+  },
+
   async uploadVideo(
     file: File,
     onProgress?: (progress: number) => void

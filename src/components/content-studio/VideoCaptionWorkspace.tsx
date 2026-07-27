@@ -3,8 +3,6 @@ import {
   AudioLines,
   BookOpenCheck,
   Captions,
-  CheckCircle2,
-  Clock3,
   Download,
   FileVideo,
   History,
@@ -12,14 +10,17 @@ import {
   Link2,
   LoaderCircle,
   MonitorPlay,
-  Plus,
+  PaintBucket,
   RefreshCw,
-  Save,
+  Type,
   UploadCloud,
   Volume2,
   VolumeX,
-  XCircle,
   Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  ChevronDown,
   Search,
   X,
 } from "lucide-react";
@@ -36,7 +37,7 @@ import {
   type VideoCaptionProjectDetailDto,
   type VideoCaptionProjectDto,
 } from "../../services/videoCaptionService";
-import { CompanyKnowledgePanel } from "./CompanyKnowledgePanel";
+import { HEYGEN_THEME } from "./heygenTheme";
 
 const ACTIVE_STATUSES = new Set<VideoCaptionProjectStatus>([
   "queued_analysis",
@@ -124,6 +125,31 @@ const MODE_OPTIONS: Array<{
   },
 ];
 
+const CAPTION_FONT_OPTIONS = [
+  "Arial",
+  "Helvetica",
+  "Inter",
+  "Roboto",
+  "Montserrat",
+  "Poppins",
+  "Bebas Neue",
+] as const;
+
+const CAPTION_FONT_SIZES = [
+  12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 44, 48, 56, 64, 72, 80, 96, 120,
+] as const;
+
+type TimelineDragMode = "move" | "resize-start" | "resize-end";
+
+interface TimelineDragState {
+  segmentId: string;
+  mode: TimelineDragMode;
+  originClientX: number;
+  originStartMs: number;
+  originEndMs: number;
+  trackWidth: number;
+}
+
 function modeIcon(mode: VideoCaptionMode) {
   if (mode === "speech") return AudioLines;
   if (mode === "context") return BookOpenCheck;
@@ -136,14 +162,6 @@ function formatDuration(durationMs?: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return `${minutes}:${String(remainder).padStart(2, "0")}`;
-}
-
-function formatBytes(bytes?: number) {
-  if (!bytes) return "Chưa xác định";
-  if (bytes >= 1024 * 1024 * 1024) {
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function projectDate(value: string) {
@@ -159,12 +177,9 @@ function millisecondsToSeconds(value: number) {
   return Number((value / 1000).toFixed(2));
 }
 
-function formatMillisecondsToTimestamp(ms: number) {
-  const totalSeconds = ms / 1000;
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = Math.floor(totalSeconds % 60);
-  const hundredths = Math.floor((ms % 1000) / 10);
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(hundredths).padStart(2, "0")}`;
+function isDriveFolderUrl(url: string) {
+  const trimmed = url.trim();
+  return trimmed.includes("drive.google.com/drive/folders/") || trimmed.includes("drive.google.com/embeddedfolderview") || trimmed.includes("/folders/");
 }
 
 export function VideoCaptionWorkspace() {
@@ -205,18 +220,99 @@ export function VideoCaptionWorkspace() {
   const [projectName, setProjectName] = useState("");
   const [mode, setMode] = useState<VideoCaptionMode>("speech");
   const [selectedName, setSelectedName] = useState("");
+
+  const [creationStep, setCreationStep] = useState<1 | 2>(1);
+  const [smoothPercent, setSmoothPercent] = useState(0);
+
+  const [activeTab, setActiveTab] = useState<"styling" | "subtitles">("subtitles");
+  const [driveFolderFiles, setDriveFolderFiles] = useState<Array<{ id: string; name: string; directUrl: string }>>([]);
+  const [scanningDrive, setScanningDrive] = useState(false);
+  const [selectedDriveFileId, setSelectedDriveFileId] = useState("");
+  const [fontSizeDraft, setFontSizeDraft] = useState("48");
+  const [fontSizeMenuOpen, setFontSizeMenuOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [exportFormat, setExportFormat] = useState("MP4");
+
+  useEffect(() => {
+    if (!detail) {
+      setCreationStep(1);
+    }
+  }, [detail]);
+
+  useEffect(() => {
+    const isActive = detail && ACTIVE_STATUSES.has(detail.project.status);
+    if (!isActive) {
+      setSmoothPercent(0);
+      return;
+    }
+
+    setSmoothPercent(1);
+
+    const interval = setInterval(() => {
+      setSmoothPercent((prev) => {
+        if (prev >= 99) return 99;
+        const increment = Math.random() * 2.5 + 0.5;
+        return Math.min(99, Number((prev + increment).toFixed(1)));
+      });
+    }, 450);
+
+    return () => clearInterval(interval);
+  }, [detail?.project.status, detail?.project.id]);
+
+  useEffect(() => {
+    if (sourceType === "url" && isDriveFolderUrl(sourceUrl)) {
+      const timer = setTimeout(async () => {
+        setScanningDrive(true);
+        setDriveFolderFiles([]);
+        setSelectedDriveFileId("");
+        try {
+          const files = await videoCaptionService.resolveDriveFolder(sourceUrl.trim());
+          setDriveFolderFiles(files);
+          if (files.length > 0) {
+            setSelectedDriveFileId(files[0].id);
+            if (!projectName) {
+              setProjectName(files[0].name.replace(/\.[^.]+$/, ""));
+            }
+          }
+        } catch (err) {
+          console.error("Resolve Drive folder failed", err);
+          setError("Không thể quét thư mục Google Drive. Đảm bảo thư mục đã được chia sẻ công khai.");
+        } finally {
+          setScanningDrive(false);
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else {
+      setDriveFolderFiles([]);
+    }
+  }, [sourceUrl, sourceType, projectName]);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
+  const [timelineDrag, setTimelineDrag] = useState<TimelineDragState | null>(null);
   const [savingTimeline, setSavingTimeline] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const captionPreviewRef = useRef<HTMLDivElement | null>(null);
+  const segmentItemRefs = useRef(new Map<string, HTMLDivElement>());
   const [playerUrl, setPlayerUrl] = useState("");
   const [playerDurationMs, setPlayerDurationMs] = useState<number>();
   const [playerDurationWarning, setPlayerDurationWarning] = useState("");
   const [segmentSearchQuery, setSegmentSearchQuery] = useState("");
   const [segmentLaneFilter, setSegmentLaneFilter] = useState<"all" | "speech" | "context">("all");
-  const [advancedEditorOpen, setAdvancedEditorOpen] = useState(false);
+  const autosaveSegmentsRef = useRef<{ projectId: string; snapshot: string } | null>(null);
+  const autosaveStyleRef = useRef<{ projectId: string; snapshot: string } | null>(null);
+  const autosaveSegmentsTimerRef = useRef<number | null>(null);
+  const autosaveStyleTimerRef = useRef<number | null>(null);
+  const saveTimelineRef = useRef<(() => Promise<void>) | null>(null);
+  const saveStyleRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    if (detail?.project.style.fontSize !== undefined) {
+      setFontSizeDraft(String(detail.project.style.fontSize));
+    }
+  }, [detail?.project.style.fontSize]);
 
   const clearUploadProgress = useCallback(() => {
     if (uploadProgressTimerRef.current !== null) {
@@ -297,12 +393,9 @@ export function VideoCaptionWorkspace() {
       try {
         const next = await videoCaptionService.detail(projectId);
         setDetail(next);
+        setActiveTab("subtitles");
         setSelectedName(next.project.name);
         mergeProject(next.project);
-        localStorage.setItem(
-          "video-caption:last-project-id",
-          projectId
-        );
         setError("");
       } catch (requestError) {
         if (!silent) {
@@ -324,13 +417,6 @@ export function VideoCaptionWorkspace() {
     try {
       const result = await videoCaptionService.list({ limit: 30 });
       setProjects(result.projects);
-      const rememberedId = localStorage.getItem(
-        "video-caption:last-project-id"
-      );
-      const firstId =
-        result.projects.find((item) => item.id === rememberedId)?.id ||
-        result.projects[0]?.id;
-      if (firstId) await openProject(firstId, true);
       setError("");
     } catch (requestError) {
       setError(
@@ -341,7 +427,7 @@ export function VideoCaptionWorkspace() {
     } finally {
       setLoadingProjects(false);
     }
-  }, [openProject]);
+  }, []);
 
   useEffect(() => {
     void loadProjects();
@@ -406,6 +492,27 @@ export function VideoCaptionWorkspace() {
     return () => window.clearTimeout(timer);
   }, [detail?.project, mergeProject, selectedName]);
 
+  const handleStep1Continue = () => {
+    let name = "";
+    if (sourceType === "upload" && selectedFile) {
+      name = selectedFile.name.replace(/\.[^.]+$/, "");
+    } else if (sourceType === "url") {
+      if (isDriveFolderUrl(sourceUrl)) {
+        const fileObj = driveFolderFiles.find((f) => f.id === selectedDriveFileId) || driveFolderFiles[0];
+        if (fileObj) {
+          name = fileObj.name.replace(/\.[^.]+$/, "");
+        }
+      } else {
+        const match = sourceUrl.trim().match(/\/([^/?#]+)$/);
+        name = match ? match[1].replace(/\.[^.]+$/, "") : "";
+      }
+    }
+    if (name && !projectName) {
+      setProjectName(name);
+    }
+    setCreationStep(2);
+  };
+
   async function handleCreate() {
     setError("");
     if (sourceType === "upload" && !selectedFile) {
@@ -413,7 +520,7 @@ export function VideoCaptionWorkspace() {
       return;
     }
     if (sourceType === "url" && !sourceUrl.trim()) {
-      setError("Hãy nhập URL video HTTPS.");
+      setError("Hãy nhập URL video HTTPS hoặc link Google Drive.");
       return;
     }
     if (
@@ -429,6 +536,19 @@ export function VideoCaptionWorkspace() {
     resetUploadProgress();
     try {
       let uploadedUrl = sourceUrl.trim();
+      let originalName = selectedFile?.name;
+
+      if (sourceType === "url" && isDriveFolderUrl(sourceUrl)) {
+        const fileObj = driveFolderFiles.find((f) => f.id === selectedDriveFileId) || driveFolderFiles[0];
+        if (!fileObj) {
+          setError("Vui lòng đợi quét thư mục hoặc chọn video từ thư mục.");
+          setCreating(false);
+          return;
+        }
+        uploadedUrl = fileObj.directUrl;
+        originalName = fileObj.name;
+      }
+
       if (sourceType === "upload" && selectedFile) {
         updateUploadProgressTarget(1);
         uploadedUrl = await videoCaptionService.uploadVideo(
@@ -446,7 +566,7 @@ export function VideoCaptionWorkspace() {
       const created = await videoCaptionService.create({
         name:
           projectName.trim() ||
-          selectedFile?.name.replace(/\.[^.]+$/, "") ||
+          originalName?.replace(/\.[^.]+$/, "") ||
           "Dự án caption mới",
         mode,
         source: {
@@ -455,7 +575,7 @@ export function VideoCaptionWorkspace() {
               ? "upload"
               : "media_library",
           url: uploadedUrl,
-          originalName: selectedFile?.name,
+          originalName: originalName,
         },
         autoAnalyze: true,
         idempotencyKey: createIdempotencyKeyRef.current,
@@ -463,12 +583,9 @@ export function VideoCaptionWorkspace() {
 
       createIdempotencyKeyRef.current = null;
       setDetail(created);
+      setActiveTab("subtitles");
       setSelectedName(created.project.name);
       mergeProject(created.project);
-      localStorage.setItem(
-        "video-caption:last-project-id",
-        created.project.id
-      );
       setSelectedFile(null);
       setSourceUrl("");
       setProjectName("");
@@ -538,10 +655,10 @@ export function VideoCaptionWorkspace() {
     }
   }
 
-  function updateSegment(
+  const updateSegment = useCallback((
     segmentId: string,
     updates: Partial<VideoCaptionSegmentDto>
-  ) {
+  ) => {
     setDetail((current) =>
       current
         ? {
@@ -554,7 +671,7 @@ export function VideoCaptionWorkspace() {
           }
         : current
     );
-  }
+  }, []);
 
   async function saveTimeline() {
     if (!detail) return;
@@ -615,6 +732,9 @@ export function VideoCaptionWorkspace() {
       setActionBusy(false);
     }
   }
+
+  saveTimelineRef.current = saveTimeline;
+  saveStyleRef.current = saveStyle;
 
   async function saveContextSettings() {
     if (!detail) return;
@@ -751,6 +871,14 @@ export function VideoCaptionWorkspace() {
         currentTimeMs >= segment.startMs &&
         currentTimeMs < segment.endMs
     ) || [];
+  const activeTimelineSegmentId = activePreviewSegments[0]?.id;
+
+  useEffect(() => {
+    if (!activeTimelineSegmentId) return;
+    segmentItemRefs.current
+      .get(activeTimelineSegmentId)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [activeTimelineSegmentId]);
 
   const filteredSegments =
     detail?.segments.filter((segment) => {
@@ -763,1483 +891,1256 @@ export function VideoCaptionWorkspace() {
       return true;
     }) || [];
 
+  const timelineDurationMs = Math.max(
+    playerDurationMs || 0,
+    detail?.project.video.durationMs || 0,
+    1
+  );
+  const segmentsSnapshot = detail
+    ? JSON.stringify(
+        detail.segments.map((segment) => ({
+          id: segment.id,
+          lane: segment.lane,
+          startMs: segment.startMs,
+          endMs: segment.endMs,
+          text: segment.text,
+          styleOverride: segment.styleOverride,
+        }))
+      )
+    : "";
+  const styleSnapshot = detail ? JSON.stringify(detail.project.style) : "";
+
+  useEffect(() => {
+    const projectId = detail?.project.id;
+    if (!projectId || !segmentsSnapshot) return;
+    const previous = autosaveSegmentsRef.current;
+
+    if (!previous || previous.projectId !== projectId) {
+      autosaveSegmentsRef.current = { projectId, snapshot: segmentsSnapshot };
+      return;
+    }
+    if (previous.snapshot === segmentsSnapshot) return;
+
+    if (autosaveSegmentsTimerRef.current !== null) {
+      window.clearTimeout(autosaveSegmentsTimerRef.current);
+    }
+    autosaveSegmentsTimerRef.current = window.setTimeout(() => {
+      void saveTimelineRef.current?.();
+      autosaveSegmentsRef.current = { projectId, snapshot: segmentsSnapshot };
+      autosaveSegmentsTimerRef.current = null;
+    }, 700);
+
+    return () => {
+      if (autosaveSegmentsTimerRef.current !== null) {
+        window.clearTimeout(autosaveSegmentsTimerRef.current);
+        autosaveSegmentsTimerRef.current = null;
+      }
+    };
+  }, [detail?.project.id, segmentsSnapshot]);
+
+  useEffect(() => {
+    const projectId = detail?.project.id;
+    if (!projectId || !styleSnapshot) return;
+    const previous = autosaveStyleRef.current;
+
+    if (!previous || previous.projectId !== projectId) {
+      autosaveStyleRef.current = { projectId, snapshot: styleSnapshot };
+      return;
+    }
+    if (previous.snapshot === styleSnapshot) return;
+
+    if (autosaveStyleTimerRef.current !== null) {
+      window.clearTimeout(autosaveStyleTimerRef.current);
+    }
+    autosaveStyleTimerRef.current = window.setTimeout(() => {
+      void saveStyleRef.current?.();
+      autosaveStyleRef.current = { projectId, snapshot: styleSnapshot };
+      autosaveStyleTimerRef.current = null;
+    }, 700);
+
+    return () => {
+      if (autosaveStyleTimerRef.current !== null) {
+        window.clearTimeout(autosaveStyleTimerRef.current);
+        autosaveStyleTimerRef.current = null;
+      }
+    };
+  }, [detail?.project.id, styleSnapshot]);
+
+  useEffect(() => {
+    if (!timelineDrag) return;
+
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor =
+      timelineDrag.mode === "move" ? "grabbing" : "ew-resize";
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const deltaMs =
+        ((event.clientX - timelineDrag.originClientX) /
+          timelineDrag.trackWidth) *
+        timelineDurationMs;
+      const snappedDeltaMs = Math.round(deltaMs / 50) * 50;
+      const segmentDurationMs =
+        timelineDrag.originEndMs - timelineDrag.originStartMs;
+
+      if (timelineDrag.mode === "move") {
+        const startMs = Math.min(
+          Math.max(0, timelineDurationMs - segmentDurationMs),
+          Math.max(0, timelineDrag.originStartMs + snappedDeltaMs)
+        );
+        updateSegment(timelineDrag.segmentId, {
+          startMs,
+          endMs: startMs + segmentDurationMs,
+        });
+        setCurrentTimeMs(startMs);
+        return;
+      }
+
+      if (timelineDrag.mode === "resize-start") {
+        updateSegment(timelineDrag.segmentId, {
+          startMs: Math.min(
+            timelineDrag.originEndMs - 100,
+            Math.max(0, timelineDrag.originStartMs + snappedDeltaMs)
+          ),
+        });
+        return;
+      }
+
+      updateSegment(timelineDrag.segmentId, {
+        endMs: Math.min(
+          timelineDurationMs,
+          Math.max(
+            timelineDrag.originStartMs + 100,
+            timelineDrag.originEndMs + snappedDeltaMs
+          )
+        ),
+      });
+    };
+
+    const handlePointerUp = () => setTimelineDrag(null);
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+    window.addEventListener("pointercancel", handlePointerUp, { once: true });
+
+    return () => {
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [timelineDrag, timelineDurationMs, updateSegment]);
+
+  function seekToSegment(segment: VideoCaptionSegmentDto) {
+    setCurrentTimeMs(segment.startMs);
+    if (videoRef.current) {
+      videoRef.current.currentTime = segment.startMs / 1000;
+      videoRef.current.play().catch(() => {});
+    }
+  }
+
+  const handlePrevSegment = () => {
+    if (!detail || detail.segments.length === 0) return;
+    const sorted = [...detail.segments].sort((a, b) => a.startMs - b.startMs);
+    const currentIndex = sorted.findIndex(s => currentTimeMs >= s.startMs && currentTimeMs < s.endMs);
+    if (currentIndex > 0) {
+      seekToSegment(sorted[currentIndex - 1]);
+    } else if (currentIndex === -1) {
+      const prev = sorted.reverse().find(s => s.startMs < currentTimeMs);
+      if (prev) seekToSegment(prev);
+    }
+  };
+
+  const handleNextSegment = () => {
+    if (!detail || detail.segments.length === 0) return;
+    const sorted = [...detail.segments].sort((a, b) => a.startMs - b.startMs);
+    const currentIndex = sorted.findIndex(s => currentTimeMs >= s.startMs && currentTimeMs < s.endMs);
+    if (currentIndex !== -1 && currentIndex < sorted.length - 1) {
+      seekToSegment(sorted[currentIndex + 1]);
+    } else if (currentIndex === -1) {
+      const next = sorted.find(s => s.startMs > currentTimeMs);
+      if (next) seekToSegment(next);
+    }
+  };
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) videoRef.current.pause();
+      else videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !muted;
+      setMuted(!muted);
+    }
+  };
+
+  function formatTime(ms: number) {
+    const totalSecs = Math.floor(ms / 1000);
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function commitFontSize(value: string) {
+    const parsedValue = Number(value);
+    if (!Number.isFinite(parsedValue)) {
+      setFontSizeDraft(String(detail?.project.style.fontSize || 48));
+      setFontSizeMenuOpen(false);
+      return;
+    }
+
+    const nextFontSize = Math.min(120, Math.max(12, Math.round(parsedValue)));
+    setFontSizeDraft(String(nextFontSize));
+    setFontSizeMenuOpen(false);
+    updateStyle({ fontSize: nextFontSize, preset: "custom" });
+  }
+
+  function startTimelineSegmentDrag(
+    event: React.PointerEvent<HTMLElement>,
+    segment: VideoCaptionSegmentDto,
+    mode: TimelineDragMode
+  ) {
+    const trackElement = event.currentTarget.closest<HTMLElement>(
+      "[data-caption-timeline-track]"
+    );
+    if (!trackElement) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    setTimelineDrag({
+      segmentId: segment.id,
+      mode,
+      originClientX: event.clientX,
+      originStartMs: segment.startMs,
+      originEndMs: segment.endMs,
+      trackWidth: trackElement.getBoundingClientRect().width,
+    });
+  }
+
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const percent = clickX / rect.width;
+    const targetTimeMs = Math.round(percent * timelineDurationMs);
+    setCurrentTimeMs(targetTimeMs);
+    if (videoRef.current) {
+      videoRef.current.currentTime = targetTimeMs / 1000;
+    }
+  };
+
   return (
-    <div className="mx-auto w-full max-w-[1500px] px-2 pb-8">
-      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-slate-50 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 py-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
-              <Captions className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-950">
-                Phụ đề & chữ trong video
-              </h2>
-              <p className="text-sm text-slate-500">
-                Tạo dự án một lần, tiếp tục xử lý ngay cả khi đóng trình duyệt.
-              </p>
+    <div className="w-full bg-transparent">
+      {/* SCREEN 1: Creation Screen */}
+      {!loadingDetail && !detail && (
+        <div className="mx-auto w-full max-w-[1000px] px-4 py-8">
+          <div className="mb-8 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-md shadow-cyan-250">
+                <Captions className="h-6 w-6" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Tạo Phụ Đề Video</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Tạo phụ đề AI nhanh chóng và trực quan</p>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            Tự động lưu
+
+          {error && (
+            <div className="mb-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="flex-1">{error}</span>
+              <button type="button" onClick={() => setError("")} className="rounded-lg p-1 hover:bg-rose-100">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
+            {/* Step Wizard Container */}
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 relative overflow-hidden flex flex-col justify-between min-h-[420px]">
+
+              {creating && (
+                <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm p-6 text-center animate-fade-in">
+                  <div className="relative mb-4 flex items-center justify-center">
+                    <div className="h-20 w-20 rounded-full border-4 border-slate-100 border-t-cyan-600 animate-spin" />
+                    <span className="absolute text-sm font-extrabold text-cyan-800">
+                      {uploadProgress}%
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800">
+                    {sourceType === "upload" ? "Đang tải video lên..." : "Đang phân tích video..."}
+                  </h4>
+                  <p className="mt-1.5 max-w-[200px] text-[11px] leading-relaxed text-slate-500">
+                    {sourceType === "upload" ? "Vui lòng giữ tab này hoạt động cho đến khi hoàn tất." : "Hệ thống đang chuẩn bị tệp và gửi phân tích."}
+                  </p>
+                </div>
+              )}
+
+              {/* Step Contents */}
+              <div className="flex-1 flex flex-col justify-start">
+
+                {/* STEP 1: SELECT VIDEO SOURCE */}
+                {creationStep === 1 && (
+                  <div className="space-y-5 animate-fade-in">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2.5">
+                        Chọn nguồn video của bạn
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => setSourceType("upload")}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all duration-150 ${
+                            sourceType === "upload" ? "bg-white text-cyan-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          <UploadCloud className="h-4 w-4" />
+                          Tải tệp từ máy
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSourceType("url")}
+                          className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all duration-150 ${
+                            sourceType === "url" ? "bg-white text-cyan-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          <Link2 className="h-4 w-4" />
+                          Google Drive / Link Video
+                        </button>
+                      </div>
+                    </div>
+
+                    {sourceType === "upload" ? (
+                      localVideoUrl ? (
+                        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 aspect-video flex items-center justify-center group shadow-sm max-w-md mx-auto w-full">
+                          <video src={localVideoUrl} className="h-full w-full object-contain" controls />
+                          <button
+                            type="button"
+                            onClick={() => setSelectedFile(null)}
+                            className="absolute right-3 top-3 rounded-full bg-slate-900/80 p-2 text-white hover:bg-slate-900 transition opacity-0 group-hover:opacity-100 duration-150 shadow"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 hover:bg-cyan-50/10 hover:border-cyan-400 px-6 py-12 text-center transition-all duration-200">
+                          <FileVideo className="mb-3 h-10 w-10 text-cyan-600 animate-pulse" />
+                          <span className="text-sm font-bold text-slate-850">Chọn video từ thiết bị</span>
+                          <span className="mt-1 text-xs text-slate-400">Hỗ trợ các định dạng MP4, MOV tối đa 1 GB</span>
+                          <input
+                            type="file"
+                            accept="video/*"
+                            className="hidden"
+                            onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                          />
+                        </label>
+                      )
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-400 mb-2">Đường dẫn thư mục Google Drive</label>
+                          <input
+                            value={sourceUrl}
+                            onChange={(e) => setSourceUrl(e.target.value)}
+                            placeholder="Dán link thư mục Google Drive, link video Drive hoặc link direct"
+                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 font-semibold text-slate-800"
+                          />
+                        </div>
+
+                        {scanningDrive && (
+                          <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 px-3 py-2.5 rounded-xl">
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin text-cyan-650" />
+                            Đang quét thư mục Google Drive, vui lòng đợi...
+                          </div>
+                        )}
+
+                        {driveFolderFiles.length > 0 && (
+                          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                              Danh sách video tìm thấy ({driveFolderFiles.length})
+                            </label>
+                            <div className="max-h-[160px] overflow-y-auto space-y-1.5 pr-1">
+                              {driveFolderFiles.map((file) => (
+                                <button
+                                  key={file.id}
+                                  type="button"
+                                  onClick={() => setSelectedDriveFileId(file.id)}
+                                  className={`w-full flex items-center justify-between text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-100 ${
+                                    selectedDriveFileId === file.id
+                                      ? "bg-cyan-600 text-white shadow-sm"
+                                      : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  <span className="truncate flex-1 pr-2">{file.name}</span>
+                                  <FileVideo className="h-3.5 w-3.5 shrink-0" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* STEP 2: CONFIGURE PROJECT */}
+                {creationStep === 2 && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2.5">
+                        Tên dự án
+                      </label>
+                      <input
+                        value={projectName}
+                        onChange={(e) => setProjectName(e.target.value)}
+                        placeholder="Ví dụ: Video giới thiệu sản phẩm mới"
+                        className="w-full rounded-xl border border-slate-200 px-4 py-3.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 font-semibold text-slate-800"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-3">
+                        Loại render phụ đề (Render Mode)
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {MODE_OPTIONS.map((option) => {
+                          const Icon = modeIcon(option.id);
+                          const active = mode === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setMode(option.id)}
+                              className={`flex flex-col items-start text-left p-4 rounded-2xl border transition-all duration-200 ${
+                                active
+                                  ? "border-cyan-500 bg-cyan-50/50 ring-2 ring-cyan-100"
+                                  : "border-slate-200 bg-white hover:border-slate-350 shadow-sm"
+                              }`}
+                            >
+                              <div className={`p-2 rounded-xl mb-3 ${active ? "bg-cyan-600 text-white shadow" : "bg-slate-100 text-slate-500"}`}>
+                                <Icon className="h-4 w-4" />
+                              </div>
+                              <span className="text-xs font-bold text-slate-800">{option.title}</span>
+                              <span className="text-[10px] text-slate-400 leading-relaxed mt-1">{option.description}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Wizard Navigation Footer */}
+              <div className="mt-8 pt-5 border-t border-slate-100 flex items-center justify-between gap-4">
+                {creationStep === 2 ? (
+                  <button
+                    type="button"
+                    onClick={() => setCreationStep(1)}
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                  >
+                    Quay lại
+                  </button>
+                ) : (
+                  <div />
+                )}
+
+                {creationStep === 1 ? (
+                  <button
+                    type="button"
+                    onClick={handleStep1Continue}
+                    disabled={
+                      sourceType === "upload"
+                        ? !selectedFile
+                        : (isDriveFolderUrl(sourceUrl) ? !selectedDriveFileId : !sourceUrl.trim())
+                    }
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+                  >
+                    Tiếp tục
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={creating || !projectName.trim()}
+                    onClick={() => void handleCreate()}
+                    className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2 shadow-sm"
+                  >
+                    {creating ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <MonitorPlay className="h-3.5 w-3.5" />}
+                    Xác nhận
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-white rounded-3xl border border-slate-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                    <History className="h-4 w-4 text-slate-400" />
+                    Dự án gần đây
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => void loadProjects()}
+                    className="text-slate-400 hover:text-slate-600 p-1"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingProjects ? "animate-spin" : ""}`} />
+                  </button>
+                </div>
+                <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+                  {!loadingProjects && projects.length === 0 && (
+                    <p className="text-xs text-slate-400 text-center py-8">Chưa có dự án nào</p>
+                  )}
+                  {projects.map((project) => {
+                    const status = STATUS_LABELS[project.status];
+                    return (
+                      <button
+                        key={project.id}
+                        type="button"
+                        onClick={() => void openProject(project.id)}
+                        className="w-full text-left p-3 rounded-xl border border-slate-100 hover:border-cyan-200 hover:bg-cyan-50/5 transition-all flex items-center justify-between gap-2 bg-white"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-slate-700 truncate">{project.name}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">{projectDate(project.updatedAt)}</p>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-extrabold ${status.className}`}>
+                          {status.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {error && (
-          <div className="mx-5 mt-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="flex-1">{error}</span>
-            <button
-              type="button"
-              onClick={() => setError("")}
-              className="rounded-lg p-1 hover:bg-rose-100"
-              aria-label="Đóng thông báo lỗi"
-            >
-              <XCircle className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-
-        <div className="grid min-h-[680px] lg:grid-cols-[370px_minmax(0,1fr)]">
-          <aside className="relative overflow-hidden border-b border-slate-200 bg-white p-5 lg:border-b-0 lg:border-r">
-            {creating && (
-              <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-white/95 backdrop-blur-sm p-6 text-center">
-                <div className="relative mb-4 flex items-center justify-center">
-                  <div className="h-20 w-20 rounded-full border-4 border-slate-100 border-t-cyan-600 animate-spin" />
-                  <span className="absolute text-sm font-extrabold text-cyan-800">
-                    {uploadProgress}%
-                  </span>
-                </div>
-                <h4 className="text-sm font-bold text-slate-800">
-                  {sourceType === "upload"
-                    ? "Đang tải video lên..."
-                    : "Đang khởi tạo dự án..."}
-                </h4>
-                <p className="mt-1.5 max-w-[200px] text-[11px] leading-relaxed text-slate-500">
-                  {sourceType === "upload"
-                    ? "Vui lòng không đóng tab cho đến khi tải lên 100%."
-                    : "Đang xác minh video và chuẩn bị dự án caption."}
-                </p>
-              </div>
-            )}
-
-            <div className="mb-4 flex items-center gap-2">
-              <Plus className="h-4 w-4 text-cyan-700" />
-              <h3 className="text-sm font-bold text-slate-900">
-                Tạo dự án mới
-              </h3>
-            </div>
-
-            <label className="mb-2 block text-xs font-semibold text-slate-600">
-              Tên dự án
-            </label>
-            <input
-              value={projectName}
-              onChange={(event) => setProjectName(event.target.value)}
-              placeholder="Ví dụ: Caption video giới thiệu sản phẩm"
-              className="mb-4 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-            />
-
-            <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+      {/* SCREEN 2: Main Workspace & Editor */}
+      {!loadingDetail && detail && (
+        <div className={`mx-auto flex h-[calc(100vh-150px)] min-h-[680px] w-full max-w-[1500px] flex-col overflow-hidden rounded-[28px] border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} shadow-sm`}>
+          {/* Top Navbar */}
+          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm z-10 shrink-0">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setSourceType("upload")}
-                className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                  sourceType === "upload"
-                    ? "bg-white text-cyan-700 shadow-sm"
-                    : "text-slate-500"
-                }`}
+                onClick={() => setDetail(null)}
+                className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
               >
-                <UploadCloud className="h-3.5 w-3.5" />
-                Tải video
+                <X className="h-4 w-4" />
               </button>
-              <button
-                type="button"
-                onClick={() => setSourceType("url")}
-                className={`flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold transition ${
-                  sourceType === "url"
-                    ? "bg-white text-cyan-700 shadow-sm"
-                    : "text-slate-500"
-                }`}
-              >
-                <Link2 className="h-3.5 w-3.5" />
-                URL media
-              </button>
-            </div>
-
-            {sourceType === "upload" ? (
-              localVideoUrl ? (
-                <div className="relative mb-5 overflow-hidden rounded-2xl border border-slate-250 bg-slate-950 aspect-video flex items-center justify-center group shadow-sm">
-                  <video
-                    src={localVideoUrl}
-                    className="h-full w-full object-contain"
-                    controls
-                  />
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSelectedFile(null);
-                    }}
-                    className="absolute right-2.5 top-2.5 rounded-full bg-slate-900/70 p-1.5 text-white hover:bg-slate-900 transition opacity-0 group-hover:opacity-100 duration-150 shadow"
-                    title="Gỡ video"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <label className="mb-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition hover:border-cyan-400 hover:bg-cyan-50/40">
-                  <FileVideo className="mb-2 h-7 w-7 text-cyan-700 animate-pulse" />
-                  <span className="max-w-full truncate text-sm font-semibold text-slate-800">
-                    Chọn video từ máy
-                  </span>
-                  <span className="mt-1 text-xs text-slate-500">
-                    Tối đa 1 GB, tải trực tiếp lên kho media
-                  </span>
-                  <input
-                    type="file"
-                    accept="video/*"
-                    className="hidden"
-                    onChange={(event) =>
-                      setSelectedFile(event.target.files?.[0] || null)
-                    }
-                  />
-                </label>
-              )
-            ) : (
-              <div className="mb-5">
+              <div>
                 <input
-                  value={sourceUrl}
-                  onChange={(event) => setSourceUrl(event.target.value)}
-                  placeholder="https://drive.google.com/file/d/.../view hoặc ID Google Drive"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                  value={selectedName}
+                  onChange={(e) => setSelectedName(e.target.value)}
+                  className="bg-transparent border-0 p-0 text-md font-bold text-slate-900 focus:outline-none focus:ring-0 max-w-[300px] truncate"
+                  title="Click để đổi tên dự án"
                 />
-                <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                  Đường dẫn chia sẻ công khai hoặc mã ID tệp tin từ Google Drive.
-                </p>
-              </div>
-            )}
-
-            <details className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <summary className="cursor-pointer text-xs font-bold text-slate-700">
-                Kiểu phụ đề: {MODE_OPTIONS.find((option) => option.id === mode)?.title || "Phụ đề theo lời nói"}
-              </summary>
-              <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                Mặc định phù hợp với hầu hết video. Chỉ đổi khi bạn muốn thêm chữ AI theo ngữ cảnh.
-              </p>
-              <div className="mt-3 space-y-2">
-              {MODE_OPTIONS.map((option) => {
-                const Icon = modeIcon(option.id);
-                const active = mode === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setMode(option.id)}
-                    className={`w-full rounded-2xl border p-3 text-left transition ${
-                      active
-                        ? "border-cyan-500 bg-cyan-50 ring-2 ring-cyan-100"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`rounded-xl p-2 ${
-                          active
-                            ? "bg-cyan-600 text-white"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {option.title}
-                        </p>
-                        <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                          {option.description}
-                        </p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              </div>
-            </details>
-
-            <button
-              type="button"
-              disabled={creating}
-              onClick={() => void handleCreate()}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-cyan-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {creating ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-              ) : (
-                <MonitorPlay className="h-4 w-4" />
-              )}
-              {creating ? "Đang khởi tạo..." : "Phân tích video"}
-            </button>
-
-            <details className="mt-5 border-t border-slate-200 pt-4">
-            <summary className="mb-3 flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
-              <History className="h-4 w-4 text-slate-500" />
-              Dự án gần đây
-            </summary>
-            <div className="mb-3 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => void loadProjects()}
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
-                aria-label="Tải lại dự án"
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${
-                    loadingProjects ? "animate-spin" : ""
-                  }`}
-                />
-              </button>
-            </div>
-            <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
-              {!loadingProjects && projects.length === 0 && (
-                <p className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
-                  Chưa có dự án caption.
-                </p>
-              )}
-              {projects.map((project) => {
-                const status = STATUS_LABELS[project.status];
-                const active = detail?.project.id === project.id;
-                return (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => void openProject(project.id)}
-                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition ${
-                      active
-                        ? "border-cyan-400 bg-cyan-50"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="truncate text-xs font-semibold text-slate-800">
-                        {project.name}
-                      </p>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${status.className}`}
-                      >
-                        {status.label}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      {projectDate(project.updatedAt)}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-            </details>
-          </aside>
-
-          <main className="min-w-0 p-5 md:p-7">
-            {loadingDetail && (
-              <div className="flex min-h-[560px] items-center justify-center">
-                <LoaderCircle className="h-8 w-8 animate-spin text-cyan-700" />
-              </div>
-            )}
-
-            {!loadingDetail && !detail && (
-              <div className="flex min-h-[560px] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white px-6 text-center">
-                <div className="mb-4 rounded-3xl bg-cyan-50 p-5 text-cyan-700">
-                  <Captions className="h-10 w-10" />
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${currentStatus?.className}`}>
+                    {currentStatus?.label}
+                  </span>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    {savingTimeline || actionBusy ? "Đang tự động lưu..." : "Đã tự động lưu"}
+                  </span>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900">
-                  Bắt đầu với một video
-                </h3>
-                <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-                  Video sẽ được xác minh, đọc thời lượng và tạo bản preview.
-                  Mọi tiến trình được lưu trên máy chủ.
-                </p>
               </div>
-            )}
+            </div>
 
-            {!loadingDetail && detail && (
-              <div className="space-y-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <input
-                      value={selectedName}
-                      onChange={(event) =>
-                        setSelectedName(event.target.value)
-                      }
-                      className="w-full truncate border-0 bg-transparent p-0 text-xl font-bold text-slate-950 outline-none"
-                      aria-label="Tên dự án caption"
-                    />
-                    <p className="mt-1 text-xs text-slate-500">
-                      Tên được tự động lưu sau khi bạn ngừng nhập.
-                    </p>
-                  </div>
-                  {currentStatus && (
-                    <span
-                      className={`rounded-full px-3 py-1.5 text-xs font-bold ${currentStatus.className}`}
-                    >
-                      {currentStatus.label}
-                    </span>
+            <div className="flex items-center gap-2">
+              {ACTIVE_STATUSES.has(detail.project.status) && (
+                <button
+                  type="button"
+                  onClick={() => void runAction("cancel")}
+                  className="rounded-xl border border-rose-250 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition"
+                >
+                  Hủy tác vụ
+                </button>
+              )}
+              {["failed", "cancelled"].includes(detail.project.status) && (
+                <button
+                  type="button"
+                  onClick={() => void runAction("retry")}
+                  className="rounded-xl bg-cyan-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-cyan-700 transition"
+                >
+                  Thử lại
+                </button>
+              )}
+            </div>
+          </header>
+
+          {/* Main workspace panels */}
+          <div className={`flex min-h-0 flex-1 overflow-hidden ${HEYGEN_THEME.surfaceMuted}`}>
+            {/* Center Canvas: Video Player */}
+            <main className="flex-1 flex flex-col items-center justify-between p-6 overflow-y-auto relative bg-slate-950">
+
+              {/* If active processing loader is showing */}
+              {ACTIVE_STATUSES.has(detail.project.status) && (
+                <div className="absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
+                  <div className="h-16 w-16 rounded-full border-4 border-slate-800 border-t-indigo-500 animate-spin mb-4" />
+                  <h3 className="text-md font-bold">Đang xử lý phụ đề video...</h3>
+                  <p className="text-xs text-slate-400 mt-2 max-w-sm">
+                    {detail.project.progress?.message || currentStatus?.label}
+                  </p>
+                  {detail.project.progress?.percent !== undefined && (
+                    <div className="mt-4 w-48 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-indigo-500 h-full rounded-full transition-all duration-300" style={{ width: `${detail.project.progress.percent}%` }} />
+                    </div>
                   )}
                 </div>
+              )}
 
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-                  <div className="space-y-2">
-                    <div
-                      ref={captionPreviewRef}
-                      className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950"
-                    >
-                      <div className="relative flex aspect-video items-center justify-center">
-                      {previewUrl ? (
-                        <video
-                          ref={videoRef}
-                          key={previewUrl}
-                          src={previewUrl}
-                          controls
-                          controlsList="nofullscreen"
-                          preload="metadata"
-                          onLoadedMetadata={(event) =>
-                            handlePlayerMetadata(event.currentTarget)
-                          }
-                          onError={handlePlayerError}
-                          onTimeUpdate={(event) =>
-                            setCurrentTimeMs(
-                              event.currentTarget.currentTime * 1000
+              {/* Video container */}
+              <div className="flex-1 flex items-center justify-center w-full min-h-0 max-h-[550px] relative p-2">
+                <div ref={captionPreviewRef} className="relative max-h-full aspect-video md:aspect-[9/16] bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
+                  {previewUrl ? (
+                    <video
+                      ref={videoRef}
+                      key={previewUrl}
+                      src={previewUrl}
+                      preload="metadata"
+                      onLoadedMetadata={(e) => handlePlayerMetadata(e.currentTarget)}
+                      onError={handlePlayerError}
+                      onTimeUpdate={(e) => setCurrentTimeMs(e.currentTarget.currentTime * 1000)}
+                      onPlay={() => setIsPlaying(true)}
+                      onPause={() => setIsPlaying(false)}
+                      onVolumeChange={(e) => setMuted(e.currentTarget.muted)}
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <FileVideo className="h-12 w-12 text-slate-650" />
+                  )}
+
+                  {/* Absolute overlays for subtitles */}
+                  {!ACTIVE_STATUSES.has(detail.project.status) && activePreviewSegments.map((segment) => {
+                    const style = {
+                      ...detail.project.style,
+                      ...(segment.styleOverride || {}),
+                    };
+                    const verticalClass =
+                      segment.lane === "context" || (style.position === "top" && detail.project.mode !== "combined")
+                        ? "top-[10%]"
+                        : style.position === "center"
+                          ? "top-1/2 -translate-y-1/2"
+                          : "bottom-[10%]";
+
+                    return (
+                      <div
+                        key={segment.id}
+                        className={`pointer-events-none absolute left-1/2 z-10 w-[84%] -translate-x-1/2 text-center ${verticalClass}`}
+                      >
+                        <span
+                          className="inline rounded-lg px-3 py-1.5 leading-snug break-words"
+                          style={{
+                            color: style.textColor,
+                            fontFamily: style.fontFamily,
+                            fontSize: `${Math.max(14, style.fontSize / 2.2)}px`,
+                            fontWeight: style.fontWeight,
+                            backgroundColor: `${style.backgroundColor}${Math.round(
+                              style.backgroundOpacity * 255
                             )
-                          }
-                          className="h-full w-full object-contain"
+                              .toString(16)
+                              .padStart(2, "0")}`,
+                            boxDecorationBreak: "clone",
+                            WebkitBoxDecorationBreak: "clone",
+                          }}
+                        >
+                          {segment.text}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Playback control bar */}
+              <div className="w-full max-w-lg bg-slate-900 border border-slate-800 px-4 py-2 rounded-full mt-4 flex items-center justify-between shadow-lg text-white">
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  className="text-slate-400 hover:text-white transition p-1.5 rounded-lg"
+                  title={muted ? "Bật âm thanh" : "Tắt âm thanh"}
+                >
+                  {muted ? <VolumeX className="h-3.5 w-3.5 text-rose-500" /> : <Volume2 className="h-3.5 w-3.5" />}
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePrevSegment}
+                    className="text-slate-400 hover:text-white transition p-1 rounded-lg"
+                    title="Phân đoạn trước"
+                  >
+                    <SkipBack className="h-3.5 w-3.5" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-full transition shadow-md flex items-center justify-center"
+                    title={isPlaying ? "Tạm dừng" : "Phát"}
+                  >
+                    {isPlaying ? <Pause className="h-3.5 w-3.5 fill-white text-white" /> : <Play className="h-3.5 w-3.5 fill-white text-white translate-x-0.5" />}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleNextSegment}
+                    className="text-slate-400 hover:text-white transition p-1 rounded-lg"
+                    title="Phân đoạn tiếp"
+                  >
+                    <SkipForward className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <div className="text-xs font-semibold tabular-nums text-slate-400">
+                  {formatTime(currentTimeMs)} <span className="text-slate-600">/</span> {formatTime(timelineDurationMs)}
+                </div>
+              </div>
+            </main>
+
+            {/* Sidebar (Right Pane) */}
+            <aside className={`flex h-full w-[390px] shrink-0 flex-col border-l ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface}`}>
+
+              <div className={`flex items-center justify-between border-b ${HEYGEN_THEME.border} ${HEYGEN_THEME.surfaceMuted} p-2`}>
+                <div className={`grid flex-1 grid-cols-2 gap-1 rounded-xl ${HEYGEN_THEME.surfaceSoft} p-1`}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("styling")}
+                    className={`order-2 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${
+                      activeTab === "styling"
+                        ? `${HEYGEN_THEME.surface} text-indigo-700 shadow-sm`
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <Layers3 className="h-4 w-4" />
+                    Kiểu dáng
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("subtitles")}
+                    className={`order-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-bold transition ${
+                      activeTab === "subtitles"
+                        ? `${HEYGEN_THEME.surface} text-indigo-700 shadow-sm`
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <Captions className="h-4 w-4" />
+                    Phụ đề
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] text-slate-500">
+                      {detail.segments.length}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {activeTab === "styling" && (
+                <div className={`flex min-h-0 flex-1 flex-col ${HEYGEN_THEME.surfaceMuted}`}>
+                  <div className="flex-1 space-y-5 overflow-y-auto p-4">
+                    <div>
+                      <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        <Type className="h-3.5 w-3.5" />
+                        Font chữ
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {CAPTION_FONT_OPTIONS.map((fontFamily) => {
+                          const selected = detail.project.style.fontFamily === fontFamily;
+                          return (
+                            <button
+                              key={fontFamily}
+                              type="button"
+                              onClick={() => updateStyle({ fontFamily, preset: "custom" })}
+                              className={`rounded-xl border p-3 text-left transition ${
+                                selected
+                                  ? `${HEYGEN_THEME.accentBorder} ${HEYGEN_THEME.accentBg} ring-2 ring-indigo-100`
+                                  : `${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} hover:border-slate-300 hover:shadow-sm`
+                              }`}
+                            >
+                              <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                {fontFamily}
+                              </span>
+                              <span
+                                className="mt-2 block truncate text-base text-slate-800"
+                                style={{ fontFamily }}
+                              >
+                                Phụ đề Tiếng Việt
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className={`grid grid-cols-2 gap-3 border-t ${HEYGEN_THEME.border} pt-4`}>
+                      <div className="col-span-2">
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Cỡ chữ
+                        </span>
+                        <div className="relative">
+                          <div className={`flex h-10 w-full items-center overflow-hidden rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} transition focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100`}>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={fontSizeDraft}
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                if (/^\d{0,3}$/.test(nextValue)) {
+                                  setFontSizeDraft(nextValue);
+                                }
+                              }}
+                              onBlur={() => commitFontSize(fontSizeDraft)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  commitFontSize(fontSizeDraft);
+                                  event.currentTarget.blur();
+                                }
+                                if (event.key === "Escape") {
+                                  setFontSizeDraft(String(detail.project.style.fontSize));
+                                  setFontSizeMenuOpen(false);
+                                  event.currentTarget.blur();
+                                }
+                              }}
+                              aria-label="Cỡ chữ phụ đề"
+                              className="h-full min-w-0 flex-1 bg-transparent px-3 text-center text-xs font-extrabold text-slate-800 outline-none"
+                            />
+                            <span className="border-l border-slate-100 px-2 text-[10px] font-bold text-slate-400">
+                              px
+                            </span>
+                          <button
+                            type="button"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => setFontSizeMenuOpen((current) => !current)}
+                              className="flex h-full w-10 items-center justify-center border-l border-slate-100 text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+                              aria-label="Mở danh sách cỡ chữ"
+                              aria-expanded={fontSizeMenuOpen}
+                          >
+                              <ChevronDown className={`h-4 w-4 transition ${fontSizeMenuOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          </div>
+
+                          {fontSizeMenuOpen && (
+                            <>
+                              <button
+                                type="button"
+                                aria-label="Đóng danh sách cỡ chữ"
+                                className="fixed inset-0 z-40 cursor-default"
+                                onClick={() => setFontSizeMenuOpen(false)}
+                              />
+                              <div className={`absolute left-0 right-0 top-full z-50 mt-1.5 max-h-48 overflow-y-auto rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-1.5 shadow-xl`}>
+                                <div className="grid grid-cols-3 gap-1">
+                                  {CAPTION_FONT_SIZES.map((fontSize) => (
+                                    <button
+                                      key={fontSize}
+                                      type="button"
+                                      onMouseDown={(event) => event.preventDefault()}
+                                      onClick={() => commitFontSize(String(fontSize))}
+                                      className={`rounded-lg px-2 py-2 text-xs font-bold transition ${
+                                        detail.project.style.fontSize === fontSize
+                                          ? `${HEYGEN_THEME.accentBg} text-indigo-700`
+                                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                      }`}
+                                    >
+                                      {fontSize}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <label>
+                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Màu chữ
+                        </span>
+                        <span className={`flex h-10 cursor-pointer items-center gap-2 rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} px-3`}>
+                          <span
+                            className="h-5 w-5 rounded-md border border-slate-200 shadow-inner"
+                            style={{ backgroundColor: detail.project.style.textColor }}
+                          />
+                          <span className="text-[11px] font-bold uppercase text-slate-600">
+                            {detail.project.style.textColor}
+                          </span>
+                          <input
+                            type="color"
+                            value={detail.project.style.textColor}
+                            onChange={(event) => updateStyle({ textColor: event.target.value, preset: "custom" })}
+                            className="sr-only"
+                          />
+                        </span>
+                      </label>
+
+                      <label>
+                        <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <PaintBucket className="h-3.5 w-3.5" />
+                          Màu nền
+                        </span>
+                        <span className={`flex h-10 cursor-pointer items-center gap-2 rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} px-3`}>
+                          <span
+                            className="h-5 w-5 rounded-md border border-slate-200 shadow-inner"
+                            style={{ backgroundColor: detail.project.style.backgroundColor }}
+                          />
+                          <span className="text-[11px] font-bold uppercase text-slate-600">
+                            {detail.project.style.backgroundColor}
+                          </span>
+                          <input
+                            type="color"
+                            value={detail.project.style.backgroundColor}
+                            onChange={(event) => updateStyle({ backgroundColor: event.target.value, preset: "custom" })}
+                            className="sr-only"
+                          />
+                        </span>
+                      </label>
+
+                      <div className="col-span-2">
+                        <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <span>Độ đậm nền</span>
+                          <span className="text-indigo-700">
+                            {Math.round(detail.project.style.backgroundOpacity * 100)}%
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={detail.project.style.backgroundOpacity}
+                          onChange={(event) => updateStyle({ backgroundOpacity: Number(event.target.value), preset: "custom" })}
+                          className="h-1.5 w-full cursor-pointer rounded-lg bg-slate-200 accent-indigo-600"
                         />
-                      ) : (
-                        <FileVideo className="h-12 w-12 text-slate-600" />
-                      )}
-                        {activePreviewSegments.map((segment) => {
-                        const style = {
-                          ...detail.project.style,
-                          ...(segment.styleOverride || {}),
-                        };
-                        const verticalClass =
-                          segment.lane === "context" ||
-                          (style.position === "top" &&
-                            detail.project.mode !== "combined")
-                            ? "top-[10%]"
-                            : style.position === "center"
-                              ? "top-1/2 -translate-y-1/2"
-                              : "bottom-[10%]";
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {activeTab === "subtitles" && (
+              <section className={`flex min-h-0 flex-1 flex-col ${HEYGEN_THEME.surfaceMuted}`}>
+                <div className={`flex items-center justify-between border-b ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} px-4 py-3`}>
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                      <Captions className="h-4 w-4 text-indigo-600" />
+                      Phụ đề theo timeline
+                    </div>
+                    <p className="mt-0.5 text-[10px] font-medium text-slate-400">
+                      {detail.segments.length} phân đoạn · tự đồng bộ khi video phát
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void videoCaptionService.downloadSubtitles(detail.project.id, "srt")}
+                    className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    title="Tải tệp phụ đề SRT"
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  {/* Search and Filters */}
+                  <div className={`shrink-0 space-y-2 border-b ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-3`}>
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={segmentSearchQuery}
+                        onChange={(e) => setSegmentSearchQuery(e.target.value)}
+                        placeholder="Tìm kiếm nội dung..."
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-3 py-1.5 text-xs outline-none focus:bg-white focus:border-cyan-500 font-semibold"
+                      />
+                    </div>
+
+                    <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
+                      {(["all", "speech", "context"] as const).map((filter) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setSegmentLaneFilter(filter)}
+                          className={`flex-1 rounded-md py-1 text-[10px] font-bold transition-all ${
+                            segmentLaneFilter === filter
+                              ? `${HEYGEN_THEME.surface} text-indigo-700 shadow-xs`
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          {filter === "all" ? "Tất cả" : filter === "speech" ? "Lời nói" : "Ngữ cảnh"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* List of segments */}
+                  <div className="flex-1 overflow-y-auto divide-y divide-slate-250 p-2 space-y-2">
+                    {filteredSegments.length === 0 ? (
+                      <p className="text-xs text-slate-400 text-center py-12">Không tìm thấy phân đoạn nào</p>
+                    ) : (
+                      filteredSegments.map((segment) => {
+                        const active = currentTimeMs >= segment.startMs && currentTimeMs < segment.endMs;
                         return (
                           <div
                             key={segment.id}
-                            className={`pointer-events-none absolute left-1/2 z-10 w-[84%] -translate-x-1/2 text-center ${verticalClass}`}
+                            ref={(element) => {
+                              if (element) segmentItemRefs.current.set(segment.id, element);
+                              else segmentItemRefs.current.delete(segment.id);
+                            }}
+                            onClick={() => seekToSegment(segment)}
+                            className={`p-3 rounded-xl border transition-all ${
+                              active
+                                ? "border-indigo-400 bg-indigo-50 shadow-sm ring-1 ring-indigo-100"
+                                : `${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} hover:border-slate-300`
+                            }`}
                           >
-                            <span
-                              className="inline rounded-lg px-3 py-1.5 leading-snug"
-                              style={{
-                                color: style.textColor,
-                                fontFamily: style.fontFamily,
-                                fontSize: `${Math.max(14, style.fontSize / 2)}px`,
-                                fontWeight: style.fontWeight,
-                                backgroundColor: `${style.backgroundColor}${Math.round(
-                                  style.backgroundOpacity * 255
-                                )
-                                  .toString(16)
-                                  .padStart(2, "0")}`,
-                                boxDecorationBreak: "clone",
-                                WebkitBoxDecorationBreak: "clone",
-                              }}
-                            >
-                              {segment.text}
-                            </span>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-extrabold text-slate-400 tabular-nums">
+                                {formatTime(segment.startMs)} – {formatTime(segment.endMs)}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => seekToSegment(segment)}
+                                  className="text-[9px] bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-2 py-0.5 rounded-full font-bold transition flex items-center gap-0.5"
+                                >
+                                  <Play className="h-2 w-2 fill-indigo-700 stroke-none" />
+                                  Nghe
+                                </button>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                  segment.lane === "speech" ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-700"
+                                }`}>
+                                  {segment.lane === "speech" ? "Speech" : "Context"}
+                                </span>
+                              </div>
+                            </div>
+                            <textarea
+                              value={segment.text}
+                              onClick={(event) => event.stopPropagation()}
+                              onChange={(e) => updateSegment(segment.id, { text: e.target.value })}
+                              rows={2}
+                              className="w-full border border-slate-200/80 bg-slate-50/50 p-2 text-xs font-bold text-slate-700 outline-none rounded-lg focus:bg-white focus:border-indigo-400 resize-none leading-relaxed"
+                              placeholder="Nhập phụ đề..."
+                            />
+
+                            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                Bắt đầu (giây)
+                                <input
+                                  type="number"
+                                  step={0.1}
+                                  value={millisecondsToSeconds(segment.startMs)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(e) => updateSegment(segment.id, { startMs: Number(e.target.value) * 1000 })}
+                                  className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 mt-0.5 font-bold text-slate-650 focus:border-indigo-400"
+                                />
+                              </label>
+                              <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                Kết thúc (giây)
+                                <input
+                                  type="number"
+                                  step={0.1}
+                                  value={millisecondsToSeconds(segment.endMs)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(e) => updateSegment(segment.id, { endMs: Number(e.target.value) * 1000 })}
+                                  className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 mt-0.5 font-bold text-slate-650 focus:border-indigo-400"
+                                />
+                              </label>
+                            </div>
                           </div>
                         );
-                        })}
-                        {previewUrl && detail.segments.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={openCaptionPreviewFullscreen}
-                            className="absolute right-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-lg bg-slate-950/80 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-slate-800"
-                            title="Mở bản xem thử cùng phụ đề ở toàn màn hình"
-                          >
-                            <MonitorPlay className="h-3.5 w-3.5" />
-                            Toàn màn hình
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {playerDurationWarning && (
-                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{playerDurationWarning}</span>
-                      </div>
+                      })
                     )}
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Thông tin video
-                      </p>
-                      <dl className="space-y-3 text-sm">
-                        <div className="flex items-center justify-between gap-3">
-                          <dt className="flex items-center gap-2 text-slate-500">
-                            <Clock3 className="h-4 w-4" />
-                            Thời lượng
-                          </dt>
-                          <dd className="font-semibold text-slate-800">
-                            {formatDuration(
-                              detail.project.video.durationMs
-                            )}
-                          </dd>
-                        </div>
-                        {playerDurationMs !== undefined && (
-                          <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate-500">
-                              Thực tế trình phát
-                            </dt>
-                            <dd
-                              className={`font-semibold ${
-                                detail.project.video.durationMs &&
-                                Math.abs(
-                                  playerDurationMs -
-                                    detail.project.video.durationMs
-                                ) >
-                                  Math.max(
-                                    750,
-                                    detail.project.video.durationMs * 0.05
-                                  )
-                                  ? "text-amber-700"
-                                  : "text-slate-800"
-                              }`}
-                            >
-                              {formatDuration(playerDurationMs)}
-                            </dd>
-                          </div>
-                        )}
-                        <div className="flex items-center justify-between gap-3">
-                          <dt className="flex items-center gap-2 text-slate-500">
-                            <MonitorPlay className="h-4 w-4" />
-                            Kích thước
-                          </dt>
-                          <dd className="font-semibold text-slate-800">
-                            {detail.project.video.width &&
-                            detail.project.video.height
-                              ? `${detail.project.video.width} × ${detail.project.video.height}`
-                              : "Chưa xác định"}
-                          </dd>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <dt className="flex items-center gap-2 text-slate-500">
-                            {detail.project.video.hasAudio ? (
-                              <Volume2 className="h-4 w-4" />
-                            ) : (
-                              <VolumeX className="h-4 w-4" />
-                            )}
-                            Âm thanh
-                          </dt>
-                          <dd className="font-semibold text-slate-800">
-                            {detail.project.video.hasAudio === undefined
-                              ? "Chưa xác định"
-                              : detail.project.video.hasAudio
-                                ? "Có"
-                                : "Không"}
-                          </dd>
-                        </div>
-                        <div className="flex items-center justify-between gap-3">
-                          <dt className="text-slate-500">Dung lượng</dt>
-                          <dd className="font-semibold text-slate-800">
-                            {formatBytes(
-                              detail.project.video.contentLength
-                            )}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
+                </div>
+              </section>
+              )}
+            </aside>
+          </div>
 
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Chế độ
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                        {
-                          MODE_OPTIONS.find(
-                            (item) => item.id === detail.project.mode
-                          )?.title
-                        }
-                      </p>
-                    </div>
-
-                    {detail.segments.length > 0 && (
-                      <section className="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-wider text-cyan-800">
-                              Kiểu phụ đề
-                            </p>
-                            <p className="mt-1 text-[10px] leading-4 text-cyan-700">
-                              Thay đổi hiển thị ngay trên video và tự lưu khi xuất.
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-white px-2 py-1 text-[9px] font-bold text-cyan-700">
-                            Preview trực tiếp
-                          </span>
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-3 gap-2">
-                          {[
-                            { id: "clean", label: "Clean", textColor: "#FFFFFF", backgroundColor: "#000000", backgroundOpacity: 0.72 },
-                            { id: "classic", label: "Classic", textColor: "#FFFFFF", backgroundColor: "#000000", backgroundOpacity: 0 },
-                            { id: "highlight", label: "Highlight", textColor: "#FBBF24", backgroundColor: "#000000", backgroundOpacity: 0 },
-                          ].map((preset) => (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              onClick={() => updateStyle({
-                                preset: preset.id as VideoCaptionStyle["preset"],
-                                textColor: preset.textColor,
-                                backgroundColor: preset.backgroundColor,
-                                backgroundOpacity: preset.backgroundOpacity,
-                              })}
-                              className={`rounded-xl border px-2 py-2 text-[10px] font-bold transition ${
-                                detail.project.style.preset === preset.id
-                                  ? "border-cyan-500 bg-white text-cyan-800 ring-2 ring-cyan-100"
-                                  : "border-cyan-100 bg-white/70 text-slate-600 hover:border-cyan-300"
-                              }`}
-                            >
-                              {preset.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-2 gap-3">
-                          <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                            Màu chữ
-                            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-                              <input
-                                type="color"
-                                value={detail.project.style.textColor}
-                                onChange={(event) => updateStyle({ textColor: event.target.value, preset: "custom" })}
-                                className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
-                              />
-                              <span className="text-[10px] font-semibold normal-case text-slate-600">
-                                {detail.project.style.textColor}
-                              </span>
-                            </div>
-                          </label>
-                          <label className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                            Màu nền
-                            <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-                              <input
-                                type="color"
-                                value={detail.project.style.backgroundColor}
-                                onChange={(event) => updateStyle({ backgroundColor: event.target.value, preset: "custom" })}
-                                className="h-6 w-7 cursor-pointer rounded border-0 bg-transparent p-0"
-                              />
-                              <span className="text-[10px] font-semibold normal-case text-slate-600">
-                                {detail.project.style.backgroundColor}
-                              </span>
-                            </div>
-                          </label>
-                        </div>
-
-                        <div className="mt-4">
-                          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                            <span>Độ đậm nền</span>
-                            <span className="text-cyan-700">
-                              {Math.round(detail.project.style.backgroundOpacity * 100)}%
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={detail.project.style.backgroundOpacity}
-                            onChange={(event) => updateStyle({
-                              backgroundOpacity: Number(event.target.value),
-                              preset: "custom",
-                            })}
-                            className="mt-2 h-1.5 w-full cursor-pointer accent-cyan-700"
-                          />
-                        </div>
-
-                        <div className="mt-4 grid grid-cols-3 gap-1 rounded-xl bg-white p-1">
-                          {(["top", "center", "bottom"] as const).map((position) => (
-                            <button
-                              key={position}
-                              type="button"
-                              onClick={() => updateStyle({ position, preset: "custom" })}
-                              className={`rounded-lg px-1 py-1.5 text-[10px] font-bold ${
-                                detail.project.style.position === position
-                                  ? "bg-cyan-600 text-white"
-                                  : "text-slate-500 hover:bg-cyan-50"
-                              }`}
-                            >
-                              {position === "top" ? "Trên" : position === "center" ? "Giữa" : "Dưới"}
-                            </button>
-                          ))}
-                        </div>
-                      </section>
-                    )}
-                  </div>
+          {/* Bottom Bar: Timeline Track & Scrubber */}
+          <footer className="z-10 flex h-[160px] shrink-0 select-none flex-col overflow-hidden border-t border-slate-800 bg-slate-950">
+            {/* Timeline scrollable scrubber */}
+            <div className="flex-1 overflow-x-auto relative min-h-0 bg-slate-950 flex flex-col">
+              <div
+                className="relative flex-1"
+                onClick={handleTimelineClick}
+                style={{
+                  width: `${Math.max(900, (timelineDurationMs / 1000) * 28)}px`,
+                  minWidth: "100%",
+                }}
+              >
+                {/* Ticks and seconds labels */}
+                <div className="h-5 border-b border-slate-800/80 text-[9px] font-bold text-slate-500 relative select-none">
+                  {Array.from({ length: 11 }).map((_, i) => {
+                    const pointMs = (timelineDurationMs * i) / 10;
+                    return (
+                      <span
+                        key={i}
+                        className="absolute -translate-x-1/2 pt-1 border-l border-slate-800 pl-1 h-3"
+                        style={{ left: `${i * 10}%` }}
+                      >
+                        {formatTime(pointMs)}
+                      </span>
+                    );
+                  })}
                 </div>
 
-                {detail.project.mode !== "speech" && (
-                  <>
-                  <CompanyKnowledgePanel />
-                  <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-bold text-amber-950">
-                          Nguồn cho caption ngữ cảnh
-                        </h3>
-                        <p className="mt-1 text-xs leading-5 text-amber-800">
-                          Ưu tiên yêu cầu của bạn → bài viết/chiến dịch → tài liệu dùng chung của doanh nghiệp.
-                        </p>
-                      </div>
-                      {detail.project.knowledgeSnapshot && (
-                        <span className="rounded-full bg-white px-3 py-1 text-[10px] font-bold text-amber-700">
-                          Đã dùng{" "}
-                          {detail.project.knowledgeSnapshot.sourceIds.length}{" "}
-                          tài liệu
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <label className="text-xs font-semibold text-slate-700">
-                        Bài viết liên quan
-                        <select
-                          value={
-                            detail.project.contextLinks
-                              ?.marketingContentId || ""
-                          }
-                          onChange={(event) => {
-                            const selected = contextOptions.contents.find(
-                              (item) => item.id === event.target.value
-                            );
-                            updateContext({
-                              contextLinks: {
-                                ...detail.project.contextLinks,
-                                marketingContentId:
-                                  event.target.value || undefined,
-                                campaignId:
-                                  selected?.campaignId ||
-                                  detail.project.contextLinks?.campaignId,
-                                campaignSlotId:
-                                  selected?.campaignSlotId ||
-                                  detail.project.contextLinks
-                                    ?.campaignSlotId,
-                              },
-                            });
-                          }}
-                          className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm"
-                        >
-                          <option value="">Không chọn bài viết</option>
-                          {contextOptions.contents.map((content) => (
-                            <option key={content.id} value={content.id}>
-                              {content.title} · {content.channel}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold text-slate-700">
-                        Chiến dịch liên quan
-                        <select
-                          value={
-                            detail.project.contextLinks?.campaignId || ""
-                          }
-                          onChange={(event) =>
-                            updateContext({
-                              contextLinks: {
-                                ...detail.project.contextLinks,
-                                campaignId:
-                                  event.target.value || undefined,
-                              },
-                            })
-                          }
-                          className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm"
-                        >
-                          <option value="">Không chọn chiến dịch</option>
-                          {contextOptions.campaigns.map((campaign) => (
-                            <option
-                              key={campaign.id}
-                              value={campaign.id}
-                            >
-                              {campaign.title}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    <label className="mt-3 block text-xs font-semibold text-slate-700">
-                      Điều cần nhấn mạnh
-                      <textarea
-                        value={detail.project.contextBrief || ""}
-                        onChange={(event) =>
-                          updateContext({
-                            contextBrief: event.target.value,
-                          })
-                        }
-                        rows={3}
-                        placeholder="Ví dụ: Nhấn mạnh lợi ích tiết kiệm thời gian, giọng điệu chuyên nghiệp, không nêu giá."
-                        className="mt-1 w-full resize-y rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-amber-500"
-                      />
-                    </label>
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        type="button"
-                        disabled={actionBusy}
-                        onClick={() => void saveContextSettings()}
-                        className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-xs font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-60"
-                      >
-                        <Save className="h-4 w-4" />
-                        Lưu nguồn ngữ cảnh
-                      </button>
-                    </div>
-                  </section>
-                  </>
-                )}
+                {/* Track lane */}
+                <div
+                  data-caption-timeline-track
+                  className="relative mx-2 mt-2 h-[78px] overflow-hidden rounded-xl border border-slate-800 bg-slate-900/70"
+                >
+                  {/* Current timeline cursor head */}
+                  <div
+                    className="absolute top-0 bottom-0 w-[2px] bg-indigo-500 z-30 pointer-events-none shadow"
+                    style={{ left: `${(currentTimeMs / timelineDurationMs) * 100}%` }}
+                  />
 
-                {["ready_for_review", "completed"].includes(
-                  detail.project.status
-                ) && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-200 bg-cyan-50 p-4">
-                    <div>
-                      <p className="text-sm font-bold text-cyan-950">
-                        {detail.segments.length
-                          ? `Đã có ${detail.segments.length} đoạn caption`
-                          : detail.project.video.hasAudio === false
-                            ? "Video không có luồng âm thanh"
-                            : detail.project.progress?.stage === "no_speech"
-                              ? "Không phát hiện lời nói trong video"
-                              : "Video đã sẵn sàng tạo phụ đề"}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-cyan-800">
-                        {detail.project.video.hasAudio === false
-                          ? "Bạn có thể chuyển sang caption ngữ cảnh ở giai đoạn tiếp theo."
-                          : "Phụ đề chạy nền; bạn có thể rời trang và quay lại chỉnh timeline sau."}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {detail.project.mode !== "context" &&
-                        detail.project.video.hasAudio !== false && (
-                          <button
-                            type="button"
-                            disabled={actionBusy}
-                            onClick={() => void runAction("transcribe")}
-                            className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-60"
-                          >
-                            {actionBusy ? (
-                              <LoaderCircle className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <AudioLines className="h-4 w-4" />
-                            )}
-                            {detail.segments.some(
-                              (segment) => segment.lane === "speech"
-                            )
-                              ? "Tạo lại phụ đề lời nói"
-                              : "Tạo phụ đề lời nói"}
-                          </button>
-                        )}
-                      {detail.project.mode !== "speech" && (
-                        <button
-                          type="button"
-                          disabled={actionBusy}
-                          onClick={() =>
-                            void runAction("generateContext")
-                          }
-                          className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-amber-700 disabled:opacity-60"
-                        >
-                          {actionBusy ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <BookOpenCheck className="h-4 w-4" />
-                          )}
-                          {detail.segments.some(
-                            (segment) => segment.lane === "context"
-                          )
-                            ? "Tạo lại caption ngữ cảnh"
-                            : "Tạo caption ngữ cảnh"}
-                        </button>
-                      )}
-                      {detail.segments.length > 0 && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={actionBusy}
-                            onClick={() =>
-                              void runAction("renderPreview")
-                            }
-                            className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100 disabled:opacity-60"
-                          >
-                            <MonitorPlay className="h-4 w-4" />
-                            Xem thử video đã ghép (15 giây)
-                          </button>
-                          <button
-                            type="button"
-                            disabled={actionBusy}
-                            onClick={() =>
-                              void runAction("renderFinal")
-                            }
-                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-60"
-                          >
-                            <Download className="h-4 w-4" />
-                            Tạo video có phụ đề
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
+                  {/* Rendered segments blocks */}
+                  {!ACTIVE_STATUSES.has(detail.project.status) && detail.segments.map((segment) => {
+                    const left = (segment.startMs / timelineDurationMs) * 100;
+                    const width = Math.max(1.5, ((segment.endMs - segment.startMs) / timelineDurationMs) * 100);
+                    const active = currentTimeMs >= segment.startMs && currentTimeMs < segment.endMs;
+                    const combinedMode = detail.project.mode === "combined";
 
-                {(detail.project.output?.previewUrl ||
-                  detail.project.output?.captionedVideoUrl) && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {detail.project.output.previewUrl && (
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                        <p className="mb-3 text-sm font-bold text-slate-900">
-                          Bản xem thử đã ghép phụ đề
-                        </p>
-                        <p className="text-xs leading-5 text-slate-500">
-                          Đây là file video 15 giây đã burn caption thật vào khung hình.
-                        </p>
-                        <a
-                          href={detail.project.output.previewUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-xs font-bold text-cyan-800 hover:bg-cyan-100"
-                        >
-                          <MonitorPlay className="h-4 w-4" />
-                          Mở bản xem thử
-                        </a>
-                      </div>
-                    )}
-                    {detail.project.output.captionedVideoUrl && (
-                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                        <p className="text-sm font-bold text-emerald-900">
-                          Video có caption đã hoàn tất
-                        </p>
-                        <p className="mt-1 text-xs text-emerald-700">
-                          File đã được lưu vào kho media và có thể tải xuống.
-                        </p>
-                        <a
-                          href={detail.project.output.captionedVideoUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"
-                        >
-                          <Download className="h-4 w-4" />
-                          Mở video kết quả
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {detail.segments.length > 0 && (
-                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-950">
-                          Chỉnh sửa nâng cao
-                        </h3>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Chỉ mở khi cần chỉnh câu chữ, mốc thời gian hoặc kiểu hiển thị phụ đề.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setAdvancedEditorOpen((current) => !current)}
-                        className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                      >
-                        {advancedEditorOpen ? "Thu gọn chỉnh sửa" : "Mở chỉnh sửa nâng cao"}
-                      </button>
-                    </div>
-
-                    {advancedEditorOpen && (
-                      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-                    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-950">
-                            Timeline caption
-                          </h3>
-                          <p className="mt-1 text-xs text-slate-500">
-                            Chỉnh sửa nội dung và thời gian; xem trực tiếp kết quả cập nhật trên trình phát.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={savingTimeline}
-                          onClick={() => void saveTimeline()}
-                          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-60 transition"
-                        >
-                          {savingTimeline ? (
-                            <LoaderCircle className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Save className="h-4 w-4" />
-                          )}
-                          Lưu timeline
-                        </button>
-                      </div>
-
-                      {/* --- Search & Filter Bar --- */}
-                      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto]">
-                        <div className="relative">
-                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                          <input
-                            type="text"
-                            value={segmentSearchQuery}
-                            onChange={(e) => setSegmentSearchQuery(e.target.value)}
-                            placeholder="Tìm kiếm nội dung phân đoạn..."
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-4 py-2 text-xs outline-none transition focus:border-cyan-500 focus:bg-white"
-                          />
-                        </div>
-                        <div className="flex gap-1.5 rounded-xl bg-slate-100 p-1">
-                          {(["all", "speech", "context"] as const).map((filter) => (
-                            <button
-                              key={filter}
-                              type="button"
-                              onClick={() => setSegmentLaneFilter(filter)}
-                              className={`rounded-lg px-3 py-1 text-[11px] font-bold transition-all ${
-                                segmentLaneFilter === filter
-                                  ? "bg-white text-slate-900 shadow-sm"
-                                  : "text-slate-500 hover:text-slate-800"
-                              }`}
-                            >
-                              {filter === "all" ? "Tất cả" : filter === "speech" ? "Lời nói" : "Ngữ cảnh"}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="max-h-[500px] space-y-3.5 overflow-y-auto pr-1">
-                        {filteredSegments.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-200 py-12 text-center text-slate-400">
-                            <Search className="h-8 w-8 text-slate-300" />
-                            <span className="text-xs">Không tìm thấy phân đoạn phụ đề phù hợp.</span>
-                          </div>
-                        ) : (
-                          filteredSegments.map((segment) => {
-                            const originalIndex = detail.segments.findIndex((s) => s.id === segment.id);
-                            const isSpeech = segment.lane === "speech";
-
-                            return (
-                              <div
-                                key={segment.id}
-                                className={`group rounded-2xl border p-4 transition-all duration-200 ${
-                                  isSpeech
-                                    ? "border-violet-100 bg-violet-50/5 hover:border-violet-300 focus-within:border-violet-400 focus-within:bg-violet-50/10"
-                                    : "border-amber-100 bg-amber-50/5 hover:border-amber-300 focus-within:border-amber-400 focus-within:bg-amber-50/10"
-                                }`}
-                              >
-                                <div className="mb-2.5 flex items-center justify-between gap-3">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`rounded-full px-2.5 py-0.5 text-[9px] font-extrabold tracking-wide uppercase ${
-                                        isSpeech
-                                          ? "bg-violet-100 text-violet-700"
-                                          : "bg-amber-100 text-amber-700"
-                                      }`}
-                                    >
-                                      {isSpeech
-                                        ? `Lời nói ${originalIndex + 1}`
-                                        : `Ngữ cảnh ${originalIndex + 1}`}
-                                    </span>
-                                    <span className="text-[10px] font-medium text-slate-400">
-                                      {formatMillisecondsToTimestamp(segment.startMs)} → {formatMillisecondsToTimestamp(segment.endMs)}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (videoRef.current) {
-                                          videoRef.current.currentTime = segment.startMs / 1000;
-                                          videoRef.current.play().catch(() => {});
-                                        }
-                                      }}
-                                      className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 px-2 py-1 text-[10px] font-extrabold text-cyan-700 hover:bg-cyan-100 transition"
-                                      title="Phát thử đoạn này"
-                                    >
-                                      <Play className="h-3 w-3 fill-cyan-700 stroke-cyan-700" />
-                                      Nghe thử
-                                    </button>
-                                    {typeof segment.confidence === "number" && (
-                                      <span className="text-[9px] font-semibold text-slate-400">
-                                        Tin cậy {Math.round(segment.confidence * 100)}%
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <textarea
-                                  value={segment.text}
-                                  onChange={(event) =>
-                                    updateSegment(segment.id, {
-                                      text: event.target.value,
-                                    })
-                                  }
-                                  rows={2}
-                                  className="w-full resize-none rounded-xl border border-slate-200/80 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:shadow-sm"
-                                  placeholder="Nhập nội dung phụ đề..."
-                                />
-
-                                {segment.sourceReferences.length > 0 && (
-                                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                                    {segment.sourceReferences.map(
-                                      (reference, referenceIndex) => (
-                                        <span
-                                          key={`${reference.kind}-${reference.sourceId || referenceIndex}`}
-                                          title={reference.excerpt}
-                                          className="max-w-full truncate rounded-lg bg-slate-100 px-2 py-1 text-[9px] font-bold text-slate-500 hover:bg-slate-200"
-                                        >
-                                          {reference.title ||
-                                            (reference.kind === "knowledge_chunk"
-                                              ? "Tài liệu doanh nghiệp"
-                                              : reference.kind === "marketing_content"
-                                                ? "Bài viết"
-                                                : reference.kind === "campaign_slot"
-                                                  ? "Chiến dịch"
-                                                  : reference.kind === "video_scene"
-                                                    ? "Cảnh video"
-                                                    : "Lời nói")}
-                                        </span>
-                                      )
-                                    )}
-                                  </div>
-                                )}
-
-                                <div className="mt-2.5 grid grid-cols-2 gap-3 border-t border-slate-100/80 pt-2.5">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                    Bắt đầu (giây)
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step={0.01}
-                                      value={millisecondsToSeconds(
-                                        segment.startMs
-                                      )}
-                                      onChange={(event) =>
-                                        updateSegment(segment.id, {
-                                          startMs:
-                                            Number(event.target.value) * 1000,
-                                        })
-                                      }
-                                      className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-800 focus:border-cyan-500"
-                                    />
-                                  </label>
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                    Kết thúc (giây)
-                                    <input
-                                      type="number"
-                                      min={0.01}
-                                      step={0.01}
-                                      value={millisecondsToSeconds(
-                                        segment.endMs
-                                      )}
-                                      onChange={(event) =>
-                                        updateSegment(segment.id, {
-                                          endMs:
-                                            Number(event.target.value) * 1000,
-                                        })
-                                      }
-                                      className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-semibold text-slate-800 focus:border-cyan-500"
-                                    />
-                                  </label>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <div className="mb-4 flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-slate-950">
-                          Kiểu hiển thị
-                        </h3>
-                        <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-700">
-                          Bản xem trước
-                        </span>
-                      </div>
-
-                      {/* --- Presets --- */}
-                      <div className="mb-4">
-                        <label className="mb-2 block text-xs font-semibold text-slate-650">
-                          Mẫu phụ đề nhanh
-                        </label>
-                        <div className="grid grid-cols-3 gap-2">
-                          {[
-                            {
-                              id: "clean",
-                              name: "Clean",
-                              textColor: "#FFFFFF",
-                              backgroundColor: "#000000",
-                              backgroundOpacity: 0.72,
-                              previewStyle: "bg-slate-950 text-white",
-                              previewText: "White block",
-                            },
-                            {
-                              id: "classic",
-                              name: "Classic",
-                              textColor: "#FFFFFF",
-                              backgroundColor: "#000000",
-                              backgroundOpacity: 0.00,
-                              previewStyle: "border border-slate-200 text-slate-800 bg-transparent",
-                              previewText: "Shadow raw",
-                            },
-                            {
-                              id: "highlight",
-                              name: "Highlight",
-                              textColor: "#FBBF24",
-                              backgroundColor: "#000000",
-                              backgroundOpacity: 0.00,
-                              previewStyle: "border border-slate-200 text-amber-500 bg-transparent",
-                              previewText: "Yellow glow",
-                            },
-                          ].map((preset) => {
-                            const isSelected =
-                              detail.project.style.preset === preset.id ||
-                              (preset.id === "clean" && detail.project.style.backgroundOpacity > 0 && detail.project.style.textColor === "#FFFFFF") ||
-                              (preset.id === "classic" && detail.project.style.backgroundOpacity === 0 && detail.project.style.textColor === "#FFFFFF") ||
-                              (preset.id === "highlight" && detail.project.style.backgroundOpacity === 0 && detail.project.style.textColor === "#FBBF24");
-
-                            return (
-                              <button
-                                key={preset.id}
-                                type="button"
-                                onClick={() =>
-                                  updateStyle({
-                                    preset: preset.id as VideoCaptionStyle["preset"],
-                                    textColor: preset.textColor,
-                                    backgroundColor: preset.backgroundColor,
-                                    backgroundOpacity: preset.backgroundOpacity,
-                                  })
-                                }
-                                className={`flex flex-col items-center gap-1.5 rounded-xl border p-2 text-center transition ${
-                                  isSelected
-                                    ? "border-cyan-500 bg-cyan-50/50 ring-2 ring-cyan-100"
-                                    : "border-slate-150 bg-white hover:border-slate-350"
-                                }`}
-                              >
-                                <span className="block text-[11px] font-bold text-slate-800">
-                                  {preset.name}
-                                </span>
-                                <span
-                                  className={`flex h-8 w-full items-center justify-center rounded-lg text-[9px] font-bold ${preset.previewStyle}`}
-                                >
-                                  Abc
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        {/* --- Vị trí --- */}
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-650">
-                            Vị trí hiển thị
-                          </label>
-                          <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1">
-                            {(["top", "center", "bottom", "safe_auto"] as const).map((pos) => (
-                              <button
-                                key={pos}
-                                type="button"
-                                onClick={() => updateStyle({ position: pos })}
-                                className={`rounded-lg py-1.5 text-[11px] font-bold transition-all ${
-                                  detail.project.style.position === pos
-                                    ? "bg-white text-slate-900 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-800"
-                                }`}
-                              >
-                                {pos === "top"
-                                  ? "Trên"
-                                  : pos === "center"
-                                    ? "Giữa"
-                                    : pos === "bottom"
-                                      ? "Dưới"
-                                      : "Tự động"}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* --- Font Family --- */}
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-650">
-                            Phông chữ
-                          </label>
-                          <select
-                            value={detail.project.style.fontFamily}
-                            onChange={(event) =>
-                              updateStyle({
-                                fontFamily: event.target.value,
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm outline-none focus:border-cyan-500"
-                          >
-                            <option value="Arial">Arial</option>
-                            <option value="Helvetica">Helvetica</option>
-                            <option value="Inter">Inter</option>
-                            <option value="Montserrat">Montserrat</option>
-                            <option value="Poppins">Poppins</option>
-                            <option value="Bebas Neue">Bebas Neue (In hoa)</option>
-                            <option value="Roboto">Roboto</option>
-                            <option value="Playfair Display">Playfair Display</option>
-                          </select>
-                        </div>
-
-                        {/* --- Cỡ chữ --- */}
-                        <div>
-                          <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-650">
-                            <span>Cỡ chữ</span>
-                            <span className="font-extrabold text-cyan-700">
-                              {detail.project.style.fontSize}px
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={20}
-                            max={100}
-                            value={detail.project.style.fontSize}
-                            onChange={(event) =>
-                              updateStyle({
-                                fontSize: Number(event.target.value),
-                              })
-                            }
-                            className="h-1.5 w-full cursor-pointer rounded-lg bg-slate-100 accent-cyan-600"
-                          />
-                        </div>
-
-                        {/* --- Độ đậm --- */}
-                        <div>
-                          <label className="mb-2 block text-xs font-semibold text-slate-650">
-                            Độ đậm chữ
-                          </label>
-                          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
-                            {([400, 700] as const).map((weight) => (
-                              <button
-                                key={weight}
-                                type="button"
-                                onClick={() => updateStyle({ fontWeight: weight })}
-                                className={`rounded-lg py-1.5 text-[11px] font-bold transition-all ${
-                                  detail.project.style.fontWeight === weight
-                                    ? "bg-white text-slate-900 shadow-sm"
-                                    : "text-slate-500 hover:text-slate-800"
-                                }`}
-                              >
-                                {weight === 700 ? "In đậm (Bold)" : "Thường (Regular)"}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* --- Màu chữ --- */}
-                        <div>
-                          <label className="mb-1.5 block text-xs font-semibold text-slate-650">
-                            Màu sắc chữ
-                          </label>
-                          <div className="mb-2 flex flex-wrap items-center gap-1.5">
-                            {[
-                              { color: "#FFFFFF", name: "Trắng" },
-                              { color: "#FBBF24", name: "Vàng" },
-                              { color: "#22D3EE", name: "Cyan" },
-                              { color: "#34D399", name: "Lục" },
-                              { color: "#F472B6", name: "Hồng" },
-                              { color: "#F87171", name: "Đỏ" },
-                            ].map((presetColor) => (
-                              <button
-                                key={presetColor.color}
-                                type="button"
-                                onClick={() => updateStyle({ textColor: presetColor.color })}
-                                className={`h-6 w-6 rounded-full border shadow-sm transition hover:scale-110 ${
-                                  detail.project.style.textColor.toUpperCase() === presetColor.color.toUpperCase()
-                                    ? "ring-2 ring-cyan-500 ring-offset-1 border-white"
-                                    : "border-slate-300"
-                                }`}
-                                style={{ backgroundColor: presetColor.color }}
-                                title={presetColor.name}
-                              />
-                            ))}
-                            <label className="relative flex h-6 w-10 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-slate-50 text-[10px] font-bold text-slate-600 shadow-sm hover:bg-slate-100">
-                              Chọn
-                              <input
-                                type="color"
-                                value={detail.project.style.textColor}
-                                onChange={(event) =>
-                                  updateStyle({
-                                    textColor: event.target.value,
-                                  })
-                                }
-                                className="absolute inset-0 cursor-pointer opacity-0"
-                              />
-                            </label>
-                          </div>
-                        </div>
-
-                        {/* --- Màu nền & Độ đậm nền --- */}
-                        <div className="rounded-xl border border-slate-150 bg-slate-50/50 p-3">
-                          <label className="mb-1.5 block text-xs font-semibold text-slate-650">
-                            Màu nền phụ đề
-                          </label>
-                          <div className="mb-3 flex items-center gap-2">
-                            <input
-                              type="color"
-                              value={detail.project.style.backgroundColor}
-                              onChange={(event) =>
-                                updateStyle({
-                                  backgroundColor: event.target.value,
-                                })
-                              }
-                              className="h-8 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white p-0.5"
-                            />
-                            <span className="text-xs font-semibold text-slate-600">
-                              {detail.project.style.backgroundColor.toUpperCase()}
-                            </span>
-                          </div>
-
-                          <div className="mb-1 flex items-center justify-between text-xs font-semibold text-slate-650">
-                            <span>Độ đậm nền</span>
-                            <span className="font-extrabold text-slate-700">
-                              {Math.round(
-                                detail.project.style.backgroundOpacity * 100
-                              )}
-                              %
-                            </span>
-                          </div>
-                          <input
-                            type="range"
-                            min={0}
-                            max={1}
-                            step={0.05}
-                            value={detail.project.style.backgroundOpacity}
-                            onChange={(event) =>
-                              updateStyle({
-                                backgroundOpacity: Number(
-                                  event.target.value
-                                ),
-                              })
-                            }
-                            className="h-1.5 w-full cursor-pointer rounded-lg bg-slate-200 accent-slate-700"
-                          />
-                        </div>
-
-                        <button
-                          type="button"
-                          disabled={actionBusy}
-                          onClick={() => void saveStyle()}
-                          className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-3 text-xs font-bold text-white shadow hover:bg-slate-800 disabled:opacity-60 transition"
-                        >
-                          <Save className="h-4 w-4" />
-                          Lưu kiểu caption
-                        </button>
-                      </div>
-                    </section>
-                      </div>
-                    )}
-                  </section>
-                )}
-
-                {detail.project.progress && (
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="mb-2 flex items-center justify-between gap-4 text-sm">
-                      <div className="flex items-center gap-2 font-semibold text-slate-800">
-                        {ACTIVE_STATUSES.has(detail.project.status) && (
-                          <LoaderCircle className="h-4 w-4 animate-spin text-cyan-700" />
-                        )}
-                        {detail.project.progress.message ||
-                          detail.project.progress.stage}
-                      </div>
-                      <span className="text-xs font-bold text-cyan-700">
-                        {detail.project.progress.percent}%
-                      </span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    return (
                       <div
-                        className="h-full rounded-full bg-cyan-600 transition-all duration-500"
-                        style={{
-                          width: `${detail.project.progress.percent}%`,
+                        key={segment.id}
+                        role="button"
+                        tabIndex={0}
+                        onPointerDown={(event) =>
+                          startTimelineSegmentDrag(event, segment, "move")
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          seekToSegment(segment);
                         }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {detail.project.lastError && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
-                      <div>
-                        <p className="text-sm font-bold text-rose-800">
-                          {detail.project.lastError.code}
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-rose-700">
-                          {detail.project.lastError.message}
-                        </p>
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            seekToSegment(segment);
+                          }
+                        }}
+                        className={`group absolute touch-none overflow-hidden rounded-lg border px-3 py-2 text-left text-[10px] font-bold leading-tight transition-shadow ${
+                          active
+                            ? "z-20 border-indigo-300 bg-indigo-500 text-white shadow ring-2 ring-indigo-200/50"
+                            : segment.lane === "speech"
+                              ? "border-violet-700 bg-violet-950/80 text-violet-200 hover:bg-violet-900"
+                              : "border-amber-700 bg-amber-950/80 text-amber-200 hover:bg-amber-900"
+                        } ${timelineDrag?.segmentId === segment.id ? "z-30 cursor-grabbing shadow-xl" : "cursor-grab"}`}
+                        style={{
+                          left: `${left}%`,
+                          width: `${width}%`,
+                          top: combinedMode
+                            ? segment.lane === "speech"
+                              ? "4px"
+                              : "40px"
+                            : "7px",
+                          height: combinedMode ? "34px" : "64px",
+                        }}
+                        title="Kéo để đổi vị trí. Kéo hai mép để chỉnh thời gian bắt đầu hoặc kết thúc."
+                      >
+                        <span className="pointer-events-none line-clamp-2">
+                          {segment.text}
+                        </span>
+                        <span
+                          onPointerDown={(event) =>
+                            startTimelineSegmentDrag(
+                              event,
+                              segment,
+                              "resize-start"
+                            )
+                          }
+                          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize border-l-2 border-transparent transition group-hover:border-white/70"
+                          aria-hidden="true"
+                        />
+                        <span
+                          onPointerDown={(event) =>
+                            startTimelineSegmentDrag(
+                              event,
+                              segment,
+                              "resize-end"
+                            )
+                          }
+                          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize border-r-2 border-transparent transition group-hover:border-white/70"
+                          aria-hidden="true"
+                        />
                       </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">
-                      {detail.project.status === "ready_for_review"
-                        ? "Video đã sẵn sàng cho bước tạo phụ đề"
-                        : "Tác vụ chạy nền trên máy chủ"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Bạn có thể rời trang và mở lại dự án từ danh sách gần đây.
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    {["failed", "cancelled"].includes(
-                      detail.project.status
-                    ) && (
-                      <button
-                        type="button"
-                        onClick={() => void runAction("retry")}
-                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-cyan-800"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        Thử lại
-                      </button>
-                    )}
-                    {detail.project.status === "draft" && (
-                      <button
-                        type="button"
-                        onClick={() => void runAction("analyze")}
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        Bắt đầu phân tích
-                      </button>
-                    )}
-                    {ACTIVE_STATUSES.has(detail.project.status) && (
-                      <button
-                        type="button"
-                        onClick={() => void runAction("cancel")}
-                        className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100"
-                      >
-                        <XCircle className="h-3.5 w-3.5" />
-                        Hủy
-                      </button>
-                    )}
-                  </div>
+                    );
+                  })}
                 </div>
               </div>
-            )}
-          </main>
+            </div>
+
+            {/* Bottom status & Actions (Export) */}
+            <div className="h-10 bg-slate-900 border-t border-slate-800/80 px-4 flex items-center justify-between text-white shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Định dạng xuất</span>
+                <select
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 text-[10px] font-extrabold rounded px-2 py-0.5 outline-none focus:border-indigo-500"
+                >
+                  <option value="MP4">MP4</option>
+                  <option value="MKV">MKV</option>
+                  <option value="WEBM">WEBM</option>
+                </select>
+                <span className="hidden text-[9px] font-medium text-slate-500 lg:inline">
+                  Kéo block để đổi vị trí · kéo hai mép để chỉnh thời lượng
+                </span>
+              </div>
+
+              {/* Export Button with Popover */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                  className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-1 rounded-full cursor-pointer transition shadow"
+                >
+                  Xuất video
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+
+                {exportMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setExportMenuOpen(false)} />
+                    <div className="absolute right-0 bottom-full mb-2 w-52 bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-2xl z-50 animate-fade-in">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExportMenuOpen(false);
+                          void runAction("renderPreview");
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-300 hover:bg-slate-900 hover:text-white transition flex items-center gap-2"
+                      >
+                        <MonitorPlay className="h-3.5 w-3.5 text-indigo-500" />
+                        Xem thử 15 giây
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExportMenuOpen(false);
+                          void runAction("renderFinal");
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-300 border-t border-slate-900 hover:bg-slate-900 hover:text-white transition flex items-center gap-2"
+                      >
+                        <Download className="h-3.5 w-3.5 text-emerald-500" />
+                        Xuất video hoàn chỉnh
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </footer>
         </div>
-      </div>
+      )}
     </div>
   );
 }

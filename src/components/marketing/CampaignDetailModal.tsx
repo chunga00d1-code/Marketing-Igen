@@ -763,7 +763,10 @@ export default function CampaignDetailModal({
                   </div>
 
                   {contentCalendarView === 'sheet' ? (
-                    <CampaignContentSheet campaignId={campaignDetail.campaign._id} />
+                    <CampaignContentSheet
+                      key={campaignDetail.campaign._id}
+                      campaignId={campaignDetail.campaign._id}
+                    />
                   ) : (
                   <div className="flex flex-col lg:flex-row gap-6">
                     {/* Left Column: Slots Table */}
