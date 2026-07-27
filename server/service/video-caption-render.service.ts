@@ -130,14 +130,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
   return `${header}\n${events.join("\n")}\n`;
 }
 
-function escapeFilterPath(filePath: string) {
-  return filePath
-    .replace(/\\/g, "/")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'");
-}
-
-function runFfmpeg(args: string[]) {
+function runFfmpeg(args: string[], cwd?: string) {
   return new Promise<void>((resolve, reject) => {
     const child = spawn(
       resolveMediaBinary("ffmpeg", process.env.VIDEO_CAPTION_FFMPEG_PATH),
@@ -145,6 +138,7 @@ function runFfmpeg(args: string[]) {
       {
         shell: false,
         windowsHide: true,
+        cwd,
       }
     );
     let stderr = "";
@@ -247,9 +241,7 @@ class FfmpegVideoCaptionRenderProvider
           ? ["-t", String(PREVIEW_DURATION_SECONDS)]
           : []),
         "-vf",
-        `setpts=PTS-STARTPTS,ass='${escapeFilterPath(subtitlePath)}'`,
-        "-af",
-        "asetpts=PTS-STARTPTS",
+        "ass=filename=captions.ass",
         "-map",
         "0:v:0",
         "-map",
@@ -268,7 +260,7 @@ class FfmpegVideoCaptionRenderProvider
         "+faststart",
         outputPath,
       ];
-      await runFfmpeg(args);
+      await runFfmpeg(args, tempDirectory);
       const outputUrl = await cloudinaryService.uploadMedia(
         outputPath,
         input.preview

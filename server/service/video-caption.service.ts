@@ -2716,6 +2716,19 @@ export const videoCaptionService = {
     input: ReplaceVideoCaptionSegmentsInput
   ) {
     const project = await requireProject(companyCode, projectId);
+    if (
+      !["ready_for_review", "completed", "failed", "cancelled"].includes(
+        project.status
+      )
+    ) {
+      throw new VideoCaptionError(
+        "Dự án đang được xử lý nên chưa thể thay đổi timeline caption.",
+        "PROJECT_BUSY",
+        "validation",
+        false,
+        409
+      );
+    }
     if (project.currentVersion !== input.expectedVersion) {
       throw new VideoCaptionError(
         "Dự án đã có phiên bản mới hơn. Vui lòng tải lại trước khi lưu.",

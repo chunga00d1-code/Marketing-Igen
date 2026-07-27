@@ -1,5 +1,6 @@
 import { existsSync } from "fs";
 import path from "path";
+import ffmpegStaticPath from "ffmpeg-static";
 
 function remotionBinaryCandidates(binaryName: "ffmpeg" | "ffprobe") {
   const executable = process.platform === "win32" ? `${binaryName}.exe` : binaryName;
@@ -21,6 +22,10 @@ export function resolveMediaBinary(
 ) {
   const configured = configuredPath?.trim();
   if (configured) return configured;
+
+  if (binaryName === "ffmpeg" && ffmpegStaticPath) {
+    return ffmpegStaticPath;
+  }
 
   const bundled = remotionBinaryCandidates(binaryName).find((candidate) =>
     existsSync(candidate)
