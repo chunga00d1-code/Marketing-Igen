@@ -1,6 +1,7 @@
 import { BRAND_LOGO_URL, BRAND_NAME, SERVICE_WEBSITE_URL } from "../config/brand";
 import type { TabType } from "../types";
 import type { ContentStudioTab } from "../utils/contentStudioNavigation";
+import type { VideoStudioTool } from "../utils/videoStudioNavigation";
 
 export type SeoMeta = {
   title: string;
@@ -109,11 +110,21 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     changeFrequency: "daily",
   },
   "XUONG NOI DUNG": {
-    title: "Xưởng nội dung - Hình ảnh, video và thiết kế hàng loạt",
+    title: "Xưởng nội dung - Hình ảnh và thiết kế hàng loạt",
     description:
-      "Tạo hình ảnh, video, giọng nói và thiết kế hàng loạt từ dữ liệu bảng tính trong một workspace trực quan.",
-    keywords: "xưởng nội dung, tạo hình ảnh AI, tạo video AI, thiết kế hàng loạt, bulk create",
+      "Tạo hình ảnh và thiết kế hàng loạt từ dữ liệu bảng tính trong một workspace trực quan.",
+    keywords: "xưởng nội dung, tạo hình ảnh AI, thiết kế hàng loạt, bulk create",
     path: "/xuong-noi-dung",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  "VIDEO STUDIO": {
+    title: "Video Studio - Tạo và chỉnh sửa video",
+    description:
+      "Tạo video AI, video người dẫn, giọng đọc, chuyển động, video ngắn và phụ đề trong một không gian làm việc dễ sử dụng.",
+    keywords:
+      "Video Studio, tạo video AI, tạo giọng đọc, chỉnh sửa video, video người dẫn AI, phụ đề video, video ngắn",
+    path: "/video-studio",
     priority: "0.8",
     changeFrequency: "weekly",
   },
@@ -187,27 +198,79 @@ export const CONTENT_STUDIO_SEO_MAP: Record<ContentStudioTab, SeoMeta> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
-  video: {
-    title: "Tạo video AI",
-    description: "Sản xuất video marketing bằng AI từ prompt, hình ảnh, avatar và các công cụ video tích hợp.",
-    keywords: "tạo video AI, video marketing, avatar AI, video mạng xã hội",
-    path: "/xuong-noi-dung/tao-video",
-    priority: "0.8",
-    changeFrequency: "weekly",
-  },
-  voice: {
-    title: "Tạo giọng nói AI",
-    description: "Chuyển nội dung thành giọng nói AI tự nhiên để dùng cho video, quảng cáo và nội dung mạng xã hội.",
-    keywords: "tạo giọng nói AI, text to speech, voice AI tiếng Việt, thuyết minh video",
-    path: "/xuong-noi-dung/tao-giong-noi",
-    priority: "0.7",
-    changeFrequency: "weekly",
-  },
   bulk: {
     title: "Thiết kế hàng loạt từ Excel và Google Sheets",
     description: "Tạo hàng loạt hình ảnh từ template và dữ liệu Excel hoặc Google Sheets, hỗ trợ trường chữ và trường ảnh.",
     keywords: "bulk create, thiết kế hàng loạt, tạo ảnh từ Excel, template dữ liệu, Canva bulk create",
     path: "/xuong-noi-dung/thiet-ke-hang-loat",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+};
+
+export const VIDEO_STUDIO_SEO_MAP: Record<VideoStudioTool, SeoMeta> = {
+  home: {
+    title: "Video Studio",
+    description:
+      "Chọn nhanh công cụ tạo video, chỉnh sửa, cắt video ngắn hoặc thêm phụ đề theo mục tiêu sử dụng.",
+    keywords: "Video Studio, tạo video AI, chỉnh sửa video, phụ đề video",
+    path: "/video-studio",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  "ai-video": {
+    title: "Tạo video từ nội dung",
+    description: "Tạo video marketing bằng AI từ nội dung mô tả hoặc hình ảnh.",
+    keywords: "tạo video từ nội dung, tạo video AI, video marketing",
+    path: "/video-studio/tao-video-ai",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  "human-video": {
+    title: "Tạo video người dẫn AI",
+    description: "Tạo video người dẫn AI từ kịch bản, nhân vật và giọng nói đã chọn.",
+    keywords: "video người dẫn AI, avatar AI, video thuyết trình",
+    path: "/video-studio/video-nguoi-dan",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  motion: {
+    title: "Tạo chuyển động từ hình ảnh",
+    description: "Điều khiển chuyển động nhân vật trong ảnh bằng video chuyển động mẫu.",
+    keywords: "motion control, tạo chuyển động từ ảnh, video AI",
+    path: "/video-studio/tao-chuyen-dong",
+    priority: "0.7",
+    changeFrequency: "weekly",
+  },
+  "edit-video": {
+    title: "Chỉnh sửa video",
+    description: "Cắt ghép và hoàn thiện video trong Video Studio.",
+    keywords: "chỉnh sửa video, cắt ghép video, video marketing",
+    path: "/video-studio/chinh-sua",
+    priority: "0.7",
+    changeFrequency: "weekly",
+  },
+  "long-to-short": {
+    title: "Cắt video dài thành video ngắn",
+    description: "Tạo các phiên bản video ngắn từ nội dung video dài.",
+    keywords: "long to short, cắt video ngắn, video mạng xã hội",
+    path: "/video-studio/video-ngan",
+    priority: "0.7",
+    changeFrequency: "weekly",
+  },
+  voice: {
+    title: "Tạo giọng đọc cho video",
+    description: "Chuyển kịch bản thành giọng đọc AI để lồng tiếng hoặc tạo video người dẫn.",
+    keywords: "tạo giọng đọc, text to speech, lồng tiếng video, voice AI tiếng Việt",
+    path: "/video-studio/giong-doc",
+    priority: "0.7",
+    changeFrequency: "weekly",
+  },
+  caption: {
+    title: "Thêm phụ đề vào video",
+    description: "Nhận diện lời nói, chỉnh timeline và xuất video có phụ đề.",
+    keywords: "phụ đề video, speech to text, timeline caption",
+    path: "/video-studio/phu-de",
     priority: "0.8",
     changeFrequency: "weekly",
   },
@@ -219,6 +282,8 @@ export const PUBLIC_SEO_PAGES: SeoMeta[] = [
   TAB_SEO_MAP.MARKETING,
   TAB_SEO_MAP["XUONG NOI DUNG"],
   ...Object.values(CONTENT_STUDIO_SEO_MAP),
+  TAB_SEO_MAP["VIDEO STUDIO"],
+  ...Object.values(VIDEO_STUDIO_SEO_MAP),
   TAB_SEO_MAP["SALES CRM"],
   PRIVACY_SEO,
   TERMS_SEO,
@@ -258,6 +323,8 @@ export function getSeoForPath(requestPath: string): SeoMeta {
   }
   const contentStudioMeta = Object.values(CONTENT_STUDIO_SEO_MAP).find((meta) => meta.path === normalized);
   if (contentStudioMeta) return contentStudioMeta;
+  const videoStudioMeta = Object.values(VIDEO_STUDIO_SEO_MAP).find((meta) => meta.path === normalized);
+  if (videoStudioMeta) return videoStudioMeta;
   const tab = pathToTab(normalized);
   return tab ? getSeoForTab(tab) : DEFAULT_SEO;
 }
@@ -274,6 +341,14 @@ export function pathToTab(pathname: string): TabType | null {
   let normalized = pathname.startsWith("/") ? pathname : `/${pathname}`;
   if (normalized.length > 1 && normalized.endsWith("/")) {
     normalized = normalized.slice(0, -1);
+  }
+  if (
+    normalized.toLowerCase() === "/xuong-noi-dung/tao-video" ||
+    normalized.toLowerCase() === "/xuong-noi-dung/tao-giong-noi" ||
+    normalized.toLowerCase() === "/video-studio" ||
+    normalized.toLowerCase().startsWith("/video-studio/")
+  ) {
+    return "VIDEO STUDIO";
   }
   if (normalized.toLowerCase().startsWith("/xuong-noi-dung/")) return "XUONG NOI DUNG";
   const matched = (Object.entries(TAB_SEO_MAP) as Array<[TabType, SeoMeta | undefined]>).find(

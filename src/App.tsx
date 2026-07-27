@@ -9,6 +9,7 @@ import { SEOHead } from "./seo/SEOHead";
 import { AUTH_SEO, getSeoForTab } from "./seo/seo-config";
 import { AppRouterView, useTabRouter } from "./router";
 import { socketService } from "./services/socketService";
+import { openVideoStudio } from "./utils/videoStudioNavigation";
 
 const AuthPage = lazy(() => import("./pages/AuthPage"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
@@ -154,6 +155,10 @@ function AppContent() {
   }
 
   const handleSearchNavigation = (tab: TabType, subTab?: string) => {
+    if (tab === "VIDEO STUDIO") {
+      openVideoStudio();
+      return;
+    }
     setActiveTab(tab);
     console.log(`Global Navigation search redirected to Tab: ${tab}, Section: ${subTab || "None"}`);
   };

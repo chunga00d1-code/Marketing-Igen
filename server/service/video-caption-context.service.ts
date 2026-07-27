@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 import {
   ContextualCaptionProvider,
   VideoCaptionSourceReference,
@@ -7,16 +6,14 @@ import { IVideoCaptionProject } from "../interface/video-caption.interface";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
+import { VideoCaptionSegmentModel } from "../model/video-caption-segment.model";
 import { aiKnowledgeService } from "./ai-knowledge.service";
-import {
-  VideoContentAnalysis,
-  videoBlueprintService,
-} from "./video-blueprint.service";
+import { openrouterChat } from "./openrouter.service";
 import { VideoCaptionError } from "./video-caption-error";
 
 const CONTEXT_MODEL =
   process.env.VIDEO_CAPTION_CONTEXT_MODEL?.trim() ||
-  "gemini-2.5-flash";
+  "google/gemini-2.5-flash";
 
 type ContextSource = {
   index: number;
@@ -30,6 +27,13 @@ type GeneratedCandidate = {
   sourceIndexes?: number[];
 };
 
+type ContextScene = {
+  id: string;
+  startMs: number;
+  endMs: number;
+  summary: string;
+};
+
 function safeJson<T>(value: string): T {
   const cleaned = value
     .trim()
@@ -38,61 +42,152 @@ function safeJson<T>(value: string): T {
   return JSON.parse(cleaned) as T;
 }
 
-function buildScenes(
-  analysis: VideoContentAnalysis,
+function normalizeContextGenerationError(error: unknown) {
+  if (error instanceof VideoCaptionError) return error;
+
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  const providerStatus =
+    typeof (error as { status?: unknown })?.status === "number"
+      ? (error as { status: number }).status
+      : undefined;
+  const hasStatus = (status: number) =>
+    providerStatus === status ||
+    normalized.includes(` ${status}`) ||
+    normalized.includes(`:${status}`) ||
+    normalized.includes(`"status":${status}`);
+  if (
+    normalized.includes("prepayment credits are depleted") ||
+    normalized.includes("credits are depleted") ||
+    normalized.includes("billing#prepay")
+  ) {
+    return new VideoCaptionError(
+      "Tài khoản AI đã hết credit. Hãy nạp credit cho OpenRouter rồi thử lại.",
+      "AI_CONTEXT_CREDITS_EXHAUSTED",
+      "budget",
+      false,
+      402
+    );
+  }
+  if (
+    normalized.includes("openrouter_api_key") ||
+    (normalized.includes("openrouter api") && hasStatus(401)) ||
+    hasStatus(401)
+  ) {
+    return new VideoCaptionError(
+      "Không thể xác thực OpenRouter. Hãy kiểm tra OPENROUTER_API_KEY.",
+      "OPENROUTER_CONTEXT_AUTHENTICATION_FAILED",
+      "authentication",
+      false,
+      422
+    );
+  }
+  if (hasStatus(402)) {
+    return new VideoCaptionError(
+      "OpenRouter không còn đủ credit để tạo chữ AI. Hãy nạp credit rồi thử lại.",
+      "OPENROUTER_CONTEXT_CREDITS_EXHAUSTED",
+      "budget",
+      false,
+      402
+    );
+  }
+  const isTransient =
+    hasStatus(429) ||
+    (providerStatus !== undefined && providerStatus >= 500) ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("timeout");
+  return new VideoCaptionError(
+    "Không thể tạo chữ AI qua OpenRouter. Hãy thử lại sau ít phút.",
+    "OPENROUTER_CONTEXT_GENERATION_FAILED",
+    isTransient ? "transient" : "provider",
+    isTransient,
+    isTransient ? 502 : 422
+  );
+}
+
+function normalizeContextScenes(
+  scenes: ContextScene[],
   durationMs: number
 ) {
-  const moments = (analysis.keyMoments || [])
-    .filter((moment) => Number.isFinite(moment.fraction))
-    .sort((a, b) => a.fraction - b.fraction)
-    .slice(0, 6);
-  const fallback = [0.12, 0.48, 0.82].map((fraction, index) => ({
-    fraction,
-    description:
-      index === 0
-        ? analysis.suggestedTitle || "Mở đầu video"
-        : index === 2
-          ? analysis.suggestedCTA || "Kết thúc video"
-          : (analysis.mainTopics || []).join(", ") || "Nội dung chính",
-  }));
-  const rawScenes = (moments.length ? moments : fallback).map(
-    (moment, index) => {
-    const centerMs = Math.round(
-      Math.max(0, Math.min(1, moment.fraction)) * durationMs
-    );
-    const startMs = Math.max(0, centerMs - 800);
-    const endMs = Math.min(
-      durationMs,
-      Math.max(startMs + 1_800, centerMs + 2_400)
-    );
-    return {
-      id: `scene-${index + 1}`,
-      startMs,
-      endMs,
-      summary: moment.description,
-    };
-    }
-  );
-  const scenes: typeof rawScenes = [];
-  for (const scene of rawScenes) {
-    const previous = scenes[scenes.length - 1];
+  const normalized: ContextScene[] = [];
+  for (const scene of scenes) {
+    const previous = normalized[normalized.length - 1];
     const startMs = previous
       ? Math.max(scene.startMs, previous.endMs + 120)
-      : scene.startMs;
+      : Math.max(0, scene.startMs);
     if (startMs >= durationMs - 500) continue;
     const endMs = Math.min(
       durationMs,
       Math.max(startMs + 1_200, scene.endMs)
     );
-    scenes.push({ ...scene, startMs, endMs });
+    normalized.push({ ...scene, startMs, endMs });
   }
-  return scenes;
+  return normalized;
 }
 
-class GeminiContextualCaptionProvider
+async function buildContextScenes(
+  project: IVideoCaptionProject,
+  fallbackSummary: string
+) {
+  const durationMs = project.video.durationMs || 0;
+  const speechSegments = await VideoCaptionSegmentModel.find({
+    companyCode: project.companyCode,
+    projectId: project._id,
+    version: project.currentVersion,
+    lane: "speech",
+  })
+    .sort({ startMs: 1 })
+    .select("startMs endMs text")
+    .lean();
+
+  if (speechSegments.length) {
+    const sceneCount = Math.min(
+      6,
+      Math.max(2, Math.ceil(speechSegments.length / 5))
+    );
+    const selectedIndexes = Array.from({ length: sceneCount }, (_, index) =>
+      Math.round(
+        (index * Math.max(0, speechSegments.length - 1)) /
+          Math.max(1, sceneCount - 1)
+      )
+    );
+    return normalizeContextScenes(
+      selectedIndexes.map((segmentIndex, index) => {
+        const segment = speechSegments[segmentIndex];
+        return {
+          id: `speech-scene-${index + 1}`,
+          startMs: Math.max(0, segment.startMs - 300),
+          endMs: Math.min(
+            durationMs,
+            Math.max(segment.endMs + 1_500, segment.startMs + 2_000)
+          ),
+          summary: segment.text,
+        };
+      }),
+      durationMs
+    );
+  }
+
+  const fallbackFractions = [0.12, 0.5, 0.84];
+  return normalizeContextScenes(
+    fallbackFractions.map((fraction, index) => {
+      const centerMs = Math.round(durationMs * fraction);
+      const startMs = Math.max(0, centerMs - 900);
+      return {
+        id: `fallback-scene-${index + 1}`,
+        startMs,
+        endMs: Math.min(durationMs, Math.max(startMs + 2_400, centerMs + 1_500)),
+        summary: fallbackSummary,
+      };
+    }),
+    durationMs
+  );
+}
+
+class OpenRouterContextualCaptionProvider
   implements ContextualCaptionProvider
 {
-  readonly name = "gemini";
+  readonly name = "openrouter";
 
   async generate(input: {
     scenes: Array<{
@@ -104,17 +199,15 @@ class GeminiContextualCaptionProvider
     context: string;
     idempotencyKey: string;
   }) {
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
+    if (!process.env.OPENROUTER_API_KEY?.trim()) {
       throw new VideoCaptionError(
-        "Chưa cấu hình GEMINI_API_KEY để tạo caption ngữ cảnh.",
-        "GEMINI_API_KEY_REQUIRED",
+        "Chưa cấu hình OPENROUTER_API_KEY để tạo caption ngữ cảnh.",
+        "OPENROUTER_CONTEXT_API_KEY_REQUIRED",
         "authentication",
         false,
         422
       );
     }
-    const ai = new GoogleGenAI({ apiKey });
     const prompt = `Bạn tạo text overlay ngắn cho video marketing.
 
 NGUYÊN TẮC BẮT BUỘC:
@@ -133,13 +226,12 @@ ${input.context}
 
 Trả về JSON:
 {"candidates":[{"sceneId":"scene-1","text":"...","sourceIndexes":[0]}]}`;
-    const response = await ai.models.generateContent({
+    const response = await openrouterChat({
       model: CONTEXT_MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        temperature: 0.25,
-      },
+      messages: [{ role: "user", content: prompt }],
+      jsonMode: true,
+      temperature: 0.25,
+      maxRetries: 2,
     });
     const parsed = safeJson<{ candidates?: GeneratedCandidate[] }>(
       response.text || "{}"
@@ -361,13 +453,7 @@ export const videoCaptionContextService = {
         422
       );
     }
-    const [analysis, sources] = await Promise.all([
-      videoBlueprintService.analyzeVideoContent(
-        project.source.url,
-        durationMs / 1000
-      ),
-      buildContextSources(project),
-    ]);
+    const sources = await buildContextSources(project);
     if (!sources.length) {
       throw new VideoCaptionError(
         "Chưa có tài liệu, bài viết, chiến dịch hoặc yêu cầu để tạo caption ngữ cảnh.",
@@ -378,19 +464,26 @@ export const videoCaptionContextService = {
       );
     }
 
-    const scenes = buildScenes(analysis, durationMs);
-    const provider = new GeminiContextualCaptionProvider();
+    const scenes = await buildContextScenes(
+      project,
+      sources[0]?.text.slice(0, 500) || "Nội dung video"
+    );
+    const provider = new OpenRouterContextualCaptionProvider();
     const context = sources
       .map(
         (source) =>
           `[Nguồn ${source.index}] ${source.reference.title || source.reference.kind}\n${source.text}`
       )
       .join("\n\n---\n\n");
-    const generated = await provider.generate({
-      scenes,
-      context,
-      idempotencyKey,
-    });
+    const generated = await provider
+      .generate({
+        scenes,
+        context,
+        idempotencyKey,
+      })
+      .catch((error: unknown) => {
+        throw normalizeContextGenerationError(error);
+      });
     const sceneMap = new Map(scenes.map((scene) => [scene.id, scene]));
     const segments = generated.candidates
       .map((candidate, index) => {
@@ -432,7 +525,7 @@ export const videoCaptionContextService = {
     return {
       provider: provider.name,
       model: CONTEXT_MODEL,
-      language: analysis.language,
+      language: project.video.language,
       segments,
       knowledgeSourceIds: sources
         .filter(

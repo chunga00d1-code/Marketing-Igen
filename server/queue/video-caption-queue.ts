@@ -6,7 +6,6 @@ import { videoCaptionService } from "../service/video-caption.service";
 
 const QUEUE_NAME = "video-caption-pipeline-queue";
 const REDIS_RECHECK_MS = 30_000;
-const TRANSCRIPTION_RECONCILE_MS = 60_000;
 const FALLBACK_CONCURRENCY = 2;
 const WORKER_CONCURRENCY = Math.min(
   4,
@@ -30,10 +29,23 @@ let redisCheckedAt = 0;
 let workerStarting = false;
 let workerRetryTimer: NodeJS.Timeout | null = null;
 let fallbackActive = 0;
-let transcriptionReconcileTimer: NodeJS.Timeout | null = null;
 const fallbackPending: string[] = [];
 const fallbackScheduled = new Set<string>();
 const fallbackRunning = new Set<string>();
+
+async function enqueueAutomaticFollowUp(completedJobId: string) {
+  try {
+    const followUpJobId =
+      await videoCaptionService.prepareAutomaticFollowUp(completedJobId);
+    if (!followUpJobId) return;
+    await enqueueVideoCaptionJob(followUpJobId, true);
+  } catch (error) {
+    console.error(
+      `[Video Caption Queue] Could not enqueue automatic follow-up for ${completedJobId}:`,
+      error
+    );
+  }
+}
 
 function checkRedis() {
   return new Promise<boolean>((resolve) => {
@@ -99,6 +111,7 @@ function drainDatabaseFallback() {
     setImmediate(() => {
       void videoCaptionService
         .processJob(jobId)
+        .then(() => enqueueAutomaticFollowUp(jobId))
         .catch(async (error) => {
           const job = await VideoCaptionJobModel.findById(jobId);
           if (
@@ -194,14 +207,6 @@ export function initVideoCaptionWorker() {
   if (worker || workerStarting) return;
   workerStarting = true;
 
-  if (!transcriptionReconcileTimer) {
-    void videoCaptionService.reconcileAwaitingTranscriptions();
-    transcriptionReconcileTimer = setInterval(() => {
-      void videoCaptionService.reconcileAwaitingTranscriptions();
-    }, TRANSCRIPTION_RECONCILE_MS);
-    transcriptionReconcileTimer.unref();
-  }
-
   void ensureQueue()
     .then(async (available) => {
       const recoveredJobIds =
@@ -221,6 +226,7 @@ export function initVideoCaptionWorker() {
           const jobId = String(job.data.jobId);
           try {
             await videoCaptionService.processJob(jobId);
+            await enqueueAutomaticFollowUp(jobId);
           } catch (error) {
             const maxAttempts = Number(job.opts.attempts || 1);
             if (job.attemptsMade + 1 >= maxAttempts) {

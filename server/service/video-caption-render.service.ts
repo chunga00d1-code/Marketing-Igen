@@ -10,6 +10,7 @@ import {
 } from "../../shared/video-caption.contract";
 import { cloudinaryService } from "./cloudinary.service";
 import { VideoCaptionError } from "./video-caption-error";
+import { resolveMediaBinary } from "./media-binary.service";
 
 const RENDER_TIMEOUT_MS = 45 * 60 * 1000;
 const PREVIEW_DURATION_SECONDS = 15;
@@ -138,10 +139,14 @@ function escapeFilterPath(filePath: string) {
 
 function runFfmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn("ffmpeg", args, {
-      shell: false,
-      windowsHide: true,
-    });
+    const child = spawn(
+      resolveMediaBinary("ffmpeg", process.env.VIDEO_CAPTION_FFMPEG_PATH),
+      args,
+      {
+        shell: false,
+        windowsHide: true,
+      }
+    );
     let stderr = "";
     let settled = false;
     const timer = setTimeout(() => {
@@ -242,7 +247,9 @@ class FfmpegVideoCaptionRenderProvider
           ? ["-t", String(PREVIEW_DURATION_SECONDS)]
           : []),
         "-vf",
-        `ass='${escapeFilterPath(subtitlePath)}'`,
+        `setpts=PTS-STARTPTS,ass='${escapeFilterPath(subtitlePath)}'`,
+        "-af",
+        "asetpts=PTS-STARTPTS",
         "-map",
         "0:v:0",
         "-map",

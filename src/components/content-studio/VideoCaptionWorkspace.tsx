@@ -30,10 +30,10 @@ import type {
   VideoCaptionProjectStatus,
   VideoCaptionSegmentDto,
   VideoCaptionStyle,
+  VideoCaptionTranscriptionLanguage,
 } from "../../../shared/video-caption.contract";
 import {
   videoCaptionService,
-  type VideoCaptionContextOptions,
   type VideoCaptionProjectDetailDto,
   type VideoCaptionProjectDto,
 } from "../../services/videoCaptionService";
@@ -114,15 +114,20 @@ const MODE_OPTIONS: Array<{
     description: "Nhận diện giọng nói và đặt đúng thời gian.",
   },
   {
-    id: "context",
-    title: "Chữ AI theo ngữ cảnh",
-    description: "Dùng nội dung bài viết và tri thức doanh nghiệp.",
-  },
-  {
     id: "combined",
-    title: "Kết hợp hai loại",
-    description: "Hai lane riêng để tránh đè chữ lên nhau.",
+    title: "Theo AI",
+    description: "Tự tạo phụ đề và chữ bổ sung phù hợp với video.",
   },
+];
+
+const TRANSCRIPTION_LANGUAGE_OPTIONS: Array<{
+  id: VideoCaptionTranscriptionLanguage;
+  label: string;
+  hint: string;
+}> = [
+  { id: "vi", label: "Tiếng Việt", hint: "Mặc định" },
+  { id: "auto", label: "Tự nhận diện", hint: "Nhiều ngôn ngữ" },
+  { id: "en", label: "English", hint: "English" },
 ];
 
 const CAPTION_FONT_OPTIONS = [
@@ -156,14 +161,6 @@ function modeIcon(mode: VideoCaptionMode) {
   return Layers3;
 }
 
-function formatDuration(durationMs?: number) {
-  if (!durationMs) return "Chưa xác định";
-  const seconds = Math.round(durationMs / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return `${minutes}:${String(remainder).padStart(2, "0")}`;
-}
-
 function projectDate(value: string) {
   return new Intl.DateTimeFormat("vi-VN", {
     day: "2-digit",
@@ -180,6 +177,25 @@ function millisecondsToSeconds(value: number) {
 function isDriveFolderUrl(url: string) {
   const trimmed = url.trim();
   return trimmed.includes("drive.google.com/drive/folders/") || trimmed.includes("drive.google.com/embeddedfolderview") || trimmed.includes("/folders/");
+}
+
+function getReadableCaptionError(message?: string, code?: string) {
+  const normalized = `${code || ""} ${message || ""}`.toLowerCase();
+  if (
+    normalized.includes("ai_context_credits_exhausted") ||
+    normalized.includes("openrouter_context_credits_exhausted") ||
+    normalized.includes("prepayment credits are depleted") ||
+    normalized.includes("resource_exhausted")
+  ) {
+    return "OpenRouter chưa đủ credit để tạo phụ đề Theo AI. Hãy nạp credit rồi thử lại.";
+  }
+  if (normalized.includes("openrouter_context_authentication")) {
+    return "Không thể xác thực OpenRouter. Hãy kiểm tra OPENROUTER_API_KEY trong cấu hình hệ thống.";
+  }
+  if (normalized.includes("api_key") || normalized.includes("authentication")) {
+    return "Chưa thể kết nối dịch vụ nhận diện giọng nói. Hãy kiểm tra OPENROUTER_API_KEY trong cấu hình hệ thống.";
+  }
+  return message || "Không thể tạo phụ đề. Hãy thử lại hoặc kiểm tra cấu hình dịch vụ.";
 }
 
 export function VideoCaptionWorkspace() {
@@ -211,19 +227,13 @@ export function VideoCaptionWorkspace() {
     }
   }, [selectedFile]);
 
-  const [contextOptions, setContextOptions] =
-    useState<VideoCaptionContextOptions>({
-      contents: [],
-      campaigns: [],
-    });
   const [sourceUrl, setSourceUrl] = useState("");
   const [projectName, setProjectName] = useState("");
   const [mode, setMode] = useState<VideoCaptionMode>("speech");
-  const [selectedName, setSelectedName] = useState("");
+  const [transcriptionLanguage, setTranscriptionLanguage] =
+    useState<VideoCaptionTranscriptionLanguage>("vi");
 
   const [creationStep, setCreationStep] = useState<1 | 2>(1);
-  const [smoothPercent, setSmoothPercent] = useState(0);
-
   const [activeTab, setActiveTab] = useState<"styling" | "subtitles">("subtitles");
   const [driveFolderFiles, setDriveFolderFiles] = useState<Array<{ id: string; name: string; directUrl: string }>>([]);
   const [scanningDrive, setScanningDrive] = useState(false);
@@ -240,26 +250,6 @@ export function VideoCaptionWorkspace() {
       setCreationStep(1);
     }
   }, [detail]);
-
-  useEffect(() => {
-    const isActive = detail && ACTIVE_STATUSES.has(detail.project.status);
-    if (!isActive) {
-      setSmoothPercent(0);
-      return;
-    }
-
-    setSmoothPercent(1);
-
-    const interval = setInterval(() => {
-      setSmoothPercent((prev) => {
-        if (prev >= 99) return 99;
-        const increment = Math.random() * 2.5 + 0.5;
-        return Math.min(99, Number((prev + increment).toFixed(1)));
-      });
-    }, 450);
-
-    return () => clearInterval(interval);
-  }, [detail?.project.status, detail?.project.id]);
 
   useEffect(() => {
     if (sourceType === "url" && isDriveFolderUrl(sourceUrl)) {
@@ -290,15 +280,13 @@ export function VideoCaptionWorkspace() {
   }, [sourceUrl, sourceType, projectName]);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [timelineDrag, setTimelineDrag] = useState<TimelineDragState | null>(null);
-  const [savingTimeline, setSavingTimeline] = useState(false);
+  const [timelineZoom, setTimelineZoom] = useState<number | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const captionPreviewRef = useRef<HTMLDivElement | null>(null);
   const segmentItemRefs = useRef(new Map<string, HTMLDivElement>());
   const [playerUrl, setPlayerUrl] = useState("");
   const [playerDurationMs, setPlayerDurationMs] = useState<number>();
-  const [playerDurationWarning, setPlayerDurationWarning] = useState("");
   const [segmentSearchQuery, setSegmentSearchQuery] = useState("");
   const [segmentLaneFilter, setSegmentLaneFilter] = useState<"all" | "speech" | "context">("all");
   const autosaveSegmentsRef = useRef<{ projectId: string; snapshot: string } | null>(null);
@@ -307,6 +295,52 @@ export function VideoCaptionWorkspace() {
   const autosaveStyleTimerRef = useRef<number | null>(null);
   const saveTimelineRef = useRef<(() => Promise<void>) | null>(null);
   const saveStyleRef = useRef<(() => Promise<void>) | null>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!isPlaying || !video) return;
+
+    let cancelled = false;
+    let videoFrameCallbackId: number | undefined;
+    let animationFrameId: number | undefined;
+
+    const scheduleNextFrame = () => {
+      if (cancelled || video.paused || video.ended) return;
+
+      if (typeof video.requestVideoFrameCallback === "function") {
+        videoFrameCallbackId = video.requestVideoFrameCallback(
+          (_now, metadata) => {
+            if (cancelled) return;
+            setCurrentTimeMs(metadata.mediaTime * 1000);
+            scheduleNextFrame();
+          }
+        );
+        return;
+      }
+
+      animationFrameId = window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        setCurrentTimeMs(video.currentTime * 1000);
+        scheduleNextFrame();
+      });
+    };
+
+    setCurrentTimeMs(video.currentTime * 1000);
+    scheduleNextFrame();
+
+    return () => {
+      cancelled = true;
+      if (
+        videoFrameCallbackId !== undefined &&
+        typeof video.cancelVideoFrameCallback === "function"
+      ) {
+        video.cancelVideoFrameCallback(videoFrameCallbackId);
+      }
+      if (animationFrameId !== undefined) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [isPlaying, playerUrl]);
 
   useEffect(() => {
     if (detail?.project.style.fontSize !== undefined) {
@@ -394,7 +428,6 @@ export function VideoCaptionWorkspace() {
         const next = await videoCaptionService.detail(projectId);
         setDetail(next);
         setActiveTab("subtitles");
-        setSelectedName(next.project.name);
         mergeProject(next.project);
         setError("");
       } catch (requestError) {
@@ -434,15 +467,6 @@ export function VideoCaptionWorkspace() {
   }, [loadProjects]);
 
   useEffect(() => {
-    void videoCaptionService
-      .contextOptions()
-      .then(setContextOptions)
-      .catch(() =>
-        setContextOptions({ contents: [], campaigns: [] })
-      );
-  }, []);
-
-  useEffect(() => {
     const project = detail?.project;
     if (!project || !ACTIVE_STATUSES.has(project.status)) return;
     const timer = window.setInterval(() => {
@@ -456,41 +480,13 @@ export function VideoCaptionWorkspace() {
       detail?.project.video.proxyUrl || detail?.project.source.url || "";
     setPlayerUrl(preferredUrl);
     setPlayerDurationMs(undefined);
-    setPlayerDurationWarning("");
+    setTimelineZoom(null);
   }, [
     detail?.project.id,
     detail?.project.source.url,
     detail?.project.video.durationMs,
     detail?.project.video.proxyUrl,
   ]);
-
-  useEffect(() => {
-    const project = detail?.project;
-    const nextName = selectedName.trim();
-    if (!project || !nextName || nextName === project.name) return;
-
-    const timer = window.setTimeout(() => {
-      void videoCaptionService
-        .update(project.id, { name: nextName })
-        .then(({ project: updated }) => {
-          setDetail((current) =>
-            current
-              ? { ...current, project: updated }
-              : current
-          );
-          mergeProject(updated);
-        })
-        .catch((requestError) => {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Không thể tự động lưu tên dự án."
-          );
-        });
-    }, 700);
-
-    return () => window.clearTimeout(timer);
-  }, [detail?.project, mergeProject, selectedName]);
 
   const handleStep1Continue = () => {
     let name = "";
@@ -577,6 +573,7 @@ export function VideoCaptionWorkspace() {
           url: uploadedUrl,
           originalName: originalName,
         },
+        language: transcriptionLanguage,
         autoAnalyze: true,
         idempotencyKey: createIdempotencyKeyRef.current,
       });
@@ -584,7 +581,6 @@ export function VideoCaptionWorkspace() {
       createIdempotencyKeyRef.current = null;
       setDetail(created);
       setActiveTab("subtitles");
-      setSelectedName(created.project.name);
       mergeProject(created.project);
       setSelectedFile(null);
       setSourceUrl("");
@@ -675,7 +671,6 @@ export function VideoCaptionWorkspace() {
 
   async function saveTimeline() {
     if (!detail) return;
-    setSavingTimeline(true);
     setError("");
     try {
       const updated = await videoCaptionService.replaceSegments(
@@ -704,8 +699,6 @@ export function VideoCaptionWorkspace() {
           ? requestError.message
           : "Không thể lưu timeline caption."
       );
-    } finally {
-      setSavingTimeline(false);
     }
   }
 
@@ -736,33 +729,6 @@ export function VideoCaptionWorkspace() {
   saveTimelineRef.current = saveTimeline;
   saveStyleRef.current = saveStyle;
 
-  async function saveContextSettings() {
-    if (!detail) return;
-    setActionBusy(true);
-    setError("");
-    try {
-      const { project } = await videoCaptionService.update(
-        detail.project.id,
-        {
-          contextBrief: detail.project.contextBrief || "",
-          contextLinks: detail.project.contextLinks || {},
-        }
-      );
-      setDetail((current) =>
-        current ? { ...current, project } : current
-      );
-      mergeProject(project);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Không thể lưu nguồn ngữ cảnh."
-      );
-    } finally {
-      setActionBusy(false);
-    }
-  }
-
   function updateStyle(updates: Partial<VideoCaptionStyle>) {
     setDetail((current) =>
       current
@@ -771,33 +737,6 @@ export function VideoCaptionWorkspace() {
             project: {
               ...current.project,
               style: { ...current.project.style, ...updates },
-            },
-          }
-        : current
-    );
-  }
-
-  function openCaptionPreviewFullscreen() {
-    captionPreviewRef.current?.requestFullscreen().catch(() => {
-      setError("Không thể mở bản xem thử toàn màn hình.");
-    });
-  }
-
-  function updateContext(
-    updates: Partial<
-      Pick<
-        VideoCaptionProjectDto,
-        "contextBrief" | "contextLinks"
-      >
-    >
-  ) {
-    setDetail((current) =>
-      current
-        ? {
-            ...current,
-            project: {
-              ...current.project,
-              ...updates,
             },
           }
         : current
@@ -816,7 +755,6 @@ export function VideoCaptionWorkspace() {
     const mismatch =
       Math.abs(actualDurationMs - expectedDurationMs) > toleranceMs;
     if (!mismatch) {
-      setPlayerDurationWarning("");
       return;
     }
 
@@ -834,15 +772,8 @@ export function VideoCaptionWorkspace() {
       }
     );
     if (isUsingProxy && sourceUrl && sourceUrl !== playerUrl) {
-      setPlayerDurationWarning(
-        `Proxy chỉ phát ${formatDuration(actualDurationMs)} trong khi nguồn được phân tích là ${formatDuration(expectedDurationMs)}. Đã tự chuyển sang video gốc.`
-      );
       setPlayerUrl(sourceUrl);
-      return;
     }
-    setPlayerDurationWarning(
-      `Video thực phát ${formatDuration(actualDurationMs)}, lệch với metadata ${formatDuration(expectedDurationMs)}. Hãy tải lại file nguồn trước khi tạo caption.`
-    );
   }
 
   function handlePlayerError() {
@@ -854,9 +785,6 @@ export function VideoCaptionWorkspace() {
       sourceUrl &&
       sourceUrl !== playerUrl
     ) {
-      setPlayerDurationWarning(
-        "Không phát được proxy video. Hệ thống đã tự chuyển sang video gốc."
-      );
       setPlayerUrl(sourceUrl);
     }
   }
@@ -865,11 +793,30 @@ export function VideoCaptionWorkspace() {
     ? STATUS_LABELS[detail.project.status]
     : null;
   const previewUrl = playerUrl;
+  const isLandscapePreview = Boolean(
+    detail?.project.video.width &&
+      detail?.project.video.height &&
+      detail.project.video.width / detail.project.video.height >= 1.2
+  );
+  const previewFrameClass = isLandscapePreview
+    ? "w-full max-w-[1100px] aspect-video"
+    : "h-[min(68vh,650px)] min-h-[420px] max-h-full aspect-[9/16]";
+  const timelineDurationMs = Math.max(
+    detail?.project.video.durationMs || playerDurationMs || 0,
+    1
+  );
+  const playbackScale =
+    detail?.project.video.durationMs && playerDurationMs
+      ? playerDurationMs / detail.project.video.durationMs
+      : 1;
+  const captionCurrentTimeMs =
+    playbackScale > 0 ? currentTimeMs / playbackScale : currentTimeMs;
+  const timingDiagnostics = detail?.project.video.timing;
   const activePreviewSegments =
     detail?.segments.filter(
       (segment) =>
-        currentTimeMs >= segment.startMs &&
-        currentTimeMs < segment.endMs
+        captionCurrentTimeMs >= segment.startMs &&
+        captionCurrentTimeMs < segment.endMs
     ) || [];
   const activeTimelineSegmentId = activePreviewSegments[0]?.id;
 
@@ -890,12 +837,27 @@ export function VideoCaptionWorkspace() {
       }
       return true;
     }) || [];
-
-  const timelineDurationMs = Math.max(
-    playerDurationMs || 0,
-    detail?.project.video.durationMs || 0,
-    1
+  const hasSegments = Boolean(detail?.segments.length);
+  const isCaptionJobActive = Boolean(
+    detail && ACTIVE_STATUSES.has(detail.project.status)
   );
+  const isReadyWithoutSegments =
+    detail?.project.status === "ready_for_review" && !hasSegments;
+  const canTranscribe =
+    Boolean(
+      detail &&
+        isReadyWithoutSegments &&
+        ["speech", "combined"].includes(detail.project.mode) &&
+        detail.project.video.hasAudio !== false
+    );
+  const canGenerateContext =
+    Boolean(
+      detail &&
+        isReadyWithoutSegments &&
+        ["context", "combined"].includes(detail.project.mode)
+    );
+  const noSpeechDetected = detail?.project.progress?.stage === "no_speech";
+
   const segmentsSnapshot = detail
     ? JSON.stringify(
         detail.segments.map((segment) => ({
@@ -1034,9 +996,10 @@ export function VideoCaptionWorkspace() {
   }, [timelineDrag, timelineDurationMs, updateSegment]);
 
   function seekToSegment(segment: VideoCaptionSegmentDto) {
-    setCurrentTimeMs(segment.startMs);
+    const playbackStartMs = Math.round(segment.startMs * playbackScale);
+    setCurrentTimeMs(playbackStartMs);
     if (videoRef.current) {
-      videoRef.current.currentTime = segment.startMs / 1000;
+      videoRef.current.currentTime = playbackStartMs / 1000;
       videoRef.current.play().catch(() => {});
     }
   }
@@ -1044,11 +1007,11 @@ export function VideoCaptionWorkspace() {
   const handlePrevSegment = () => {
     if (!detail || detail.segments.length === 0) return;
     const sorted = [...detail.segments].sort((a, b) => a.startMs - b.startMs);
-    const currentIndex = sorted.findIndex(s => currentTimeMs >= s.startMs && currentTimeMs < s.endMs);
+    const currentIndex = sorted.findIndex(s => captionCurrentTimeMs >= s.startMs && captionCurrentTimeMs < s.endMs);
     if (currentIndex > 0) {
       seekToSegment(sorted[currentIndex - 1]);
     } else if (currentIndex === -1) {
-      const prev = sorted.reverse().find(s => s.startMs < currentTimeMs);
+      const prev = sorted.reverse().find(s => s.startMs < captionCurrentTimeMs);
       if (prev) seekToSegment(prev);
     }
   };
@@ -1056,11 +1019,11 @@ export function VideoCaptionWorkspace() {
   const handleNextSegment = () => {
     if (!detail || detail.segments.length === 0) return;
     const sorted = [...detail.segments].sort((a, b) => a.startMs - b.startMs);
-    const currentIndex = sorted.findIndex(s => currentTimeMs >= s.startMs && currentTimeMs < s.endMs);
+    const currentIndex = sorted.findIndex(s => captionCurrentTimeMs >= s.startMs && captionCurrentTimeMs < s.endMs);
     if (currentIndex !== -1 && currentIndex < sorted.length - 1) {
       seekToSegment(sorted[currentIndex + 1]);
     } else if (currentIndex === -1) {
-      const next = sorted.find(s => s.startMs > currentTimeMs);
+      const next = sorted.find(s => s.startMs > captionCurrentTimeMs);
       if (next) seekToSegment(next);
     }
   };
@@ -1127,29 +1090,18 @@ export function VideoCaptionWorkspace() {
     const clickX = e.clientX - rect.left;
     const percent = clickX / rect.width;
     const targetTimeMs = Math.round(percent * timelineDurationMs);
-    setCurrentTimeMs(targetTimeMs);
+    const playbackTargetTimeMs = Math.round(targetTimeMs * playbackScale);
+    setCurrentTimeMs(playbackTargetTimeMs);
     if (videoRef.current) {
-      videoRef.current.currentTime = targetTimeMs / 1000;
+      videoRef.current.currentTime = playbackTargetTimeMs / 1000;
     }
   };
 
   return (
-    <div className="w-full bg-transparent">
+    <div className="h-full w-full overflow-y-auto bg-transparent">
       {/* SCREEN 1: Creation Screen */}
       {!loadingDetail && !detail && (
-        <div className="mx-auto w-full max-w-[1000px] px-4 py-8">
-          <div className="mb-8 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-md shadow-cyan-250">
-                <Captions className="h-6 w-6" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Tạo Phụ Đề Video</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Tạo phụ đề AI nhanh chóng và trực quan</p>
-              </div>
-            </div>
-          </div>
-
+        <div className="mx-auto w-full max-w-[1000px] px-4 pb-8 pt-2">
           {error && (
             <div className="mb-6 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -1307,7 +1259,7 @@ export function VideoCaptionWorkspace() {
                       <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-3">
                         Loại render phụ đề (Render Mode)
                       </label>
-                      <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         {MODE_OPTIONS.map((option) => {
                           const Icon = modeIcon(option.id);
                           const active = mode === option.id;
@@ -1327,6 +1279,41 @@ export function VideoCaptionWorkspace() {
                               </div>
                               <span className="text-xs font-bold text-slate-800">{option.title}</span>
                               <span className="text-[10px] text-slate-400 leading-relaxed mt-1">{option.description}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider">
+                          Ngôn ngữ lời nói
+                        </label>
+                        <span className="text-[10px] font-semibold text-cyan-700">
+                          Tiếng Việt được khuyên dùng
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1.5">
+                        {TRANSCRIPTION_LANGUAGE_OPTIONS.map((option) => {
+                          const active = transcriptionLanguage === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => setTranscriptionLanguage(option.id)}
+                              className={`rounded-xl px-2 py-2.5 text-center transition-all ${
+                                active
+                                  ? "bg-white text-cyan-700 shadow-sm ring-1 ring-cyan-200"
+                                  : "text-slate-500 hover:text-slate-700"
+                              }`}
+                            >
+                              <span className="block text-xs font-extrabold">
+                                {option.label}
+                              </span>
+                              <span className="mt-0.5 block text-[9px] font-medium opacity-75">
+                                {option.hint}
+                              </span>
                             </button>
                           );
                         })}
@@ -1425,62 +1412,31 @@ export function VideoCaptionWorkspace() {
 
       {/* SCREEN 2: Main Workspace & Editor */}
       {!loadingDetail && detail && (
-        <div className={`mx-auto flex h-[calc(100vh-150px)] min-h-[680px] w-full max-w-[1500px] flex-col overflow-hidden rounded-[28px] border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} shadow-sm`}>
-          {/* Top Navbar */}
-          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4 shadow-sm z-10 shrink-0">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setDetail(null)}
-                className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <div>
-                <input
-                  value={selectedName}
-                  onChange={(e) => setSelectedName(e.target.value)}
-                  className="bg-transparent border-0 p-0 text-md font-bold text-slate-900 focus:outline-none focus:ring-0 max-w-[300px] truncate"
-                  title="Click để đổi tên dự án"
-                />
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-extrabold ${currentStatus?.className}`}>
-                    {currentStatus?.label}
-                  </span>
-                  <span className="text-[10px] text-slate-400 flex items-center gap-1">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    {savingTimeline || actionBusy ? "Đang tự động lưu..." : "Đã tự động lưu"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {ACTIVE_STATUSES.has(detail.project.status) && (
-                <button
-                  type="button"
-                  onClick={() => void runAction("cancel")}
-                  className="rounded-xl border border-rose-250 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition"
-                >
-                  Hủy tác vụ
-                </button>
-              )}
-              {["failed", "cancelled"].includes(detail.project.status) && (
-                <button
-                  type="button"
-                  onClick={() => void runAction("retry")}
-                  className="rounded-xl bg-cyan-600 text-white px-3.5 py-2 text-xs font-bold hover:bg-cyan-700 transition"
-                >
-                  Thử lại
-                </button>
-              )}
-            </div>
-          </header>
-
+        <div className={`mx-auto flex h-full min-h-[680px] w-full max-w-[1500px] flex-col overflow-hidden rounded-[28px] border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} shadow-sm`}>
           {/* Main workspace panels */}
           <div className={`flex min-h-0 flex-1 overflow-hidden ${HEYGEN_THEME.surfaceMuted}`}>
             {/* Center Canvas: Video Player */}
             <main className="flex-1 flex flex-col items-center justify-between p-6 overflow-y-auto relative bg-slate-950">
+              <div className="absolute left-4 top-4 z-30 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDetail(null)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900/90 text-slate-300 shadow-lg transition hover:bg-slate-800 hover:text-white"
+                  aria-label="Đóng dự án caption"
+                  title="Đóng"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                {ACTIVE_STATUSES.has(detail.project.status) && (
+                  <button
+                    type="button"
+                    onClick={() => void runAction("cancel")}
+                    className="rounded-lg border border-rose-400/50 bg-rose-950/80 px-3 py-2 text-[11px] font-bold text-rose-100 transition hover:bg-rose-900"
+                  >
+                    Hủy
+                  </button>
+                )}
+              </div>
 
               {/* If active processing loader is showing */}
               {ACTIVE_STATUSES.has(detail.project.status) && (
@@ -1499,8 +1455,8 @@ export function VideoCaptionWorkspace() {
               )}
 
               {/* Video container */}
-              <div className="flex-1 flex items-center justify-center w-full min-h-0 max-h-[550px] relative p-2">
-                <div ref={captionPreviewRef} className="relative max-h-full aspect-video md:aspect-[9/16] bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center">
+              <div className="flex-1 flex items-center justify-center w-full min-h-0 relative p-2">
+                <div className={`relative ${previewFrameClass} bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl flex items-center justify-center`}>
                   {previewUrl ? (
                     <video
                       ref={videoRef}
@@ -1510,8 +1466,14 @@ export function VideoCaptionWorkspace() {
                       onLoadedMetadata={(e) => handlePlayerMetadata(e.currentTarget)}
                       onError={handlePlayerError}
                       onTimeUpdate={(e) => setCurrentTimeMs(e.currentTarget.currentTime * 1000)}
+                      onSeeking={(e) => setCurrentTimeMs(e.currentTarget.currentTime * 1000)}
+                      onSeeked={(e) => setCurrentTimeMs(e.currentTarget.currentTime * 1000)}
                       onPlay={() => setIsPlaying(true)}
                       onPause={() => setIsPlaying(false)}
+                      onEnded={(e) => {
+                        setCurrentTimeMs(e.currentTarget.currentTime * 1000);
+                        setIsPlaying(false);
+                      }}
                       onVolumeChange={(e) => setMuted(e.currentTarget.muted)}
                       className="h-full w-full object-contain"
                     />
@@ -1529,20 +1491,20 @@ export function VideoCaptionWorkspace() {
                       segment.lane === "context" || (style.position === "top" && detail.project.mode !== "combined")
                         ? "top-[10%]"
                         : style.position === "center"
-                          ? "top-1/2 -translate-y-1/2"
-                          : "bottom-[10%]";
+                        ? "top-1/2 -translate-y-1/2"
+                          : "bottom-[6%]";
 
                     return (
                       <div
                         key={segment.id}
-                        className={`pointer-events-none absolute left-1/2 z-10 w-[84%] -translate-x-1/2 text-center ${verticalClass}`}
+                        className={`pointer-events-none absolute left-1/2 z-10 w-[74%] -translate-x-1/2 text-center ${verticalClass}`}
                       >
                         <span
-                          className="inline rounded-lg px-3 py-1.5 leading-snug break-words"
+                          className="inline rounded-md px-1.5 py-0.5 leading-snug break-words"
                           style={{
                             color: style.textColor,
                             fontFamily: style.fontFamily,
-                            fontSize: `${Math.max(14, style.fontSize / 2.2)}px`,
+                            fontSize: `${Math.max(10, style.fontSize / 4.2)}px`,
                             fontWeight: style.fontWeight,
                             backgroundColor: `${style.backgroundColor}${Math.round(
                               style.backgroundOpacity * 255
@@ -1602,13 +1564,14 @@ export function VideoCaptionWorkspace() {
                 </div>
 
                 <div className="text-xs font-semibold tabular-nums text-slate-400">
-                  {formatTime(currentTimeMs)} <span className="text-slate-600">/</span> {formatTime(timelineDurationMs)}
+                  {formatTime(currentTimeMs)} <span className="text-slate-600">/</span>{" "}
+                  {formatTime(playerDurationMs || timelineDurationMs)}
                 </div>
               </div>
             </main>
 
             {/* Sidebar (Right Pane) */}
-            <aside className={`flex h-full w-[390px] shrink-0 flex-col border-l ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface}`}>
+            <aside className={`flex h-full w-[350px] shrink-0 flex-col border-l ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface}`}>
 
               <div className={`flex items-center justify-between border-b ${HEYGEN_THEME.border} ${HEYGEN_THEME.surfaceMuted} p-2`}>
                 <div className={`grid flex-1 grid-cols-2 gap-1 rounded-xl ${HEYGEN_THEME.surfaceSoft} p-1`}>
@@ -1834,6 +1797,16 @@ export function VideoCaptionWorkspace() {
                     </div>
                     <p className="mt-0.5 text-[10px] font-medium text-slate-400">
                       {detail.segments.length} phân đoạn · tự đồng bộ khi video phát
+                      {timingDiagnostics?.status === "verified" &&
+                        timingDiagnostics.driftRatio !== undefined && (
+                          <span className="ml-1 text-emerald-600">
+                            · timebase{" "}
+                            {Math.round(
+                              (1 - timingDiagnostics.driftRatio) * 100
+                            )}
+                            %
+                          </span>
+                        )}
                     </p>
                   </div>
                   <button
@@ -1871,7 +1844,7 @@ export function VideoCaptionWorkspace() {
                               : "text-slate-500 hover:text-slate-800"
                           }`}
                         >
-                          {filter === "all" ? "Tất cả" : filter === "speech" ? "Lời nói" : "Ngữ cảnh"}
+                          {filter === "all" ? "Tất cả" : filter === "speech" ? "Lời nói" : "Theo AI"}
                         </button>
                       ))}
                     </div>
@@ -1880,10 +1853,105 @@ export function VideoCaptionWorkspace() {
                   {/* List of segments */}
                   <div className="flex-1 overflow-y-auto divide-y divide-slate-250 p-2 space-y-2">
                     {filteredSegments.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-12">Không tìm thấy phân đoạn nào</p>
+                      <div className="flex min-h-64 items-center justify-center p-4 text-center">
+                        <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                          <span
+                            className={`mx-auto flex h-11 w-11 items-center justify-center rounded-2xl ${
+                              detail.project.status === "failed"
+                                ? "bg-rose-50 text-rose-600"
+                                : "bg-indigo-50 text-indigo-600"
+                            }`}
+                          >
+                            {isCaptionJobActive ? (
+                              <LoaderCircle className="h-5 w-5 animate-spin" />
+                            ) : detail.project.status === "failed" ? (
+                              <AlertCircle className="h-5 w-5" />
+                            ) : (
+                              <Captions className="h-5 w-5" />
+                            )}
+                          </span>
+
+                          <h4 className="mt-3 text-sm font-extrabold text-slate-900">
+                            {hasSegments
+                              ? "Không có kết quả phù hợp"
+                              : isCaptionJobActive
+                                ? "Đang tạo phụ đề"
+                                : detail.project.status === "failed"
+                                  ? "Chưa thể tạo phụ đề"
+                                  : detail.project.status === "cancelled"
+                                    ? "Tác vụ đã được hủy"
+                                  : detail.project.video.hasAudio === false
+                                    ? "Video không có âm thanh"
+                                    : noSpeechDetected
+                                      ? "Không phát hiện lời nói"
+                                      : "Video chưa có phụ đề"}
+                          </h4>
+
+                          <p className="mt-2 text-xs leading-5 text-slate-500">
+                            {hasSegments
+                              ? "Hãy đổi từ khóa tìm kiếm hoặc chọn lại bộ lọc Tất cả."
+                              : isCaptionJobActive
+                                ? detail.project.progress?.message ||
+                                  "Hệ thống đang xử lý. Bạn có thể rời trang và quay lại sau."
+                                : detail.project.status === "failed"
+                                  ? getReadableCaptionError(
+                                      detail.project.lastError?.message,
+                                      detail.project.lastError?.code
+                                    )
+                                  : detail.project.status === "cancelled"
+                                    ? "Bạn có thể thử lại khi đã sẵn sàng."
+                                  : detail.project.video.hasAudio === false
+                                    ? "Không thể nhận diện lời nói vì video không có luồng âm thanh. Bạn vẫn có thể tạo chữ theo ngữ cảnh nếu dự án hỗ trợ."
+                                    : noSpeechDetected
+                                      ? "Hệ thống không tìm thấy lời nói rõ ràng trong video. Bạn có thể thử lại hoặc tạo chữ theo ngữ cảnh."
+                                      : "Chọn cách tạo phụ đề phù hợp để hệ thống bắt đầu xử lý video."}
+                          </p>
+
+                          {!hasSegments && !isCaptionJobActive && (
+                            <div className="mt-4 flex flex-col gap-2">
+                              {canTranscribe && (
+                                <button
+                                  type="button"
+                                  disabled={actionBusy}
+                                  onClick={() => void runAction("transcribe")}
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {actionBusy && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
+                                  {noSpeechDetected
+                                    ? "Thử nhận diện lại"
+                                    : "Tạo phụ đề từ lời nói"}
+                                </button>
+                              )}
+                              {canGenerateContext && (
+                                <button
+                                  type="button"
+                                  disabled={actionBusy}
+                                  onClick={() => void runAction("generateContext")}
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-extrabold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Tạo phụ đề theo AI
+                                </button>
+                              )}
+                              {["failed", "cancelled"].includes(detail.project.status) && (
+                                <button
+                                  type="button"
+                                  disabled={actionBusy}
+                                  onClick={() => void runAction("retry")}
+                                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5" />
+                                  Thử lại
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     ) : (
                       filteredSegments.map((segment) => {
-                        const active = currentTimeMs >= segment.startMs && currentTimeMs < segment.endMs;
+                        const active =
+                          captionCurrentTimeMs >= segment.startMs &&
+                          captionCurrentTimeMs < segment.endMs;
                         return (
                           <div
                             key={segment.id}
@@ -1891,7 +1959,6 @@ export function VideoCaptionWorkspace() {
                               if (element) segmentItemRefs.current.set(segment.id, element);
                               else segmentItemRefs.current.delete(segment.id);
                             }}
-                            onClick={() => seekToSegment(segment)}
                             className={`p-3 rounded-xl border transition-all ${
                               active
                                 ? "border-indigo-400 bg-indigo-50 shadow-sm ring-1 ring-indigo-100"
@@ -1914,16 +1981,26 @@ export function VideoCaptionWorkspace() {
                                 <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                                   segment.lane === "speech" ? "bg-violet-100 text-violet-700" : "bg-amber-100 text-amber-700"
                                 }`}>
-                                  {segment.lane === "speech" ? "Speech" : "Context"}
+                                  {segment.lane === "speech" ? "Lời nói" : "Theo AI"}
                                 </span>
                               </div>
                             </div>
                             <textarea
                               value={segment.text}
+                              onPointerDown={(event) => event.stopPropagation()}
                               onClick={(event) => event.stopPropagation()}
-                              onChange={(e) => updateSegment(segment.id, { text: e.target.value })}
-                              rows={2}
-                              className="w-full border border-slate-200/80 bg-slate-50/50 p-2 text-xs font-bold text-slate-700 outline-none rounded-lg focus:bg-white focus:border-indigo-400 resize-none leading-relaxed"
+                              onFocus={() => videoRef.current?.pause()}
+                              onChange={(event) =>
+                                updateSegment(segment.id, {
+                                  text: event.target.value,
+                                  lockedByUser: true,
+                                })
+                              }
+                              rows={3}
+                              spellCheck
+                              aria-label={`Chỉnh sửa phụ đề từ ${formatTime(segment.startMs)} đến ${formatTime(segment.endMs)}`}
+                              title="Bấm để sửa nội dung. Thay đổi được tự động lưu."
+                              className="min-h-[72px] w-full cursor-text resize-y rounded-lg border border-slate-200/80 bg-white p-2 text-xs font-bold leading-relaxed text-slate-700 outline-none transition hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                               placeholder="Nhập phụ đề..."
                             />
 
@@ -1971,7 +2048,13 @@ export function VideoCaptionWorkspace() {
                 className="relative flex-1"
                 onClick={handleTimelineClick}
                 style={{
-                  width: `${Math.max(900, (timelineDurationMs / 1000) * 28)}px`,
+                  width:
+                    timelineZoom === null
+                      ? "100%"
+                      : `${Math.max(
+                          1400,
+                          (timelineDurationMs / 1000) * timelineZoom
+                        )}px`,
                   minWidth: "100%",
                 }}
               >
@@ -1998,15 +2081,42 @@ export function VideoCaptionWorkspace() {
                 >
                   {/* Current timeline cursor head */}
                   <div
+                    className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 bg-slate-800"
+                    aria-label="Mật độ lời nói"
+                  >
+                    {detail.segments
+                      .filter((segment) => segment.lane === "speech")
+                      .map((segment) => (
+                        <span
+                          key={`speech-density-${segment.id}`}
+                          className="absolute inset-y-0 rounded-full bg-cyan-400/80"
+                          style={{
+                            left: `${(segment.startMs / timelineDurationMs) * 100}%`,
+                            width: `${Math.max(
+                              0.4,
+                              ((segment.endMs - segment.startMs) /
+                                timelineDurationMs) *
+                                100
+                            )}%`,
+                          }}
+                        />
+                      ))}
+                  </div>
+                  <div
                     className="absolute top-0 bottom-0 w-[2px] bg-indigo-500 z-30 pointer-events-none shadow"
-                    style={{ left: `${(currentTimeMs / timelineDurationMs) * 100}%` }}
+                    style={{
+                      left: `${(captionCurrentTimeMs / timelineDurationMs) * 100}%`,
+                      willChange: "left",
+                    }}
                   />
 
                   {/* Rendered segments blocks */}
                   {!ACTIVE_STATUSES.has(detail.project.status) && detail.segments.map((segment) => {
                     const left = (segment.startMs / timelineDurationMs) * 100;
                     const width = Math.max(1.5, ((segment.endMs - segment.startMs) / timelineDurationMs) * 100);
-                    const active = currentTimeMs >= segment.startMs && currentTimeMs < segment.endMs;
+                    const active =
+                      captionCurrentTimeMs >= segment.startMs &&
+                      captionCurrentTimeMs < segment.endMs;
                     const combinedMode = detail.project.mode === "combined";
 
                     return (
@@ -2057,7 +2167,7 @@ export function VideoCaptionWorkspace() {
                               "resize-start"
                             )
                           }
-                          className="absolute inset-y-0 left-0 w-2 cursor-ew-resize border-l-2 border-transparent transition group-hover:border-white/70"
+                          className="absolute inset-y-0 left-0 z-20 w-3 cursor-ew-resize border-l-2 border-transparent bg-white/[0.03] transition group-hover:border-white/80 group-hover:bg-white/[0.08]"
                           aria-hidden="true"
                         />
                         <span
@@ -2068,7 +2178,7 @@ export function VideoCaptionWorkspace() {
                               "resize-end"
                             )
                           }
-                          className="absolute inset-y-0 right-0 w-2 cursor-ew-resize border-r-2 border-transparent transition group-hover:border-white/70"
+                          className="absolute inset-y-0 right-0 z-20 w-3 cursor-ew-resize border-r-2 border-transparent bg-white/[0.03] transition group-hover:border-white/80 group-hover:bg-white/[0.08]"
                           aria-hidden="true"
                         />
                       </div>
@@ -2091,6 +2201,42 @@ export function VideoCaptionWorkspace() {
                   <option value="MKV">MKV</option>
                   <option value="WEBM">WEBM</option>
                 </select>
+                <div className="ml-2 flex items-center gap-1 rounded-md border border-slate-800 bg-slate-950 px-1 py-0.5 text-[10px] font-bold text-slate-400">
+                  <span className="px-1 text-[9px] uppercase tracking-wider text-slate-500">
+                    Timeline
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Thu nhỏ timeline"
+                    onClick={() =>
+                      setTimelineZoom((current) =>
+                        current === null
+                          ? null
+                          : current <= 56
+                            ? null
+                            : Math.max(56, current - 12)
+                      )
+                    }
+                    className="h-5 w-5 rounded text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                  >
+                    −
+                  </button>
+                  <span className="min-w-8 text-center text-[9px] text-slate-300">
+                    {timelineZoom === null ? "Vừa khung" : `${timelineZoom}px/s`}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Phóng to timeline"
+                    onClick={() =>
+                      setTimelineZoom((current) =>
+                        Math.min(140, (current ?? 44) + 12)
+                      )
+                    }
+                    className="h-5 w-5 rounded text-slate-300 transition hover:bg-slate-800 hover:text-white"
+                  >
+                    +
+                  </button>
+                </div>
                 <span className="hidden text-[9px] font-medium text-slate-500 lg:inline">
                   Kéo block để đổi vị trí · kéo hai mép để chỉnh thời lượng
                 </span>
