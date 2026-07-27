@@ -1,23 +1,16 @@
-export type ContentStudioTab = 'image' | 'video' | 'voice' | 'bulk';
+export type ContentStudioTab = 'image' | 'bulk';
 
 export const CONTENT_STUDIO_TAB_ROUTES: Record<ContentStudioTab, string> = {
   image: '/xuong-noi-dung/tao-hinh-anh',
-  video: '/xuong-noi-dung/tao-video',
-  voice: '/xuong-noi-dung/tao-giong-noi',
   bulk: '/xuong-noi-dung/thiet-ke-hang-loat',
 };
 
 export interface ContentStudioLaunchParams {
-  tab: 'image' | 'video' | 'voice';
+  tab: 'image';
   prompt: string;
   cardId: string;
   image?: string;
   autoTrigger?: boolean;
-  videoSubTab?: 'veo' | 'heygen' | 'edit-video' | 'caption';
-  title?: string;
-  description?: string;
-  engineType?: string;
-  usePersonalVoice?: boolean;
 }
 
 const STORAGE_KEY = 'igen:content-studio:launch';
@@ -40,9 +33,17 @@ export function readContentStudioLaunchParams(): ContentStudioLaunchParams | nul
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<ContentStudioLaunchParams>;
-    if (!parsed.tab || !parsed.cardId || typeof parsed.prompt !== 'string') return null;
+    if (
+      parsed.tab !== 'image' ||
+      !parsed.cardId ||
+      typeof parsed.prompt !== 'string'
+    ) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
     return parsed as ContentStudioLaunchParams;
   } catch {
+    sessionStorage.removeItem(STORAGE_KEY);
     return null;
   }
 }

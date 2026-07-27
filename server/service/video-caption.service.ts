@@ -31,11 +31,15 @@ import {
   VideoCaptionError,
 } from "./video-caption-error";
 import { videoCaptionMediaService } from "./video-caption-media.service";
-import { buildSpeechCaptionSegments } from "./video-caption-segmentation.service";
+import {
+  alignSpeechCaptionSegmentsToAudioPauses,
+  buildSpeechCaptionSegments,
+  measureSpeechTimelineQuality,
+  normalizeSpeechWordTimeline,
+} from "./video-caption-segmentation.service";
 import {
   createSpeechTranscriptionProvider,
   getVideoCaptionTranscriptionDelivery,
-  normalizeElevenLabsTranscript,
   videoCaptionTranscriptionConfig,
 } from "./video-caption-transcription.service";
 import {
@@ -47,7 +51,7 @@ import { videoCaptionContextService } from "./video-caption-context.service";
 
 const JOB_LEASE_MS = 2 * 60 * 1000;
 const MAX_TRANSITIONS = 100;
-const VIDEO_CAPTION_ANALYSIS_VERSION = "duration-proxy-v2";
+const VIDEO_CAPTION_ANALYSIS_VERSION = "duration-proxy-v3-timebase";
 const DAILY_PROJECT_LIMIT = Math.max(
   1,
   Number(process.env.VIDEO_CAPTION_DAILY_PROJECT_LIMIT) || 100
@@ -90,7 +94,11 @@ function projectDto(project: IVideoCaptionProject): VideoCaptionProjectDto {
       containerDurationMs: project.video?.containerDurationMs,
       videoStreamDurationMs: project.video?.videoStreamDurationMs,
       audioStreamDurationMs: project.video?.audioStreamDurationMs,
+      containerStartMs: project.video?.containerStartMs,
+      videoStreamStartMs: project.video?.videoStreamStartMs,
+      audioStreamStartMs: project.video?.audioStreamStartMs,
       durationSource: project.video?.durationSource,
+      timing: project.video?.timing,
       width: project.video?.width,
       height: project.video?.height,
       fps: project.video?.fps,
@@ -395,6 +403,7 @@ async function replaceGeneratedLane(input: {
 
 type NormalizedSpeechTranscript = {
   language?: string;
+  durationMs?: number;
   words: Array<{
     text: string;
     startMs: number;
@@ -403,6 +412,31 @@ type NormalizedSpeechTranscript = {
   }>;
   cost?: number;
 };
+
+type WebhookTranscript = {
+  language_code?: string;
+  language?: string;
+  words?: Array<{ text?: string; start?: number; end?: number; logprob?: number }>;
+  segments?: Array<{ text?: string; start?: number; end?: number }>;
+};
+
+function normalizeWebhookTranscript(transcript: WebhookTranscript): NormalizedSpeechTranscript {
+  const entries = transcript.words?.length
+    ? transcript.words
+    : transcript.segments || [];
+  return {
+    language: transcript.language_code || transcript.language,
+    durationMs: undefined,
+    words: entries
+      .filter((entry) => typeof entry.start === "number" && typeof entry.end === "number" && entry.end > entry.start && Boolean(entry.text?.trim()))
+      .map((entry) => ({
+        text: String(entry.text).trim(),
+        startMs: Math.max(0, Math.round(entry.start! * 1000)),
+        endMs: Math.max(1, Math.round(entry.end! * 1000)),
+        confidence: "logprob" in entry && typeof entry.logprob === "number" ? Math.max(0, Math.min(1, Math.exp(entry.logprob))) : undefined,
+      })),
+  };
+}
 
 async function completeSpeechTranscription(input: {
   job: IVideoCaptionJob;
@@ -460,16 +494,89 @@ async function completeSpeechTranscription(input: {
     ),
   ]);
 
-  const segments = buildSpeechCaptionSegments(
+  const timeline = normalizeSpeechWordTimeline(
     transcript.words,
+    project.video.audioStreamDurationMs || project.video.durationMs,
+    transcript.durationMs,
+    (project.video.audioStreamStartMs || 0) -
+      (project.video.videoStreamStartMs || 0)
+  );
+  const timelineDrift = timeline.driftRatio;
+  if (timelineDrift !== undefined) {
+    logCaptionStt("timeline_reconciled", {
+      jobId: String(job._id),
+      projectId: String(project._id),
+      providerDurationMs: transcript.durationMs,
+      speechDurationMs:
+        project.video.audioStreamDurationMs || project.video.durationMs,
+      videoDurationMs: project.video.durationMs,
+      driftRatio: Number(timelineDrift.toFixed(4)),
+      applied: timeline.applied,
+      scale: Number(timeline.scale.toFixed(6)),
+      offsetMs: timeline.offsetMs,
+    });
+    if (timelineDrift > 0.05) {
+      throw new VideoCaptionError(
+        "Thời lượng audio và video lệch quá 5%; hệ thống dừng để tránh tạo phụ đề sai timeline.",
+        "VIDEO_CAPTION_TIMELINE_MISMATCH",
+        "validation",
+        false,
+        422
+      );
+    }
+  }
+  const generatedSegments = buildSpeechCaptionSegments(
+    timeline.words,
     project.video.durationMs
-  ).map((segment) => ({
+  );
+  let speechPauses: Awaited<
+    ReturnType<typeof videoCaptionMediaService.detectSpeechPauses>
+  > = [];
+  try {
+    speechPauses = await videoCaptionMediaService.detectSpeechPauses(
+      project.source.url
+    );
+  } catch (error) {
+    logCaptionStt("pause_alignment_skipped", {
+      jobId: String(job._id),
+      projectId: String(project._id),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const pauseAlignment = alignSpeechCaptionSegmentsToAudioPauses(
+    generatedSegments,
+    speechPauses,
+    project.video.durationMs
+  );
+  const segments = pauseAlignment.segments.map((segment) => ({
     ...segment,
     sourceReferences: segment.sourceReferences.map((reference) => ({
       ...reference,
       sourceId: String(job._id),
     })),
   }));
+  logCaptionStt("pause_alignment", {
+    jobId: String(job._id),
+    projectId: String(project._id),
+    detectedPauseCount: speechPauses.length,
+    boundaryCount: pauseAlignment.boundaryCount,
+    pauseSnappedBoundaryCount:
+      pauseAlignment.pauseSnappedBoundaryCount,
+    pauseBoundaryCoverageRatio: Number(
+      pauseAlignment.pauseBoundaryCoverageRatio.toFixed(4)
+    ),
+    initialSpeechStartMs: pauseAlignment.initialSpeechStartMs,
+  });
+  const timelineQuality = measureSpeechTimelineQuality(
+    timeline.words,
+    project.video.durationMs
+  );
+  logCaptionStt("timeline_quality", {
+    jobId: String(job._id),
+    projectId: String(project._id),
+    ...timelineQuality,
+    segmentCount: segments.length,
+  });
 
   let nextVersion = project.currentVersion;
   if (segments.length) {
@@ -494,6 +601,22 @@ async function completeSpeechTranscription(input: {
     set: {
       currentVersion: nextVersion,
       "video.language": transcript.language || project.video.language,
+      "video.timing": {
+        status: "verified",
+        providerDurationMs: transcript.durationMs,
+        sourceDurationMs:
+          project.video.audioStreamDurationMs || project.video.durationMs,
+        scale: timeline.scale,
+        offsetMs: timeline.offsetMs,
+        driftRatio: timelineDrift,
+        wordCoverageRatio: timelineQuality.coverageRatio,
+        alignmentMethod:
+          pauseAlignment.pauseSnappedBoundaryCount > 0
+            ? "word_pause"
+            : "word",
+        pauseBoundaryCoverageRatio:
+          pauseAlignment.pauseBoundaryCoverageRatio,
+      },
       progress: {
         stage: noSpeech ? "no_speech" : "transcription_completed",
         percent: 100,
@@ -590,7 +713,9 @@ export const videoCaptionService = {
           url: input.source.url.trim(),
           fingerprint: preliminaryFingerprint,
         },
-        video: {},
+        video: {
+          language: input.language || "vi",
+        },
         contextLinks: input.contextLinks,
         contextBrief: input.contextBrief?.trim(),
         style: normalizeCaptionStyle(input.style),
@@ -904,6 +1029,7 @@ export const videoCaptionService = {
       sourceFingerprint: project.source.fingerprint,
       language: project.video.language,
       model: videoCaptionTranscriptionConfig.model,
+      timingVersion: videoCaptionTranscriptionConfig.timingVersion,
       delivery,
     });
     const idempotencyKey = buildCaptionJobIdempotencyKey({
@@ -1164,7 +1290,9 @@ export const videoCaptionService = {
       sourceFingerprint: project.source.fingerprint,
       contextBrief: project.contextBrief,
       contextLinks: project.contextLinks,
-      model: process.env.VIDEO_CAPTION_CONTEXT_MODEL || "gemini-2.5-flash",
+      model:
+        process.env.VIDEO_CAPTION_CONTEXT_MODEL ||
+        "google/gemini-2.5-flash",
     });
     const idempotencyKey = buildCaptionJobIdempotencyKey({
       companyCode: project.companyCode,
@@ -1205,9 +1333,10 @@ export const videoCaptionService = {
         inputHash: settingsHash,
         attempt: 0,
         maxAttempts: 3,
-        provider: "gemini",
+        provider: "openrouter",
         providerModel:
-          process.env.VIDEO_CAPTION_CONTEXT_MODEL || "gemini-2.5-flash",
+          process.env.VIDEO_CAPTION_CONTEXT_MODEL ||
+          "google/gemini-2.5-flash",
         estimatedCost: estimateDurationCost(
           project.video.durationMs,
           "VIDEO_CAPTION_CONTEXT_COST_PER_MINUTE"
@@ -1247,6 +1376,95 @@ export const videoCaptionService = {
       },
     });
     return { ...jobDto(job), project: projectDto(project) };
+  },
+
+  async prepareAutomaticFollowUp(completedJobId: string) {
+    if (!mongoose.Types.ObjectId.isValid(completedJobId)) return null;
+
+    const completedJob = await VideoCaptionJobModel.findOne({
+      _id: completedJobId,
+      status: "completed",
+    })
+      .select("companyCode projectId operation")
+      .lean();
+    if (!completedJob) return null;
+
+    const project = await VideoCaptionProjectModel.findOne({
+      _id: completedJob.projectId,
+      companyCode: completedJob.companyCode,
+      status: "ready_for_review",
+      mode: { $in: ["speech", "combined"] },
+    });
+    if (!project) return null;
+
+    const prepareOperation = async (
+      operation: "transcribe" | "generate_context"
+    ) => {
+      const existingJob =
+        await VideoCaptionJobModel.findOne({
+          companyCode: project.companyCode,
+          projectId: project._id,
+          operation,
+        })
+          .sort({ createdAt: -1 })
+          .select("_id status")
+          .lean();
+      if (existingJob) {
+        return ["queued", "retrying"].includes(existingJob.status)
+          ? String(existingJob._id)
+          : null;
+      }
+
+      const hasSegments = await VideoCaptionSegmentModel.exists({
+        companyCode: project.companyCode,
+        projectId: project._id,
+        version: project.currentVersion,
+        lane: operation === "transcribe" ? "speech" : "context",
+      });
+      if (hasSegments) return null;
+
+      const nextJob =
+        operation === "transcribe"
+          ? await this.prepareTranscriptionJob(
+              project.companyCode,
+              String(project._id),
+              project.createdBy
+            )
+          : await this.prepareContextJob(
+              project.companyCode,
+              String(project._id),
+              project.createdBy
+            );
+      logCaptionStt("automatic_follow_up_queued", {
+        completedJobId,
+        completedOperation: completedJob.operation,
+        nextJobId: nextJob.id,
+        nextOperation: operation,
+        projectId: String(project._id),
+        companyCode: project.companyCode,
+      });
+      return nextJob.id;
+    };
+
+    if (completedJob.operation === "analyze") {
+      if (project.mode === "speech") {
+        return project.video.hasAudio
+          ? prepareOperation("transcribe")
+          : null;
+      }
+      return project.video.hasAudio
+        ? prepareOperation("transcribe")
+        : prepareOperation("generate_context");
+    }
+
+    if (
+      completedJob.operation === "transcribe" &&
+      project.mode === "combined"
+    ) {
+      return prepareOperation("generate_context");
+    }
+
+    return null;
   },
 
   async processJob(jobId: string) {
@@ -1691,7 +1909,7 @@ export const videoCaptionService = {
               progress: {
                 stage: "awaiting_provider",
                 percent: 45,
-                message: "ElevenLabs đang xử lý. Kết quả sẽ được nhận qua webhook.",
+                message: "Dịch vụ nhận diện đang xử lý. Kết quả sẽ được nhận qua webhook.",
               },
             },
             $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
@@ -1717,7 +1935,7 @@ export const videoCaptionService = {
               progress: {
                 stage: "awaiting_provider",
                 percent: 45,
-                message: "ElevenLabs đang xử lý phụ đề ở chế độ nền.",
+                message: "Dịch vụ nhận diện đang xử lý phụ đề ở chế độ nền.",
               },
             },
           }
@@ -1838,6 +2056,71 @@ export const videoCaptionService = {
         }
       );
     } catch (error) {
+      if (
+        job.operation === "generate_context" &&
+        project.mode === "combined"
+      ) {
+        const currentProject = await VideoCaptionProjectModel.findById(
+          project._id
+        );
+        const hasSpeechSegments = currentProject
+          ? await VideoCaptionSegmentModel.exists({
+              companyCode: currentProject.companyCode,
+              projectId: currentProject._id,
+              version: currentProject.currentVersion,
+              lane: "speech",
+            })
+          : null;
+        if (
+          currentProject?.status === "generating_context" &&
+          hasSpeechSegments
+        ) {
+          const classified = classifyVideoCaptionError(error);
+          await VideoCaptionJobModel.updateOne(
+            { _id: job._id, lockId },
+            {
+              $set: {
+                status: "failed",
+                completedAt: new Date(),
+                lastError: {
+                  ...classified,
+                  occurredAt: new Date(classified.occurredAt),
+                },
+                progress: {
+                  stage: "context_skipped",
+                  percent: 100,
+                  message:
+                    "Không thể bổ sung chữ AI; phụ đề lời nói vẫn sẵn sàng để sử dụng.",
+                },
+              },
+              $unset: {
+                lockId: 1,
+                lockedAt: 1,
+                lockExpiresAt: 1,
+              },
+            }
+          );
+          await transitionProject({
+            project: currentProject,
+            to: "ready_for_review",
+            operation: "generate_context",
+            jobId: String(job._id),
+            message:
+              "Bỏ qua chữ AI do chưa có dữ liệu phù hợp; giữ lại phụ đề lời nói.",
+            set: {
+              progress: {
+                stage: "context_skipped",
+                percent: 100,
+                message:
+                  "Phụ đề lời nói đã sẵn sàng. Chữ AI không được thêm vì chưa có dữ liệu phù hợp.",
+              },
+              lastError: null,
+            },
+          });
+          return;
+        }
+      }
+
       const classified = classifyVideoCaptionError(error);
       const shouldRetry =
         classified.retryable && job.attempt < job.maxAttempts;
@@ -1967,15 +2250,15 @@ export const videoCaptionService = {
     projectId: string;
     companyCode: string;
     providerRequestId: string;
-    transcription: Parameters<typeof normalizeElevenLabsTranscript>[0];
+    transcription: WebhookTranscript;
   }) {
     if (
       !mongoose.Types.ObjectId.isValid(input.jobId) ||
       !mongoose.Types.ObjectId.isValid(input.projectId)
     ) {
       throw new VideoCaptionError(
-        "Webhook ElevenLabs không chứa mã tác vụ hợp lệ.",
-        "ELEVENLABS_WEBHOOK_INVALID_METADATA",
+        "Webhook nhận diện giọng nói không chứa mã tác vụ hợp lệ.",
+        "STT_WEBHOOK_INVALID_METADATA",
         "validation",
         false,
         400
@@ -1999,8 +2282,8 @@ export const videoCaptionService = {
     });
     if (!existing) {
       throw new VideoCaptionError(
-        "Không tìm thấy tác vụ caption tương ứng với webhook ElevenLabs.",
-        "ELEVENLABS_WEBHOOK_JOB_NOT_FOUND",
+        "Không tìm thấy tác vụ caption tương ứng với webhook nhận diện giọng nói.",
+        "STT_WEBHOOK_JOB_NOT_FOUND",
         "validation",
         false,
         404
@@ -2018,8 +2301,8 @@ export const videoCaptionService = {
       existing.providerRequestId !== input.providerRequestId
     ) {
       throw new VideoCaptionError(
-        "Mã yêu cầu ElevenLabs không khớp với tác vụ caption.",
-        "ELEVENLABS_WEBHOOK_REQUEST_MISMATCH",
+        "Mã yêu cầu nhận diện giọng nói không khớp với tác vụ caption.",
+        "STT_WEBHOOK_REQUEST_MISMATCH",
         "permission",
         false,
         403
@@ -2056,7 +2339,7 @@ export const videoCaptionService = {
           progress: {
             stage: "processing_webhook",
             percent: 70,
-            message: "Đã nhận kết quả từ ElevenLabs.",
+            message: "Đã nhận kết quả từ dịch vụ nhận diện giọng nói.",
           },
         },
       },
@@ -2089,7 +2372,7 @@ export const videoCaptionService = {
       await completeSpeechTranscription({
         job,
         project,
-        transcript: normalizeElevenLabsTranscript(input.transcription),
+        transcript: normalizeWebhookTranscript(input.transcription),
         lockId,
       });
       return { duplicate: false };
@@ -2102,7 +2385,7 @@ export const videoCaptionService = {
             progress: {
               stage: "awaiting_provider",
               percent: 45,
-              message: "Đang chờ xử lý lại kết quả webhook ElevenLabs.",
+              message: "Đang chờ xử lý lại kết quả webhook nhận diện giọng nói.",
             },
           },
           $unset: { lockId: 1, lockedAt: 1, lockExpiresAt: 1 },
@@ -2110,6 +2393,61 @@ export const videoCaptionService = {
       );
       throw error;
     }
+  },
+
+  async completeProviderTranscriptionWebhook(input: {
+    jobId: string;
+    providerRequestId: string;
+    transcription: WebhookTranscript;
+  }) {
+    if (!mongoose.Types.ObjectId.isValid(input.jobId)) {
+      throw new VideoCaptionError(
+        "Webhook nhận diện giọng nói không chứa mã tác vụ hợp lệ.",
+        "STT_WEBHOOK_INVALID_JOB",
+        "validation",
+        false,
+        400
+      );
+    }
+    const job = await VideoCaptionJobModel.findOne({
+      _id: input.jobId,
+      operation: "transcribe",
+    }).lean();
+    if (!job) {
+      throw new VideoCaptionError(
+        "Không tìm thấy tác vụ caption tương ứng với webhook nhận diện giọng nói.",
+        "STT_WEBHOOK_JOB_NOT_FOUND",
+        "validation",
+        false,
+        404
+      );
+    }
+    if (job.provider && job.provider !== "openrouter") {
+      throw new VideoCaptionError(
+        "Webhook không khớp với nhà cung cấp của tác vụ caption.",
+        "STT_WEBHOOK_PROVIDER_MISMATCH",
+        "permission",
+        false,
+        403
+      );
+    }
+
+    const normalized = normalizeWebhookTranscript(input.transcription);
+    return this.completeTranscriptionWebhook({
+      jobId: String(job._id),
+      projectId: String(job.projectId),
+      companyCode: job.companyCode,
+      providerRequestId: input.providerRequestId,
+      transcription: {
+        language_code: normalized.language,
+        words: normalized.words.map((word) => ({
+          text: word.text,
+          start: word.startMs / 1000,
+          end: word.endMs / 1000,
+          type: "word" as const,
+        })),
+      },
+    });
   },
 
   async reconcileAwaitingTranscriptions(limit = 20) {
@@ -2134,8 +2472,8 @@ export const videoCaptionService = {
         await this.failJob(
           String(job._id),
           new VideoCaptionError(
-            "Không nhận được webhook ElevenLabs sau 10 phút. Hãy kiểm tra URL, sự kiện Transcription completed, webhook ID và secret.",
-            "ELEVENLABS_WEBHOOK_TIMEOUT",
+            "Không nhận được webhook nhận diện giọng nói sau 10 phút. Hãy kiểm tra URL callback và secret.",
+            "STT_WEBHOOK_TIMEOUT",
             "provider",
             true,
             504
@@ -2173,7 +2511,7 @@ export const videoCaptionService = {
           progress: {
             stage: "awaiting_provider",
             percent: 45,
-            message: "Khôi phục trạng thái chờ kết quả từ ElevenLabs.",
+            message: "Khôi phục trạng thái chờ kết quả từ dịch vụ nhận diện giọng nói.",
           },
         },
         $unset: {

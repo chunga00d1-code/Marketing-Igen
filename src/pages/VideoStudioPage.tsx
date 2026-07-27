@@ -1,0 +1,459 @@
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  Captions,
+  ChevronRight,
+  Clapperboard,
+  Film,
+  Mic,
+  Scissors,
+  Sparkles,
+  Wand2,
+} from "lucide-react";
+import { SEOHead } from "../seo/SEOHead";
+import { VIDEO_STUDIO_SEO_MAP } from "../seo/seo-config";
+import {
+  clearVideoStudioLaunchParams,
+  LEGACY_VIDEO_STUDIO_PATH,
+  LEGACY_VOICE_STUDIO_PATH,
+  readVideoStudioLaunchParams,
+  VIDEO_STUDIO_ROUTES,
+  videoStudioPathToTool,
+  type VideoStudioTool,
+} from "../utils/videoStudioNavigation";
+
+const SimpleVideoWorkspace = lazy(() =>
+  import("../components/content-studio/SimpleVideoWorkspace").then((module) => ({
+    default: module.SimpleVideoWorkspace,
+  }))
+);
+
+const EditVideoWorkspace = lazy(() =>
+  import("../components/content-studio/EditVideoWorkspace").then((module) => ({
+    default: module.EditVideoWorkspace,
+  }))
+);
+
+const LongToShortTab = lazy(() => import("./LongToShortTab"));
+
+const VoiceGenerationWorkspace = lazy(() =>
+  import("../components/content-studio/VoiceGenerationWorkspace").then((module) => ({
+    default: module.VoiceGenerationWorkspace,
+  }))
+);
+
+const HeyGenWorkspace = lazy(() =>
+  import("../components/content-studio/HeyGenWorkspace").then((module) => ({
+    default: module.HeyGenWorkspace,
+  }))
+);
+
+const KlingMotionWorkspace = lazy(() =>
+  import("../components/content-studio/KlingMotionWorkspace").then((module) => ({
+    default: module.KlingMotionWorkspace,
+  }))
+);
+
+const VideoCaptionWorkspace = lazy(() =>
+  import("../components/content-studio/VideoCaptionWorkspace").then((module) => ({
+    default: module.VideoCaptionWorkspace,
+  }))
+);
+
+type ToolDefinition = {
+  id: Exclude<VideoStudioTool, "home">;
+  title: string;
+  description: string;
+  requirement: string;
+  group: "create" | "edit" | "audio";
+  icon: typeof Sparkles;
+  tone: string;
+  iconTone: string;
+};
+
+const VIDEO_TOOLS: ToolDefinition[] = [
+  {
+    id: "ai-video",
+    title: "Tạo video từ nội dung",
+    description: "Biến mô tả hoặc hình ảnh thành video marketing bằng AI.",
+    requirement: "Cần: Nội dung mô tả hoặc một hình ảnh",
+    group: "create",
+    icon: Sparkles,
+    tone: "from-indigo-50 to-white hover:border-indigo-300",
+    iconTone: "bg-indigo-600 text-white",
+  },
+  {
+    id: "human-video",
+    title: "Tạo video người dẫn AI",
+    description: "Chọn nhân vật, giọng nói và tạo video thuyết trình tự nhiên.",
+    requirement: "Cần: Kịch bản muốn nhân vật trình bày",
+    group: "create",
+    icon: Clapperboard,
+    tone: "from-cyan-50 to-white hover:border-cyan-300",
+    iconTone: "bg-cyan-600 text-white",
+  },
+  {
+    id: "motion",
+    title: "Tạo chuyển động từ hình ảnh",
+    description: "Dùng video mẫu để điều khiển chuyển động cho nhân vật trong ảnh.",
+    requirement: "Cần: Một ảnh nhân vật và video chuyển động mẫu",
+    group: "create",
+    icon: Film,
+    tone: "from-violet-50 to-white hover:border-violet-300",
+    iconTone: "bg-violet-600 text-white",
+  },
+  {
+    id: "edit-video",
+    title: "Chỉnh sửa video",
+    description: "Cắt ghép, thay đổi nội dung và hoàn thiện video có sẵn.",
+    requirement: "Cần: Một video muốn chỉnh sửa",
+    group: "edit",
+    icon: Wand2,
+    tone: "from-emerald-50 to-white hover:border-emerald-300",
+    iconTone: "bg-emerald-600 text-white",
+  },
+  {
+    id: "long-to-short",
+    title: "Cắt video dài thành video ngắn",
+    description: "Tìm các đoạn nổi bật và tạo phiên bản ngắn phù hợp mạng xã hội.",
+    requirement: "Cần: Một video dài",
+    group: "edit",
+    icon: Scissors,
+    tone: "from-amber-50 to-white hover:border-amber-300",
+    iconTone: "bg-amber-500 text-white",
+  },
+  {
+    id: "caption",
+    title: "Thêm phụ đề vào video",
+    description: "Nhận diện lời nói, chỉnh timeline và xuất video có phụ đề.",
+    requirement: "Cần: Một video có âm thanh",
+    group: "edit",
+    icon: Captions,
+    tone: "from-blue-50 to-white hover:border-blue-300",
+    iconTone: "bg-blue-600 text-white",
+  },
+  {
+    id: "voice",
+    title: "Tạo giọng đọc",
+    description: "Biến kịch bản thành giọng đọc để lồng tiếng hoặc tạo video người dẫn.",
+    requirement: "Cần: Nội dung muốn chuyển thành giọng đọc",
+    group: "audio",
+    icon: Mic,
+    tone: "from-rose-50 to-white hover:border-rose-300",
+    iconTone: "bg-rose-600 text-white",
+  },
+];
+
+const TOOL_BY_ID = Object.fromEntries(
+  VIDEO_TOOLS.map((tool) => [tool.id, tool])
+) as Record<Exclude<VideoStudioTool, "home">, ToolDefinition>;
+
+export default function VideoStudioPage() {
+  const [initialParams] = useState(readVideoStudioLaunchParams);
+  const clearParamsRef = useRef(clearVideoStudioLaunchParams);
+  const [activeTool, setActiveTool] = useState<VideoStudioTool>(
+    () => initialParams?.tool || videoStudioPathToTool(window.location.pathname) || "home"
+  );
+  const [editVideoSourceUrl, setEditVideoSourceUrl] = useState<string | null>(null);
+
+  const navigate = useCallback((tool: VideoStudioTool, options?: { replace?: boolean }) => {
+    const nextPath = VIDEO_STUDIO_ROUTES[tool];
+    if (window.location.pathname !== nextPath) {
+      if (options?.replace) window.history.replaceState(null, "", nextPath);
+      else window.history.pushState(null, "", nextPath);
+    }
+    setActiveTool(tool);
+  }, []);
+
+  useEffect(() => {
+    const normalizedPath = window.location.pathname.toLowerCase().replace(/\/$/, "");
+    const pathTool = videoStudioPathToTool(window.location.pathname);
+    if (normalizedPath === LEGACY_VIDEO_STUDIO_PATH) {
+      navigate("home", { replace: true });
+    } else if (normalizedPath === LEGACY_VOICE_STUDIO_PATH) {
+      navigate("voice", { replace: true });
+    } else if (!pathTool) {
+      navigate("home", { replace: true });
+    }
+
+    const handlePopState = () => {
+      setActiveTool(videoStudioPathToTool(window.location.pathname) || "home");
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [navigate]);
+
+  useEffect(() => {
+    clearParamsRef.current();
+  }, []);
+
+  const handleMediaSaved = useCallback(
+    async (cardId: string, mediaUrl: string, type: "image" | "video" | "audio") => {
+      if (!cardId || !mediaUrl || type !== "video") return;
+      const { marketingService } = await import("../services/marketingService");
+      const { toast } = await import("./Toast");
+      try {
+        await marketingService.updateCard(cardId, {
+          videoUrl: mediaUrl,
+          mediaType: "video",
+        });
+        toast.success("Đã gắn video vừa tạo vào bài marketing.");
+      } catch (error) {
+        console.error("Không thể lưu video vào card marketing:", error);
+        toast.error("Video đã tạo xong nhưng chưa thể gắn vào bài marketing.");
+      }
+    },
+    []
+  );
+
+  const activeMeta =
+    activeTool === "home" ? VIDEO_STUDIO_SEO_MAP.home : VIDEO_STUDIO_SEO_MAP[activeTool];
+
+  return (
+    <>
+      <SEOHead meta={activeMeta} />
+      <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <h1 className="sr-only">{activeMeta.title}</h1>
+
+        {activeTool === "home" ? (
+          <VideoStudioHome onSelect={navigate} />
+        ) : (
+          <>
+            <VideoToolHeader tool={TOOL_BY_ID[activeTool]} onBack={() => navigate("home")} />
+            <div
+              className={`min-h-0 flex-1 bg-[linear-gradient(180deg,#fcfdfd_0%,#f4f8fb_100%)] ${
+                activeTool === "caption" ? "overflow-hidden" : "overflow-y-auto p-4 md:p-6"
+              }`}
+            >
+              <VideoToolContent
+                tool={activeTool}
+                initialParams={initialParams}
+                editVideoSourceUrl={editVideoSourceUrl}
+                onClearEditVideoSource={() => setEditVideoSourceUrl(null)}
+                onEditVideo={(url) => {
+                  setEditVideoSourceUrl(url);
+                  navigate("edit-video");
+                }}
+                onNavigateToTool={navigate}
+                onMediaSaved={handleMediaSaved}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function VideoStudioHome({
+  onSelect,
+}: {
+  onSelect: (tool: VideoStudioTool) => void;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_left,#eef2ff_0%,#f8fafc_38%,#ffffff_72%)]">
+      <div className="mx-auto w-full max-w-7xl px-4 py-5 md:px-6 md:py-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+            <Clapperboard className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="text-xl font-extrabold tracking-tight text-slate-950">
+              Bạn muốn làm gì với video?
+            </h2>
+          </div>
+        </div>
+
+        <ToolGroup
+          title="Tạo video mới"
+          tools={VIDEO_TOOLS.filter((tool) => tool.group === "create")}
+          onSelect={onSelect}
+        />
+        <ToolGroup
+          title="Chỉnh video có sẵn"
+          tools={VIDEO_TOOLS.filter((tool) => tool.group === "edit")}
+          onSelect={onSelect}
+        />
+        <ToolGroup
+          title="Âm thanh & giọng đọc"
+          tools={VIDEO_TOOLS.filter((tool) => tool.group === "audio")}
+          onSelect={onSelect}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ToolGroup({
+  title,
+  tools,
+  onSelect,
+}: {
+  title: string;
+  tools: ToolDefinition[];
+  onSelect: (tool: VideoStudioTool) => void;
+}) {
+  return (
+    <section className="mt-6">
+      <h3 className="text-sm font-extrabold text-slate-900">{title}</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {tools.map((tool) => {
+          const Icon = tool.icon;
+          return (
+            <button
+              key={tool.id}
+              type="button"
+              onClick={() => onSelect(tool.id)}
+              className={`group flex min-h-24 items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br ${tool.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-100`}
+            >
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm ${tool.iconTone}`}>
+                <Icon className="h-[18px] w-[18px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-extrabold text-slate-900">
+                  {tool.title}
+                </span>
+                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-slate-500">
+                  {tool.description}
+                </span>
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function VideoToolHeader({
+  tool: _tool,
+  onBack,
+}: {
+  tool: ToolDefinition;
+  onBack: () => void;
+}) {
+  return (
+    <header className="flex shrink-0 items-center border-b border-slate-200 bg-white px-4 py-2 md:px-6">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+            aria-label="Quay lại Video Studio"
+            title="Quay lại Video Studio"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+    </header>
+  );
+}
+
+function VideoToolContent({
+  tool,
+  initialParams,
+  editVideoSourceUrl,
+  onClearEditVideoSource,
+  onEditVideo,
+  onNavigateToTool,
+  onMediaSaved,
+}: {
+  tool: Exclude<VideoStudioTool, "home">;
+  initialParams: ReturnType<typeof readVideoStudioLaunchParams>;
+  editVideoSourceUrl: string | null;
+  onClearEditVideoSource: () => void;
+  onEditVideo: (url: string) => void;
+  onNavigateToTool: (tool: VideoStudioTool) => void;
+  onMediaSaved: (
+    cardId: string,
+    mediaUrl: string,
+    type: "image" | "video" | "audio"
+  ) => void;
+}) {
+  if (tool === "ai-video") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo video..." />}>
+        <SimpleVideoWorkspace
+          initialPrompt={initialParams?.prompt}
+          cardId={initialParams?.cardId}
+          onMediaSaved={onMediaSaved}
+          onEditVideo={onEditVideo}
+          initialImage={initialParams?.image}
+          autoTrigger={initialParams?.autoTrigger}
+        />
+      </Suspense>
+    );
+  }
+
+  if (tool === "human-video") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo video người dẫn..." />}>
+        <HeyGenWorkspace
+          initialPrompt={initialParams?.prompt}
+          cardId={initialParams?.cardId}
+          onEditVideo={onEditVideo}
+          onMediaSaved={onMediaSaved}
+          autoTrigger={initialParams?.autoTrigger}
+          engineType={initialParams?.engineType}
+          usePersonalVoice={initialParams?.usePersonalVoice}
+        />
+      </Suspense>
+    );
+  }
+
+  if (tool === "motion") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo chuyển động..." />}>
+        <KlingMotionWorkspace cardId={initialParams?.cardId} onMediaSaved={onMediaSaved} />
+      </Suspense>
+    );
+  }
+
+  if (tool === "edit-video") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở trình chỉnh sửa video..." />}>
+        <EditVideoWorkspace
+          initialVideoUrl={editVideoSourceUrl}
+          onClearInitialVideoUrl={onClearEditVideoSource}
+        />
+      </Suspense>
+    );
+  }
+
+  if (tool === "long-to-short") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo video ngắn..." />}>
+        <LongToShortTab />
+      </Suspense>
+    );
+  }
+
+  if (tool === "voice") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo giọng đọc..." />}>
+        <VoiceGenerationWorkspace
+          initialText={initialParams?.prompt}
+          initialTitle={initialParams?.title}
+          initialDescription={initialParams?.description}
+          cardId={initialParams?.cardId}
+          autoTrigger={initialParams?.autoTrigger}
+          onMediaSaved={onMediaSaved}
+          onNavigateToHumanVideo={() => onNavigateToTool("human-video")}
+        />
+      </Suspense>
+    );
+  }
+
+  return (
+    <Suspense fallback={<VideoToolLoader label="Đang mở công cụ phụ đề..." />}>
+      <VideoCaptionWorkspace />
+    </Suspense>
+  );
+}
+
+function VideoToolLoader({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-96 items-center justify-center rounded-3xl border border-slate-200 bg-white text-sm font-semibold text-slate-500 shadow-sm">
+      {label}
+    </div>
+  );
+}

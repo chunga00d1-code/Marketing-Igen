@@ -1,24 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { ImageIcon, Layers3, Mic, Video } from 'lucide-react';
+import { ImageIcon, Layers3 } from 'lucide-react';
 import { BulkCreateWorkspace } from './BulkCreateWorkspace';
 import { ImageGenerationWorkspace } from './ImageGenerationWorkspace';
-import { VideoGenerationWorkspace } from './VideoGenerationWorkspace';
-import { VoiceGenerationWorkspace } from './VoiceGenerationWorkspace';
 import type { ContentStudioTab } from '../../utils/contentStudioNavigation';
 
 interface ContentStudioWorkspaceProps {
   initialTab?: ContentStudioTab;
   initialParams?: {
-    tab: 'image' | 'video' | 'voice';
+    tab: 'image';
     prompt: string;
     cardId: string;
     image?: string;
     autoTrigger?: boolean;
-    videoSubTab?: 'veo' | 'heygen' | 'edit-video' | 'caption';
-    title?: string;
-    description?: string;
-    engineType?: string;
-    usePersonalVoice?: boolean;
   } | null;
   onClearParams?: () => void;
   onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
@@ -28,7 +21,6 @@ interface ContentStudioWorkspaceProps {
 export function ContentStudioWorkspace({ initialParams, initialTab, onClearParams, onMediaSaved, onTabChange }: ContentStudioWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<ContentStudioTab>(initialParams?.tab || initialTab || 'image');
   const [prevTab, setPrevTab] = useState<ContentStudioTab>('image');
-  const [videoSubTab, setVideoSubTab] = useState<'veo' | 'heygen' | 'edit-video' | 'caption'>('veo');
   const clearParamsRef = useRef(onClearParams);
 
   const changeTab = (tab: ContentStudioTab) => {
@@ -46,9 +38,6 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
   useEffect(() => {
     if (initialParams) {
       setActiveTab(initialParams.tab);
-      if (initialParams.tab === 'video') {
-        setVideoSubTab(initialParams.videoSubTab || 'veo');
-      }
     }
   }, [initialParams]);
 
@@ -77,24 +66,6 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
               Tạo hình ảnh
             </button>
             <button
-              onClick={() => changeTab('video')}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'video' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
-              }`}
-            >
-              <Video className="h-3.5 w-3.5" />
-              Tạo video
-            </button>
-            <button
-              onClick={() => changeTab('voice')}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'voice' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
-              }`}
-            >
-              <Mic className="h-3.5 w-3.5" />
-              Tạo giọng nói
-            </button>
-            <button
               onClick={() => changeTab('bulk')}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'bulk' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
@@ -115,32 +86,6 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
             onMediaSaved={onMediaSaved}
             initialImage={initialParams?.image}
             autoTrigger={initialParams?.autoTrigger}
-          />
-        )}
-        {activeTab === 'video' && (
-          <VideoGenerationWorkspace
-            initialPrompt={initialParams?.prompt}
-            cardId={initialParams?.cardId}
-            onMediaSaved={onMediaSaved}
-            initialVideoTab={videoSubTab}
-            initialImage={initialParams?.image}
-            autoTrigger={initialParams?.autoTrigger}
-            engineType={initialParams?.engineType}
-            usePersonalVoice={initialParams?.usePersonalVoice}
-          />
-        )}
-        {activeTab === 'voice' && (
-          <VoiceGenerationWorkspace
-            initialText={initialParams?.prompt}
-            initialTitle={initialParams?.title}
-            initialDescription={initialParams?.description}
-            cardId={initialParams?.cardId}
-            autoTrigger={initialParams?.autoTrigger}
-            onMediaSaved={onMediaSaved}
-            onNavigateToHumanVideo={() => {
-              setVideoSubTab('heygen');
-              changeTab('video');
-            }}
           />
         )}
         {activeTab === 'bulk' && <BulkCreateWorkspace onClose={() => changeTab(prevTab)} />}

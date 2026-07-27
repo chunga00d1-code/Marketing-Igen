@@ -39,16 +39,23 @@ const DEFAULT_COLUMNS: ICampaignSheetColumn[] = [
   systemColumn("scheduledAt", "Ngày đăng", "datetime", 0, false, 170),
   systemColumn("platform", "Nền tảng", "short_text", 1, false, 110),
   systemColumn("page", "Page / tài khoản", "short_text", 2, false, 170),
-  systemColumn("pillar", "Content Pillar", "short_text", 3, true, 170, "constraint"),
+  systemColumn("pillar", "Nhóm nội dung", "short_text", 3, true, 170, "constraint"),
   systemColumn("funnelStage", "Funnel", "select", 4, true, 100, "constraint", ["TOFU", "MOFU", "BOFU"]),
   systemColumn("objective", "Mục tiêu", "short_text", 5, true, 180, "constraint"),
-  systemColumn("topicBrief", "Chủ đề / tiêu đề", "long_text", 6, true, 260, "constraint"),
+  systemColumn("topicBrief", "Nội dung cần quay/chụp", "long_text", 6, true, 260, "constraint"),
   systemColumn("title", "Tiêu đề bài", "short_text", 7, true, 240, "approved_override"),
   systemColumn("bodyText", "Nội dung", "long_text", 8, true, 360, "approved_override"),
   systemColumn("cta", "CTA", "short_text", 9, true, 180, "constraint"),
   systemColumn("hashtags", "Hashtag", "short_text", 10, true, 180, "constraint"),
   systemColumn("mediaType", "Media", "select", 11, false, 110, "constraint", ["text", "image", "video", "human-video"]),
   systemColumn("status", "Trạng thái", "short_text", 12, false, 140),
+];
+
+const ORDER_INPUT_COLUMNS: ICampaignSheetColumn[] = [
+  orderInputColumn("productionBrief", "Chi tiết yêu cầu", "long_text", 13, 280),
+  orderInputColumn("assetFormat", "Định dạng", "select", 14, 150, ["Ảnh", "Video", "Ảnh + Video"]),
+  orderInputColumn("proposedQuantity", "SL đề xuất", "short_text", 15, 150),
+  orderInputColumn("usageChannels", "Phục vụ", "short_text", 16, 180),
 ];
 
 function systemColumn(
@@ -79,6 +86,34 @@ function systemColumn(
       knowledgeDocumentTypes: [],
     },
     display: { order, width, frozen: order < 2, hidden: false },
+  };
+}
+
+function orderInputColumn(
+  key: string,
+  label: string,
+  dataType: CampaignSheetDataType,
+  order: number,
+  width: number,
+  options: string[] = []
+): ICampaignSheetColumn {
+  return {
+    id: `order:${key}`,
+    key,
+    label,
+    kind: "custom",
+    dataType,
+    required: false,
+    archived: false,
+    options,
+    fieldPolicy: "input",
+    ai: {
+      enabled: false,
+      allowedSources: ["row", "campaign"],
+      sensitiveBusinessField: false,
+      knowledgeDocumentTypes: [],
+    },
+    display: { order, width, hidden: false, frozen: false },
   };
 }
 
@@ -175,18 +210,26 @@ async function assertCampaign(companyCode: string, campaignId: string) {
 }
 
 async function getOrCreateConfig(companyCode: string, campaignId: string) {
-  return CampaignSheetConfigModel.findOneAndUpdate(
+  const config = await CampaignSheetConfigModel.findOneAndUpdate(
     { companyCode, campaignId },
     {
       $setOnInsert: {
         companyCode,
         campaignId,
-        columns: DEFAULT_COLUMNS,
+        columns: [...DEFAULT_COLUMNS, ...ORDER_INPUT_COLUMNS],
         revision: 1,
       },
     },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
   );
+  const currentKeys = new Set((config.columns || []).map((column) => column.key));
+  const missingOrderColumns = ORDER_INPUT_COLUMNS.filter((column) => !currentKeys.has(column.key));
+  if (missingOrderColumns.length) {
+    config.columns.push(...missingOrderColumns);
+    config.revision += 1;
+    await config.save();
+  }
+  return config;
 }
 
 async function getOrCreateRow(companyCode: string, campaignId: string, slotId: string) {

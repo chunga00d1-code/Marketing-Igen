@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, X, Loader2, RotateCcw, CalendarDays, Table2 } from 'lucide-react';
+import { CalendarClock, X, Loader2, RotateCcw } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
@@ -113,8 +113,7 @@ export default function CampaignDetailModal({
   const [selectedSlot, setSelectedSlot] = useState<CampaignSlot | null>(null);
   const [isBatchPreparing, setIsBatchPreparing] = useState(false);
   const [campaignResearchTab, setCampaignResearchTab] = useState<'summary' | 'evidence'>('summary');
-  const [activeMainTab, setActiveMainTab] = useState<'published_links' | 'research' | 'overall_strategy' | 'content_pillar' | 'content_calendar'>('content_calendar');
-  const [contentCalendarView, setContentCalendarView] = useState<'calendar' | 'sheet'>('calendar');
+  const [activeMainTab, setActiveMainTab] = useState<'published_links' | 'research' | 'overall_strategy' | 'content_pillar' | 'content_calendar' | 'asset_orders'>('content_calendar');
 
   // Filter slots that have published URLs
   const publishedSlotsList = React.useMemo(() => {
@@ -333,6 +332,16 @@ export default function CampaignDetailModal({
                 }`}
             >
               Content Calendar ({totalSlots} bài)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMainTab('asset_orders')}
+              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
+                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+                }`}
+            >
+              Order ảnh, video
             </button>
           </div>
         )}
@@ -729,46 +738,7 @@ export default function CampaignDetailModal({
 
               {/* TAB 5: CONTENT CALENDAR (BẢNG LỊCH BÀI ĐĂNG + MODAL CHI TIẾT SỬA BÀI) */}
               {activeMainTab === 'content_calendar' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
-                    <div className="inline-flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setContentCalendarView('calendar')}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
-                          contentCalendarView === 'calendar'
-                            ? 'bg-white text-teal-700 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                      >
-                        <CalendarDays className="h-3.5 w-3.5" />
-                        Lịch nội dung
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setContentCalendarView('sheet')}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${
-                          contentCalendarView === 'sheet'
-                            ? 'bg-white text-teal-700 shadow-xs'
-                            : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                      >
-                        <Table2 className="h-3.5 w-3.5" />
-                        Content Sheet
-                      </button>
-                    </div>
-                    <span className="hidden pr-2 text-[10px] font-medium text-slate-400 sm:inline">
-                      Hai chế độ dùng chung {campaignDetail.slots.length} bài viết
-                    </span>
-                  </div>
-
-                  {contentCalendarView === 'sheet' ? (
-                    <CampaignContentSheet
-                      key={campaignDetail.campaign._id}
-                      campaignId={campaignDetail.campaign._id}
-                    />
-                  ) : (
-                  <div className="flex flex-col lg:flex-row gap-6">
+                <div className="flex flex-col gap-6 lg:flex-row">
                     {/* Left Column: Slots Table */}
                     <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
                       {/* Real-time Activity Banner */}
@@ -824,9 +794,14 @@ export default function CampaignDetailModal({
                         onCloseDetail={() => setSelectedSlot(null)}
                       />
                     )}
-                  </div>
-                  )}
                 </div>
+              )}
+
+              {activeMainTab === 'asset_orders' && (
+                <CampaignContentSheet
+                  key={campaignDetail.campaign._id}
+                  campaignId={campaignDetail.campaign._id}
+                />
               )}
             </>
           ) : (
