@@ -1,14 +1,19 @@
 import { createHash } from "crypto";
 import { promises as dns } from "dns";
+import { promises as fs } from "fs";
 import net from "net";
+import os from "os";
+import path from "path";
 import { spawn } from "child_process";
 import { VideoCaptionMetadata } from "../../shared/video-caption.contract";
 import { VideoCaptionError } from "./video-caption-error";
+import { resolveMediaBinary } from "./media-binary.service";
 
 const MAX_VIDEO_BYTES = 1_000_000_000;
 const MAX_REDIRECTS = 3;
 const HEAD_TIMEOUT_MS = 15_000;
 const PROBE_TIMEOUT_MS = 45_000;
+const SPEECH_PAUSE_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_VIDEO_DURATION_SECONDS = Math.max(
   30,
   Number(process.env.VIDEO_CAPTION_MAX_DURATION_SECONDS) || 1_800
@@ -21,12 +26,16 @@ type ProbeStream = {
   avg_frame_rate?: string;
   r_frame_rate?: string;
   duration?: string;
+  start_time?: string;
+  time_base?: string;
+  duration_ts?: string;
 };
 
 type ProbeResult = {
   streams?: ProbeStream[];
   format?: {
     duration?: string;
+    start_time?: string;
     size?: string;
     format_name?: string;
   };
@@ -257,14 +266,37 @@ function positiveDuration(value?: string) {
   return Number.isFinite(duration) && duration > 0 ? duration : undefined;
 }
 
+function effectiveDurationSeconds(duration?: string, startTime?: string) {
+  const baseDuration = positiveDuration(duration);
+  if (baseDuration === undefined) return undefined;
+  const start = Number(startTime);
+  if (!Number.isFinite(start) || start <= 0) return baseDuration;
+  return Math.max(baseDuration, start + baseDuration);
+}
+
+function timestampMilliseconds(value?: string) {
+  if (value === undefined || value === "") return undefined;
+  const timestamp = Number(value);
+  return Number.isFinite(timestamp) ? Math.round(timestamp * 1000) : undefined;
+}
+
 export function resolveVideoCaptionDurations(
   probe: ProbeResult,
   videoStream?: ProbeStream,
   audioStream?: ProbeStream
 ) {
-  const containerDurationSeconds = positiveDuration(probe.format?.duration);
-  const videoStreamDurationSeconds = positiveDuration(videoStream?.duration);
-  const audioStreamDurationSeconds = positiveDuration(audioStream?.duration);
+  const containerDurationSeconds = effectiveDurationSeconds(
+    probe.format?.duration,
+    probe.format?.start_time
+  );
+  const videoStreamDurationSeconds = effectiveDurationSeconds(
+    videoStream?.duration,
+    videoStream?.start_time
+  );
+  const audioStreamDurationSeconds = effectiveDurationSeconds(
+    audioStream?.duration,
+    audioStream?.start_time
+  );
   const candidates = [
     { source: "video_stream" as const, value: videoStreamDurationSeconds },
     { source: "audio_stream" as const, value: audioStreamDurationSeconds },
@@ -286,13 +318,19 @@ export function resolveVideoCaptionDurations(
     containerDurationSeconds,
     videoStreamDurationSeconds,
     audioStreamDurationSeconds,
+    containerStartMs: timestampMilliseconds(probe.format?.start_time),
+    videoStreamStartMs: timestampMilliseconds(videoStream?.start_time),
+    audioStreamStartMs: timestampMilliseconds(audioStream?.start_time),
   };
 }
 
 function runFfprobe(videoUrl: string) {
   return new Promise<ProbeResult>((resolve, reject) => {
     const child = spawn(
-      "ffprobe",
+      resolveMediaBinary(
+        "ffprobe",
+        process.env.VIDEO_CAPTION_FFPROBE_PATH
+      ),
       [
         "-v",
         "error",
@@ -379,6 +417,156 @@ function runFfprobe(videoUrl: string) {
   });
 }
 
+export type VideoCaptionSpeechPause = {
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+};
+
+async function detectSpeechPauses(videoUrl: string) {
+  await validatePublicMediaUrl(videoUrl);
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "video-caption-pauses-")
+  );
+  const outputPath = path.join(directory, "analysis.wav");
+  const noiseDb = Math.max(
+    -60,
+    Math.min(
+      -10,
+      Number(process.env.VIDEO_CAPTION_SILENCE_THRESHOLD_DB) || -30
+    )
+  );
+  const minimumSilenceSeconds = Math.max(
+    0.08,
+    Math.min(
+      0.5,
+      Number(process.env.VIDEO_CAPTION_MIN_SILENCE_SECONDS) || 0.1
+    )
+  );
+
+  try {
+    const stderr = await new Promise<string>((resolve, reject) => {
+      const child = spawn(
+        resolveMediaBinary(
+          "ffmpeg",
+          process.env.VIDEO_CAPTION_FFMPEG_PATH
+        ),
+        [
+          "-y",
+          "-nostdin",
+          "-hide_banner",
+          "-i",
+          videoUrl,
+          "-map",
+          "0:a:0",
+          "-vn",
+          "-af",
+          `silencedetect=noise=${noiseDb}dB:d=${minimumSilenceSeconds},aresample=async=1:first_pts=0`,
+          "-ac",
+          "1",
+          "-ar",
+          "16000",
+          "-c:a",
+          "pcm_s16le",
+          outputPath,
+        ],
+        { shell: false, windowsHide: true }
+      );
+      let output = "";
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        child.kill();
+        reject(
+          new VideoCaptionError(
+            "Hết thời gian phân tích khoảng nghỉ trong audio.",
+            "VIDEO_CAPTION_SPEECH_PAUSE_TIMEOUT",
+            "transient",
+            true,
+            504
+          )
+        );
+      }, SPEECH_PAUSE_TIMEOUT_MS);
+      timer.unref();
+
+      child.stderr.on("data", (chunk: Buffer) => {
+        if (output.length < 2_000_000) {
+          output += chunk.toString("utf8");
+        }
+      });
+      child.on("error", (error: NodeJS.ErrnoException) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(
+          new VideoCaptionError(
+            error.code === "ENOENT"
+              ? "Máy chủ chưa cài ffmpeg để căn chỉnh caption theo audio."
+              : `Không thể chạy ffmpeg để căn chỉnh caption: ${error.message}`,
+            "VIDEO_CAPTION_SPEECH_PAUSE_UNAVAILABLE",
+            "provider",
+            false,
+            503
+          )
+        );
+      });
+      child.on("close", (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (code !== 0) {
+          reject(
+            new VideoCaptionError(
+              `Không thể phân tích khoảng nghỉ trong audio: ${output.slice(-300)}`,
+              "VIDEO_CAPTION_SPEECH_PAUSE_FAILED",
+              "provider",
+              true,
+              502
+            )
+          );
+          return;
+        }
+        resolve(output);
+      });
+    });
+
+    const pauses: VideoCaptionSpeechPause[] = [];
+    let pendingStartMs: number | undefined;
+    for (const line of stderr.split(/\r?\n/u)) {
+      const startMatch = line.match(/silence_start:\s*([0-9.]+)/u);
+      if (startMatch) {
+        pendingStartMs = Math.max(
+          0,
+          Math.round(Number(startMatch[1]) * 1000)
+        );
+      }
+      const endMatch = line.match(
+        /silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/u
+      );
+      if (!endMatch) continue;
+      const endMs = Math.max(0, Math.round(Number(endMatch[1]) * 1000));
+      const reportedDurationMs = Math.max(
+        0,
+        Math.round(Number(endMatch[2]) * 1000)
+      );
+      const startMs =
+        pendingStartMs ?? Math.max(0, endMs - reportedDurationMs);
+      if (endMs > startMs) {
+        pauses.push({
+          startMs,
+          endMs,
+          durationMs: endMs - startMs,
+        });
+      }
+      pendingStartMs = undefined;
+    }
+    return pauses;
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+}
+
 function buildCloudinaryProxyUrl(videoUrl: string) {
   const marker = "/upload/";
   if (!videoUrl.includes(marker)) return videoUrl;
@@ -435,6 +623,8 @@ async function buildVerifiedProxyUrl(
 }
 
 export const videoCaptionMediaService = {
+  detectSpeechPauses,
+
   async inspect(videoUrl: string): Promise<{
     sourceUrl: string;
     fingerprint: string;
@@ -494,6 +684,9 @@ export const videoCaptionMediaService = {
           remote.lastModified || "",
           remote.contentLength || probe.format?.size || "",
           durationSeconds,
+          durations.containerStartMs || "",
+          durations.videoStreamStartMs || "",
+          durations.audioStreamStartMs || "",
         ].join("|")
       )
       .digest("hex");
@@ -518,6 +711,9 @@ export const videoCaptionMediaService = {
         audioStreamDurationMs: durationToMs(
           durations.audioStreamDurationSeconds
         ),
+        containerStartMs: durations.containerStartMs,
+        videoStreamStartMs: durations.videoStreamStartMs,
+        audioStreamStartMs: durations.audioStreamStartMs,
         durationSource: durations.durationSource,
         width: videoStream.width,
         height: videoStream.height,

@@ -30,6 +30,26 @@ const VideoMetadataSchema = new Schema(
     containerDurationMs: { type: Number, min: 0 },
     videoStreamDurationMs: { type: Number, min: 0 },
     audioStreamDurationMs: { type: Number, min: 0 },
+    containerStartMs: { type: Number },
+    videoStreamStartMs: { type: Number },
+    audioStreamStartMs: { type: Number },
+    timing: {
+      status: {
+        type: String,
+        enum: ["verified", "rejected"],
+      },
+      providerDurationMs: { type: Number, min: 0 },
+      sourceDurationMs: { type: Number, min: 0 },
+      scale: { type: Number, min: 0 },
+      offsetMs: { type: Number },
+      driftRatio: { type: Number, min: 0 },
+      wordCoverageRatio: { type: Number, min: 0, max: 1 },
+      alignmentMethod: {
+        type: String,
+        enum: ["word", "word_pause"],
+      },
+      pauseBoundaryCoverageRatio: { type: Number, min: 0, max: 1 },
+    },
     durationSource: {
       type: String,
       enum: ["container", "video_stream", "audio_stream"],
@@ -105,6 +125,11 @@ const StyleSchema = new Schema(
       type: String,
       enum: ["top", "center", "bottom", "safe_auto"],
       default: DEFAULT_VIDEO_CAPTION_STYLE.position,
+    },
+    textAlign: {
+      type: String,
+      enum: ["left", "center", "right"],
+      default: DEFAULT_VIDEO_CAPTION_STYLE.textAlign,
     },
     maxLines: {
       type: Number,

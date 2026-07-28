@@ -6,6 +6,7 @@ import {
   VIDEO_CAPTION_PROJECT_STATUSES,
   VIDEO_CAPTION_SOURCE_KINDS,
   VIDEO_CAPTION_SOURCE_REFERENCE_KINDS,
+  VIDEO_CAPTION_TRANSCRIPTION_LANGUAGES,
 } from "../../shared/video-caption.contract";
 import { videoCaptionController } from "../controller/video-caption.controller";
 import { requireAuth, requirePermission } from "../middleware/auth";
@@ -34,6 +35,7 @@ const styleSchema = Joi.object({
   position: Joi.string()
     .valid("top", "center", "bottom", "safe_auto")
     .optional(),
+  textAlign: Joi.string().valid("left", "center", "right").optional(),
   maxLines: Joi.number().valid(1, 2).optional(),
   safeAreaPercent: Joi.number().min(0).max(30).optional(),
 });
@@ -62,6 +64,9 @@ const createSchema = {
       mediaId: Joi.string().max(100).optional(),
       originalName: Joi.string().trim().max(255).optional(),
     }).required(),
+    language: Joi.string()
+      .valid(...VIDEO_CAPTION_TRANSCRIPTION_LANGUAGES)
+      .default("vi"),
     contextLinks: contextLinksSchema.optional(),
     contextBrief: Joi.string().trim().max(2000).allow("").optional(),
     style: styleSchema.optional(),
@@ -206,6 +211,11 @@ videoCaptionRouter.get(
   }),
   videoCaptionController.downloadSubtitles as never
 );
+videoCaptionRouter.get(
+  "/:id/download",
+  validateRequest(idParams),
+  videoCaptionController.downloadRenderedVideo as never
+);
 videoCaptionRouter.post(
   "/:id/cancel",
   validateRequest(idParams),
@@ -225,4 +235,13 @@ videoCaptionRouter.put(
   "/:id/segments",
   validateRequest(replaceSegmentsSchema),
   videoCaptionController.replaceSegments as never
+);
+videoCaptionRouter.post(
+  "/resolve-drive-folder",
+  validateRequest({
+    body: Joi.object({
+      url: Joi.string().uri({ scheme: ["https"] }).required(),
+    }),
+  }),
+  videoCaptionController.resolveDriveFolder as never
 );

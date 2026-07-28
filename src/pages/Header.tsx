@@ -4,16 +4,36 @@ import type { TabType } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { walletService } from "../services/walletService";
 import PersonalIntegrationsTab from "../components/settings/PersonalIntegrationsTab";
+import {
+  openVideoStudio,
+  type VideoStudioTool,
+} from "../utils/videoStudioNavigation";
 
 interface HeaderProps {
   currentTab: TabType;
   onSearchSelect: (tab: TabType, subTab?: string) => void;
 }
 
-const searchIndex = [
+type SearchItem = {
+  label: string;
+  tab: TabType;
+  subTab?: string;
+  videoTool?: Exclude<VideoStudioTool, "home">;
+  keywords: string;
+};
+
+const searchIndex: SearchItem[] = [
   { label: "Dashboard tổng quan", tab: "TONG QUAN" as TabType, keywords: "dashboard tong quan sale marketing crm publishing kenh chat" },
   { label: "Tạo nội dung & chiến dịch", tab: "MARKETING" as TabType, subTab: "TẠO CHIẾN DỊCH", keywords: "viet content y tuong campaign facebook tiktok copywriter duyet" },
-  { label: "Xưởng nội dung", tab: "XUONG NOI DUNG" as TabType, keywords: "tao anh video giong noi thiet ke hang loat bulk create" },
+  { label: "Xưởng nội dung", tab: "XUONG NOI DUNG" as TabType, keywords: "tao anh thiet ke hang loat bulk create" },
+  { label: "Video Studio", tab: "VIDEO STUDIO" as TabType, keywords: "tao video giong doc long tieng chinh sua phu de video nguoi dan motion long short" },
+  { label: "Tạo video từ nội dung", tab: "VIDEO STUDIO" as TabType, videoTool: "ai-video", keywords: "veo tao video ai prompt hinh anh" },
+  { label: "Tạo video người dẫn AI", tab: "VIDEO STUDIO" as TabType, videoTool: "human-video", keywords: "heygen avatar nguoi that video thuyet trinh" },
+  { label: "Tạo chuyển động từ hình ảnh", tab: "VIDEO STUDIO" as TabType, videoTool: "motion", keywords: "kling motion control chuyen dong nhan vat" },
+  { label: "Chỉnh sửa video", tab: "VIDEO STUDIO" as TabType, videoTool: "edit-video", keywords: "edit cat ghep chinh sua video" },
+  { label: "Cắt video dài thành video ngắn", tab: "VIDEO STUDIO" as TabType, videoTool: "long-to-short", keywords: "long to short video ngan highlight" },
+  { label: "Tạo giọng đọc", tab: "VIDEO STUDIO" as TabType, videoTool: "voice", keywords: "voice giong noi giong doc long tieng elevenlabs audio" },
+  { label: "Thêm phụ đề vào video", tab: "VIDEO STUDIO" as TabType, videoTool: "caption", keywords: "caption subtitle phu de timeline video" },
   { label: "Kho tri thức doanh nghiệp", tab: "KHO TRI THUC" as TabType, keywords: "rag tai lieu doanh nghiep sale reply ai caption marketing drive" },
   { label: "Lịch đăng Content", tab: "MARKETING" as TabType, subTab: "LỊCH ĐĂNG CONTENT", keywords: "lich dang content calendar publish" },
   { label: "Phễu khách hàng", tab: "SALES CRM" as TabType, subTab: "PHỄU KHÁCH HÀNG", keywords: "crm phieu khach hang lead cold warm hot" },
@@ -87,7 +107,11 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                   <button
                     key={`${item.label}_${index}`}
                     onClick={() => {
-                      onSearchSelect(item.tab, item.subTab);
+                      if (item.videoTool) {
+                        openVideoStudio({ tool: item.videoTool });
+                      } else {
+                        onSearchSelect(item.tab, item.subTab);
+                      }
                       setSearchQuery("");
                       setShowResults(false);
                     }}
@@ -96,7 +120,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                     <span className="text-sm font-semibold text-gray-800">{item.label}</span>
                     <span className="text-[10px] text-gray-400">
                       {item.tab}
-                      {item.subTab ? ` > ${item.subTab}` : ""}
+                      {item.videoTool ? ` > ${item.label}` : item.subTab ? ` > ${item.subTab}` : ""}
                     </span>
                   </button>
                 ))}
