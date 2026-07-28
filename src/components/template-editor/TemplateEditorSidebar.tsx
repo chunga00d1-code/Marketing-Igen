@@ -1,10 +1,12 @@
 import React from 'react';
-import { Folder, LayoutTemplate, Film, Image as ImageIcon, Type, Music } from 'lucide-react';
-import { SidebarTabType } from './types';
+import { Folder, LayoutTemplate, Film, Music } from 'lucide-react';
+import { SidebarTabType, TemplateEditorItem } from './types';
+import { isShotstackProviderTemplate } from './template-editor-timeline-presenter';
 
 interface TemplateEditorSidebarProps {
   activeTab: SidebarTabType;
   onSelectTab: (tab: SidebarTabType) => void;
+  projectItems: TemplateEditorItem[];
 }
 
 const SIDEBAR_ITEMS: Array<{
@@ -15,12 +17,16 @@ const SIDEBAR_ITEMS: Array<{
   { id: 'media', label: 'Phương tiện', icon: Folder },
   { id: 'templates', label: 'Mẫu', icon: LayoutTemplate },
   { id: 'stock_video', label: 'Kho video', icon: Film },
-  { id: 'images', label: 'Hình ảnh', icon: ImageIcon },
-  { id: 'text', label: 'Văn bản', icon: Type },
   { id: 'audio', label: 'Âm thanh', icon: Music },
 ];
 
-export function TemplateEditorSidebar({ activeTab, onSelectTab }: TemplateEditorSidebarProps) {
+export function TemplateEditorSidebar({
+  activeTab,
+  onSelectTab,
+  projectItems,
+}: TemplateEditorSidebarProps) {
+  const canAddAudio = !isShotstackProviderTemplate(projectItems);
+
   return (
     <aside className="w-[76px] shrink-0 bg-slate-950 border-r border-slate-800/80 flex flex-col items-center py-3 select-none z-20">
       {/* Brand logo / Icon Header */}
@@ -32,7 +38,7 @@ export function TemplateEditorSidebar({ activeTab, onSelectTab }: TemplateEditor
 
       {/* Navigation List */}
       <div className="flex w-full flex-col items-center gap-1 px-1.5">
-        {SIDEBAR_ITEMS.map(({ id, label, icon: Icon }) => {
+        {SIDEBAR_ITEMS.filter(({ id }) => canAddAudio || id !== 'audio').map(({ id, label, icon: Icon }) => {
           const isActive = activeTab === id;
           return (
             <button

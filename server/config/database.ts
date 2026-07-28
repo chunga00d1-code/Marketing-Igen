@@ -128,7 +128,36 @@ export async function connectDB() {
     );
     await seedSuperAdmin();
     await seedPermissions();
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes("ENOTFOUND mongodb") || connectionUri.includes("@mongodb/") || connectionUri.includes("//mongodb/")) {
+      const fallbackUriWithAuth = connectionUri.replace("@mongodb/", "@127.0.0.1/").replace("//mongodb/", "//127.0.0.1/");
+      const redactedFallback = fallbackUriWithAuth.replace(/:([^:@]+)@/, ":******@");
+      console.log(`[Backend Database] Khong tim thấy host 'mongodb' (chay ngoai Docker). Thu lai voi 127.0.0.1: ${redactedFallback}`);
+      try {
+        await mongoose.connect(fallbackUriWithAuth);
+        console.log(
+          `[Backend Database] Ket noi MongoDB local (127.0.0.1) thanh cong! db=${mongoose.connection.name || "unknown"} host=${mongoose.connection.host || "unknown"}`
+        );
+        await seedSuperAdmin();
+        await seedPermissions();
+        return;
+      } catch {
+        console.log("[Backend Database] Ket noi voi auth 127.0.0.1 khong thanh cong. Thu ket noi 127.0.0.1 local (khong auth)...");
+        try {
+          const noAuthUri = "mongodb://127.0.0.1:27017/igen-marketing";
+          await mongoose.connect(noAuthUri);
+          console.log(
+            `[Backend Database] Ket noi MongoDB local 127.0.0.1 (non-auth) thanh cong! db=${mongoose.connection.name || "unknown"}`
+          );
+          await seedSuperAdmin();
+          await seedPermissions();
+          return;
+        } catch (noAuthErr) {
+          console.error("[Backend Database] Loi ket noi MongoDB fallback 127.0.0.1 (non-auth):", noAuthErr);
+        }
+      }
+    }
     console.error("[Backend Database] Loi ket noi MongoDB:", error);
     process.exit(1);
   }

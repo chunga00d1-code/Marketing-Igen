@@ -2,10 +2,12 @@ import { Job, Queue, Worker } from "bullmq";
 import type { JobsOptions } from "bullmq";
 import net from "net";
 import { executeVideoProjectRender } from "../service/video-project-render-runner";
+import { reconcileActiveShotstackRenders } from "../service/shotstack-render.service";
 
 const QUEUE_NAME = "video-project-render-queue";
 const JOB_NAME = "video-project-render";
 const JOB_ATTEMPTS = 2;
+const RECONCILIATION_INTERVAL_MS = 15_000;
 
 type RenderJobData = {
   renderId: string;
@@ -15,6 +17,24 @@ let renderQueue: Queue<RenderJobData> | null = null;
 let renderWorker: Worker<RenderJobData> | null = null;
 let redisAvailable: boolean | null = null;
 let workerInitialization: Promise<void> | null = null;
+let reconciliationTimer: NodeJS.Timeout | null = null;
+
+export function startRenderReconciliationLoop() {
+  if (reconciliationTimer) {
+    return;
+  }
+  reconciliationTimer = setInterval(() => {
+    void reconcileActiveShotstackRenders().catch((error: unknown) => {
+      console.warn(
+        "[Video Project Render Queue] Background active render reconciliation failed:",
+        error instanceof Error ? error.message : String(error)
+      );
+    });
+  }, RECONCILIATION_INTERVAL_MS);
+  if (reconciliationTimer && typeof reconciliationTimer.unref === "function") {
+    reconciliationTimer.unref();
+  }
+}
 
 export function buildVideoProjectRenderRedisConfig(
   env: NodeJS.ProcessEnv = process.env
@@ -133,6 +153,7 @@ export const videoProjectRenderQueue = {
   },
 
   async initWorker(): Promise<void> {
+    startRenderReconciliationLoop();
     if (renderWorker) {
       return;
     }

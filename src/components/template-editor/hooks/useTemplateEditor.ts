@@ -8,12 +8,18 @@ import {
   ItemType,
   TemplateEditorMode,
 } from '../types';
-import { createDefaultProject, MOCK_MEDIA_ASSETS } from '../mockData';
+import { createDefaultProject } from '../mockData';
 import { toast } from '../../../pages/Toast';
 import {
   uploadEditorMedia,
   validateEditorMediaMetadata,
 } from '../../../services/videoProjectMediaService';
+import { selectInitialEditorItemId } from '../template-editor-selection';
+import { createEditorItemMediaReplacementTransition } from '../template-editor-replacement';
+import {
+  loadSavedUploadedMediaAssets,
+  saveUploadedMediaAssets,
+} from '../template-editor-media';
 
 export function useTemplateEditor(
   initialMode: TemplateEditorMode = 'edit-project',
@@ -42,7 +48,12 @@ export function useTemplateEditor(
 
   // Sidebar & Asset Panel State
   const [activeSidebarTab, setActiveSidebarTab] = useState<SidebarTabType>('media');
-  const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>(MOCK_MEDIA_ASSETS);
+  const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>(() => loadSavedUploadedMediaAssets());
+
+  // Auto-persist user uploaded media assets
+  useEffect(() => {
+    saveUploadedMediaAssets(mediaAssets);
+  }, [mediaAssets]);
 
   // Playback & Selection State
   const [selectedItemId, setSelectedItemId] = useState<string | null>('item-v1');
@@ -229,29 +240,51 @@ export function useTemplateEditor(
   };
 
   const replaceItemMedia = (itemId: string, newAsset: MediaAsset) => {
-    setProject((prev) => {
-      const updatedItems = prev.items.map((item) => {
-        if (item.id === itemId) {
-          return {
-            ...item,
-            sourceUrl: newAsset.url,
-            thumbnailUrl: newAsset.thumbnailUrl,
-            label: newAsset.name,
-          };
-        }
-        return item;
-      });
-
-      const next = { ...prev, items: updatedItems };
-      pushHistory(next);
-      return next;
+    const transition = createEditorItemMediaReplacementTransition({
+      project,
+      history,
+      historyIndex,
+      mediaAssets,
+      selectedItemId,
+      itemId,
+      asset: newAsset,
     });
 
-    // Mark asset as added
-    setMediaAssets((prev) =>
-      prev.map((a) => (a.id === newAsset.id ? { ...a, added: true } : a))
-    );
-    toast.success(`Đã thay thế bằng media "${newAsset.name}".`);
+    if (transition.ok === false) {
+      toast.error(transition.reason);
+      return;
+    }
+
+    setProject(transition.state.project);
+    setHistory(transition.state.history);
+    setHistoryIndex(transition.state.historyIndex);
+    setMediaAssets(transition.state.mediaAssets);
+    toast.success(transition.successMessage);
+  };
+
+  const replaceItemWithFile = (itemId: string, file: File) => {
+    let type: ItemType = 'video';
+    try {
+      type = validateEditorMediaMetadata(file).mediaType;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'File không hợp lệ.');
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    const asset: MediaAsset = {
+      id: `asset-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(-4)}`,
+      name: file.name,
+      type,
+      url: objectUrl,
+      thumbnailUrl: objectUrl,
+      added: false,
+      uploadStatus: 'uploading',
+      uploadProgress: 0,
+      sourceFile: file,
+    };
+
+    replaceItemMedia(itemId, asset);
+    void uploadAsset(asset.id, file, objectUrl);
   };
 
   const toggleItemReplaceable = (itemId: string) => {
@@ -287,6 +320,30 @@ export function useTemplateEditor(
             }
           : asset
       ));
+      setProject((prev) => ({
+        ...prev,
+        items: prev.items.map((item) => {
+          if (item.sourceUrl !== localUrl) return item;
+          const isVisual = uploaded.mediaType === 'video' || uploaded.mediaType === 'image';
+          return {
+            ...item,
+            sourceUrl: uploaded.url,
+            thumbnailUrl: uploaded.url,
+            type: uploaded.mediaType,
+            ...(isVisual
+              ? {
+                  replacement: {
+                    originalType: item.replacement?.originalType ?? (item.type === 'video' || item.type === 'image' ? item.type : 'video'),
+                    sourceType: uploaded.mediaType as 'video' | 'image',
+                    ...(uploaded.mediaType === 'video' && (uploaded.duration || item.replacement?.sourceDuration)
+                      ? { sourceDuration: uploaded.duration || item.replacement?.sourceDuration }
+                      : {}),
+                  },
+                }
+              : {}),
+          };
+        }),
+      }));
       URL.revokeObjectURL(localUrl);
     } catch (error) {
       const uploadError = error instanceof Error ? error.message : 'Không thể tải media lên.';
@@ -385,7 +442,7 @@ export function useTemplateEditor(
     setProject(snapshot);
     setHistory([snapshot]);
     setHistoryIndex(0);
-    setSelectedItemId(snapshot.items[0]?.id || null);
+    setSelectedItemId(selectInitialEditorItemId(snapshot.items));
     setCurrentTime(0);
     setIsPlaying(false);
   }, []);
@@ -418,6 +475,7 @@ export function useTemplateEditor(
     duplicateItem,
     reorderItem,
     replaceItemMedia,
+    replaceItemWithFile,
     toggleItemReplaceable,
     uploadMediaFile,
     uploadMediaFiles,

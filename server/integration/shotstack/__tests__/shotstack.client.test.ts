@@ -100,10 +100,23 @@ test("parses retrieve-template responses", async () => {
 
 test("parses render identifiers", async () => {
   setShotstackEnvironment();
-  mockResponse({ success: true, response: { id: "render-1" } });
+  let request: Request | undefined;
+  globalThis.fetch = (async (input, init) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({
+      success: true,
+      response: { id: "render-1" },
+    }));
+  }) as typeof fetch;
 
   assert.deepEqual(await new ShotstackClient().renderTemplate({ templateId: "template-1", merge: [] }), {
     renderId: "render-1",
+  });
+  assert.equal(request?.url, "https://api.shotstack.io/stage/templates/render");
+  assert.equal(request?.method, "POST");
+  assert.deepEqual(await request?.json(), {
+    id: "template-1",
+    merge: [],
   });
 });
 

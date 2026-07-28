@@ -8,12 +8,22 @@ import type {
 import { VideoProjectModel } from "../model/video-project.model";
 import { VideoTemplateModel } from "../model/video-template.model";
 import { VideoTemplateVersionModel } from "../model/video-template-version.model";
+import { VideoProjectRenderModel } from "../model/video-project-render.model";
 import { buildVideoTemplateVisibilityFilter } from "./video-template-policy";
 import {
   buildVideoProjectMediaFolder,
   validateVideoProjectMedia,
   type VideoProjectMediaInput,
 } from "./video-project-media-policy";
+import { reconcileActiveShotstackRenders } from "./shotstack-render.service";
+import { requestVideoTemplatePreview } from "./video-template-preview.service";
+
+export class UncertainPreviewSubmissionError extends Error {
+  constructor(message = "Trạng thái gửi Shotstack chưa chắc chắn. Hãy kiểm tra My Renders trước khi thử lại.") {
+    super(message);
+    this.name = "UncertainPreviewSubmissionError";
+  }
+}
 
 type SnapshotInput = {
   title: string;
@@ -107,48 +117,7 @@ function serializeProject(project: Record<string, unknown>) {
   };
 }
 
-const SAMPLE_VIDEO_URLS = [
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4",
-];
-
-function gradientThumbnail(title: string, from: string, to: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="1067"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="600" height="1067" fill="url(#g)"/><rect y="650" width="600" height="417" fill="#020617" opacity=".58"/><text x="40" y="880" fill="white" font-family="Arial" font-size="42" font-weight="700">${title}</text></svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-export const DEFAULT_SYSTEM_VIDEO_TEMPLATES = [
-  { systemKey: "flash-sale", title: "TikTok Flash Sale", categoryId: "sales", categoryName: "Bán hàng", duration: 15, colors: ["#ef4444", "#db2777"], tags: ["TikTok", "Flash Sale"], badges: ["popular", "new"] },
-  { systemKey: "product-review", title: "Review sản phẩm", categoryId: "product_review", categoryName: "Review sản phẩm", duration: 30, colors: ["#0f172a", "#0891b2"], tags: ["Review", "Unboxing"], badges: ["popular"] },
-  { systemKey: "before-after", title: "Before & After", categoryId: "sales", categoryName: "Bán hàng", duration: 20, colors: ["#7c3aed", "#ec4899"], tags: ["Before After", "Làm đẹp"], badges: ["popular"] },
-  { systemKey: "education-tips", title: "3 mẹo hữu ích", categoryId: "education", categoryName: "Giáo dục", duration: 25, colors: ["#059669", "#0e7490"], tags: ["Tips", "Giáo dục"], badges: ["new"] },
-  { systemKey: "event-promo", title: "Promo sự kiện", categoryId: "promo", categoryName: "Khuyến mãi", duration: 15, colors: ["#ea580c", "#ca8a04"], tags: ["Sự kiện", "Promo"], badges: ["new"] },
-].map((template, index) => {
-  const sourceUrl = SAMPLE_VIDEO_URLS[index];
-  return {
-    ...template,
-    aspectRatio: "9:16" as const,
-    description: `${template.title} có thể thay video, tiêu đề và lời kêu gọi hành động.`,
-    thumbnailUrl: gradientThumbnail(template.title, template.colors[0], template.colors[1]),
-    previewVideoUrl: sourceUrl,
-    blueprint: {
-      timeline: [
-        { id: "main-video", type: "video", src: sourceUrl, start: 0, end: template.duration },
-        { id: "headline", type: "text", text: template.title, start: 0, end: 4, position: "center" },
-        { id: "cta", type: "text", text: "Khám phá ngay", start: Math.max(0, template.duration - 3), end: template.duration, position: "bottom" },
-      ],
-    },
-    slots: [
-      { key: "main_video", type: "video" as const, label: "Video chính", required: true, bindings: [{ timelineItemId: "main-video", property: "src" }] },
-      { key: "headline", type: "text" as const, label: "Tiêu đề", required: true, maxLength: 40, bindings: [{ timelineItemId: "headline", property: "text" }] },
-      { key: "cta", type: "text" as const, label: "Kêu gọi hành động", required: false, maxLength: 30, bindings: [{ timelineItemId: "cta", property: "text" }] },
-    ],
-    defaultValues: { main_video: sourceUrl, headline: template.title, cta: "Khám phá ngay" },
-  };
-});
+export const DEFAULT_SYSTEM_VIDEO_TEMPLATES: Array<Record<string, unknown>> = [];
 
 function deepClone<T>(value: T): T {
   return structuredClone(value);
@@ -221,47 +190,7 @@ export function createProjectSnapshotFromVersion(
 }
 
 async function ensureDefaultSystemTemplates() {
-  for (const definition of DEFAULT_SYSTEM_VIDEO_TEMPLATES) {
-    const template = await VideoTemplateModel.findOneAndUpdate(
-      { systemKey: definition.systemKey },
-      {
-        $setOnInsert: {
-          systemKey: definition.systemKey,
-          title: definition.title,
-          description: definition.description,
-          thumbnailUrl: definition.thumbnailUrl,
-          previewVideoUrl: definition.previewVideoUrl,
-          duration: definition.duration,
-          aspectRatio: definition.aspectRatio,
-          categoryId: definition.categoryId,
-          categoryName: definition.categoryName,
-          tags: definition.tags,
-          badges: definition.badges,
-          usageCount: 0,
-          visibility: "system",
-          status: "draft",
-        },
-      },
-      { upsert: true, new: true }
-    );
-    let version = await VideoTemplateVersionModel.findOne({ templateId: template._id, version: 1 });
-    if (!version) {
-      version = await VideoTemplateVersionModel.create({
-        templateId: template._id,
-        version: 1,
-        blueprint: definition.blueprint,
-        slots: definition.slots,
-        defaultValues: definition.defaultValues,
-        createdBy: "system",
-      });
-    }
-    if (template.status !== "published" || String(template.publishedVersionId || "") !== String(version._id)) {
-      await VideoTemplateModel.updateOne(
-        { _id: template._id },
-        { $set: { status: "published", publishedVersionId: version._id } }
-      );
-    }
-  }
+  if (DEFAULT_SYSTEM_VIDEO_TEMPLATES.length === 0) return;
 }
 
 export function shouldUseVideoTemplateSeedFallback(
@@ -271,15 +200,36 @@ export function shouldUseVideoTemplateSeedFallback(
     && !environment.SHOTSTACK_API_KEY?.trim();
 }
 
-function toSummary(template: Record<string, unknown>, identity: VideoTemplateIdentity) {
+function toSummary(
+  template: Record<string, unknown>,
+  identity: VideoTemplateIdentity,
+  renderStatus?: string
+) {
   const id = String(template._id);
   const ownerUserId = template.ownerUserId ? String(template.ownerUserId) : undefined;
+  const isShotstack = template.sourceProvider === "shotstack";
+  const rawPreview = typeof template.previewVideoUrl === "string" ? template.previewVideoUrl.trim() : "";
+  const isCloudinaryPreview = rawPreview.length > 0 && rawPreview.includes("res.cloudinary.com");
+  const hasPreview = isShotstack ? isCloudinaryPreview : rawPreview.length > 0;
+
+  let previewStatus: "pending" | "ready" | "failed";
+  if (!isShotstack) {
+    previewStatus = "ready";
+  } else if (hasPreview) {
+    previewStatus = "ready";
+  } else if (renderStatus === "failed") {
+    previewStatus = "failed";
+  } else {
+    previewStatus = "pending";
+  }
+
   return {
     id,
     title: template.title,
     description: template.description,
     thumbnailUrl: template.thumbnailUrl,
-    previewVideoUrl: template.previewVideoUrl,
+    previewVideoUrl: hasPreview ? rawPreview : undefined,
+    previewStatus,
     duration: template.duration,
     aspectRatio: template.aspectRatio,
     category: { id: template.categoryId, name: template.categoryName },
@@ -379,6 +329,7 @@ export const videoTemplateService = {
   },
 
   async listTemplates(identity: VideoTemplateIdentity, query: NormalizedVideoTemplateListQuery) {
+    void reconcileActiveShotstackRenders().catch(() => undefined);
     if (shouldUseVideoTemplateSeedFallback()) {
       await ensureDefaultSystemTemplates();
     }
@@ -408,46 +359,174 @@ export const videoTemplateService = {
       ];
     }
     const sort = query.sort === "newest" ? { createdAt: -1 as const } : { usageCount: -1 as const, createdAt: -1 as const };
-    const [rows, total] = await Promise.all([
-      VideoTemplateModel.find(filter)
-        .sort(sort)
-        .skip((query.page - 1) * query.limit)
-        .limit(query.limit)
-        .lean(),
-      VideoTemplateModel.countDocuments(filter),
-    ]);
+    const total = await VideoTemplateModel.countDocuments(filter);
+    const templates = await VideoTemplateModel.find(filter)
+      .sort(sort)
+      .skip((query.page - 1) * query.limit)
+      .limit(query.limit)
+      .lean();
+
+    const unreadyShotstackVersionIds = Array.from(
+      new Set(
+        templates
+          .filter((t) => {
+            const isShotstack = (t as unknown as Record<string, unknown>).sourceProvider === "shotstack";
+            const rawPreview = typeof (t as unknown as Record<string, unknown>).previewVideoUrl === "string"
+              ? String((t as unknown as Record<string, unknown>).previewVideoUrl).trim()
+              : "";
+            const isCloudinary = rawPreview.length > 0 && rawPreview.includes("res.cloudinary.com");
+            return isShotstack && !isCloudinary && (t as unknown as Record<string, unknown>).publishedVersionId;
+          })
+          .map((t) => String((t as unknown as Record<string, unknown>).publishedVersionId))
+      )
+    );
+
+    const renderStatusMap = new Map<string, string>();
+    if (unreadyShotstackVersionIds.length > 0) {
+      const activeRenders = await VideoProjectRenderModel.find({
+        purpose: "template-preview",
+        templateVersionId: { $in: unreadyShotstackVersionIds },
+      })
+        .select({ templateVersionId: 1, status: 1 })
+        .lean();
+
+      for (const render of activeRenders) {
+        if (render.templateVersionId) {
+          renderStatusMap.set(String(render.templateVersionId), String(render.status));
+        }
+      }
+    }
+
+    const items = templates.map((t) => {
+      const versionId = (t as unknown as Record<string, unknown>).publishedVersionId
+        ? String((t as unknown as Record<string, unknown>).publishedVersionId)
+        : undefined;
+      const renderStatus = versionId ? renderStatusMap.get(versionId) : undefined;
+      return toSummary(t as unknown as Record<string, unknown>, identity, renderStatus);
+    });
+
     return {
-      items: rows.map((row) => toSummary(row as unknown as Record<string, unknown>, identity)),
+      items,
       pagination: {
         page: query.page,
         limit: query.limit,
         total,
-        hasMore: query.page * query.limit < total,
+        totalPages: Math.ceil(total / query.limit) || 1,
       },
     };
   },
 
   async getTemplateDetail(identity: VideoTemplateIdentity, templateId: string) {
-    assertObjectId(templateId, "ID mẫu");
-    const visibility = buildVideoTemplateVisibilityFilter(identity, "discover");
-    const mine = buildVideoTemplateVisibilityFilter(identity, "mine");
-    const template = await VideoTemplateModel.findOne({
-      _id: templateId,
-      $or: [visibility, mine],
-    }).lean();
-    if (!template) throw new Error("Không tìm thấy mẫu video.");
-    const version = template.publishedVersionId
-      ? await VideoTemplateVersionModel.findById(template.publishedVersionId).lean()
-      : await VideoTemplateVersionModel.findOne({ templateId: template._id }).sort({ version: -1 }).lean();
-    if (!version) throw new Error("Mẫu video chưa có phiên bản khả dụng.");
+    assertObjectId(templateId, "Mã mẫu video");
+    const template = await VideoTemplateModel.findById(templateId).lean();
+    if (!template) {
+      throw new Error("Không tìm thấy mẫu video.");
+    }
+    const isShotstack = (template as unknown as Record<string, unknown>).sourceProvider === "shotstack";
+    const rawPreview = typeof (template as unknown as Record<string, unknown>).previewVideoUrl === "string"
+      ? String((template as unknown as Record<string, unknown>).previewVideoUrl).trim()
+      : "";
+    const isCloudinary = rawPreview.length > 0 && rawPreview.includes("res.cloudinary.com");
+
+    let renderStatus: string | undefined;
+    if (isShotstack && !isCloudinary && (template as unknown as Record<string, unknown>).publishedVersionId) {
+      const render = await VideoProjectRenderModel.findOne({
+        purpose: "template-preview",
+        templateVersionId: String((template as unknown as Record<string, unknown>).publishedVersionId),
+      })
+        .select({ status: 1 })
+        .lean();
+
+      if (render) {
+        renderStatus = String(render.status);
+      }
+    }
+
+    const summary = toSummary(template as unknown as Record<string, unknown>, identity, renderStatus);
+    const isOwner = summary.canEdit;
+
     return {
-      ...toSummary(template as unknown as Record<string, unknown>, identity),
-      versionId: String(version._id),
+      ...summary,
       actions: {
-        canUse: template.status === "published" || String(template.ownerUserId || "") === identity.userId,
-        canEditTemplate: String(template.ownerUserId || "") === identity.userId,
-        canArchive: String(template.ownerUserId || "") === identity.userId,
+        canUse: true,
+        canEditTemplate: isOwner,
+        canArchive: isOwner,
       },
+    };
+  },
+
+  async retryTemplatePreview(
+    identity: VideoTemplateIdentity,
+    templateId: string,
+    options: { force?: boolean } = {}
+  ) {
+    assertObjectId(templateId, "Mã mẫu video");
+    const template = await VideoTemplateModel.findById(templateId).lean();
+    if (!template) {
+      throw new Error("Không tìm thấy mẫu video.");
+    }
+    if (template.sourceProvider !== "shotstack") {
+      throw new Error("Chỉ hỗ trợ tạo lại bản xem trước cho mẫu Shotstack.");
+    }
+    if (!template.publishedVersionId) {
+      throw new Error("Mẫu video chưa có phiên bản xuất bản.");
+    }
+
+    const rawPreview = typeof template.previewVideoUrl === "string" ? template.previewVideoUrl.trim() : "";
+    if (rawPreview.length > 0 && rawPreview.includes("res.cloudinary.com")) {
+      throw new Error("Mẫu đã có bản xem trước hoàn chỉnh.");
+    }
+
+    const version = await VideoTemplateVersionModel.findById(template.publishedVersionId).lean();
+    if (!version) {
+      throw new Error("Không tìm thấy phiên bản mẫu video.");
+    }
+
+    const existingRender = await VideoProjectRenderModel.findOne({
+      purpose: "template-preview",
+      templateVersionId: String(version._id),
+      templateSourceHash: version.sourceHash,
+    }).lean();
+
+    if (existingRender && String(existingRender.status) === "failed") {
+      const isUncertain =
+        existingRender.providerSubmissionState === "uncertain" ||
+        existingRender.errorCode === "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN" ||
+        Boolean(existingRender.providerRenderId);
+
+      if (isUncertain && !options.force) {
+        throw new UncertainPreviewSubmissionError();
+      }
+    }
+
+    const result = await requestVideoTemplatePreview(
+      {
+        templateId: String(template._id),
+        templateVersionId: String(version._id),
+        sourceHash: version.sourceHash,
+        title: template.title,
+        aspectRatio: template.aspectRatio,
+        duration: template.duration,
+        normalizedEditorState: version.normalizedEditorState as Record<string, unknown>,
+        sourceEdit: version.sourceEdit as Record<string, unknown>,
+      },
+      { force: options.force }
+    );
+
+    console.log(
+      `[Admin Preview Retry] templateId=${templateId}, versionId=${template.publishedVersionId}, actorId=${identity.userId}, force=${Boolean(options.force)}, timestamp=${new Date().toISOString()}`
+    );
+
+    return {
+      templateId: String(template._id),
+      renderId: result.renderId,
+      forced: Boolean(options.force),
+      ...(options.force
+        ? {
+            warning:
+              "Đã buộc thử lại tạo bản xem trước. Lưu ý: Thao tác này có thể phát sinh thêm chi phí credit nếu Shotstack đã nhận render trước đó.",
+          }
+        : {}),
     };
   },
 

@@ -40,8 +40,26 @@ const CLIENT_RULES: Record<EditorMediaType, { mimeTypes: string[]; maxBytes: num
   },
 };
 
+function inferMimeType(fileName: string, mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized && normalized !== 'application/octet-stream') return normalized;
+  const ext = fileName.split('.').pop()?.toLowerCase() || '';
+  if (['mp4', 'm4v', 'mov', 'qt', 'webm', 'mkv', 'avi'].includes(ext)) {
+    if (['mov', 'qt'].includes(ext)) return 'video/quicktime';
+    if (['webm'].includes(ext)) return 'video/webm';
+    return 'video/mp4';
+  }
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'svg'].includes(ext)) {
+    if (['png'].includes(ext)) return 'image/png';
+    if (['webp'].includes(ext)) return 'image/webp';
+    if (['gif'].includes(ext)) return 'image/gif';
+    return 'image/jpeg';
+  }
+  return normalized;
+}
+
 export function validateEditorMediaMetadata(metadata: EditorMediaMetadata) {
-  const mimeType = metadata.type.toLowerCase();
+  const mimeType = inferMimeType(metadata.name, metadata.type);
   const mediaType = (Object.keys(CLIENT_RULES) as EditorMediaType[]).find((candidate) =>
     CLIENT_RULES[candidate].mimeTypes.includes(mimeType)
   );

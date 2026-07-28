@@ -1,18 +1,25 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
+import mongoose from "mongoose";
 import type {
   VideoProjectRenderEngine,
+  VideoProjectRenderPurpose,
   VideoProjectRenderSnapshot,
   VideoProjectRenderStatus,
   VideoProjectRenderSubmissionState,
 } from "../interface/video-project-render.interface";
 import { editorProjectToShotstackEdit } from "../integration/shotstack/shotstack.converter";
-import { ShotstackClient } from "../integration/shotstack/shotstack.client";
+import {
+  ShotstackClient,
+  ShotstackProviderError,
+} from "../integration/shotstack/shotstack.client";
 import type {
   ShotstackEdit,
   ShotstackRenderStatus,
 } from "../integration/shotstack/shotstack.types";
 import { VideoProjectRenderModel } from "../model/video-project-render.model";
+import { VideoTemplateModel } from "../model/video-template.model";
+import { VideoTemplateVersionModel } from "../model/video-template-version.model";
 import { cloudinaryService } from "./cloudinary.service";
 
 const ACTIVE_STATUSES: VideoProjectRenderStatus[] = ["rendering", "uploading"];
@@ -34,6 +41,10 @@ const SHOTSTACK_OUTPUT_HOSTS = new Set([
 
 export type ShotstackRenderRecord = {
   _id: string;
+  purpose?: VideoProjectRenderPurpose;
+  templateId?: string;
+  templateVersionId?: string;
+  templateSourceHash?: string;
   status: VideoProjectRenderStatus;
   snapshot: VideoProjectRenderSnapshot;
   progress: number;
@@ -121,7 +132,9 @@ export interface ShotstackRenderRepository {
   ): Promise<boolean>;
 }
 
-type ShotstackRenderClient = Pick<ShotstackClient, "renderEdit" | "getRender">;
+type ShotstackRenderClient =
+  Pick<ShotstackClient, "renderEdit" | "getRender">
+  & Partial<Pick<ShotstackClient, "renderTemplate">>;
 
 type ShotstackRenderDependencies = {
   repository?: ShotstackRenderRepository;
@@ -134,6 +147,7 @@ type ShotstackRenderDependencies = {
   fetchImpl?: typeof fetch;
   getEnvironment?: () => NodeJS.ProcessEnv;
   now?: () => Date;
+  resolveTemplateProviderId?: (templateId: string) => Promise<string | undefined>;
 };
 
 type WebhookPayload = {
@@ -167,6 +181,10 @@ function toRenderRecord(value: unknown): ShotstackRenderRecord | null {
   return {
     ...record,
     _id: String(record._id),
+    purpose: record.purpose as VideoProjectRenderPurpose | undefined,
+    templateId: record.templateId ? String(record.templateId) : undefined,
+    templateVersionId: record.templateVersionId ? String(record.templateVersionId) : undefined,
+    templateSourceHash: record.templateSourceHash ? String(record.templateSourceHash) : undefined,
     status: record.status as VideoProjectRenderStatus,
     snapshot: snapshot as unknown as VideoProjectRenderSnapshot,
     progress: Number(record.progress || 0),
@@ -366,6 +384,83 @@ export class MongooseShotstackRenderRepository implements ShotstackRenderReposit
     outputUrl: string,
     completedAt: Date
   ) {
+    const render = await VideoProjectRenderModel.findOne({
+      _id: renderId,
+      status: "uploading",
+      transferLeaseOwner: leaseOwner,
+    }).lean();
+    if (!render) return false;
+
+    if (
+      render.purpose === "template-preview" &&
+      render.templateId &&
+      render.templateVersionId &&
+      render.templateSourceHash
+    ) {
+      const session = await mongoose.startSession();
+      let updated = false;
+      try {
+        await session.withTransaction(async () => {
+          const result = await VideoProjectRenderModel.updateOne(
+            {
+              _id: renderId,
+              status: "uploading",
+              transferLeaseOwner: leaseOwner,
+            },
+            {
+              $set: {
+                status: "completed",
+                progress: 100,
+                stageMessage: "Video render completed.",
+                outputUrl,
+                completedAt,
+              },
+              $unset: {
+                errorCode: "",
+                errorMessage: "",
+                providerErrorCode: "",
+                providerErrorMessage: "",
+                transferLeaseOwner: "",
+                transferLeaseUntil: "",
+              },
+            },
+            { session }
+          );
+          if (result.matchedCount !== 1) return;
+
+          const currentTemplate = await VideoTemplateModel.findOne({
+            _id: render.templateId,
+            publishedVersionId: render.templateVersionId,
+          }).session(session).lean();
+
+          if (currentTemplate) {
+            const currentVersion = await VideoTemplateVersionModel.findOne({
+              _id: render.templateVersionId,
+              templateId: render.templateId,
+              sourceHash: render.templateSourceHash,
+            }).session(session).lean();
+
+            if (currentVersion) {
+              await VideoTemplateModel.updateOne(
+                {
+                  _id: render.templateId,
+                  publishedVersionId: render.templateVersionId,
+                },
+                {
+                  $set: { previewVideoUrl: outputUrl },
+                },
+                { session }
+              );
+            }
+          }
+          updated = true;
+        });
+      } finally {
+        await session.endSession();
+      }
+      return updated;
+    }
+
     const result = await VideoProjectRenderModel.updateOne(
       {
         _id: renderId,
@@ -431,6 +526,21 @@ export function buildShotstackCallbackUrl(
   try {
     const callbackBase = new URL(configuredUrl);
     if (callbackBase.protocol !== "https:") return undefined;
+    const hostname = callbackBase.hostname.toLowerCase();
+    const isValidHostname = hostname === "localhost"
+      || isIP(hostname)
+      || hostname.split(".").every(
+        (label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)
+      );
+    if (
+      !isValidHostname
+      || hostname === "localhost"
+      || hostname.endsWith(".localhost")
+      || hostname.endsWith(".local")
+      || isPrivateIpLiteral(hostname)
+    ) {
+      return undefined;
+    }
     callbackBase.pathname = `${callbackBase.pathname.replace(/\/+$/, "")}/${secret}`;
     return callbackBase.toString().replace(/\/$/, "");
   } catch {
@@ -445,11 +555,36 @@ function exactSecretMatch(actual: string, expected: string): boolean {
     && timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
-function diagnosticMessage(value: unknown, environment: NodeJS.ProcessEnv): string | undefined {
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  let message = value.split(/[\r\n]+/)[0].trim().slice(0, 500);
+export function diagnosticMessage(
+  value: unknown,
+  environment: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  let rawText: string | undefined;
+
+  if (typeof value === "string") {
+    rawText = value;
+  } else if (value instanceof Error) {
+    rawText = value.message;
+  } else if (
+    value &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof (value as { message: unknown }).message === "string"
+  ) {
+    rawText = (value as { message: string }).message;
+  }
+
+  if (!rawText || !rawText.trim()) {
+    return undefined;
+  }
+
+  let message = rawText.split(/[\r\n]+/)[0].trim().slice(0, 500);
+
   const apiKey = environment.SHOTSTACK_API_KEY?.trim();
-  if (apiKey) message = message.split(apiKey).join("[REDACTED]");
+  if (apiKey && apiKey.length > 0) {
+    message = message.split(apiKey).join("[REDACTED]");
+  }
+
   return message;
 }
 
@@ -642,6 +777,15 @@ export function createShotstackRenderService(
   const getEnvironment = dependencies.getEnvironment || (() => process.env);
   const now = dependencies.now || (() => new Date());
   const getClient = () => dependencies.client || new ShotstackClient();
+  const resolveTemplateProviderId = dependencies.resolveTemplateProviderId || (async (templateId: string) => {
+    const template = await VideoTemplateModel.findById(templateId)
+      .select({ externalTemplateId: 1 })
+      .lean();
+    const externalTemplateId = template?.externalTemplateId;
+    return typeof externalTemplateId === "string" && externalTemplateId.trim()
+      ? externalTemplateId.trim()
+      : undefined;
+  });
   const uploadMedia = dependencies.uploadMedia || (async (url: string, folder: string) => {
     const output = await fetchShotstackOutput(url, dependencies.fetchImpl);
     return cloudinaryService.uploadMediaBuffer(output, folder);
@@ -818,10 +962,29 @@ export function createShotstackRenderService(
       const sourceEdit = toRecord(claimed.snapshot.sourceEdit) as ShotstackEdit | undefined;
       const edit = converter(claimed.snapshot, sourceEdit);
       const callback = buildShotstackCallbackUrl(getEnvironment());
-      const submission = await getClient().renderEdit({
-        ...edit,
-        ...(callback ? { callback } : {}),
-      });
+      const client = getClient();
+      let submission: { renderId: string };
+      if (claimed.purpose === "template-preview" && claimed.templateId) {
+        const providerTemplateId = await resolveTemplateProviderId(claimed.templateId);
+        if (!providerTemplateId || !client.renderTemplate) {
+          throw new ShotstackProviderError(
+            "Shotstack template ID is unavailable for preview rendering.",
+            { status: 400, code: "TEMPLATE_ID_UNAVAILABLE" }
+          );
+        }
+        const merge = Array.isArray(edit.merge)
+          ? structuredClone(edit.merge) as Array<Record<string, unknown>>
+          : [];
+        submission = await client.renderTemplate({
+          templateId: providerTemplateId,
+          merge,
+        });
+      } else {
+        submission = await client.renderEdit({
+          ...edit,
+          ...(callback ? { callback } : {}),
+        });
+      }
       let persisted = false;
       let persistenceError: unknown;
       for (let persistAttempt = 0; persistAttempt < PROVIDER_ID_PERSIST_ATTEMPTS; persistAttempt += 1) {
@@ -845,7 +1008,26 @@ export function createShotstackRenderService(
         );
       }
     } catch (error: unknown) {
-      await markSubmissionUncertain(renderId, attemptId, error);
+      if (
+        error instanceof ShotstackProviderError
+        && error.status !== undefined
+        && error.status >= 400
+        && error.status < 500
+      ) {
+        const environment = getEnvironment();
+        await repository.recordProviderFailure(renderId, {
+          providerSubmissionState: "rejected",
+          providerStatus: "submission_rejected",
+          providerErrorCode: diagnosticCode(error.code, environment),
+          providerErrorMessage: diagnosticMessage(error, environment),
+          stageMessage: "Shotstack rejected the render submission.",
+          errorCode: "VIDEO_PROJECT_RENDER_SUBMISSION_REJECTED",
+          errorMessage: "Shotstack rejected the video render request.",
+          completedAt: now(),
+        });
+      } else {
+        await markSubmissionUncertain(renderId, attemptId, error);
+      }
     }
   };
 
@@ -936,4 +1118,27 @@ export async function acceptShotstackWebhook(
   secret: string
 ): Promise<void> {
   return createShotstackRenderService().acceptShotstackWebhook(payload, secret);
+}
+
+export async function reconcileActiveShotstackRenders(
+  dependencies: ShotstackRenderDependencies = {}
+): Promise<number> {
+  const service = createShotstackRenderService(dependencies);
+  const activeRenders = await VideoProjectRenderModel.find({
+    engine: "shotstack",
+    status: { $in: ["rendering", "uploading"] },
+  })
+    .select({ _id: 1 })
+    .lean();
+
+  let reconciledCount = 0;
+  for (const render of activeRenders) {
+    try {
+      await service.reconcileShotstackRender(String(render._id));
+      reconciledCount += 1;
+    } catch {
+      // Ignore individual errors during bulk sweep
+    }
+  }
+  return reconciledCount;
 }

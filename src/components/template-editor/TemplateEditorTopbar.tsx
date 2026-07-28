@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import {
   ChevronLeft,
   CloudCheck,
-  MousePointer,
-  Hand,
   Undo2,
   Redo2,
+  RefreshCw,
   Download,
+  History,
   Monitor,
   Settings,
   HelpCircle,
@@ -25,8 +25,10 @@ interface TemplateEditorTopbarProps {
   onUndo: () => void;
   onRedo: () => void;
   onOpenExport: () => void;
+  onOpenHistory?: () => void;
   onBack: () => void;
   saveStatus?: 'loading' | 'saving' | 'saved' | 'error';
+  onRetrySave?: () => void;
 }
 
 export function TemplateEditorTopbar({
@@ -41,12 +43,13 @@ export function TemplateEditorTopbar({
   onUndo,
   onRedo,
   onOpenExport,
+  onOpenHistory,
   onBack,
   saveStatus = 'saved',
+  onRetrySave,
 }: TemplateEditorTopbarProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState(title);
-  const [activeTool, setActiveTool] = useState<'select' | 'hand'>('select');
 
   const handleTitleSubmit = () => {
     setIsEditingTitle(false);
@@ -75,6 +78,17 @@ export function TemplateEditorTopbar({
           <span className={`text-[10px] font-semibold ${saveStatus === 'error' ? 'text-red-600' : 'text-slate-500'}`}>
             {saveStatus === 'loading' ? 'Đang tải' : saveStatus === 'saving' ? 'Đang lưu' : saveStatus === 'error' ? 'Lưu lỗi' : 'Đã lưu'}
           </span>
+          {saveStatus === 'error' && onRetrySave && (
+            <button
+              type="button"
+              data-autosave-retry="true"
+              onClick={onRetrySave}
+              className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Thử lưu lại
+            </button>
+          )}
           {isEditingTitle ? (
             <input
               type="text"
@@ -96,29 +110,8 @@ export function TemplateEditorTopbar({
         </div>
       </div>
 
-      {/* Center Section: Tools, Zoom, Ratio, Undo/Redo */}
+      {/* Center Section: Zoom, Ratio, Undo/Redo */}
       <div className="flex items-center gap-2">
-        {/* Tools (Pointer / Hand) */}
-        <div className="flex items-center gap-0.5 rounded-xl border border-slate-200 bg-slate-50 p-1">
-          <button
-            type="button"
-            onClick={() => setActiveTool('select')}
-            className={`flex h-7 w-7 items-center justify-center rounded-lg text-slate-700 transition-colors cursor-pointer ${
-              activeTool === 'select' ? 'bg-white shadow-xs font-bold text-cyan-600' : 'hover:bg-slate-200/60'
-            }`}
-          >
-            <MousePointer className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTool('hand')}
-            className={`flex h-7 w-7 items-center justify-center rounded-lg text-slate-700 transition-colors cursor-pointer ${
-              activeTool === 'hand' ? 'bg-white shadow-xs font-bold text-cyan-600' : 'hover:bg-slate-200/60'
-            }`}
-          >
-            <Hand className="h-3.5 w-3.5" />
-          </button>
-        </div>
 
         {/* Zoom Dropdown */}
         <select
@@ -168,8 +161,17 @@ export function TemplateEditorTopbar({
         </div>
       </div>
 
-      {/* Right Section: Export & Options */}
+      {/* Right Section: Export & History & Options */}
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onOpenHistory}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold text-xs py-2 px-3 transition-all cursor-pointer"
+        >
+          <History className="h-4 w-4 text-cyan-600" />
+          Lịch sử xuất
+        </button>
+
         <button
           type="button"
           onClick={onOpenExport}

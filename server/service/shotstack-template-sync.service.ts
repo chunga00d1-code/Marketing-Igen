@@ -22,6 +22,8 @@ import type {
 import { VideoTemplateModel } from "../model/video-template.model";
 import { VideoTemplateSyncModel } from "../model/video-template-sync.model";
 import { VideoTemplateVersionModel } from "../model/video-template-version.model";
+import { requestVideoTemplatePreview } from "./video-template-preview.service";
+import { reconcileActiveShotstackRenders } from "./shotstack-render.service";
 
 const DETAIL_CONCURRENCY = 3;
 const SYNC_LEASE_DURATION_MS = 30 * 60 * 1000;
@@ -135,9 +137,10 @@ export interface ShotstackTemplateSyncRepository {
 export interface SyncDependencies {
   client?: SyncClient;
   repository?: ShotstackTemplateSyncRepository;
-  converter?: (edit: ShotstackEdit) => ShotstackConversionResult;
+  converter?: (edit: ShotstackEdit, durationHint?: number) => ShotstackConversionResult;
   environment?: ShotstackEnvironment;
   now?: () => Date;
+  requestPreview?: typeof requestVideoTemplatePreview;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -165,14 +168,20 @@ function canonicalize(value: unknown): unknown {
     }, {});
 }
 
-function sourceHash(edit: ShotstackEdit): string {
+function sourceHash(edit: ShotstackEdit, durationHint?: number): string {
+  const versionSource = durationHint === undefined
+    ? edit
+    : { edit, providerDurationHint: durationHint };
   return createHash("sha256")
-    .update(JSON.stringify(canonicalize(edit)))
+    .update(JSON.stringify(canonicalize(versionSource)))
     .digest("hex");
 }
 
 function providerEdit(template: ShotstackTemplate): ShotstackEdit {
   if (isRecord(template.edit)) return structuredClone(template.edit) as ShotstackEdit;
+  if (isRecord(template.template)) {
+    return structuredClone(template.template) as ShotstackEdit;
+  }
   const edit = structuredClone(template) as Record<string, unknown>;
   for (const metadataKey of [
     "id",
@@ -197,6 +206,63 @@ function firstString(record: Record<string, unknown>, keys: string[]): string | 
     if (nonEmptyString(record[key])) return record[key].trim();
   }
   return undefined;
+}
+
+function providerDurationHint(detail: ShotstackTemplate): number | undefined {
+  const detailRecord = detail as Record<string, unknown>;
+  const records = [
+    detailRecord,
+    isRecord(detailRecord.metadata) ? detailRecord.metadata : undefined,
+    isRecord(detailRecord.output) ? detailRecord.output : undefined,
+    isRecord(detailRecord.template) ? detailRecord.template : undefined,
+  ];
+  const candidates = records
+    .map((record) => record?.duration)
+    .filter((value): value is number => (
+      typeof value === "number"
+      && Number.isFinite(value)
+      && value > 0
+    ));
+  return candidates.length > 0 ? Math.max(...candidates) : undefined;
+}
+
+const RASTER_IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "avif", "svg"]);
+
+function resolveTemplateThumbnailUrl(
+  title: string,
+  dedicatedThumbnail?: string,
+  firstVisualUrl?: string,
+  dedicatedPreview?: string
+): string {
+  for (const candidate of [dedicatedThumbnail, firstVisualUrl, dedicatedPreview]) {
+    if (!candidate?.trim()) continue;
+    const url = candidate.trim();
+    const ext = url.split(".").pop()?.toLowerCase().split("?")[0] || "";
+    if (RASTER_IMAGE_EXTENSIONS.has(ext)) {
+      return url;
+    }
+  }
+
+  for (const candidate of [dedicatedPreview, dedicatedThumbnail, firstVisualUrl]) {
+    if (candidate && candidate.includes("res.cloudinary.com")) {
+      return candidate
+        .replace(/\/video\/upload\/(v\d+\/)?/, "/video/upload/so_5,f_jpg/")
+        .replace(/\.mp4$/i, ".jpg");
+    }
+  }
+
+  const colors = [
+    ["#4f46e5", "#06b6d4"],
+    ["#0f172a", "#0891b2"],
+    ["#7c3aed", "#ec4899"],
+    ["#059669", "#0e7490"],
+    ["#ea580c", "#ca8a04"],
+  ];
+  const charSum = title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const [c1, c2] = colors[Math.abs(charSum) % colors.length];
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="600" height="800" fill="url(#g)"/><rect y="500" width="600" height="300" fill="#020617" opacity="0.65"/><text x="40" y="680" fill="white" font-family="system-ui, sans-serif" font-size="40" font-weight="bold">${title}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 function buildInputs(
@@ -240,6 +306,13 @@ function buildInputs(
     ? Math.max(1, project.settings.duration)
     : 1;
 
+  const thumbnailUrl = resolveTemplateThumbnailUrl(
+    title,
+    dedicatedThumbnail,
+    firstVisualUrl,
+    dedicatedPreview
+  );
+
   return {
     template: {
       sourceProvider: "shotstack",
@@ -251,9 +324,8 @@ function buildInputs(
       compatibilityWarnings: [...conversion.warnings],
       title,
       description: "",
-      thumbnailUrl: dedicatedThumbnail || firstVisualUrl || dedicatedPreview || "",
-      previewVideoUrl: dedicatedPreview
-        || (firstVisual?.type === "video" ? firstVisualUrl : undefined),
+      thumbnailUrl,
+      previewVideoUrl: undefined,
       duration,
       aspectRatio: project.settings.aspectRatio as VideoTemplateAspectRatio,
       categoryId: "shotstack",
@@ -502,6 +574,13 @@ export class MongooseShotstackTemplateSyncRepository implements ShotstackTemplat
           updated = false;
           return;
         }
+        const updateData: Record<string, unknown> = {
+          ...input,
+          lastSyncGeneration: run.generation,
+        };
+        if (input.previewVideoUrl === undefined) {
+          delete updateData.previewVideoUrl;
+        }
         const result = await VideoTemplateModel.updateOne(
           {
             _id: templateId,
@@ -511,10 +590,7 @@ export class MongooseShotstackTemplateSyncRepository implements ShotstackTemplat
             ],
           },
           {
-            $set: {
-              ...input,
-              lastSyncGeneration: run.generation,
-            },
+            $set: updateData,
           },
           { session }
         );
@@ -544,6 +620,13 @@ export class MongooseShotstackTemplateSyncRepository implements ShotstackTemplat
           outcome = null;
           return;
         }
+        const updateData: Record<string, unknown> = {
+          ...templateInput,
+          lastSyncGeneration: run.generation,
+        };
+        if (templateInput.previewVideoUrl === undefined) {
+          delete updateData.previewVideoUrl;
+        }
         const currentTemplate = await VideoTemplateModel.findOneAndUpdate(
           {
             _id: templateId,
@@ -553,10 +636,7 @@ export class MongooseShotstackTemplateSyncRepository implements ShotstackTemplat
             ],
           },
           {
-            $set: {
-              ...templateInput,
-              lastSyncGeneration: run.generation,
-            },
+            $set: updateData,
           },
           { new: true, session }
         )
@@ -594,7 +674,7 @@ export class MongooseShotstackTemplateSyncRepository implements ShotstackTemplat
           },
           {
             $set: {
-              ...templateInput,
+              ...updateData,
               publishedVersionId: version._id,
               lastSyncGeneration: run.generation,
             },
@@ -773,6 +853,7 @@ export async function synchronizeShotstackTemplates(
   actorId: string,
   dependencies: SyncDependencies = {}
 ): Promise<VideoTemplateSyncSummary> {
+  void reconcileActiveShotstackRenders().catch(() => undefined);
   const attemptedAt = (dependencies.now || (() => new Date()))();
   const repository = dependencies.repository || new MongooseShotstackTemplateSyncRepository();
   const converter = dependencies.converter || shotstackEditToEditorProject;
@@ -869,6 +950,28 @@ export async function synchronizeShotstackTemplates(
   const summary = emptySummary();
   let cursor = 0;
 
+  const requestPreview = dependencies.requestPreview || requestVideoTemplatePreview;
+  const triggerPreview = async (
+    record: SyncTemplateRecord | null,
+    inputs: { template: SyncTemplateInput; version: SyncVersionInput }
+  ) => {
+    if (!record || !record.publishedVersionId) return;
+    try {
+      await requestPreview({
+        templateId: record.id,
+        templateVersionId: record.publishedVersionId,
+        sourceHash: inputs.version.sourceHash,
+        title: inputs.template.title,
+        aspectRatio: inputs.template.aspectRatio,
+        duration: inputs.template.duration,
+        normalizedEditorState: inputs.version.normalizedEditorState,
+        sourceEdit: inputs.version.sourceEdit,
+      });
+    } catch {
+      // Best-effort preview scheduling must not fail catalogue sync
+    }
+  };
+
   const synchronizeExisting = async (
     existing: SyncTemplateRecord,
     inputs: { template: SyncTemplateInput; version: SyncVersionInput }
@@ -881,6 +984,7 @@ export async function synchronizeShotstackTemplates(
       );
       if (!refreshed) return;
       summary.unchanged += 1;
+      await triggerPreview(existing, inputs);
       return;
     }
     let outcome: "updated" | "unchanged" | null;
@@ -912,6 +1016,8 @@ export async function synchronizeShotstackTemplates(
     }
     if (!outcome) return;
     summary[outcome] += 1;
+    const latestRecord = await repository.findByExternalId(inputs.template.externalTemplateId);
+    await triggerPreview(latestRecord || existing, inputs);
   };
 
   const synchronizeOne = async (listedTemplate: ShotstackTemplateSummary) => {
@@ -919,8 +1025,9 @@ export async function synchronizeShotstackTemplates(
       const detail = await client.getTemplate(listedTemplate.id);
       if (!(await repository.isRunCurrent(run))) return;
       const edit = providerEdit(detail);
-      const conversion = converter(edit);
-      const hash = sourceHash(edit);
+      const durationHint = providerDurationHint(detail);
+      const conversion = converter(edit, durationHint);
+      const hash = sourceHash(edit, durationHint);
       const inputs = buildInputs(
         listedTemplate,
         detail,
@@ -940,6 +1047,7 @@ export async function synchronizeShotstackTemplates(
           );
           if (!created) return;
           summary.created += 1;
+          await triggerPreview(created, inputs);
         } catch {
           if (!(await repository.isRunCurrent(run))) return;
           const concurrentlyCreated = await repository.findByExternalId(listedTemplate.id);

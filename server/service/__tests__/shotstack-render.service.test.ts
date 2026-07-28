@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import mongoose from "mongoose";
 import type { ShotstackRenderStatus } from "../../integration/shotstack/shotstack.types";
+import { ShotstackProviderError } from "../../integration/shotstack/shotstack.client";
+import { VideoProjectRenderModel } from "../../model/video-project-render.model";
+import { VideoTemplateModel } from "../../model/video-template.model";
+import { VideoTemplateVersionModel } from "../../model/video-template-version.model";
 import {
   buildShotstackCallbackUrl,
   createShotstackRenderService,
+  diagnosticMessage,
   fetchShotstackOutput,
   getVideoTemplateRenderEngine,
+  MongooseShotstackRenderRepository,
   ShotstackWebhookError,
   validateCloudinaryOutputUrl,
   validateShotstackOutputUrl,
@@ -296,6 +303,14 @@ test("builds a callback only from a valid URL and safe configured secret", () =>
   assert.equal(buildShotstackCallbackUrl({
     SHOTSTACK_WEBHOOK_SECRET: "safe_webhook_secret_12345",
   }), undefined);
+  assert.equal(buildShotstackCallbackUrl({
+    SHOTSTACK_WEBHOOK_URL: "https://DOMAIN_BACKEND_PUBLIC/api/v1/webhooks/shotstack",
+    SHOTSTACK_WEBHOOK_SECRET: "safe_webhook_secret_12345",
+  }), undefined);
+  assert.equal(buildShotstackCallbackUrl({
+    SHOTSTACK_WEBHOOK_URL: "https://localhost:3000/api/v1/webhooks/shotstack",
+    SHOTSTACK_WEBHOOK_SECRET: "safe_webhook_secret_12345",
+  }), undefined);
 });
 
 test("submits the immutable snapshot once, preserves the provider edit, and persists provider ID", async () => {
@@ -313,6 +328,61 @@ test("submits the immutable snapshot once, preserves the provider edit, and pers
   assert.equal(repository.render.providerRenderId, "provider-render-1");
   assert.equal(repository.render.engine, "shotstack");
   assert.equal(repository.render.status, "rendering");
+});
+
+test("submits template previews through the template render endpoint with saved merge values", async () => {
+  const templateSnapshot = snapshot();
+  const sourceEditWithMerge: Record<string, unknown> = {
+    ...templateSnapshot.sourceEdit,
+    merge: [
+      { find: "MAIN_VIDEO", replace: "https://cdn.example.com/default.mp4" },
+    ],
+  };
+  const previewSnapshot = {
+    ...templateSnapshot,
+    sourceEdit: sourceEditWithMerge,
+  };
+  const repository = new MemoryRepository({
+    purpose: "template-preview",
+    templateId: "local-template-1",
+    snapshot: previewSnapshot,
+  });
+  let templateSubmission: Record<string, unknown> | undefined;
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        throw new Error("Template preview must not use the raw edit endpoint.");
+      },
+      async renderTemplate(input: Record<string, unknown>) {
+        templateSubmission = structuredClone(input);
+        return { renderId: "provider-template-render-1" };
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    async resolveTemplateProviderId(templateId: string) {
+      assert.equal(templateId, "local-template-1");
+      return "shotstack-template-1";
+    },
+    getEnvironment: () => ({
+      SHOTSTACK_WEBHOOK_URL: "https://app.example.com/api/v1/webhooks/shotstack",
+      SHOTSTACK_WEBHOOK_SECRET: "safe_webhook_secret_12345",
+    }),
+    now: () => new Date(NOW),
+  } as Parameters<typeof createShotstackRenderService>[0] & Record<string, unknown>);
+
+  await service.submitShotstackRender("render-1");
+
+  assert.deepEqual(templateSubmission, {
+    templateId: "shotstack-template-1",
+    merge: [
+      { find: "MAIN_VIDEO", replace: "https://cdn.example.com/default.mp4" },
+    ],
+  });
+  assert.equal(repository.render.providerRenderId, "provider-template-render-1");
+  assert.equal(repository.render.providerSubmissionState, "confirmed");
 });
 
 test("persists the durable attempting marker before issuing the provider POST", async () => {
@@ -720,6 +790,34 @@ test("a timeout after POST is terminal-uncertain and never auto-posts again", as
   assert.equal(repository.render.errorCode, "VIDEO_PROJECT_RENDER_SUBMISSION_UNCERTAIN");
 });
 
+test("a provider validation rejection is a definite failure and preserves diagnostics", async () => {
+  const repository = new MemoryRepository();
+  const service = createShotstackRenderService({
+    repository,
+    client: {
+      async renderEdit() {
+        throw new ShotstackProviderError("Callback URL is invalid.", {
+          status: 400,
+          code: "BAD_REQUEST",
+        });
+      },
+      async getRender() {
+        throw new Error("Unexpected polling.");
+      },
+    },
+    getEnvironment: () => ({}),
+    now: () => new Date(NOW),
+  });
+
+  await service.submitShotstackRender("render-1");
+
+  assert.equal(repository.render.status, "failed");
+  assert.equal(repository.render.providerSubmissionState, "rejected");
+  assert.equal(repository.render.providerErrorCode, "BAD_REQUEST");
+  assert.equal(repository.render.providerErrorMessage, "Callback URL is invalid.");
+  assert.equal(repository.render.errorCode, "VIDEO_PROJECT_RENDER_SUBMISSION_REJECTED");
+});
+
 test("provider-ID persistence failure is terminal-uncertain and never posts twice", async () => {
   class PersistenceFailureRepository extends MemoryRepository {
     override async persistProviderSubmission() {
@@ -906,4 +1004,224 @@ test("an expired transfer lease cannot let the old owner overwrite the new resul
     repository.render.outputUrl,
     "https://res.cloudinary.com/app/video/upload/new.mp4"
   );
+});
+
+test("completed current template preview publishes the managed MP4 URL", async () => {
+  const templateId = "template-1";
+  const versionId = "version-1";
+  const sourceHash = "hash-1";
+
+  const templateStore = new Map<string, { publishedVersionId: string; previewVideoUrl?: string }>();
+  templateStore.set(templateId, { publishedVersionId: versionId });
+
+  const versionStore = new Map<string, { sourceHash: string }>();
+  versionStore.set(versionId, { sourceHash });
+
+  class TemplatePreviewRepository extends MemoryRepository {
+    override async completeTransfer(renderId: string, leaseOwner: string, outputUrl: string, completedAt: Date) {
+      const ok = await super.completeTransfer(renderId, leaseOwner, outputUrl, completedAt);
+      if (!ok) return false;
+      if (
+        this.render.purpose === "template-preview" &&
+        this.render.templateId &&
+        this.render.templateVersionId &&
+        this.render.templateSourceHash
+      ) {
+        const t = templateStore.get(this.render.templateId);
+        const v = versionStore.get(this.render.templateVersionId);
+        if (t && t.publishedVersionId === this.render.templateVersionId && v && v.sourceHash === this.render.templateSourceHash) {
+          t.previewVideoUrl = outputUrl;
+        }
+      }
+      return true;
+    }
+  }
+
+  const repository = new TemplatePreviewRepository({
+    purpose: "template-preview" as const,
+    templateId,
+    templateVersionId: versionId,
+    templateSourceHash: sourceHash,
+    status: "rendering",
+    providerRenderId: "provider-render-1",
+  } as Partial<ShotstackRenderRecord>);
+
+  const { service } = createHarness(repository, [{
+    id: "provider-render-1",
+    status: "done",
+    url: "https://cdn.shotstack.io/temp/render-1.mp4",
+  }]);
+
+  await service.reconcileShotstackRender("render-1");
+
+  assert.equal(repository.render.status, "completed");
+  assert.equal(
+    templateStore.get(templateId)?.previewVideoUrl,
+    "https://res.cloudinary.com/app/video/upload/render-1.mp4"
+  );
+});
+
+test("completed stale template preview cannot overwrite the current URL", async () => {
+  const templateId = "template-1";
+  const staleVersionId = "version-1";
+  const newVersionId = "version-2";
+
+  const templateStore = new Map<string, { publishedVersionId: string; previewVideoUrl?: string }>();
+  templateStore.set(templateId, { publishedVersionId: newVersionId, previewVideoUrl: "https://res.cloudinary.com/app/video/upload/current.mp4" });
+
+  const versionStore = new Map<string, { sourceHash: string }>();
+  versionStore.set(staleVersionId, { sourceHash: "hash-1" });
+  versionStore.set(newVersionId, { sourceHash: "hash-2" });
+
+  class TemplatePreviewRepository extends MemoryRepository {
+    override async completeTransfer(renderId: string, leaseOwner: string, outputUrl: string, completedAt: Date) {
+      const ok = await super.completeTransfer(renderId, leaseOwner, outputUrl, completedAt);
+      if (!ok) return false;
+      if (
+        this.render.purpose === "template-preview" &&
+        this.render.templateId &&
+        this.render.templateVersionId &&
+        this.render.templateSourceHash
+      ) {
+        const t = templateStore.get(this.render.templateId);
+        const v = versionStore.get(this.render.templateVersionId);
+        if (t && t.publishedVersionId === this.render.templateVersionId && v && v.sourceHash === this.render.templateSourceHash) {
+          t.previewVideoUrl = outputUrl;
+        }
+      }
+      return true;
+    }
+  }
+
+  const repository = new TemplatePreviewRepository({
+    purpose: "template-preview" as const,
+    templateId,
+    templateVersionId: staleVersionId,
+    templateSourceHash: "hash-1",
+    status: "rendering",
+    providerRenderId: "stale-render-1",
+  } as Partial<ShotstackRenderRecord>);
+
+  const { service } = createHarness(repository, [{
+    id: "stale-render-1",
+    status: "done",
+    url: "https://cdn.shotstack.io/temp/stale.mp4",
+  }]);
+
+  await service.reconcileShotstackRender("render-1");
+
+  assert.equal(repository.render.status, "completed");
+  assert.equal(
+    templateStore.get(templateId)?.previewVideoUrl,
+    "https://res.cloudinary.com/app/video/upload/current.mp4"
+  );
+});
+
+test("project export completion remains unchanged", async () => {
+  const repository = new MemoryRepository({
+    purpose: "project-export" as const,
+    status: "rendering",
+    providerRenderId: "export-render-1",
+  } as Partial<ShotstackRenderRecord>);
+
+  const { service } = createHarness(repository, [{
+    id: "export-render-1",
+    status: "done",
+    url: "https://cdn.shotstack.io/temp/export.mp4",
+  }]);
+
+  await service.reconcileShotstackRender("render-1");
+
+  assert.equal(repository.render.status, "completed");
+  assert.equal("templateId" in repository.render, false);
+});
+
+test("Mongoose completeTransfer executes transactional render and template preview updates", async (context) => {
+  const renderId = "6650f0f0f0f0f0f0f0f0f0f1";
+  const templateId = "6650f0f0f0f0f0f0f0f0f0f2";
+  const templateVersionId = "6650f0f0f0f0f0f0f0f0f0f3";
+  const sourceHash = "hash-prod-1";
+  const leaseOwner = "lease-owner-1";
+
+  const session = {
+    async withTransaction(callback: () => Promise<void>) {
+      await callback();
+    },
+    async endSession() {},
+  };
+
+  context.mock.method(
+    mongoose,
+    "startSession",
+    async () => session as unknown as Awaited<ReturnType<typeof mongoose.startSession>>
+  );
+
+  context.mock.method(VideoProjectRenderModel, "findOne", () => ({
+    lean: async () => ({
+      _id: renderId,
+      purpose: "template-preview",
+      templateId,
+      templateVersionId,
+      templateSourceHash: sourceHash,
+      status: "uploading",
+      transferLeaseOwner: leaseOwner,
+    }),
+  }));
+
+  const renderUpdates: Array<Record<string, unknown>> = [];
+  context.mock.method(VideoProjectRenderModel, "updateOne", async (filter: Record<string, unknown>, update: Record<string, unknown>) => {
+    renderUpdates.push({ filter, update });
+    return { matchedCount: 1 };
+  });
+
+  context.mock.method(VideoTemplateModel, "findOne", () => ({
+    session: () => ({
+      lean: async () => ({ _id: templateId, publishedVersionId: templateVersionId }),
+    }),
+  }));
+
+  context.mock.method(VideoTemplateVersionModel, "findOne", () => ({
+    session: () => ({
+      lean: async () => ({ _id: templateVersionId, templateId, sourceHash }),
+    }),
+  }));
+
+  const templateUpdates: Array<Record<string, unknown>> = [];
+  context.mock.method(VideoTemplateModel, "updateOne", async (filter: Record<string, unknown>, update: Record<string, unknown>) => {
+    templateUpdates.push({ filter, update });
+    return { matchedCount: 1 };
+  });
+
+  const repository = new MongooseShotstackRenderRepository();
+  const outputUrl = "https://res.cloudinary.com/app/video/upload/final.mp4";
+  const completedAt = new Date("2026-07-24T12:00:00.000Z");
+
+  const success = await repository.completeTransfer(renderId, leaseOwner, outputUrl, completedAt);
+
+  const renderFilter = renderUpdates[0].filter as Record<string, unknown>;
+  const templateFilter = templateUpdates[0].filter as Record<string, unknown>;
+
+  assert.equal(success, true);
+  assert.equal(renderUpdates.length, 1);
+  assert.equal(renderFilter._id, renderId);
+  assert.equal(templateUpdates.length, 1);
+  assert.equal(templateFilter._id, templateId);
+  assert.equal(templateFilter.publishedVersionId, templateVersionId);
+  assert.deepEqual(templateUpdates[0].update, { $set: { previewVideoUrl: outputUrl } });
+});
+
+test("diagnosticMessage extracts message from Error object and redacts API key", () => {
+  const env = { SHOTSTACK_API_KEY: "secret-key-12345" };
+  const err = new Error("Shotstack render failed with secret-key-12345 on line 1\nSecond line stack trace");
+
+  const message = diagnosticMessage(err, env);
+  assert.equal(message, "Shotstack render failed with [REDACTED] on line 1");
+});
+
+test("diagnosticMessage extracts message from object with message property and limits length", () => {
+  const env = {};
+  const obj = { message: "A".repeat(600) };
+
+  const message = diagnosticMessage(obj, env);
+  assert.equal(message?.length, 500);
 });

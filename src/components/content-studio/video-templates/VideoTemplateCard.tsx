@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Heart, Play, Clock, Eye, Sparkles, Flame } from 'lucide-react';
+import { Heart, Play, Clock, Eye, Sparkles, Flame, Loader2, AlertCircle } from 'lucide-react';
 import { VideoTemplateSummary } from '../../../types/video-template';
 
 interface VideoTemplateCardProps {
   template: VideoTemplateSummary;
   onClick: (template: VideoTemplateSummary) => void;
+  aspectRatioOverride?: string;
 }
 
-export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps) {
+export function VideoTemplateCard({ template, onClick, aspectRatioOverride }: VideoTemplateCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
@@ -21,7 +22,10 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
     prefersReducedMotion.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }, []);
 
-  const shouldPlayPreview = (isHovered || isFocused) && !!template.previewVideoUrl && !videoError && !prefersReducedMotion.current;
+  const isReady = template.previewStatus === 'ready';
+  const isFailed = template.previewStatus === 'failed';
+  const isPending = template.previewStatus === 'pending' || (!isReady && !isFailed);
+  const shouldPlayPreview = (isHovered || isFocused) && isReady && !!template.previewVideoUrl && !videoError && !prefersReducedMotion.current;
 
   useEffect(() => {
     if (shouldPlayPreview && videoRef.current) {
@@ -55,16 +59,27 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
     }
   };
 
-  // Determine aspect ratio class
+  // Determine aspect ratio class (defaults to 16:9 when override provided or requested)
   const getAspectRatioClass = () => {
-    switch (template.aspectRatio) {
+    const targetRatio = aspectRatioOverride || '16:9';
+    switch (targetRatio) {
       case '16:9':
         return 'aspect-16/9';
       case '1:1':
         return 'aspect-square';
       case '9:16':
-      default:
         return 'aspect-9/16';
+      case 'auto':
+      default:
+        switch (template.aspectRatio) {
+          case '16:9':
+            return 'aspect-16/9';
+          case '1:1':
+            return 'aspect-square';
+          case '9:16':
+          default:
+            return 'aspect-9/16';
+        }
     }
   };
 
@@ -85,8 +100,7 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onFocus={() => setIsFocused(true)}
-      onBlur={() => setIsFocused(false)}
-      className="group relative flex flex-col rounded-2xl border border-slate-200/80 bg-white p-2.5 shadow-2xs transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer select-none"
+      className="group relative flex flex-col h-fit rounded-2xl border border-slate-200/80 bg-white p-2.5 shadow-2xs transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer select-none"
     >
       {/* Media Container */}
       <div className={`relative w-full ${getAspectRatioClass()} rounded-xl bg-slate-900 overflow-hidden`}>
@@ -94,6 +108,20 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
         <img
           src={template.thumbnailUrl}
           alt={template.title}
+          onError={(e) => {
+            const title = template.title || 'Mẫu video';
+            const colors = [
+              ['#4f46e5', '#06b6d4'],
+              ['#0f172a', '#0891b2'],
+              ['#7c3aed', '#ec4899'],
+              ['#059669', '#0e7490'],
+              ['#ea580c', '#ca8a04'],
+            ];
+            const charSum = title.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            const [c1, c2] = colors[Math.abs(charSum) % colors.length];
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="${c1}"/><stop offset="100%" stop-color="${c2}"/></linearGradient></defs><rect width="600" height="800" fill="url(#g)"/><rect y="500" width="600" height="300" fill="#020617" opacity="0.65"/><text x="40" y="680" fill="white" font-family="system-ui, sans-serif" font-size="40" font-weight="bold">${title}</text></svg>`;
+            e.currentTarget.src = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+          }}
           className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
             shouldPlayPreview && !isVideoLoading ? 'opacity-0' : 'opacity-100'
           }`}
@@ -101,7 +129,7 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
         />
 
         {/* Video Preview */}
-        {template.previewVideoUrl && !videoError && (
+        {isReady && template.previewVideoUrl && !videoError && (
           <video
             ref={videoRef}
             src={template.previewVideoUrl}
@@ -113,6 +141,26 @@ export function VideoTemplateCard({ template, onClick }: VideoTemplateCardProps)
               shouldPlayPreview && !isVideoLoading ? 'opacity-100' : 'opacity-0'
             }`}
           />
+        )}
+
+        {/* Failed Preview State */}
+        {isFailed && (
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-2 text-center z-10">
+            <div className="flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-medium text-rose-300 border border-rose-500/30">
+              <AlertCircle className="h-3 w-3 text-rose-400" />
+              <span>Không thể tạo bản xem trước</span>
+            </div>
+          </div>
+        )}
+
+        {/* Pending Preview State */}
+        {isPending && (
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-2 text-center z-10">
+            <div className="flex items-center gap-1.5 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-medium text-amber-300 border border-amber-500/30">
+              <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+              <span>Đang tạo bản xem trước…</span>
+            </div>
+          </div>
         )}
 
         {/* Gradient Overlay for Readability */}

@@ -16,7 +16,10 @@ import {
 } from "../service/shotstack-template-sync.service";
 import * as videoProjectRenderService from "../service/video-project-render.service";
 import { normalizeVideoTemplateListQuery } from "../service/video-template-policy";
-import { videoTemplateService } from "../service/video-template.service";
+import {
+  UncertainPreviewSubmissionError,
+  videoTemplateService,
+} from "../service/video-template.service";
 
 const VIDEO_TEMPLATE_CATEGORIES = [
   { id: "all", name: "Dành cho bạn" },
@@ -29,6 +32,8 @@ const VIDEO_TEMPLATE_CATEGORIES = [
   { id: "vlog", name: "Vlog" },
   { id: "promo", name: "Khuyến mãi" },
 ];
+
+
 
 function getIdentity(req: AuthenticatedRequest) {
   if (!req.user?.id) throw new Error("Người dùng chưa xác thực.");
@@ -108,6 +113,30 @@ export function createShotstackAdminHandlers(
   };
 
   return {
+    async retryPreview(req: AuthenticatedRequest, res: Response) {
+      try {
+        const force = req.body?.force === true || req.query?.force === "true";
+        const data = await videoTemplateService.retryTemplatePreview(
+          getIdentity(req),
+          req.params.templateId,
+          { force }
+        );
+        return res.status(200).json({ status: "success", data });
+      } catch (error: unknown) {
+        if (error instanceof UncertainPreviewSubmissionError) {
+          return res.status(409).json({
+            status: "conflict",
+            message: error.message,
+            uncertain: true,
+            requiresForce: true,
+          });
+        }
+        const message = error instanceof Error ? error.message : "Không thể tạo lại bản xem trước mẫu video.";
+        const status = message.includes("hoàn chỉnh") ? 400 : errorStatus(message);
+        return res.status(status).json({ status: "error", message });
+      }
+    },
+
     async sync(req: AuthenticatedRequest, res: Response) {
       try {
         dependencies.validateConfig();

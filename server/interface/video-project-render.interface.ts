@@ -4,7 +4,8 @@ export type VideoProjectRenderStatus = "queued" | "rendering" | "uploading" | "c
 export type VideoProjectRenderResolution = "720p" | "1080p";
 export type VideoProjectRenderAspectRatio = "9:16" | "1:1" | "16:9" | "3:4";
 export type VideoProjectRenderEngine = "shotstack" | "remotion" | "ffmpeg";
-export type VideoProjectRenderSubmissionState = "attempting" | "confirmed" | "uncertain";
+export type VideoProjectRenderSubmissionState = "attempting" | "confirmed" | "uncertain" | "rejected";
+export type VideoProjectRenderPurpose = "project-export" | "template-preview";
 
 export interface VideoProjectRenderSnapshot {
   title: string;
@@ -15,7 +16,11 @@ export interface VideoProjectRenderSnapshot {
 }
 
 export interface IVideoProjectRender extends Document {
-  projectId: Types.ObjectId;
+  purpose: VideoProjectRenderPurpose;
+  projectId?: Types.ObjectId;
+  templateId?: Types.ObjectId;
+  templateVersionId?: Types.ObjectId;
+  templateSourceHash?: string;
   userId: string;
   companyCode: string;
   status: VideoProjectRenderStatus;

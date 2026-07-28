@@ -846,7 +846,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     return slot;
   },
 
-  async publishNowSlot(companyCode: string, campaignId: string, slotId: string) {
+  async publishNowSlotDirect(companyCode: string, campaignId: string, slotId: string) {
     if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
       throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
     }

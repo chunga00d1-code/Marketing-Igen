@@ -1,81 +1,6 @@
 import { MediaAsset, TemplateEditorProject, TemplateEditorMode } from './types';
 
-function createSvgThumbnail(title: string, color1: string, color2: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
-    <defs>
-      <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${color1}"/>
-        <stop offset="100%" stop-color="${color2}"/>
-      </linearGradient>
-    </defs>
-    <rect width="400" height="600" fill="url(#g)"/>
-    <circle cx="320" cy="100" r="140" fill="#ffffff" fill-opacity="0.12"/>
-    <circle cx="80" cy="500" r="160" fill="#000000" fill-opacity="0.15"/>
-    <text x="200" y="310" font-family="system-ui, sans-serif" font-size="24" font-weight="bold" fill="#ffffff" text-anchor="middle">${title}</text>
-  </svg>`;
-  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-}
-
-export const MOCK_MEDIA_ASSETS: MediaAsset[] = [
-  {
-    id: 'asset-001',
-    name: 'AW9E8BT5-Q5U7...',
-    type: 'video',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    thumbnailUrl: createSvgThumbnail('Model Fashion 1', '#111827', '#374151'),
-    duration: 5.1,
-    added: true,
-  },
-  {
-    id: 'asset-002',
-    name: 'GQZX35S-HYR0...',
-    type: 'video',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-    thumbnailUrl: createSvgThumbnail('Model Fashion 2', '#1e1b4b', '#4338ca'),
-    duration: 12.3,
-    added: true,
-  },
-  {
-    id: 'asset-003',
-    name: 'GNSPVM8J-0B91...',
-    type: 'image',
-    url: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=600&auto=format&fit=crop&q=80',
-    thumbnailUrl: createSvgThumbnail('Lookbook Summer', '#831843', '#db2777'),
-    added: false,
-  },
-  {
-    id: 'asset-004',
-    name: 'A62UVPT2-IEVI...',
-    type: 'image',
-    url: 'https://images.unsplash.com/photo-1529139574466-a303027c1d8b?w=600&auto=format&fit=crop&q=80',
-    thumbnailUrl: createSvgThumbnail('Urban Style 2026', '#064e3b', '#059669'),
-    added: false,
-  },
-  {
-    id: 'asset-005',
-    name: 'coverflix-650964...',
-    type: 'video',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-    thumbnailUrl: createSvgThumbnail('Outdoor Vibes', '#7c2d12', '#ea580c'),
-    duration: 8.0,
-    added: false,
-  },
-  {
-    id: 'asset-006',
-    name: 'TUTQ37C-E6UE...',
-    type: 'image',
-    url: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=600&auto=format&fit=crop&q=80',
-    thumbnailUrl: createSvgThumbnail('Shopping Collection', '#4c1d95', '#7c3aed'),
-    added: false,
-  },
-];
-
-export const MOCK_TEXT_PRESETS = [
-  { id: 'txt-p1', title: 'Tiêu đề Trend TikTok', text: 'TikTok KANGGUG', color: '#00e5ff', fontSize: 32, bold: true },
-  { id: 'txt-p2', title: 'Subtitle Phụ Đề', text: 'FLASH SALE 50% HÔM NAY', color: '#ffd600', fontSize: 24, bold: true },
-  { id: 'txt-p3', title: 'Call To Action', text: 'Mua Ngay Nút Bên Dưới', color: '#ffffff', fontSize: 20, bold: false },
-  { id: 'txt-p4', title: 'Tên Thương Hiệu', text: 'iGen Creative Studio', color: '#a855f7', fontSize: 28, bold: true },
-];
+export const MOCK_MEDIA_ASSETS: MediaAsset[] = [];
 
 export const MOCK_AUDIO_TRACKS = [
   { id: 'audio-01', name: 'Upbeat EDM Viral Summer', artist: 'iGen Sound', duration: 17.4, url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
@@ -127,8 +52,8 @@ export function createDefaultProject(
   // MODE: EDIT PROJECT (Loaded from selected template or default)
   const templateTitle = initialData?.title || 'Dự án từ mẫu TikTok';
   const templateDuration = initialData?.duration || 17.4;
-  const mainMediaUrl = initialData?.previewVideoUrl || MOCK_MEDIA_ASSETS[0].url;
-  const mainThumbUrl = initialData?.thumbnailUrl || MOCK_MEDIA_ASSETS[0].thumbnailUrl;
+  const mainMediaUrl = initialData?.previewVideoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+  const mainThumbUrl = initialData?.thumbnailUrl || '';
 
   const items: TemplateEditorProject['items'] = [
     {

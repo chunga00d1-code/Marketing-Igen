@@ -19,6 +19,7 @@ import {
   type SyncTemplateRecord,
   type SyncVersionInput,
 } from "../shotstack-template-sync.service";
+import type { RequestVideoTemplatePreviewInput } from "../video-template-preview.service";
 
 function providerTemplate(
   id: string,
@@ -142,9 +143,14 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
       typeof record.lastSyncGeneration === "number"
       && record.lastSyncGeneration > run.generation
     ) return false;
-    Object.assign(record, structuredClone(input), {
+    const updateData: Record<string, unknown> = {
+      ...structuredClone(input),
       lastSyncGeneration: run.generation,
-    });
+    };
+    if (input.previewVideoUrl === undefined) {
+      delete updateData.previewVideoUrl;
+    }
+    Object.assign(record, updateData);
     return true;
   }
 
@@ -162,10 +168,15 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
       typeof record.lastSyncGeneration === "number"
       && record.lastSyncGeneration > run.generation
     ) return null;
+    const updateData: Record<string, unknown> = {
+      ...structuredClone(template),
+      lastSyncGeneration: run.generation,
+    };
+    if (template.previewVideoUrl === undefined) {
+      delete updateData.previewVideoUrl;
+    }
     if (record.sourceHash === template.sourceHash) {
-      Object.assign(record, structuredClone(template), {
-        lastSyncGeneration: run.generation,
-      });
+      Object.assign(record, updateData);
       return "unchanged" as const;
     }
     const nextVersion = this.versions
@@ -178,7 +189,7 @@ class MemoryRepository implements ShotstackTemplateSyncRepository {
       templateId,
       version: nextVersion,
     });
-    Object.assign(record, structuredClone(template), {
+    Object.assign(record, updateData, {
       publishedVersionId: versionId,
       lastSyncGeneration: run.generation,
     });
@@ -498,6 +509,124 @@ test("first import creates one published template and immutable version", async 
   assert.equal(repository.templates.get("one")?.aspectRatio, "9:16");
   assert.equal(repository.templates.get("one")?.thumbnailUrl, "https://cdn.example.com/one.mp4");
   assert.equal(repository.syncLeases.size, 0);
+});
+
+test("imports the nested template payload returned by the current Shotstack API", async () => {
+  const repository = new MemoryRepository();
+  const detail = {
+    id: "nested-one",
+    name: "Nested Shotstack template",
+    owner: "shotstack-owner",
+    template: {
+      timeline: {
+        tracks: [{
+          clips: [{
+            asset: {
+              type: "video",
+              src: "https://cdn.example.com/nested-one.mp4",
+            },
+            start: 0,
+            length: 5,
+          }],
+        }],
+      },
+      output: { format: "mp4", aspectRatio: "9:16" },
+      merge: [],
+    },
+  } as ShotstackTemplate;
+
+  const result = await sync(repository, [detail]);
+
+  assert.equal(result.created, 1);
+  assert.equal(result.failedCount, 0);
+  assert.equal(
+    repository.templates.get("nested-one")?.title,
+    "Nested Shotstack template"
+  );
+  assert.ok(repository.versions[0].sourceEdit.timeline);
+  assert.equal("template" in repository.versions[0].sourceEdit, false);
+});
+
+test("uses nested template metadata duration for an all-symbolic visual timeline", async () => {
+  const repository = new MemoryRepository();
+  const detail = {
+    id: "symbolic-nested",
+    name: "Symbolic nested template",
+    duration: 12,
+    template: {
+      timeline: {
+        tracks: [{
+          clips: [{
+            asset: {
+              type: "video",
+              src: "{{ VIDEO }}",
+            },
+            start: 2,
+            length: "auto",
+          }],
+        }],
+      },
+      output: { format: "mp4", aspectRatio: "9:16" },
+      merge: [{ find: "VIDEO", replace: "https://cdn.example.com/default.mp4" }],
+    },
+  } as ShotstackTemplate;
+
+  const result = await sync(repository, [detail]);
+
+  assert.equal(result.created, 1);
+  assert.equal(result.failedCount, 0);
+  assert.equal(repository.templates.get("symbolic-nested")?.duration, 12);
+  assert.equal(
+    (repository.versions[0].normalizedEditorState.items as Array<Record<string, unknown>>)[0].duration,
+    10
+  );
+  assert.deepEqual(repository.versions[0].sourceEdit, detail.template);
+});
+
+test("duration-only wrapper updates create a new normalized template version", async () => {
+  const repository = new MemoryRepository();
+  const nestedEdit = {
+    timeline: {
+      tracks: [{
+        clips: [{
+          asset: {
+            type: "video",
+            src: "{{ VIDEO }}",
+          },
+          start: 2,
+          length: "auto",
+        }],
+      }],
+    },
+    output: { format: "mp4", aspectRatio: "9:16" },
+    merge: [{ find: "VIDEO", replace: "https://cdn.example.com/default.mp4" }],
+  };
+  const first = {
+    id: "duration-only",
+    name: "Duration-only wrapper",
+    duration: 12,
+    template: structuredClone(nestedEdit),
+  } as ShotstackTemplate;
+  const second = {
+    ...first,
+    duration: 16,
+    template: structuredClone(nestedEdit),
+  } as ShotstackTemplate;
+
+  await sync(repository, [first]);
+  const result = await sync(repository, [second]);
+
+  assert.equal(result.updated, 1);
+  assert.equal(result.unchanged, 0);
+  assert.equal(repository.versions.length, 2);
+  assert.equal(repository.versions[1].version, 2);
+  assert.equal(repository.templates.get("duration-only")?.duration, 16);
+  assert.equal(
+    (repository.versions[1].normalizedEditorState.items as Array<Record<string, unknown>>)[0].duration,
+    14
+  );
+  assert.deepEqual(repository.versions[1].sourceEdit, nestedEdit);
+  assert.notEqual(repository.versions[0].sourceHash, repository.versions[1].sourceHash);
 });
 
 test("same canonical edit with different object key order is unchanged", async () => {
@@ -1310,5 +1439,136 @@ test("seed fallback requires an explicit flag and unavailable Shotstack configur
   assert.equal(
     shouldUseVideoTemplateSeedFallback({ VIDEO_TEMPLATE_SEED_FALLBACK: "TRUE" }),
     false
+  );
+});
+
+test("new import requests one background preview after persistence", async () => {
+  const repository = new MemoryRepository();
+  const previewRequests: Array<RequestVideoTemplatePreviewInput> = [];
+  const requestPreview = async (input: RequestVideoTemplatePreviewInput) => {
+    previewRequests.push(input);
+    return { renderId: "render-1", created: true };
+  };
+
+  const result = await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([providerTemplate("p1")]),
+    repository,
+    environment: "stage",
+    requestPreview,
+  });
+
+  assert.equal(result.created, 1);
+  assert.equal(previewRequests.length, 1);
+  assert.equal(previewRequests[0].templateId, repository.templates.get("p1")?.id);
+  assert.equal(previewRequests[0].templateVersionId, repository.versions[0].id);
+  assert.equal(repository.templates.get("p1")?.previewVideoUrl, undefined);
+});
+
+test("unchanged import reuses the same preview identity", async () => {
+  const repository = new MemoryRepository();
+  const previewRequests: Array<RequestVideoTemplatePreviewInput> = [];
+  const requestPreview = async (input: RequestVideoTemplatePreviewInput) => {
+    previewRequests.push(input);
+    return { renderId: "render-1", created: false };
+  };
+
+  await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([providerTemplate("p1")]),
+    repository,
+    environment: "stage",
+    requestPreview,
+  });
+
+  previewRequests.length = 0;
+
+  const result = await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([providerTemplate("p1")]),
+    repository,
+    environment: "stage",
+    requestPreview,
+  });
+
+  assert.equal(result.unchanged, 1);
+  assert.equal(previewRequests.length, 1);
+  assert.equal(previewRequests[0].templateVersionId, repository.versions[0].id);
+});
+
+test("changed import requests preview for the newly published version", async () => {
+  const repository = new MemoryRepository();
+  const previewRequests: Array<RequestVideoTemplatePreviewInput> = [];
+  const requestPreview = async (input: RequestVideoTemplatePreviewInput) => {
+    previewRequests.push(input);
+    return { renderId: "render-2", created: true };
+  };
+
+  const original = providerTemplate("p1");
+  await sync(repository, [original]);
+
+  const changed = providerTemplate("p1");
+  (changed.timeline as { tracks: Array<{ clips: Array<{ length: number }> }> }).tracks[0].clips[0].length = 10;
+
+  const result = await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([changed]),
+    repository,
+    environment: "stage",
+    requestPreview,
+  });
+
+  assert.equal(result.updated, 1);
+  assert.equal(previewRequests.length, 1);
+  assert.equal(previewRequests[0].templateVersionId, repository.versions[1].id);
+});
+
+test("preview request failure does not fail catalogue synchronization", async () => {
+  const repository = new MemoryRepository();
+  const requestPreview = async () => {
+    throw new Error("Preview enqueue queue down");
+  };
+
+  const result = await synchronizeShotstackTemplates("admin-1", {
+    client: clientFor([providerTemplate("p1")]),
+    repository,
+    environment: "stage",
+    requestPreview,
+  });
+
+  assert.equal(result.created, 1);
+  assert.equal(result.failed.length, 0);
+});
+
+test("does not set first video clip as previewVideoUrl", async () => {
+  const repository = new MemoryRepository();
+
+  await sync(repository, [providerTemplate("p1")]);
+
+  assert.equal(repository.templates.get("p1")?.previewVideoUrl, undefined);
+});
+
+test("never populates previewVideoUrl from dedicated provider preview metadata or overwrites existing Cloudinary preview URL", async () => {
+  const repository = new MemoryRepository();
+
+  const providerItemWithPreview = {
+    ...providerTemplate("p1"),
+    previewVideoUrl: "https://cdn.shotstack.io/temporary-clip.mp4",
+  };
+
+  await sync(repository, [providerItemWithPreview]);
+  assert.equal(repository.templates.get("p1")?.previewVideoUrl, undefined);
+
+  const template = repository.templates.get("p1");
+  if (template) {
+    template.previewVideoUrl = "https://res.cloudinary.com/app/video/upload/preview.mp4";
+  }
+
+  const updatedItemWithPreview = {
+    ...providerTemplate("p1"),
+    title: "Updated Title",
+    previewVideoUrl: "https://cdn.shotstack.io/another-temporary-clip.mp4",
+  };
+
+  await sync(repository, [updatedItemWithPreview]);
+  assert.equal(
+    repository.templates.get("p1")?.previewVideoUrl,
+    "https://res.cloudinary.com/app/video/upload/preview.mp4"
   );
 });

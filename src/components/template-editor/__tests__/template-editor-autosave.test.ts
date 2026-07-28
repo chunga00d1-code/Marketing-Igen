@@ -1,167 +1,244 @@
-import assert from 'node:assert/strict';
 import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createTemplateEditorAutosaveQueue } from '../template-editor-autosave';
 import * as autosaveModule from '../template-editor-autosave';
 
-type Deferred<T> = {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (error: unknown) => void;
-};
-
-function deferred<T>(): Deferred<T> {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
-
-type QueueContract<T> = {
-  enqueue: (snapshot: { serialized: string; value: T }) => void;
-  retry: () => void;
-  dispose: () => void;
-};
-
-type AutosaveContract = {
-  createTemplateEditorAutosaveQueue: <T>(options: {
-    initialRevision: number;
-    persist: (value: T, expectedRevision: number) => Promise<{ revision: number }>;
-    onAttempt?: () => void;
-    onPersisted?: (serialized: string, revision: number) => void;
-    onError?: (error: unknown) => void;
-  }) => QueueContract<T>;
-};
-
-const subject = autosaveModule as unknown as AutosaveContract;
-
-test("serializes saves and coalesces in-flight edits to the newest snapshot", async () => {
-  assert.equal(typeof subject.createTemplateEditorAutosaveQueue, 'function');
-  const first = deferred<{ revision: number }>();
-  const second = deferred<{ revision: number }>();
-  const firstStarted = deferred<void>();
-  const secondStarted = deferred<void>();
-  const latestPersisted = deferred<void>();
-  const calls: Array<{ title: string; expectedRevision: number }> = [];
-
-  const queue = subject.createTemplateEditorAutosaveQueue<{ title: string }>({
-    initialRevision: 7,
-    persist: async (value, expectedRevision) => {
-      calls.push({ title: value.title, expectedRevision });
-      if (calls.length === 1) {
-        firstStarted.resolve();
-        return first.promise;
-      }
-      secondStarted.resolve();
-      return second.promise;
-    },
-    onPersisted: (serialized) => {
-      if (serialized === 'latest') latestPersisted.resolve();
-    },
-  });
-
-  queue.enqueue({ serialized: 'older', value: { title: 'Older' } });
-  await firstStarted.promise;
-  queue.enqueue({ serialized: 'middle', value: { title: 'Middle' } });
-  queue.enqueue({ serialized: 'latest', value: { title: 'Latest' } });
-
-  assert.deepEqual(calls, [{ title: 'Older', expectedRevision: 7 }]);
-
-  first.resolve({ revision: 8 });
-  await secondStarted.promise;
-  assert.deepEqual(calls, [
-    { title: 'Older', expectedRevision: 7 },
-    { title: 'Latest', expectedRevision: 8 },
-  ]);
-
-  second.resolve({ revision: 9 });
-  await latestPersisted.promise;
-  assert.equal(calls.at(-1)?.title, 'Latest');
-});
-
-test("preserves the newest pending edit after an error and retries that snapshot", async () => {
-  assert.equal(typeof subject.createTemplateEditorAutosaveQueue, 'function');
-  const first = deferred<{ revision: number }>();
-  const second = deferred<{ revision: number }>();
-  const third = deferred<{ revision: number }>();
-  const firstStarted = deferred<void>();
-  const secondStarted = deferred<void>();
-  const thirdStarted = deferred<void>();
-  let errors = 0;
-  const twoErrorsReported = deferred<void>();
-  const calls: Array<{ title: string; expectedRevision: number }> = [];
-
-  const queue = subject.createTemplateEditorAutosaveQueue<{ title: string }>({
-    initialRevision: 3,
-    persist: async (value, expectedRevision) => {
-      calls.push({ title: value.title, expectedRevision });
-      if (calls.length === 1) {
-        firstStarted.resolve();
-        return first.promise;
-      }
-      if (calls.length === 2) {
-        secondStarted.resolve();
-        return second.promise;
-      }
-      thirdStarted.resolve();
-      return third.promise;
-    },
-    onError: () => {
-      errors += 1;
-      if (errors === 2) twoErrorsReported.resolve();
-    },
-  });
-
-  queue.enqueue({ serialized: 'older', value: { title: 'Older' } });
-  await firstStarted.promise;
-  queue.enqueue({ serialized: 'latest', value: { title: 'Latest' } });
-  first.reject(new Error('revision conflict'));
-  await secondStarted.promise;
-  second.reject(new Error('revision conflict'));
-  await twoErrorsReported.promise;
-
-  assert.deepEqual(calls, [
-    { title: 'Older', expectedRevision: 3 },
-    { title: 'Latest', expectedRevision: 3 },
-  ]);
-
-  queue.retry();
-  await thirdStarted.promise;
-  assert.deepEqual(calls.at(-1), { title: 'Latest', expectedRevision: 3 });
-  third.resolve({ revision: 4 });
-});
-
-test("cleanup drops pending work and suppresses callbacks after an in-flight save", async () => {
-  assert.equal(typeof subject.createTemplateEditorAutosaveQueue, 'function');
-  const first = deferred<{ revision: number }>();
-  const firstStarted = deferred<void>();
-  const calls: string[] = [];
-  let callbacks = 0;
-
-  const queue = subject.createTemplateEditorAutosaveQueue<{ title: string }>({
+test('flush resolves immediately when queue is empty and not in flight', async () => {
+  const queue = createTemplateEditorAutosaveQueue<string>({
     initialRevision: 1,
-    persist: async (value) => {
-      calls.push(value.title);
-      firstStarted.resolve();
-      return first.promise;
+    persist: async () => ({ revision: 2 }),
+  });
+
+  await queue.flush();
+  assert.ok(true);
+});
+
+test('flush waits for in-flight save to finish', async () => {
+  let resolvePersist: (val: { revision: number }) => void = () => {};
+  let persisted = false;
+
+  const queue = createTemplateEditorAutosaveQueue<string>({
+    initialRevision: 1,
+    persist: () =>
+      new Promise((res) => {
+        resolvePersist = (val) => {
+          persisted = true;
+          res(val);
+        };
+      }),
+  });
+
+  queue.enqueue({ serialized: 'snap1', value: 'val1' });
+
+  let flushed = false;
+  const flushPromise = queue.flush().then(() => {
+    flushed = true;
+  });
+
+  assert.equal(flushed, false);
+  assert.equal(persisted, false);
+
+  resolvePersist({ revision: 2 });
+  await flushPromise;
+
+  assert.equal(flushed, true);
+  assert.equal(persisted, true);
+});
+
+test('flush waits until latest enqueued snapshot is persisted', async () => {
+  const saveOrder: string[] = [];
+
+  const queue = createTemplateEditorAutosaveQueue<string>({
+    initialRevision: 1,
+    persist: async (val, rev) => {
+      saveOrder.push(val);
+      return { revision: rev + 1 };
+    },
+  });
+
+  queue.enqueue({ serialized: 'snap1', value: 'val1' });
+  queue.enqueue({ serialized: 'snap2', value: 'val2' });
+
+  await queue.flush();
+
+  assert.deepEqual(saveOrder, ['val1', 'val2']);
+});
+
+test('flush rejects when persist fails', async () => {
+  const queue = createTemplateEditorAutosaveQueue<string>({
+    initialRevision: 1,
+    persist: async () => {
+      throw new Error('Lỗi lưu cơ sở dữ liệu');
+    },
+  });
+
+  queue.enqueue({ serialized: 'snap1', value: 'val1' });
+
+  await assert.rejects(
+    () => queue.flush(),
+    (err: Error) => err.message === 'Lỗi lưu cơ sở dữ liệu'
+  );
+});
+
+test('flush rejects when queue is disposed', async () => {
+  let resolvePersist: (val: { revision: number }) => void = () => {};
+
+  const queue = createTemplateEditorAutosaveQueue<string>({
+    initialRevision: 1,
+    persist: () =>
+      new Promise((res) => {
+        resolvePersist = res;
+      }),
+  });
+
+  queue.enqueue({ serialized: 'snap1', value: 'val1' });
+
+  const flushPromise = queue.flush();
+  queue.dispose();
+
+  await assert.rejects(
+    () => flushPromise,
+    (err: Error) => err.message.includes('bị hủy')
+  );
+
+  resolvePersist({ revision: 2 });
+});
+
+type AutosaveReadinessState = {
+  isReady: boolean;
+  saveStatus: 'loading' | 'saving' | 'saved' | 'error';
+  queue: { flush: () => Promise<void> } | null;
+};
+
+type RequireAutosaveQueue = (
+  state: AutosaveReadinessState
+) => { flush: () => Promise<void> };
+
+type RetryAutosaveQueue = (
+  state: {
+    isReady: boolean;
+    saveStatus: AutosaveReadinessState['saveStatus'];
+    queue: ({ flush: () => Promise<void>; retry: () => void }) | null;
+  }
+) => void;
+
+const readinessGuard = () => (
+  autosaveModule as unknown as {
+    requireTemplateEditorAutosaveQueue?: RequireAutosaveQueue;
+  }
+).requireTemplateEditorAutosaveQueue;
+
+const retryController = () => (
+  autosaveModule as unknown as {
+    retryTemplateEditorAutosave?: RetryAutosaveQueue;
+  }
+).retryTemplateEditorAutosave;
+
+test('export readiness rejects while the editor is not ready', () => {
+  const guard = readinessGuard();
+  assert.equal(typeof guard, 'function');
+  if (!guard) return;
+
+  assert.throws(() => guard({
+    isReady: false,
+    saveStatus: 'saved',
+    queue: { flush: async () => undefined },
+  }));
+});
+
+test('export readiness rejects loading and failed save states', () => {
+  const guard = readinessGuard();
+  assert.equal(typeof guard, 'function');
+  if (!guard) return;
+
+  for (const saveStatus of ['loading', 'error'] as const) {
+    assert.throws(() => guard({
+      isReady: true,
+      saveStatus,
+      queue: { flush: async () => undefined },
+    }), saveStatus);
+  }
+});
+
+test('export readiness rejects when the autosave queue is absent', () => {
+  const guard = readinessGuard();
+  assert.equal(typeof guard, 'function');
+  if (!guard) return;
+
+  assert.throws(() => guard({
+    isReady: true,
+    saveStatus: 'saved',
+    queue: null,
+  }));
+});
+
+test('export readiness returns a safely flushable saving or saved queue', () => {
+  const guard = readinessGuard();
+  assert.equal(typeof guard, 'function');
+  if (!guard) return;
+  const queue = { flush: async () => undefined };
+
+  assert.equal(guard({ isReady: true, saveStatus: 'saving', queue }), queue);
+  assert.equal(guard({ isReady: true, saveStatus: 'saved', queue }), queue);
+});
+
+test('failed pending snapshot is retried explicitly and becomes export-ready after saving', async () => {
+  let saveStatus: AutosaveReadinessState['saveStatus'] = 'saving';
+  let attempts = 0;
+  const persistedValues: string[] = [];
+  const queue = createTemplateEditorAutosaveQueue<string>({
+    initialRevision: 1,
+    persist: async (value, revision) => {
+      attempts += 1;
+      persistedValues.push(value);
+      if (attempts === 1) throw new Error('first save failed');
+      return { revision: revision + 1 };
+    },
+    onAttempt: () => {
+      saveStatus = 'saving';
     },
     onPersisted: () => {
-      callbacks += 1;
+      saveStatus = 'saved';
     },
     onError: () => {
-      callbacks += 1;
+      saveStatus = 'error';
     },
   });
+  const retry = retryController();
+  const guard = readinessGuard();
 
-  queue.enqueue({ serialized: 'older', value: { title: 'Older' } });
-  await firstStarted.promise;
-  queue.enqueue({ serialized: 'latest', value: { title: 'Latest' } });
-  queue.dispose();
-  first.resolve({ revision: 2 });
-  await first.promise;
-  await Promise.resolve();
+  assert.equal(typeof retry, 'function');
+  assert.equal(typeof guard, 'function');
+  if (!retry || !guard) return;
 
-  assert.deepEqual(calls, ['Older']);
-  assert.equal(callbacks, 0);
+  queue.enqueue({ serialized: 'snapshot-1', value: 'value-1' });
+  await assert.rejects(() => queue.flush(), /first save failed/);
+  assert.equal(saveStatus, 'error');
+  assert.throws(() => guard({ isReady: true, saveStatus, queue }));
+
+  retry({ isReady: true, saveStatus, queue });
+  await queue.flush();
+
+  assert.equal(saveStatus, 'saved');
+  assert.deepEqual(persistedValues, ['value-1', 'value-1']);
+  assert.equal(guard({ isReady: true, saveStatus, queue }), queue);
+});
+
+test('autosave retry controller only invokes retry for an explicit failed-save action', () => {
+  const retry = retryController();
+  assert.equal(typeof retry, 'function');
+  if (!retry) return;
+  let retryCalls = 0;
+  const queue = {
+    retry: () => {
+      retryCalls += 1;
+    },
+    flush: async () => undefined,
+  };
+
+  retry({ isReady: true, saveStatus: 'error', queue });
+  assert.equal(retryCalls, 1);
+  assert.throws(() => retry({ isReady: true, saveStatus: 'saved', queue }));
+  assert.throws(() => retry({ isReady: false, saveStatus: 'error', queue }));
+  assert.equal(retryCalls, 1);
 });

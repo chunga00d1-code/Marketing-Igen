@@ -17,6 +17,14 @@ export interface TextStyle {
   y?: number; // percentage 0-100
 }
 
+export interface ShotstackTextMergeFieldBinding {
+  key: string;
+  assetType: 'title' | 'html';
+  source: string;
+  prefix: string;
+  suffix: string;
+}
+
 export interface TemplateEditorItem {
   id: string;
   trackId: string;
@@ -26,12 +34,19 @@ export interface TemplateEditorItem {
   sourceUrl?: string;
   thumbnailUrl?: string;
   text?: string;
+  mergeValue?: string;
   replaceable?: boolean;
+  replacement?: {
+    originalType: 'video' | 'image';
+    sourceType: 'video' | 'image';
+    sourceDuration?: number;
+  };
   providerBinding?: {
     provider: 'shotstack';
     trackIndex: number;
     clipIndex: number;
     rawTransition?: Record<string, unknown>;
+    textMergeField?: ShotstackTextMergeFieldBinding;
   };
   trim?: number;
   opacity?: number;

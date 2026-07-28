@@ -115,9 +115,9 @@ export class ShotstackClient {
 
   public async renderTemplate(input: ShotstackRenderRequest): Promise<{ renderId: string }> {
     const { templateId, ...renderInput } = input;
-    const response = await this.request(`/templates/${encodeURIComponent(templateId)}/render`, {
+    const response = await this.request("/templates/render", {
       method: "POST",
-      body: JSON.stringify(renderInput),
+      body: JSON.stringify({ id: templateId, ...renderInput }),
     });
     const render = requireSuccessEnvelope(response.payload, this.apiKey, response.status);
     if (!requiredString(render.id)) {

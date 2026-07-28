@@ -7,7 +7,7 @@ export function VideoTemplateSkeleton() {
           className="flex flex-col rounded-2xl border border-slate-200/70 bg-white p-2.5 shadow-2xs animate-pulse"
         >
           {/* Thumbnail Skeleton */}
-          <div className="relative w-full aspect-9/16 rounded-xl bg-slate-200/80 overflow-hidden mb-3">
+          <div className="relative w-full aspect-16/9 rounded-xl bg-slate-200/80 overflow-hidden mb-3">
             <div className="absolute top-2.5 left-2.5 h-5 w-12 rounded-full bg-slate-300/80" />
             <div className="absolute top-2.5 right-2.5 h-6 w-6 rounded-full bg-slate-300/80" />
             <div className="absolute bottom-2.5 left-2.5 h-5 w-16 rounded-full bg-slate-300/80" />

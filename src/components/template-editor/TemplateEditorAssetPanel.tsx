@@ -4,7 +4,6 @@ import {
   Plus,
   Check,
   Music,
-  Type,
   Sparkles,
   Film,
   Image as ImageIcon,
@@ -12,20 +11,25 @@ import {
   FolderOpen,
   Loader2,
   RefreshCw,
+  Lock,
 } from 'lucide-react';
 import { SidebarTabType, MediaAsset, TemplateEditorItem } from './types';
-import { MOCK_TEXT_PRESETS, MOCK_AUDIO_TRACKS } from './mockData';
+import { MOCK_AUDIO_TRACKS } from './mockData';
+import { hasValidShotstackBinding } from './template-editor-clips';
+import { isShotstackProviderTemplate } from './template-editor-timeline-presenter';
 
 interface TemplateEditorAssetPanelProps {
   activeTab: SidebarTabType;
   mediaAssets: MediaAsset[];
   selectedItem: TemplateEditorItem | null;
+  selectedReplacementNumber?: number | null;
+  projectItems: TemplateEditorItem[];
   onUploadFiles: (files: FileList) => void;
   onDeleteMediaAsset?: (assetId: string) => void;
   onRetryMediaUpload?: (assetId: string) => void;
   onAddMediaAsset: (asset: MediaAsset) => void;
   onReplaceMediaAsset: (itemId: string, asset: MediaAsset) => void;
-  onAddTextPreset: (preset: typeof MOCK_TEXT_PRESETS[0]) => void;
+  onAddTextPreset?: (preset: { id: string; title: string; text: string; color: string; fontSize: number; bold: boolean }) => void;
   onAddAudioTrack: (track: typeof MOCK_AUDIO_TRACKS[0]) => void;
 }
 
@@ -33,16 +37,23 @@ export function TemplateEditorAssetPanel({
   activeTab,
   mediaAssets,
   selectedItem,
+  selectedReplacementNumber,
+  projectItems,
   onUploadFiles,
   onDeleteMediaAsset,
   onRetryMediaUpload,
   onAddMediaAsset,
   onReplaceMediaAsset,
-  onAddTextPreset,
+  onAddTextPreset: _onAddTextPreset,
   onAddAudioTrack,
 }: TemplateEditorAssetPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [mediaFilter, setMediaFilter] = useState<'all' | 'video' | 'image'>('all');
+  const isProviderTemplate = isShotstackProviderTemplate(projectItems);
+  const canAddAudio = !isProviderTemplate;
+  const isReplacementMode = selectedItem?.replaceable === true
+    && (selectedItem.type === 'video' || selectedItem.type === 'image')
+    && (!isProviderTemplate || hasValidShotstackBinding(selectedItem));
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -54,14 +65,16 @@ export function TemplateEditorAssetPanel({
 
   const handleAssetClick = (asset: MediaAsset) => {
     if (asset.uploadStatus && asset.uploadStatus !== 'ready') return;
-    if (selectedItem && (selectedItem.type === 'video' || selectedItem.type === 'image')) {
+    if (!canAddAudio && asset.type === 'audio') return;
+    if (isReplacementMode && selectedItem) {
       onReplaceMediaAsset(selectedItem.id, asset);
     } else {
       onAddMediaAsset(asset);
     }
   };
 
-  const filteredMedia = mediaAssets.filter((asset) => {
+  const availableMediaAssets = mediaAssets.filter((asset) => canAddAudio || asset.type !== 'audio');
+  const filteredMedia = availableMediaAssets.filter((asset) => {
     if (mediaFilter === 'video') return asset.type === 'video';
     if (mediaFilter === 'image') return asset.type === 'image';
     return true;
@@ -74,7 +87,9 @@ export function TemplateEditorAssetPanel({
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp,image/gif,audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg"
+        accept={canAddAudio
+          ? 'video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp,image/gif,audio/mpeg,audio/wav,audio/mp4,audio/aac,audio/ogg'
+          : 'video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp,image/gif'}
         multiple
         className="hidden"
       />
@@ -85,13 +100,13 @@ export function TemplateEditorAssetPanel({
           {activeTab === 'media' && 'Phương tiện của tôi'}
           {activeTab === 'templates' && 'Thư viện mẫu'}
           {activeTab === 'stock_video' && 'Kho video có sẵn'}
-          {activeTab === 'images' && 'Thư viện hình ảnh'}
-          {activeTab === 'text' && 'Văn bản & Subtitle'}
           {activeTab === 'audio' && 'Kho âm thanh'}
         </h3>
-        {selectedItem && (selectedItem.type === 'video' || selectedItem.type === 'image') && (
+        {isReplacementMode && (
           <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800/80">
-            Chế độ thay thế
+            {selectedReplacementNumber
+              ? `Đang thay: Đoạn ${selectedReplacementNumber}`
+              : 'Đang thay đoạn đã chọn'}
           </span>
         )}
       </div>
@@ -122,7 +137,7 @@ export function TemplateEditorAssetPanel({
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Tất cả ({mediaAssets.length})
+                Tất cả ({availableMediaAssets.length})
               </button>
               <button
                 type="button"
@@ -266,55 +281,18 @@ export function TemplateEditorAssetPanel({
           </div>
         )}
 
-        {/* TAB: TEXT */}
-        {activeTab === 'text' && (
-          <div className="flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={() =>
-                onAddTextPreset({
-                  id: `txt-${Date.now()}`,
-                  title: 'Văn bản mới',
-                  text: 'Nhập nội dung chữ...',
-                  color: '#ffffff',
-                  fontSize: 24,
-                  bold: false,
-                })
-              }
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-bold text-xs py-2.5 px-3 shadow-sm transition-all cursor-pointer active:scale-95"
-            >
-              <Type className="h-4 w-4" />
-              Thêm văn bản mặc định
-            </button>
-
-            <span className="text-[11px] font-semibold text-slate-400 px-1 mt-1">Mẫu chữ đính kèm</span>
-
-            <div className="flex flex-col gap-2">
-              {MOCK_TEXT_PRESETS.map((preset) => (
-                <div
-                  key={preset.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onAddTextPreset(preset)}
-                  className="flex flex-col gap-1 rounded-xl border border-slate-800 bg-slate-950 p-3 hover:border-indigo-500/80 transition-all cursor-pointer group"
-                >
-                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-cyan-400">
-                    {preset.title}
-                  </span>
-                  <div
-                    style={{ color: preset.color }}
-                    className="text-sm font-extrabold line-clamp-1"
-                  >
-                    {preset.text}
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* TAB: AUDIO */}
+        {activeTab === 'audio' && !canAddAudio && (
+          <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-emerald-800/70 bg-emerald-950/40 px-4 py-8 text-center">
+            <Lock className="h-7 w-7 text-emerald-400" />
+            <p className="text-xs font-bold text-emerald-200">Nhạc trong mẫu đã khóa</p>
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              Mẫu Shotstack giữ nguyên soundtrack và không cho phép thêm hoặc chỉnh sửa nhạc.
+            </p>
           </div>
         )}
 
-        {/* TAB: AUDIO */}
-        {activeTab === 'audio' && (
+        {activeTab === 'audio' && canAddAudio && (
           <div className="flex flex-col gap-2">
             <span className="text-[11px] font-semibold text-slate-400 px-1">Kho nhạc quảng cáo ({MOCK_AUDIO_TRACKS.length})</span>
             {MOCK_AUDIO_TRACKS.map((track) => (
@@ -343,13 +321,12 @@ export function TemplateEditorAssetPanel({
           </div>
         )}
 
-        {/* TAB: TEMPLATES / STOCK VIDEO / IMAGES */}
-        {(activeTab === 'templates' || activeTab === 'stock_video' || activeTab === 'images') && (
+        {/* TAB: TEMPLATES / STOCK VIDEO */}
+        {(activeTab === 'templates' || activeTab === 'stock_video') && (
           <div className="flex flex-col items-center justify-center py-10 text-center text-slate-400 gap-2">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 text-slate-300">
               {activeTab === 'templates' && <Sparkles className="h-6 w-6" />}
               {activeTab === 'stock_video' && <Film className="h-6 w-6" />}
-              {activeTab === 'images' && <ImageIcon className="h-6 w-6" />}
             </div>
             <p className="text-xs font-bold text-slate-200">Dữ liệu kho tài nguyên</p>
             <p className="text-[11px] text-slate-500 max-w-[200px]">

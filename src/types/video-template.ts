@@ -66,6 +66,7 @@ export interface VideoTemplateSummary {
   description: string;
   thumbnailUrl: string;
   previewVideoUrl?: string;
+  previewStatus?: 'pending' | 'ready' | 'failed';
   duration: number;
   aspectRatio: VideoTemplateAspectRatio;
   category: VideoTemplateCategory;
@@ -148,12 +149,25 @@ export interface VideoProjectDetail {
     sourceUrl?: string;
     thumbnailUrl?: string;
     text?: string;
+    mergeValue?: string;
     replaceable?: boolean;
+    replacement?: {
+      originalType: 'video' | 'image';
+      sourceType: 'video' | 'image';
+      sourceDuration?: number;
+    };
     providerBinding?: {
       provider: 'shotstack';
       trackIndex: number;
       clipIndex: number;
       rawTransition?: Record<string, unknown>;
+      textMergeField?: {
+        key: string;
+        assetType: 'title' | 'html';
+        source: string;
+        prefix: string;
+        suffix: string;
+      };
     };
     trim?: number;
     opacity?: number;

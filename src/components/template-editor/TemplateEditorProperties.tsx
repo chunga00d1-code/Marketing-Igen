@@ -11,9 +11,15 @@ import {
   Layers,
 } from 'lucide-react';
 import { TemplateEditorItem } from './types';
+import {
+  hasValidShotstackBinding,
+  isShotstackProviderTemplate,
+} from './template-editor-clips';
+import { shouldShowDestructiveItemControls } from './template-editor-timeline-presenter';
 
 interface TemplateEditorPropertiesProps {
   selectedItem: TemplateEditorItem | null;
+  projectItems: TemplateEditorItem[];
   onUpdateItem: (itemId: string, patch: Partial<TemplateEditorItem>) => void;
   onRemoveItem: (itemId: string) => void;
   onClose: () => void;
@@ -21,6 +27,7 @@ interface TemplateEditorPropertiesProps {
 
 export function TemplateEditorProperties({
   selectedItem,
+  projectItems,
   onUpdateItem,
   onRemoveItem,
   onClose,
@@ -28,6 +35,27 @@ export function TemplateEditorProperties({
   if (!selectedItem) {
     return null;
   }
+  const isProviderTemplate = isShotstackProviderTemplate(projectItems);
+  const isProviderBound = selectedItem.providerBinding?.provider === 'shotstack';
+  const isMissingProviderVisualBinding = isProviderTemplate
+    && selectedItem.replaceable === true
+    && (selectedItem.type === 'video' || selectedItem.type === 'image')
+    && !hasValidShotstackBinding(selectedItem);
+  const isProviderManaged = isProviderBound || isMissingProviderVisualBinding;
+  const textMergeField = selectedItem.providerBinding?.textMergeField;
+  const hasValidTextMergeField = textMergeField !== undefined
+    && (textMergeField.assetType === 'title' || textMergeField.assetType === 'html')
+    && textMergeField.key.trim().length > 0
+    && typeof textMergeField.source === 'string'
+    && typeof textMergeField.prefix === 'string'
+    && typeof textMergeField.suffix === 'string';
+  const canEditProviderMergeText = isProviderBound
+    && selectedItem.type === 'text'
+    && selectedItem.replaceable === true
+    && hasValidShotstackBinding(selectedItem)
+    && typeof selectedItem.mergeValue === 'string'
+    && hasValidTextMergeField;
+  const showDeleteAction = shouldShowDestructiveItemControls(selectedItem, projectItems);
 
   return (
     <aside className="w-[300px] shrink-0 bg-white border-l border-slate-200 flex flex-col h-full overflow-hidden select-none z-20 shadow-lg">
@@ -57,7 +85,85 @@ export function TemplateEditorProperties({
       {/* Body Content */}
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5">
         {/* ITEM PROPERTIES */}
-        {selectedItem && (
+        {isProviderManaged ? (
+          <div
+            data-provider-properties="readonly"
+            className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+          >
+            <p className="text-[11px] font-semibold leading-relaxed text-slate-500">
+              Thuộc tính của mẫu được khóa để giữ nguyên bố cục Shotstack. Bạn chỉ có thể thay media
+              ở timeline hoặc bảng phương tiện.
+            </p>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-xs">
+              <dt className="font-semibold text-slate-500">Tên đoạn</dt>
+              <dd className="truncate text-right font-bold text-slate-800">
+                {selectedItem.label || selectedItem.id}
+              </dd>
+              <dt className="font-semibold text-slate-500">Bắt đầu</dt>
+              <dd
+                data-provider-field="start"
+                className="text-right font-bold text-slate-800"
+              >
+                {selectedItem.start} giây
+              </dd>
+              <dt className="font-semibold text-slate-500">Thời lượng</dt>
+              <dd
+                data-provider-field="duration"
+                className="text-right font-bold text-slate-800"
+              >
+                {selectedItem.duration} giây
+              </dd>
+              {(selectedItem.type === 'video' || selectedItem.type === 'audio') && (
+                <>
+                  <dt className="font-semibold text-slate-500">Âm lượng</dt>
+                  <dd
+                    data-provider-field="volume"
+                    className="text-right font-bold text-slate-800"
+                  >
+                    {Math.round((selectedItem.volume ?? 1) * 100)}%
+                  </dd>
+                </>
+              )}
+              {(selectedItem.type === 'video' || selectedItem.type === 'image') && (
+                <>
+                  <dt className="font-semibold text-slate-500">Khung hình</dt>
+                  <dd
+                    data-provider-field="fit"
+                    className="text-right font-bold text-slate-800"
+                  >
+                    {selectedItem.fitMode === 'fit' ? 'Fit' : 'Cover'}
+                  </dd>
+                </>
+              )}
+            </dl>
+            {canEditProviderMergeText && (
+              <div
+                data-provider-merge-field="editable"
+                className="flex flex-col gap-1.5 border-t border-slate-200 pt-3"
+              >
+                <label className="text-[11px] font-bold text-slate-600">
+                  Nội dung trường văn bản
+                </label>
+                <textarea
+                  rows={3}
+                  value={selectedItem.mergeValue || ''}
+                  onChange={(event) => {
+                    if (!textMergeField) return;
+                    const mergeValue = event.target.value;
+                    onUpdateItem(selectedItem.id, {
+                      text: `${textMergeField.prefix}${mergeValue}${textMergeField.suffix}`,
+                      mergeValue,
+                    });
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white p-2.5 text-xs font-bold text-slate-800 focus:border-cyan-500 focus:outline-none"
+                />
+                <p className="text-[10px] leading-relaxed text-slate-500">
+                  Kiểu chữ, vị trí và thời lượng vẫn được khóa theo mẫu Shotstack.
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
           <div className="flex flex-col gap-4">
             {/* VIDEO / IMAGE PROPERTIES */}
             {(selectedItem.type === 'video' || selectedItem.type === 'image') && (
@@ -262,14 +368,16 @@ export function TemplateEditorProperties({
             )}
 
             {/* Delete Action Button */}
-            <button
-              type="button"
-              onClick={() => onRemoveItem(selectedItem.id)}
-              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs py-2 shadow-xs transition-colors cursor-pointer"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Xóa khỏi timeline
-            </button>
+            {showDeleteAction && (
+              <button
+                type="button"
+                onClick={() => onRemoveItem(selectedItem.id)}
+                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs py-2 shadow-xs transition-colors cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Xóa khỏi timeline
+              </button>
+            )}
           </div>
         )}
 

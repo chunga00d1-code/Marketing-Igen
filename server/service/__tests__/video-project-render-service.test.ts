@@ -1,11 +1,109 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Job } from "bullmq";
+import { Types } from "mongoose";
+import { VideoProjectRenderModel } from "../../model/video-project-render.model";
 import {
   buildVideoProjectRenderSnapshot,
   serializeVideoProjectRender,
 } from "../video-project-render.service";
 import { sanitizeRenderError } from "../video-project-render-runner";
+
+test("accepts a template preview render without a project ID", () => {
+  const render = new VideoProjectRenderModel({
+    purpose: "template-preview",
+    templateId: new Types.ObjectId(),
+    templateVersionId: new Types.ObjectId(),
+    templateSourceHash: "template-source-hash",
+    userId: "user-1",
+    companyCode: "company-1",
+    aspectRatio: "9:16",
+    duration: 10,
+    snapshot: { title: "Template preview", tracks: [], items: [], settings: {} },
+    idempotencyKey: "template-preview-1",
+  });
+
+  assert.equal(render.validateSync(), undefined);
+});
+
+test("rejects a template preview render missing template identity", () => {
+  const render = new VideoProjectRenderModel({
+    purpose: "template-preview",
+    templateId: new Types.ObjectId(),
+    userId: "user-1",
+    companyCode: "company-1",
+    aspectRatio: "9:16",
+    duration: 10,
+    snapshot: { title: "Template preview", tracks: [], items: [], settings: {} },
+    idempotencyKey: "template-preview-1",
+  });
+
+  const validationError = render.validateSync();
+  assert.ok(validationError?.errors.templateVersionId);
+  assert.ok(validationError?.errors.templateSourceHash);
+});
+
+test("rejects a template preview render with project-export identity", () => {
+  const render = new VideoProjectRenderModel({
+    purpose: "template-preview",
+    projectId: new Types.ObjectId(),
+    templateId: new Types.ObjectId(),
+    templateVersionId: new Types.ObjectId(),
+    templateSourceHash: "template-source-hash",
+    userId: "user-1",
+    companyCode: "company-1",
+    aspectRatio: "9:16",
+    duration: 10,
+    snapshot: { title: "Template preview", tracks: [], items: [], settings: {} },
+    idempotencyKey: "template-preview-1",
+  });
+
+  assert.ok(render.validateSync()?.errors.projectId);
+});
+
+test("preserves project-export render validation", () => {
+  const render = new VideoProjectRenderModel({
+    purpose: "project-export",
+    projectId: new Types.ObjectId(),
+    userId: "user-1",
+    companyCode: "company-1",
+    aspectRatio: "9:16",
+    duration: 10,
+    snapshot: { title: "Project export", tracks: [], items: [], settings: {} },
+    idempotencyKey: "project-export-1",
+  });
+
+  assert.equal(render.validateSync(), undefined);
+});
+
+test("uses purpose-specific unique indexes for render identities", () => {
+  const indexes = VideoProjectRenderModel.schema.indexes();
+  const projectExportIndex = indexes.find(([fields]) => (
+    fields.purpose === 1 &&
+    fields.userId === 1 &&
+    fields.companyCode === 1 &&
+    fields.idempotencyKey === 1
+  ));
+  const templatePreviewIndex = indexes.find(([fields]) => (
+    fields.purpose === 1 &&
+    fields.templateVersionId === 1 &&
+    fields.templateSourceHash === 1
+  ));
+
+  assert.equal(projectExportIndex?.[1].unique, true);
+  assert.deepEqual(projectExportIndex?.[1].partialFilterExpression, { purpose: "project-export" });
+  assert.equal(templatePreviewIndex?.[1].unique, true);
+  assert.deepEqual(templatePreviewIndex?.[1].partialFilterExpression, { purpose: "template-preview" });
+  assert.equal(
+    indexes.some(([fields]) => (
+      fields.userId === 1 &&
+      fields.companyCode === 1 &&
+      fields.idempotencyKey === 1 &&
+      fields.purpose === undefined
+    )),
+    false
+  );
+});
 
 test("classifies structured render domain errors without matching their messages", async () => {
   const renderService = await import("../video-project-render.service") as unknown as Record<string, unknown>;

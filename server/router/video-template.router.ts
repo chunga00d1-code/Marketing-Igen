@@ -15,6 +15,12 @@ videoTemplateRouter.post(
   requireRole(["admin", "superadmin"]),
   videoTemplateController.sync
 );
+videoTemplateRouter.post(
+  "/admin/video-templates/:templateId/preview/retry",
+  requireAuth,
+  requireRole(["admin", "superadmin"]),
+  videoTemplateController.retryPreview
+);
 videoTemplateRouter.get(
   "/admin/video-templates/shotstack/status",
   requireAuth,

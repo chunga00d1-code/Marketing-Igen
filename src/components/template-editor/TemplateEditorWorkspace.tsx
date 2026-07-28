@@ -1,21 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTemplateEditor } from './hooks/useTemplateEditor';
-import { TemplateEditorSidebar } from './TemplateEditorSidebar';
-import { TemplateEditorAssetPanel } from './TemplateEditorAssetPanel';
 import { TemplateEditorTopbar } from './TemplateEditorTopbar';
 import { TemplateEditorCanvas } from './TemplateEditorCanvas';
 import { TemplateEditorTimeline } from './TemplateEditorTimeline';
-import { TemplateEditorProperties } from './TemplateEditorProperties';
 import { TemplateExportModal } from './TemplateExportModal';
+import { TemplateExportHistory } from './TemplateExportHistory';
 import { TemplateEditorMode, TemplateEditorProject } from './types';
 import {
   createTemplateEditorAutosaveQueue,
+  requireTemplateEditorAutosaveQueue,
+  retryTemplateEditorAutosave,
   type TemplateEditorAutosaveQueue,
+  type TemplateEditorSaveStatus,
 } from './template-editor-autosave';
-import { Monitor } from 'lucide-react';
+import { Play, Pause, Minimize2, Monitor } from 'lucide-react';
 import { videoTemplateService } from '../../services/videoTemplateService';
 import { toast } from '../../pages/Toast';
 import type { SaveVideoProjectInput } from '../../types/video-template';
+import { findShortVideoReplacementIssues } from './template-editor-replacement';
+import { resolveRenderedTemplatePreviewUrl } from './template-editor-media';
 
 interface TemplateEditorWorkspaceProps {
   initialMode?: TemplateEditorMode;
@@ -28,16 +31,17 @@ export function TemplateEditorWorkspace({
   initialProjectData,
   onBackToLibrary,
 }: TemplateEditorWorkspaceProps) {
-  const [saveStatus, setSaveStatus] = useState<'loading' | 'saving' | 'saved' | 'error'>('loading');
+  const [saveStatus, setSaveStatus] = useState<TemplateEditorSaveStatus>('loading');
+  const [isExportHistoryOpen, setIsExportHistoryOpen] = useState(false);
   const readyRef = useRef(false);
   const lastSavedRef = useRef('');
   const latestSnapshotRef = useRef('');
   const autosaveRef = useRef<TemplateEditorAutosaveQueue<SaveVideoProjectInput> | null>(null);
+
   const {
     project,
     selectedItem,
     selectedItemId,
-    activeSidebarTab,
     mediaAssets,
     currentTime,
     isPlaying,
@@ -45,30 +49,51 @@ export function TemplateEditorWorkspace({
     isExportModalOpen,
     canUndo,
     canRedo,
-    setActiveSidebarTab,
-    setSelectedItemId,
     setZoomLevel,
     togglePlay,
     seekTo,
     setProjectTitle,
     setAspectRatio,
     selectItem,
-    updateItem,
-    addItem,
     removeItem,
     duplicateItem,
     reorderItem,
     replaceItemMedia,
+    replaceItemWithFile,
     toggleItemReplaceable,
-    uploadMediaFiles,
-    retryMediaUpload,
-    deleteMediaAsset,
     undo,
     redo,
     openExportModal,
     closeExportModal,
     hydrateProject,
   } = useTemplateEditor(initialMode, initialProjectData, onBackToLibrary);
+
+  const [isFullscreenPreview, setIsFullscreenPreview] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreenPreview) {
+        setIsFullscreenPreview(false);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreenPreview]);
+
+  const toggleFullscreenPreview = () => {
+    setIsFullscreenPreview((prev) => {
+      const next = !prev;
+      if (next) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +126,11 @@ export function TemplateEditorWorkspace({
           mode: data.mode,
           tracks: data.tracks,
           items: data.items,
+          previewVideoUrl: resolveRenderedTemplatePreviewUrl(
+            data.sourceMediaUrl,
+            project.previewVideoUrl,
+            initialProjectData?.previewVideoUrl
+          ),
         } as unknown as TemplateEditorProject;
         const loadedSnapshot = JSON.stringify(loadedProject);
         lastSavedRef.current = loadedSnapshot;
@@ -108,10 +138,8 @@ export function TemplateEditorWorkspace({
         hydrateProject(loadedProject);
         autosaveQueue = createTemplateEditorAutosaveQueue<SaveVideoProjectInput>({
           initialRevision: data.revision,
-          persist: (input, expectedRevision) => videoTemplateService.updateProject(
-            data.id,
-            { ...input, expectedRevision }
-          ),
+          persist: (input, expectedRevision) =>
+            videoTemplateService.updateProject(data.id, { ...input, expectedRevision }),
           onAttempt: () => {
             if (!cancelled) setSaveStatus('saving');
           },
@@ -176,6 +204,48 @@ export function TemplateEditorWorkspace({
     return () => window.clearTimeout(timer);
   }, [project]);
 
+  const ensureAutosave = async (): Promise<void> => {
+    const autosaveQueue = requireTemplateEditorAutosaveQueue({
+      isReady: readyRef.current,
+      saveStatus,
+      queue: autosaveRef.current,
+    });
+    const snapshot = JSON.stringify(project);
+    latestSnapshotRef.current = snapshot;
+    if (snapshot !== lastSavedRef.current) {
+      setSaveStatus('saving');
+      autosaveQueue.enqueue({
+        serialized: snapshot,
+        value: {
+          title: project.title,
+          description: project.description,
+          categoryId: project.categoryId,
+          tags: project.tags,
+          aspectRatio: project.aspectRatio,
+          duration: project.duration,
+          mode: project.mode,
+          tracks: project.tracks,
+          items: project.items,
+          coverUrl: project.coverUrl,
+        },
+      });
+    }
+    await autosaveQueue.flush();
+  };
+
+  const retryAutosave = (): void => {
+    try {
+      retryTemplateEditorAutosave({
+        isReady: readyRef.current,
+        saveStatus,
+        queue: autosaveRef.current,
+      });
+      toast.info('Đang thử lưu lại dự án.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể thử lưu lại dự án.');
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col font-sans overflow-hidden select-none">
       {/* Small Screen Warning Notice (Desktop first) */}
@@ -197,59 +267,14 @@ export function TemplateEditorWorkspace({
         onUndo={undo}
         onRedo={redo}
         onOpenExport={openExportModal}
+        onOpenHistory={() => setIsExportHistoryOpen(true)}
         onBack={onBackToLibrary}
         saveStatus={saveStatus}
+        onRetrySave={readyRef.current ? retryAutosave : undefined}
       />
 
       {/* Main Workspace Body */}
       <div className="flex-1 flex min-h-0 overflow-hidden relative">
-        {/* Far-left dark toolbar */}
-        <TemplateEditorSidebar
-          activeTab={activeSidebarTab}
-          onSelectTab={setActiveSidebarTab}
-        />
-
-        {/* Left Resource Asset Panel */}
-        <TemplateEditorAssetPanel
-          activeTab={activeSidebarTab}
-          mediaAssets={mediaAssets}
-          selectedItem={selectedItem}
-          onUploadFiles={uploadMediaFiles}
-          onDeleteMediaAsset={deleteMediaAsset}
-          onRetryMediaUpload={retryMediaUpload}
-          onAddMediaAsset={(asset) =>
-            addItem(asset.type, {
-              sourceUrl: asset.url,
-              thumbnailUrl: asset.thumbnailUrl,
-              label: asset.name,
-              duration: asset.duration || 5,
-            })
-          }
-          onReplaceMediaAsset={(itemId, asset) => replaceItemMedia(itemId, asset)}
-          onAddTextPreset={(preset) =>
-            addItem('text', {
-              text: preset.text,
-              style: {
-                fontFamily: 'Inter',
-                fontSize: preset.fontSize,
-                color: preset.color,
-                align: 'center',
-                bold: preset.bold,
-                italic: false,
-                x: 50,
-                y: 60,
-              },
-            })
-          }
-          onAddAudioTrack={(track) =>
-            addItem('audio', {
-              sourceUrl: track.url,
-              label: track.name,
-              duration: track.duration,
-            })
-          }
-        />
-
         {/* Center Area: Viewport Canvas & Timeline */}
         <div className="flex-1 flex flex-col min-w-0 bg-slate-100 overflow-hidden relative">
           {/* Canvas Viewport */}
@@ -277,24 +302,92 @@ export function TemplateEditorWorkspace({
             onToggleReplaceable={toggleItemReplaceable}
             mediaAssets={mediaAssets}
             onReplaceItemMedia={replaceItemMedia}
-            onSelectSidebarTab={setActiveSidebarTab}
+            onReplaceItemWithFile={replaceItemWithFile}
+            onToggleFullscreen={toggleFullscreenPreview}
+            isFullscreenPreview={isFullscreenPreview}
           />
         </div>
-
-        {/* Right Properties Panel */}
-        <TemplateEditorProperties
-          selectedItem={selectedItem}
-          onUpdateItem={updateItem}
-          onRemoveItem={removeItem}
-          onClose={() => setSelectedItemId(null)}
-        />
       </div>
 
-      {/* Simulated Modals */}
+      {/* Fullscreen Theater Preview Modal */}
+      {isFullscreenPreview && (
+        <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col justify-between p-4 md:p-6 select-none animate-in fade-in duration-200">
+          {/* Top Bar */}
+          <div className="flex items-center justify-between text-white border-b border-slate-800/80 pb-3 px-2">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-sm text-slate-100">{project.title}</span>
+              <span className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-300">
+                {project.aspectRatio}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleFullscreenPreview}
+              className="flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs px-3 py-1.5 transition-all cursor-pointer"
+            >
+              <Minimize2 className="h-4 w-4 text-cyan-400" />
+              Thoát toàn màn hình (Esc)
+            </button>
+          </div>
+
+          {/* Center Canvas Viewport */}
+          <div className="flex-1 flex items-center justify-center py-4 overflow-hidden">
+            <TemplateEditorCanvas
+              project={project}
+              currentTime={currentTime}
+              isPlaying={isPlaying}
+              selectedItem={selectedItem}
+              onSelectItem={selectItem}
+              zoomLevel={100}
+            />
+          </div>
+
+          {/* Bottom Playback Scrubber Control Bar */}
+          <div className="flex items-center gap-4 bg-slate-900/90 border border-slate-800 rounded-2xl px-5 py-3 text-white max-w-4xl mx-auto w-full shadow-2xl backdrop-blur-md">
+            <button
+              type="button"
+              onClick={togglePlay}
+              aria-label={isPlaying ? 'Pause' : 'Play'}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500 text-white shadow-md hover:bg-cyan-400 active:scale-95 transition-all cursor-pointer shrink-0"
+            >
+              {isPlaying ? <Pause className="h-4 w-4 fill-white" /> : <Play className="h-4 w-4 fill-white translate-x-0.5" />}
+            </button>
+
+            <div className="font-mono text-xs font-semibold text-slate-300 shrink-0">
+              <span>{Math.floor(currentTime / 60).toString().padStart(2, '0')}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}</span>
+              <span className="text-slate-500 mx-1">/</span>
+              <span>{Math.floor(project.duration / 60).toString().padStart(2, '0')}:{Math.floor(project.duration % 60).toString().padStart(2, '0')}</span>
+            </div>
+
+            <input
+              type="range"
+              min={0}
+              max={project.duration}
+              step={0.01}
+              value={currentTime}
+              onChange={(e) => seekTo(Number(e.target.value))}
+              className="flex-1 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Render Export Modal */}
       <TemplateExportModal
         isOpen={isExportModalOpen}
         onClose={closeExportModal}
         projectTitle={project.title}
+        projectId={project.id}
+        onEnsureAutosave={ensureAutosave}
+        validationIssues={findShortVideoReplacementIssues(project.items)}
+      />
+
+      {/* Export History Drawer */}
+      <TemplateExportHistory
+        isOpen={isExportHistoryOpen}
+        onClose={() => setIsExportHistoryOpen(false)}
+        projectId={project.id}
       />
     </div>
   );

@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { X, Clock, Eye, Play, Loader2 } from 'lucide-react';
+import { X, Clock, Eye, Play, Loader2, AlertCircle } from 'lucide-react';
 import { VideoTemplateDetail, VideoTemplateAspectRatio } from '../../../types/video-template';
 import { videoTemplateService } from '../../../services/videoTemplateService';
 import { toast } from '../../../pages/Toast';
+import { resolveTemplatePreviewPresentation } from './video-template-preview-state';
 
 interface VideoTemplateDetailModalProps {
   template: VideoTemplateDetail | null;
@@ -32,7 +33,7 @@ export function VideoTemplateDetailModal({
   // Reset video error when template changes
   useEffect(() => {
     setVideoError(false);
-  }, [template?.id]);
+  }, [template?.id, template?.previewVideoUrl, isOpen]);
 
   // Lock background scroll and manage focus
   useEffect(() => {
@@ -93,6 +94,11 @@ export function VideoTemplateDetailModal({
   }, [isOpen, onClose]);
 
   if (!isOpen || !template) return null;
+  const previewPresentation = resolveTemplatePreviewPresentation(
+    template.previewStatus,
+    template.previewVideoUrl,
+    videoError
+  );
 
   const handleUseNow = async () => {
     setIsUsingQuick(true);
@@ -144,23 +150,24 @@ export function VideoTemplateDetailModal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="relative z-10 flex flex-col md:flex-row w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl animate-scale-in focus:outline-none"
+        className="relative z-10 flex flex-col md:flex-row w-full max-w-5xl h-[620px] max-h-[92vh] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl animate-scale-in focus:outline-none"
       >
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
           aria-label="Đóng modal"
-          className="absolute top-4 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-slate-900/60 text-white backdrop-blur-md transition-all hover:bg-slate-900 hover:scale-105 cursor-pointer"
+          className="absolute top-4 right-4 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-slate-500/60 text-white backdrop-blur-md transition-all hover:bg-slate-700 hover:scale-105 cursor-pointer"
         >
           <X className="h-5 w-5" />
         </button>
 
         {/* Left Side: Video Preview with Fallback */}
-        <div className="flex-1 bg-slate-950 flex items-center justify-center p-4 relative min-h-[280px]">
-          <div className={`relative w-full ${getAspectRatioClass()} overflow-hidden rounded-2xl border border-white/10 shadow-2xl bg-black flex items-center justify-center`}>
-            {template.previewVideoUrl && !videoError ? (
+        <div className="w-full md:w-[440px] lg:w-[480px] shrink-0 bg-[#070c14] flex items-center justify-center p-4 sm:p-6 relative h-[360px] md:h-full">
+          <div className={`relative w-full h-full max-h-[550px] ${getAspectRatioClass()} overflow-hidden rounded-2xl border border-white/10 shadow-2xl bg-black flex items-center justify-center`}>
+            {previewPresentation === 'video' && template.previewVideoUrl ? (
               <video
+                key={template.previewVideoUrl}
                 src={template.previewVideoUrl}
                 controls
                 autoPlay
@@ -170,39 +177,84 @@ export function VideoTemplateDetailModal({
                 onError={() => setVideoError(true)}
                 className="h-full w-full object-contain"
               />
+            ) : previewPresentation === 'failed' ? (
+              <div className="relative h-full w-full flex items-center justify-center">
+                <img
+                  src={template.thumbnailUrl}
+                  alt={template.title}
+                  className="h-full w-full object-cover opacity-60"
+                />
+                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 text-center">
+                  <div className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm font-medium text-rose-300 border border-rose-500/30">
+                    <AlertCircle className="h-4 w-4 text-rose-400" />
+                    <span>Không thể tạo bản xem trước</span>
+                  </div>
+                </div>
+              </div>
+            ) : previewPresentation === 'playback-error' ? (
+              <div className="relative h-full w-full flex items-center justify-center">
+                <img
+                  src={template.thumbnailUrl}
+                  alt={template.title}
+                  className="h-full w-full object-cover opacity-60"
+                />
+                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex flex-col gap-3 items-center justify-center p-4 text-center">
+                  <div className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm font-medium text-rose-300 border border-rose-500/30">
+                    <AlertCircle className="h-4 w-4 text-rose-400" />
+                    <span>Không thể phát bản xem trước</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setVideoError(false)}
+                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-slate-900 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Thử phát lại
+                  </button>
+                </div>
+              </div>
             ) : (
-              <img
-                src={template.thumbnailUrl}
-                alt={template.title}
-                className="h-full w-full object-cover"
-              />
+              <div className="relative h-full w-full flex items-center justify-center">
+                <img
+                  src={template.thumbnailUrl}
+                  alt={template.title}
+                  className="h-full w-full object-cover opacity-60"
+                />
+                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 text-center">
+                  <div className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm font-medium text-amber-300 border border-amber-500/30">
+                    <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+                    <span>Đang tạo bản xem trước…</span>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
 
         {/* Right Side: Details & Actions */}
-        <div className="flex flex-1 flex-col justify-between p-6 overflow-y-auto max-h-[90vh] bg-slate-50/50">
+        <div className="flex flex-1 flex-col justify-between p-6 sm:p-8 overflow-y-auto h-full bg-white">
           <div className="flex flex-col gap-4">
             {/* Header info */}
             <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-700">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-600">
                   {template.category.name}
                 </span>
-                <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
                   {template.aspectRatio}
                 </span>
               </div>
-              <h2 id="modal-title" className="text-xl font-bold text-slate-900 leading-snug">
+              <h2 id="modal-title" className="text-2xl font-bold text-slate-900 leading-snug tracking-tight">
                 {template.title}
               </h2>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                {template.description}
-              </p>
+              {template.description && (
+                <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                  {template.description}
+                </p>
+              )}
             </div>
 
             {/* Metrics Chips */}
-            <div className="flex items-center gap-4 py-2 border-y border-slate-200/80 text-xs font-semibold text-slate-600">
+            <div className="flex items-center gap-6 py-3 border-y border-slate-100 text-xs font-semibold text-slate-600 my-1">
               <span className="inline-flex items-center gap-1.5">
                 <Clock className="h-4 w-4 text-cyan-600" />
                 Thời lượng: <strong className="text-slate-900">{template.duration} giây</strong>
@@ -214,31 +266,32 @@ export function VideoTemplateDetailModal({
             </div>
 
             {/* Tags */}
-            <div className="flex flex-wrap gap-1.5">
-              {template.tags.map((tag, idx) => (
-                <span
-                  key={idx}
-                  className="rounded-lg bg-white border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
-
+            {template.tags && template.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {template.tags.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    className="rounded-lg bg-slate-50 border border-slate-200/70 px-2.5 py-1 text-[11px] font-semibold text-slate-600"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
-          <div className="mt-6 pt-3 border-t border-slate-200">
+          <div className="mt-6 pt-4 border-t border-slate-100">
             <button
               type="button"
               disabled={isUsingQuick}
               onClick={handleUseNow}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-cyan-600 active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#00c4dd] hover:bg-[#00b3ca] px-4 py-3.5 text-base font-bold text-white shadow-lg shadow-cyan-500/20 transition-all active:scale-98 disabled:opacity-50 cursor-pointer"
             >
               {isUsingQuick ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-5 w-5 animate-spin" />
               ) : (
-                <Play className="h-4 w-4" />
+                <Play className="h-5 w-5 fill-white" />
               )}
               Dùng mẫu này
             </button>

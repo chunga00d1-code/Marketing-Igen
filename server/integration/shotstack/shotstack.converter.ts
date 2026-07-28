@@ -14,6 +14,7 @@ interface ProviderBinding {
   trackIndex: number;
   clipIndex: number;
   rawTransition?: Record<string, unknown>;
+  textMergeField?: TextMergeField;
 }
 
 interface EditorItem extends Record<string, unknown> {
@@ -25,6 +26,7 @@ interface EditorItem extends Record<string, unknown> {
   order: number;
   sourceUrl?: string;
   text?: string;
+  mergeValue?: string;
   replaceable?: boolean;
   volume?: number;
   fitMode?: "cover" | "fit";
@@ -33,6 +35,11 @@ interface EditorItem extends Record<string, unknown> {
   opacity?: number;
   scale?: number;
   providerBinding?: ProviderBinding;
+}
+
+interface ReplacementMarker {
+  originalType: "video" | "image";
+  sourceType: "video" | "image";
 }
 
 export interface ShotstackConversionResult {
@@ -44,6 +51,8 @@ export interface ShotstackConversionResult {
 const ASPECT_RATIOS: SupportedAspectRatio[] = ["9:16", "16:9", "1:1", "3:4"];
 const VISUAL_ASSET_TYPES = new Set(["video", "image", "title", "html"]);
 const SUPPORTED_ASSET_TYPES = new Set(["video", "image", "audio", "title", "html"]);
+// Matches the editor's default clip length when Shotstack supplies no usable duration metadata.
+const SYMBOLIC_CLIP_FALLBACK_DURATION_SECONDS = 5;
 const TITLE_SIZE_MAP: Record<string, number> = {
   "xx-small": 20,
   "x-small": 24,
@@ -74,6 +83,87 @@ function containsHandlebars(value: string | undefined): boolean {
   return typeof value === "string" && /{{\s*[^{}]+\s*}}/.test(value);
 }
 
+function mergeValueMap(edit: ShotstackEdit): Map<string, unknown> {
+  const values = new Map<string, unknown>();
+  if (!Array.isArray(edit.merge)) return values;
+  for (const entry of edit.merge) {
+    if (!isRecord(entry) || !nonEmptyString(entry.find) || !("replace" in entry)) continue;
+    values.set(entry.find.trim(), entry.replace);
+  }
+  return values;
+}
+
+function resolveMergeValue(value: string | undefined, values: Map<string, unknown>): string | undefined {
+  if (typeof value !== "string") return value;
+  return value.replace(/{{\s*([^{}]+?)\s*}}/g, (placeholder, key: string) => {
+    const replacement = values.get(key.trim());
+    return replacement === undefined || replacement === null
+      ? placeholder
+      : String(replacement);
+  });
+}
+
+function explicitProviderDuration(edit: ShotstackEdit, durationHint?: number): number {
+  const editRecord = edit as Record<string, unknown>;
+  const candidates = [
+    durationHint,
+    editRecord.duration,
+    edit.timeline.duration,
+    edit.output.duration,
+    isRecord(editRecord.template) ? editRecord.template.duration : undefined,
+    isRecord(editRecord.metadata) ? editRecord.metadata.duration : undefined,
+  ].filter((value): value is number => finiteNumber(value) && value > 0);
+  return candidates.length > 0 ? Math.max(...candidates) : 0;
+}
+
+function providerTimelineDuration(edit: ShotstackEdit, durationHint?: number): number {
+  const numericDuration = edit.timeline.tracks.reduce(
+    (maximum, track) => track.clips.reduce(
+      (trackMaximum, clip) => finiteNumber(clip.start)
+        && clip.start >= 0
+        && finiteNumber(clip.length)
+        ? Math.max(trackMaximum, clip.start + clip.length)
+        : trackMaximum,
+      maximum
+    ),
+    0
+  );
+  const symbolicStarts = edit.timeline.tracks.flatMap((track) =>
+    track.clips
+      .filter((clip) => (
+        finiteNumber(clip.start)
+        && clip.start >= 0
+        && (clip.length === "auto" || clip.length === "end")
+      ))
+      .map((clip) => clip.start)
+  );
+  const baseDuration = Math.max(
+    numericDuration,
+    explicitProviderDuration(edit, durationHint)
+  );
+  if (symbolicStarts.length === 0) return baseDuration;
+
+  const latestSymbolicStart = Math.max(...symbolicStarts);
+  return baseDuration > latestSymbolicStart
+    ? baseDuration
+    : latestSymbolicStart + SYMBOLIC_CLIP_FALLBACK_DURATION_SECONDS;
+}
+
+function normalizedProviderClip(
+  clip: ShotstackClip,
+  values: Map<string, unknown>,
+  timelineDuration: number
+): ShotstackClip {
+  const normalized = deepClone(clip);
+  normalized.asset.src = resolveMergeValue(normalized.asset.src, values);
+  normalized.asset.text = resolveMergeValue(normalized.asset.text, values);
+  normalized.asset.html = resolveMergeValue(normalized.asset.html, values);
+  if (clip.length === "auto" || clip.length === "end") {
+    normalized.length = Math.max(0, timelineDuration - clip.start);
+  }
+  return normalized;
+}
+
 function decodeBasicHtmlEntities(value: string): string {
   return value
     .replace(/&nbsp;/gi, " ")
@@ -98,11 +188,68 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+interface TextMergeField {
+  key: string;
+  assetType: "title" | "html";
+  source: string;
+  prefix: string;
+  suffix: string;
+}
+
+type TextMergeFieldParts = Pick<TextMergeField, "key" | "prefix" | "suffix">;
+
+function singleTextMergeField(value: string | undefined): TextMergeFieldParts | undefined {
+  if (typeof value !== "string") return undefined;
+  const matches = [...value.matchAll(/{{\s*([^{}]+?)\s*}}/g)];
+  if (matches.length !== 1) return undefined;
+  const match = matches[0];
+  const key = match[1]?.trim();
+  const index = match.index;
+  if (!key || index === undefined) return undefined;
+  return {
+    key,
+    prefix: value.slice(0, index),
+    suffix: value.slice(index + match[0].length),
+  };
+}
+
+function sourceTextMergeField(clip: ShotstackClip): TextMergeField | undefined {
+  if (clip.asset.type === "title" && typeof clip.asset.text === "string") {
+    const field = singleTextMergeField(clip.asset.text);
+    return field
+      ? { ...field, assetType: "title", source: clip.asset.text }
+      : undefined;
+  }
+  if (clip.asset.type === "html" && typeof clip.asset.html === "string") {
+    const field = singleTextMergeField(htmlToText(clip.asset.html));
+    return field
+      ? { ...field, assetType: "html", source: clip.asset.html }
+      : undefined;
+  }
+  return undefined;
+}
+
+function sourceTextMergeValue(
+  field: TextMergeField,
+  values: Map<string, unknown>
+): string {
+  const replacement = values.get(field.key);
+  if (replacement === undefined || replacement === null) return "";
+  const value = String(replacement);
+  return field.assetType === "html" ? decodeBasicHtmlEntities(value) : value;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function escapeHtmlMergeValue(value: string): string {
+  return escapeHtml(value)
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function aspectRatioFromOutput(output: ShotstackOutput): SupportedAspectRatio {
@@ -196,12 +343,18 @@ function textStyleForClip(asset: ShotstackAsset, clip: ShotstackClip): Record<st
   };
 }
 
-function providerBinding(trackIndex: number, clipIndex: number, clip?: ShotstackClip): ProviderBinding {
+function providerBinding(
+  trackIndex: number,
+  clipIndex: number,
+  clip?: ShotstackClip,
+  textMergeField?: TextMergeField
+): ProviderBinding {
   return {
     provider: "shotstack",
     trackIndex,
     clipIndex,
     ...(isRecord(clip?.transition) ? { rawTransition: deepClone(clip.transition) } : {}),
+    ...(textMergeField ? { textMergeField: deepClone(textMergeField) } : {}),
   };
 }
 
@@ -225,7 +378,13 @@ function labelForType(type: SupportedItemType): string {
   return `${type.charAt(0).toUpperCase()}${type.slice(1)}`;
 }
 
-function clipToEditorItem(clip: ShotstackClip, trackIndex: number, clipIndex: number): EditorItem {
+function clipToEditorItem(
+  clip: ShotstackClip,
+  trackIndex: number,
+  clipIndex: number,
+  originalClip: ShotstackClip,
+  mergeValues: Map<string, unknown>
+): EditorItem {
   const asset = clip.asset;
   const type: SupportedItemType = asset.type === "title" || asset.type === "html"
     ? "text"
@@ -233,6 +392,7 @@ function clipToEditorItem(clip: ShotstackClip, trackIndex: number, clipIndex: nu
   const sourceUrl = type === "text" ? undefined : asset.src;
   const text = asset.type === "html" ? htmlToText(asset.html || "") : asset.text;
   const rotation = rotationForClip(clip);
+  const textMergeField = type === "text" ? sourceTextMergeField(originalClip) : undefined;
 
   return {
     id: `shotstack-${trackIndex}-${clipIndex}`,
@@ -242,7 +402,12 @@ function clipToEditorItem(clip: ShotstackClip, trackIndex: number, clipIndex: nu
     duration: clip.length as number,
     ...(sourceUrl !== undefined ? { sourceUrl } : {}),
     ...(text !== undefined ? { text } : {}),
-    replaceable: containsHandlebars(sourceUrl) || containsHandlebars(text),
+    ...(textMergeField
+      ? { mergeValue: sourceTextMergeValue(textMergeField, mergeValues) }
+      : {}),
+    replaceable: type === "text"
+      ? textMergeField !== undefined
+      : containsHandlebars(originalClip.asset.src),
     ...(finiteNumber(asset.volume) ? { volume: asset.volume } : {}),
     ...(type === "video" || type === "image" ? { fitMode: fitToEditor(clip.fit) } : {}),
     ...(rotation !== undefined ? { rotation } : {}),
@@ -252,24 +417,30 @@ function clipToEditorItem(clip: ShotstackClip, trackIndex: number, clipIndex: nu
     ...(type === "text" ? { style: textStyleForClip(asset, clip) } : {}),
     label: labelForType(type),
     order: clipIndex + 1,
-    providerBinding: providerBinding(trackIndex, clipIndex, clip),
+    providerBinding: providerBinding(trackIndex, clipIndex, clip, textMergeField),
   };
 }
 
-export function shotstackEditToEditorProject(edit: ShotstackEdit): ShotstackConversionResult {
+export function shotstackEditToEditorProject(
+  edit: ShotstackEdit,
+  durationHint?: number
+): ShotstackConversionResult {
   const warnings: string[] = [];
   const items: EditorItem[] = [];
   let hasVisualClip = false;
+  const mergeValues = mergeValueMap(edit);
+  const timelineDuration = providerTimelineDuration(edit, durationHint);
 
   edit.timeline.tracks.forEach((track, trackIndex) => {
-    track.clips.forEach((clip, clipIndex) => {
+    track.clips.forEach((sourceClip, clipIndex) => {
+      const clip = normalizedProviderClip(sourceClip, mergeValues, timelineDuration);
       const reason = supportedClipReason(clip);
       if (reason) {
         warnings.push(`Shotstack track ${trackIndex}, clip ${clipIndex}: ${reason}.`);
         return;
       }
 
-      items.push(clipToEditorItem(clip, trackIndex, clipIndex));
+      items.push(clipToEditorItem(clip, trackIndex, clipIndex, sourceClip, mergeValues));
       if (VISUAL_ASSET_TYPES.has(clip.asset.type)) hasVisualClip = true;
     });
   });
@@ -278,20 +449,21 @@ export function shotstackEditToEditorProject(edit: ShotstackEdit): ShotstackConv
     throw new Error("Shotstack edit contains no usable visual clip.");
   }
 
-  const timelineDuration = items.reduce(
+  const normalizedTimelineDuration = items.reduce(
     (maximum, item) => Math.max(maximum, item.start + item.duration),
     0
   );
   const soundtrack = edit.timeline.soundtrack;
   if (soundtrack) {
-    if (nonEmptyString(soundtrack.src)) {
+    const resolvedSoundtrackSource = resolveMergeValue(soundtrack.src, mergeValues);
+    if (nonEmptyString(resolvedSoundtrackSource)) {
       items.push({
         id: "shotstack-soundtrack",
         trackId: "track-audio",
         type: "audio",
         start: 0,
-        duration: timelineDuration,
-        sourceUrl: soundtrack.src,
+        duration: normalizedTimelineDuration,
+        sourceUrl: resolvedSoundtrackSource,
         replaceable: containsHandlebars(soundtrack.src),
         ...(finiteNumber(soundtrack.volume) ? { volume: soundtrack.volume } : {}),
         label: "Soundtrack",
@@ -316,7 +488,7 @@ export function shotstackEditToEditorProject(edit: ShotstackEdit): ShotstackConv
       items,
       settings: {
         aspectRatio,
-        duration: timelineDuration,
+        duration: normalizedTimelineDuration,
       },
     },
     sourceEdit: deepClone(edit),
@@ -342,6 +514,176 @@ function readItemType(item: Record<string, unknown>): SupportedItemType | undefi
   return type === "video" || type === "image" || type === "audio" || type === "text"
     ? type
     : undefined;
+}
+
+function readReplacementMarker(item: Record<string, unknown>): ReplacementMarker | undefined {
+  const replacement = item.replacement;
+  if (
+    !isRecord(replacement)
+    || (replacement.originalType !== "video" && replacement.originalType !== "image")
+    || (replacement.sourceType !== "video" && replacement.sourceType !== "image")
+  ) {
+    return undefined;
+  }
+  return replacement as unknown as ReplacementMarker;
+}
+
+function sourceItemId(trackIndex: number, clipIndex: number): string {
+  return `shotstack-${trackIndex}-${clipIndex}`;
+}
+
+function validatedSourceReplacement(
+  item: Record<string, unknown>,
+  originalClip: ShotstackClip,
+  trackIndex: number,
+  clipIndex: number
+): { type: "video" | "image"; sourceUrl: string } | undefined {
+  const binding = readProviderBinding(item);
+  const marker = readReplacementMarker(item);
+  const type = readItemType(item);
+  const originalType = originalClip.asset.type;
+  if (
+    item.id !== sourceItemId(trackIndex, clipIndex)
+    || !binding
+    || binding.trackIndex !== trackIndex
+    || binding.clipIndex !== clipIndex
+    || !marker
+    || (originalType !== "video" && originalType !== "image")
+    || !containsHandlebars(originalClip.asset.src)
+    || marker.originalType !== originalType
+    || marker.sourceType !== type
+    || (type !== "video" && type !== "image")
+    || !nonEmptyString(item.sourceUrl)
+  ) {
+    return undefined;
+  }
+  return { type, sourceUrl: item.sourceUrl };
+}
+
+function validatedTextMergeUpdate(
+  item: Record<string, unknown>,
+  originalClip: ShotstackClip,
+  sourceEdit: ShotstackEdit,
+  trackIndex: number,
+  clipIndex: number
+): { key: string; value: string } | undefined {
+  const binding = readProviderBinding(item);
+  const field = sourceTextMergeField(originalClip);
+  const boundField = binding?.textMergeField;
+  if (
+    item.id !== sourceItemId(trackIndex, clipIndex)
+    || !binding
+    || binding.trackIndex !== trackIndex
+    || binding.clipIndex !== clipIndex
+    || item.type !== "text"
+    || item.replaceable !== true
+    || typeof item.mergeValue !== "string"
+    || !field
+    || !boundField
+    || boundField.key !== field.key
+    || boundField.assetType !== field.assetType
+    || boundField.source !== field.source
+    || boundField.prefix !== field.prefix
+    || boundField.suffix !== field.suffix
+  ) {
+    return undefined;
+  }
+
+  const values = mergeValueMap(sourceEdit);
+  if (item.mergeValue === sourceTextMergeValue(field, values)) {
+    return undefined;
+  }
+  return {
+    key: field.key,
+    value: field.assetType === "html"
+      ? escapeHtmlMergeValue(item.mergeValue)
+      : item.mergeValue,
+  };
+}
+
+function applyTextMergeUpdate(
+  edit: ShotstackEdit,
+  sourceEdit: ShotstackEdit,
+  update: { key: string; value: string }
+): void {
+  const sourceMerge = Array.isArray(sourceEdit.merge)
+    ? sourceEdit.merge
+    : [];
+  const sourceMatchingIndices = sourceMerge.flatMap((entry, index) => (
+    isRecord(entry)
+      && nonEmptyString(entry.find)
+      && entry.find.trim() === update.key
+      ? [index]
+      : []
+  ));
+  if (sourceMatchingIndices.length > 1) return;
+
+  const currentMerge = Array.isArray(edit.merge) ? edit.merge : sourceMerge;
+  const matchingIndices = currentMerge.flatMap((entry, index) => (
+    isRecord(entry)
+      && nonEmptyString(entry.find)
+      && entry.find.trim() === update.key
+      ? [index]
+      : []
+  ));
+  if (matchingIndices.length > 1) return;
+  const nextMerge = deepClone(currentMerge);
+  if (matchingIndices.length === 1) {
+    const entry = nextMerge[matchingIndices[0]];
+    if (!isRecord(entry)) return;
+    entry.replace = update.value;
+  } else {
+    nextMerge.push({ find: update.key, replace: update.value });
+  }
+  (edit as Record<string, unknown>).merge = nextMerge;
+}
+
+function applyValidatedSourceReplacements(
+  snapshot: VideoProjectRenderSnapshot,
+  sourceEdit: ShotstackEdit
+): ShotstackEdit {
+  const edit = deepClone(sourceEdit);
+  const items = snapshot.items.filter(isRecord);
+
+  sourceEdit.timeline.tracks.forEach((sourceTrack, trackIndex) => {
+    sourceTrack.clips.forEach((sourceClip, clipIndex) => {
+      const expectedId = sourceItemId(trackIndex, clipIndex);
+      const candidates = items.filter((item) => item.id === expectedId);
+      if (candidates.length !== 1) return;
+      const replacement = validatedSourceReplacement(
+        candidates[0],
+        sourceClip,
+        trackIndex,
+        clipIndex
+      );
+      if (replacement) {
+        const asset = deepClone(sourceClip.asset);
+        asset.type = replacement.type;
+        asset.src = replacement.sourceUrl;
+        if (replacement.type === "image") {
+          delete asset.trim;
+          delete asset.volume;
+          delete asset.transcode;
+          delete asset.volumeEffect;
+          delete asset.speed;
+          delete asset.chromaKey;
+        }
+        edit.timeline.tracks[trackIndex].clips[clipIndex].asset = asset;
+        return;
+      }
+
+      const textUpdate = validatedTextMergeUpdate(
+        candidates[0],
+        sourceClip,
+        sourceEdit,
+        trackIndex,
+        clipIndex
+      );
+      if (textUpdate) applyTextMergeUpdate(edit, sourceEdit, textUpdate);
+    });
+  });
+
+  return edit;
 }
 
 function readStyle(item: Record<string, unknown>): Record<string, unknown> | undefined {
@@ -425,6 +767,14 @@ function applyEditorItemToClip(
     if (!nonEmptyString(item.sourceUrl)) return undefined;
     asset.type = type;
     asset.src = item.sourceUrl;
+    if (type === "image") {
+      delete asset.trim;
+      delete asset.volume;
+      delete asset.transcode;
+      delete asset.volumeEffect;
+      delete asset.speed;
+      delete asset.chromaKey;
+    }
     if ((type === "video" || type === "audio") && finiteNumber(item.volume)) {
       asset.volume = item.volume;
     }
@@ -506,14 +856,15 @@ export function editorProjectToShotstackEdit(
   snapshot: VideoProjectRenderSnapshot,
   sourceEdit?: ShotstackEdit
 ): ShotstackEdit {
-  const fallbackRatio = sourceEdit ? aspectRatioFromOutput(sourceEdit.output) : "16:9";
-  const aspectRatio = currentAspectRatio(snapshot, fallbackRatio);
-  const edit: ShotstackEdit = sourceEdit
-    ? deepClone(sourceEdit)
-    : {
-        timeline: { tracks: [] },
-        output: { format: "mp4", aspectRatio },
-      };
+  if (sourceEdit) {
+    return applyValidatedSourceReplacements(snapshot, sourceEdit);
+  }
+
+  const aspectRatio = currentAspectRatio(snapshot, "16:9");
+  const edit: ShotstackEdit = {
+    timeline: { tracks: [] },
+    output: { format: "mp4", aspectRatio },
+  };
   const items = snapshot.items.filter(isRecord);
   const processedItems = new Set<Record<string, unknown>>();
   const boundItems = new Map<string, Record<string, unknown>>();
