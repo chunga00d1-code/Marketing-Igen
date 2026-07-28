@@ -70,7 +70,11 @@ export async function resolveFacebookCredentials(input: {
       isConnected: true,
     }).lean();
     if (integration?.username && integration.accessToken) {
-      return { pageId: integration.username, accessToken: integration.accessToken };
+      return {
+        pageId: integration.username,
+        accessToken: integration.accessToken,
+        isMock: !!integration.isMock,
+      };
     }
   }
 
@@ -83,7 +87,11 @@ export async function resolveFacebookCredentials(input: {
     user.facebookIntegration.pageId &&
     user.facebookIntegration.pageAccessToken
   ) {
-    return { pageId: user.facebookIntegration.pageId, accessToken: user.facebookIntegration.pageAccessToken };
+    return {
+      pageId: user.facebookIntegration.pageId,
+      accessToken: user.facebookIntegration.pageAccessToken,
+      isMock: !!user.facebookIntegration.isMock,
+    };
   }
 
   // 3. Fallback: Check ANY active company-wide Facebook integration in SocialIntegrationModel
@@ -95,7 +103,11 @@ export async function resolveFacebookCredentials(input: {
     accessToken: { $exists: true, $ne: "" },
   }).lean();
   if (companyIntegration?.username && companyIntegration.accessToken) {
-    return { pageId: companyIntegration.username, accessToken: companyIntegration.accessToken };
+    return {
+      pageId: companyIntegration.username,
+      accessToken: companyIntegration.accessToken,
+      isMock: !!companyIntegration.isMock,
+    };
   }
 
   // 4. Fallback: Check ANY user in the company with an active Facebook connection in UserModel
@@ -110,6 +122,7 @@ export async function resolveFacebookCredentials(input: {
     return {
       pageId: anyConnectedUser.facebookIntegration.pageId,
       accessToken: anyConnectedUser.facebookIntegration.pageAccessToken,
+      isMock: !!anyConnectedUser.facebookIntegration.isMock,
     };
   }
 

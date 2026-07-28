@@ -7,6 +7,8 @@ export type TemplateLayer = BulkLayer;
 export interface DataRow {
   id: string;
   name?: string;
+  campaignAssetOrderId?: string;
+  campaignSlotId?: string;
   values: Record<string, string>;
   sourceCells?: Record<string, string>;
   selected?: boolean;

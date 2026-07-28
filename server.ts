@@ -17,7 +17,8 @@ import { telegramService } from "./server/service/telegram.service";
 import { initCampaignWorkers } from "./server/queue/campaign-workers";
 import { initBulkCreateWorker } from "./server/queue/bulk-create-queue";
   import { initVideoCaptionWorker } from "./server/queue/video-caption-queue";
-  import { initCampaignContentSheetAIWorker } from "./server/queue/campaign-content-sheet-queue";
+import { initCampaignContentSheetAIWorker } from "./server/queue/campaign-content-sheet-queue";
+import { initCampaignAssetOrderAIWorker } from "./server/queue/campaign-asset-order-ai-queue";
 import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
 import { initCreativeImageWorker } from "./server/queue/creative-image-queue";
 import { videoProjectRenderQueue } from "./server/queue/video-project-render-queue";
@@ -213,6 +214,7 @@ async function startServer() {
   initBulkCreateWorker();
     initVideoCaptionWorker();
   initCampaignContentSheetAIWorker();
+  initCampaignAssetOrderAIWorker();
   initCreativeImageWorker();
 
 
