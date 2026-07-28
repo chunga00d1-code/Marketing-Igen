@@ -25,6 +25,7 @@ export function openContentStudio(params?: ContentStudioLaunchParams) {
 
 export function contentStudioPathToTab(pathname: string): ContentStudioTab | null {
   const normalized = pathname.replace(/\/$/, '').toLowerCase();
+  if (normalized === '/xuong-noi-dung/thiet-ke-tu-mau') return 'bulk';
   const entry = (Object.entries(CONTENT_STUDIO_TAB_ROUTES) as Array<[ContentStudioTab, string]>).find(([, path]) => path === normalized);
   return entry?.[0] || null;
 }

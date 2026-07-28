@@ -3,7 +3,7 @@ import { broadcastEvent } from "../../socket";
 import { CreativeImageProjectModel } from "../../model/creative-image-project.model";
 import { CreativeImageRenderModel } from "../../model/creative-image-render.model";
 import { assertSafeBulkImageSource } from "../bulk-create-renderer.service";
-import { getCreativeImageTemplate } from "../../../src/creative-image/template-registry";
+import { CREATIVE_IMAGE_TEMPLATES, getCreativeImageTemplate } from "../../../src/creative-image/template-registry";
 import { CREATIVE_IMAGE_CANVASES, type CreativeImageFormat } from "../../../src/creative-image/types";
 import { renderCreativeImage } from "./render.service";
 
@@ -55,7 +55,7 @@ function serialize(value: unknown) {
 
 export const creativeImageService = {
   listTemplates() {
-    return ["product-promo-v1", "product-showcase-v1", "quote-card-v1", "event-announcement-v1"].map((templateId) => getCreativeImageTemplate(templateId)).filter(Boolean);
+    return CREATIVE_IMAGE_TEMPLATES;
   },
 
   async createProject(actor: CreativeActor, input: ProjectInput) {
