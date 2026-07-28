@@ -71,6 +71,22 @@ function toggleScope<T extends string>(current: T[], value: T) {
   return next.length ? next : (["all"] as T[]);
 }
 
+function getShortDriveLink(value: string) {
+  const link = value.trim();
+  if (link.length <= 52) return link;
+
+  try {
+    const url = new URL(link);
+    const folderId = url.pathname.match(/\/folders\/([^/]+)/)?.[1];
+    if (folderId) {
+      return `${url.hostname}/folders/${folderId.slice(0, 12)}…`;
+    }
+    return `${url.hostname}${url.pathname.slice(0, 28)}…`;
+  } catch {
+    return `${link.slice(0, 48)}…`;
+  }
+}
+
 function ScopePicker<T extends string>({
   label,
   options,
@@ -191,7 +207,9 @@ export default function CompanyKnowledgePage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
+  const [importMethod, setImportMethod] = useState<"file" | "drive">("file");
   const [driveLink, setDriveLink] = useState("");
+  const [isDriveLinkFocused, setIsDriveLinkFocused] = useState(false);
   const [purposeScope, setPurposeScope] = useState<KnowledgePurposeScope[]>([
     "all",
   ]);
@@ -404,60 +422,100 @@ export default function CompanyKnowledgePage() {
               </p>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_1.35fr] md:items-center">
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 hover:border-blue-300 hover:bg-blue-50/40">
-                {busy ? (
-                  <LoaderCircle className="h-5 w-5 animate-spin text-blue-650" />
-                ) : (
-                  <Upload className="h-5 w-5 text-blue-650" />
-                )}
-                <span>
-                  <span className="block text-sm font-semibold text-slate-800">
-                    Chọn file từ máy
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    PDF, DOCX, XLSX, TXT, CSV, PNG, JPG, WEBP · tối đa 10 MB
-                  </span>
-                </span>
-                <input
-                  type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.png,.jpg,.jpeg,.webp"
-                  className="hidden"
-                  disabled={busy}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void uploadFile(file);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
-
-              <span className="text-center text-[11px] font-semibold uppercase text-slate-400">
-                hoặc
-              </span>
-
-              <div className="flex gap-2">
-                <div className="relative min-w-0 flex-1">
-                  <Link2 className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    value={driveLink}
-                    onChange={(event) => setDriveLink(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void syncDrive();
-                    }}
-                    placeholder="Dán link Google Drive, Doc hoặc Sheet"
-                    className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+            <div className="mt-4">
+              <div className="grid max-w-md grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1.5">
                 <button
                   type="button"
-                  onClick={() => void syncDrive()}
-                  disabled={busy}
-                  className="rounded-xl bg-blue-650 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+                  onClick={() => setImportMethod("file")}
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-bold transition ${
+                    importMethod === "file"
+                      ? "bg-white text-blue-700 shadow-xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
                 >
-                  Nhập
+                  <Upload className="h-4 w-4" />
+                  Tải file
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportMethod("drive")}
+                  className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-bold transition ${
+                    importMethod === "drive"
+                      ? "bg-white text-blue-700 shadow-xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  <Link2 className="h-4 w-4" />
+                  Google Drive
                 </button>
               </div>
+
+              {importMethod === "file" ? (
+                <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-4 hover:border-blue-400 hover:bg-blue-50">
+                  {busy ? (
+                    <LoaderCircle className="h-5 w-5 animate-spin text-blue-650" />
+                  ) : (
+                    <Upload className="h-5 w-5 text-blue-650" />
+                  )}
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-800">
+                      Chọn file từ máy
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      PDF, DOCX, XLSX, TXT, CSV, PNG, JPG, WEBP · tối đa 10 MB
+                    </span>
+                  </span>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.md,.png,.jpg,.jpeg,.webp"
+                    className="hidden"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void uploadFile(file);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              ) : (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Link Google Drive, Google Doc hoặc Google Sheet
+                    <div className="mt-2 flex gap-2">
+                      <div className="relative min-w-0 flex-1">
+                        <Link2 className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                        <input
+                          value={
+                            isDriveLinkFocused
+                              ? driveLink
+                              : getShortDriveLink(driveLink)
+                          }
+                          onChange={(event) => setDriveLink(event.target.value)}
+                          onFocus={() => setIsDriveLinkFocused(true)}
+                          onBlur={() => setIsDriveLinkFocused(false)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void syncDrive();
+                          }}
+                          placeholder="Dán link chia sẻ công khai"
+                          className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void syncDrive()}
+                        disabled={busy || !driveLink.trim()}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2563eb] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:border disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:opacity-100"
+                      >
+                        {busy && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                        {busy ? "Đang nhập..." : "Nhập"}
+                      </button>
+                    </div>
+                  </label>
+                  <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                    Drive phải bật quyền “Bất kỳ ai có liên kết đều có thể xem”.
+                  </p>
+                </div>
+              )}
             </div>
 
             <details className="mt-4 border-t border-slate-100 pt-3">
@@ -499,6 +557,7 @@ export default function CompanyKnowledgePage() {
                 />
               </div>
             </details>
+
           </section>
         )}
 

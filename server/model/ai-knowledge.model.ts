@@ -91,7 +91,6 @@ AIKnowledgeChunkSchema.index({ companyCode: 1, pageScope: 1, pageIds: 1, updated
 AIKnowledgeChunkSchema.index({
   companyCode: 1,
   purposeScope: 1,
-  channelScope: 1,
   updatedAt: -1,
 });
 

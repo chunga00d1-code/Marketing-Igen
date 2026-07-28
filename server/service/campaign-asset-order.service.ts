@@ -25,6 +25,11 @@ const terminalSlotStatuses = new Set(["published", "cancelled"]);
 interface AssetOrderInput {
   slotId?: string;
   title: string;
+  contentGroup?: string;
+  shootingContent?: string;
+  productionRequirements?: string;
+  quantitySuggestion?: string;
+  usageChannels?: string;
   source?: CampaignAssetSource;
   format?: CampaignAssetOrderFormat;
   aspectRatio?: "1:1" | "4:5" | "9:16" | "16:9";
@@ -292,6 +297,11 @@ export const campaignAssetOrderService = {
       slotId: slot?._id,
       createdBy: userId,
       title,
+      contentGroup: cleanText(input.contentGroup, 240),
+      shootingContent: cleanText(input.shootingContent, 1000),
+      productionRequirements: cleanText(input.productionRequirements, 2000),
+      quantitySuggestion: cleanText(input.quantitySuggestion, 120),
+      usageChannels: "Facebook",
       source: input.source || "manual",
       format,
       aspectRatio: input.aspectRatio || "4:5",
@@ -332,6 +342,11 @@ export const campaignAssetOrderService = {
     const headline = input.headline === undefined ? current.headline : cleanText(input.headline, 120);
     const patch: Record<string, unknown> = {
       title: input.title === undefined ? current.title : cleanText(input.title, 240),
+      contentGroup: input.contentGroup === undefined ? current.contentGroup : cleanText(input.contentGroup, 240),
+      shootingContent: input.shootingContent === undefined ? current.shootingContent : cleanText(input.shootingContent, 1000),
+      productionRequirements: input.productionRequirements === undefined ? current.productionRequirements : cleanText(input.productionRequirements, 2000),
+      quantitySuggestion: input.quantitySuggestion === undefined ? current.quantitySuggestion : cleanText(input.quantitySuggestion, 120),
+      usageChannels: "Facebook",
       source: input.source || current.source,
       format,
       aspectRatio: input.aspectRatio || current.aspectRatio,
@@ -421,9 +436,23 @@ export const campaignAssetOrderService = {
           subheadline: { type: "string" },
           cta: { type: "string" },
           visualBrief: { type: "string" },
+          contentGroup: { type: "string" },
+          shootingContent: { type: "string" },
+          productionRequirements: { type: "string" },
+          quantitySuggestion: { type: "string" },
           warnings: { type: "array", items: { type: "string" } },
         },
-        required: ["headline", "subheadline", "cta", "visualBrief", "warnings"],
+        required: [
+          "headline",
+          "subheadline",
+          "cta",
+          "visualBrief",
+          "contentGroup",
+          "shootingContent",
+          "productionRequirements",
+          "quantitySuggestion",
+          "warnings",
+        ],
       },
       messages: [
         {
@@ -431,12 +460,26 @@ export const campaignAssetOrderService = {
           content: "Bạn tạo brief ngắn cho ảnh/video marketing. Chỉ trả JSON đúng schema. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết. headline tối đa 45 ký tự, subheadline tối đa 70 ký tự, cta tối đa 24 ký tự, visualBrief tối đa 160 ký tự.",
         },
         {
+          role: "system",
+          content: "Also return the production-table fields: contentGroup (content category), shootingContent (what to shoot/film), productionRequirements (visual requirements), and quantitySuggestion (suggested image/video count). Use Vietnamese. The usage channel is always Facebook; never suggest another channel.",
+        },
+        {
           role: "user",
-          content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nSLOT:\n${JSON.stringify(slot ? { pillar: slot.pillar, objective: slot.objective, topicBrief: slot.topicBrief, platform: slot.platform } : {})}\n\nORDER HIỆN TẠI:\n${JSON.stringify({ title: order.title, format: order.format, aspectRatio: order.aspectRatio, headline: order.headline, subheadline: order.subheadline, cta: order.cta, visualBrief: order.visualBrief, assetRoles: order.assets.map((asset) => asset.role) })}\n\nKHO TRI THỨC ĐÚNG PAGE:\n${knowledge.contextText || "Không có"}\n\nYÊU CẦU THÊM:\n${input.instruction || "Không có"}`,
+          content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nSLOT:\n${JSON.stringify(slot ? { pillar: slot.pillar, objective: slot.objective, topicBrief: slot.topicBrief, platform: slot.platform } : {})}\n\nORDER HIỆN TẠI:\n${JSON.stringify({ title: order.title, contentGroup: order.contentGroup, shootingContent: order.shootingContent, productionRequirements: order.productionRequirements, quantitySuggestion: order.quantitySuggestion, usageChannels: "Facebook", format: order.format, aspectRatio: order.aspectRatio, headline: order.headline, subheadline: order.subheadline, cta: order.cta, visualBrief: order.visualBrief, assetRoles: order.assets.map((asset) => asset.role) })}\n\nKHO TRI THỨC ĐÚNG PAGE:\n${knowledge.contextText || "Không có"}\n\nYÊU CẦU THÊM:\n${input.instruction || "Không có"}`,
         },
       ],
     });
-    let generated: { headline?: unknown; subheadline?: unknown; cta?: unknown; visualBrief?: unknown; warnings?: unknown };
+    let generated: {
+      contentGroup?: unknown;
+      shootingContent?: unknown;
+      productionRequirements?: unknown;
+      quantitySuggestion?: unknown;
+      headline?: unknown;
+      subheadline?: unknown;
+      cta?: unknown;
+      visualBrief?: unknown;
+      warnings?: unknown;
+    };
     try {
       generated = JSON.parse(response.text) as typeof generated;
     } catch {
@@ -453,6 +496,11 @@ export const campaignAssetOrderService = {
     });
     order.aiProposal = {
       idempotencyKey: input.idempotencyKey,
+      contentGroup: cleanText(generated.contentGroup, 80),
+      shootingContent: cleanText(generated.shootingContent, 300),
+      productionRequirements: cleanText(generated.productionRequirements, 500),
+      quantitySuggestion: cleanText(generated.quantitySuggestion, 80),
+      usageChannels: "Facebook",
       headline: cleanText(generated.headline, 45),
       subheadline: cleanText(generated.subheadline, 70),
       cta: cleanText(generated.cta, 24),
@@ -469,7 +517,20 @@ export const campaignAssetOrderService = {
     companyCode: string,
     campaignId: string,
     orderId: string,
-    input: { expectedRevision: number; fieldKeys?: Array<"headline" | "subheadline" | "cta" | "visualBrief"> }
+    input: {
+      expectedRevision: number;
+      fieldKeys?: Array<
+        | "contentGroup"
+        | "shootingContent"
+        | "productionRequirements"
+        | "quantitySuggestion"
+        | "usageChannels"
+        | "headline"
+        | "subheadline"
+        | "cta"
+        | "visualBrief"
+      >;
+    }
   ) {
     if (!mongoose.isValidObjectId(orderId)) throw httpError("ID Order không hợp lệ.", 400);
     const order = await CampaignAssetOrderModel.findOne({ _id: orderId, companyCode, campaignId });
@@ -478,8 +539,23 @@ export const campaignAssetOrderService = {
     if (order.revision !== input.expectedRevision) {
       throw httpError("Order đã được cập nhật ở nơi khác. Hãy tải lại trước khi áp dụng AI.", 409, "REVISION_CONFLICT");
     }
-    const selected = new Set(input.fieldKeys?.length ? input.fieldKeys : ["headline", "subheadline", "cta", "visualBrief"]);
+    const selected = new Set(input.fieldKeys?.length ? input.fieldKeys : [
+      "contentGroup",
+      "shootingContent",
+      "productionRequirements",
+      "quantitySuggestion",
+      "usageChannels",
+      "headline",
+      "subheadline",
+      "cta",
+      "visualBrief",
+    ]);
     const patch = {
+      ...(selected.has("contentGroup") ? { contentGroup: order.aiProposal.contentGroup || "" } : {}),
+      ...(selected.has("shootingContent") ? { shootingContent: order.aiProposal.shootingContent || "" } : {}),
+      ...(selected.has("productionRequirements") ? { productionRequirements: order.aiProposal.productionRequirements || "" } : {}),
+      ...(selected.has("quantitySuggestion") ? { quantitySuggestion: order.aiProposal.quantitySuggestion || "" } : {}),
+      ...(selected.has("usageChannels") ? { usageChannels: "Facebook" } : {}),
       ...(selected.has("headline") ? { headline: order.aiProposal.headline } : {}),
       ...(selected.has("subheadline") ? { subheadline: order.aiProposal.subheadline || "" } : {}),
       ...(selected.has("cta") ? { cta: order.aiProposal.cta || "" } : {}),
