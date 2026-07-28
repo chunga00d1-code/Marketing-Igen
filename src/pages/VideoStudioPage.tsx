@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Clapperboard,
   Film,
+  LayoutTemplate,
   Mic,
   Scissors,
   Sparkles,
@@ -21,6 +22,10 @@ import {
   videoStudioPathToTool,
   type VideoStudioTool,
 } from "../utils/videoStudioNavigation";
+import type {
+  AspectRatioType,
+  TemplateEditorProject,
+} from "../components/template-editor/types";
 
 const SimpleVideoWorkspace = lazy(() =>
   import("../components/content-studio/SimpleVideoWorkspace").then((module) => ({
@@ -60,6 +65,18 @@ const VideoCaptionWorkspace = lazy(() =>
   }))
 );
 
+const VideoTemplateLibrary = lazy(() =>
+  import("../components/content-studio/video-templates/VideoTemplateLibrary").then((module) => ({
+    default: module.VideoTemplateLibrary,
+  }))
+);
+
+const TemplateEditorWorkspace = lazy(() =>
+  import("../components/template-editor/TemplateEditorWorkspace").then((module) => ({
+    default: module.TemplateEditorWorkspace,
+  }))
+);
+
 type ToolDefinition = {
   id: Exclude<VideoStudioTool, "home">;
   title: string;
@@ -72,6 +89,16 @@ type ToolDefinition = {
 };
 
 const VIDEO_TOOLS: ToolDefinition[] = [
+  {
+    id: "templates",
+    title: "Mẫu video",
+    description: "Chọn mẫu có sẵn và tùy chỉnh thành video của bạn.",
+    requirement: "Bắt đầu nhanh từ thư viện mẫu video",
+    group: "create",
+    icon: LayoutTemplate,
+    tone: "from-blue-50 to-white hover:border-blue-300",
+    iconTone: "bg-blue-600 text-white",
+  },
   {
     id: "ai-video",
     title: "Tạo video từ nội dung",
@@ -155,6 +182,9 @@ export default function VideoStudioPage() {
     () => initialParams?.tool || videoStudioPathToTool(window.location.pathname) || "home"
   );
   const [editVideoSourceUrl, setEditVideoSourceUrl] = useState<string | null>(null);
+  const [templateEditorConfig, setTemplateEditorConfig] = useState<{
+    initialData?: Partial<TemplateEditorProject>;
+  } | null>(null);
 
   const navigate = useCallback((tool: VideoStudioTool, options?: { replace?: boolean }) => {
     const nextPath = VIDEO_STUDIO_ROUTES[tool];
@@ -186,6 +216,10 @@ export default function VideoStudioPage() {
   useEffect(() => {
     clearParamsRef.current();
   }, []);
+
+  useEffect(() => {
+    if (activeTool !== "templates") setTemplateEditorConfig(null);
+  }, [activeTool]);
 
   const handleMediaSaved = useCallback(
     async (cardId: string, mediaUrl: string, type: "image" | "video" | "audio") => {
@@ -236,6 +270,8 @@ export default function VideoStudioPage() {
                 }}
                 onNavigateToTool={navigate}
                 onMediaSaved={handleMediaSaved}
+                templateEditorConfig={templateEditorConfig}
+                setTemplateEditorConfig={setTemplateEditorConfig}
               />
             </div>
           </>
@@ -245,7 +281,7 @@ export default function VideoStudioPage() {
   );
 }
 
-function VideoStudioHome({
+export function VideoStudioHome({
   onSelect,
 }: {
   onSelect: (tool: VideoStudioTool) => void;
@@ -356,6 +392,8 @@ function VideoToolContent({
   onEditVideo,
   onNavigateToTool,
   onMediaSaved,
+  templateEditorConfig,
+  setTemplateEditorConfig,
 }: {
   tool: Exclude<VideoStudioTool, "home">;
   initialParams: ReturnType<typeof readVideoStudioLaunchParams>;
@@ -368,7 +406,47 @@ function VideoToolContent({
     mediaUrl: string,
     type: "image" | "video" | "audio"
   ) => void;
+  templateEditorConfig: {
+    initialData?: Partial<TemplateEditorProject>;
+  } | null;
+  setTemplateEditorConfig: React.Dispatch<
+    React.SetStateAction<{
+      initialData?: Partial<TemplateEditorProject>;
+    } | null>
+  >;
 }) {
+  if (tool === "templates") {
+    if (templateEditorConfig) {
+      return (
+        <Suspense fallback={<VideoToolLoader label="Đang mở trình chỉnh sửa mẫu..." />}>
+          <TemplateEditorWorkspace
+            initialProjectData={templateEditorConfig.initialData}
+            onBackToLibrary={() => setTemplateEditorConfig(null)}
+          />
+        </Suspense>
+      );
+    }
+
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở thư viện mẫu video..." />}>
+        <VideoTemplateLibrary
+          onSelectEditTab={(projectId, mediaUrl, title, aspectRatio, duration) => {
+            setTemplateEditorConfig({
+              initialData: {
+                id: projectId,
+                title: title || "Dự án từ mẫu TikTok",
+                aspectRatio: (aspectRatio as AspectRatioType) || "9:16",
+                duration,
+                previewVideoUrl: mediaUrl,
+                thumbnailUrl: mediaUrl,
+              },
+            });
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   if (tool === "ai-video") {
     return (
       <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo video..." />}>
