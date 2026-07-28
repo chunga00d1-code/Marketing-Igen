@@ -155,6 +155,44 @@ const sheetAIJobSchema = {
   }),
 };
 
+const assetOrderAssetSchema = Joi.object({
+  role: Joi.string().valid("primary", "secondary", "logo", "video", "other").required(),
+  sourceUrl: Joi.string().uri({ scheme: ["http", "https"] }).max(14_000_000).required(),
+  originalName: Joi.string().trim().max(500).allow("").optional(),
+  source: Joi.string().valid("manual", "sheet", "drive", "upload").required(),
+  order: Joi.number().integer().min(0).max(100).required(),
+});
+const optionalAssetOrderId = Joi.string().pattern(/^[a-f\d]{24}$/i).allow("").optional();
+const assetOrderBody = Joi.object({
+  slotId: optionalAssetOrderId,
+  title: Joi.string().trim().max(240).allow("").default(""),
+  source: Joi.string().valid("manual", "sheet", "drive", "upload").default("manual"),
+  format: Joi.string().valid("image", "video", "image_video").default("image"),
+  aspectRatio: Joi.string().valid("1:1", "4:5", "9:16", "16:9").default("4:5"),
+  templateId: optionalAssetOrderId,
+  headline: Joi.string().trim().max(120).allow("").default(""),
+  subheadline: Joi.string().trim().max(220).allow("").default(""),
+  cta: Joi.string().trim().max(80).allow("").default(""),
+  visualBrief: Joi.string().trim().max(1000).allow("").default(""),
+  assets: Joi.array().items(assetOrderAssetSchema).max(20).default([]),
+});
+const updateAssetOrderBody = {
+  body: Joi.object({
+    expectedRevision: Joi.number().integer().min(0).required(),
+    slotId: optionalAssetOrderId,
+    title: Joi.string().trim().max(240).allow(""),
+    source: Joi.string().valid("manual", "sheet", "drive", "upload"),
+    format: Joi.string().valid("image", "video", "image_video"),
+    aspectRatio: Joi.string().valid("1:1", "4:5", "9:16", "16:9"),
+    templateId: optionalAssetOrderId,
+    headline: Joi.string().trim().max(120).allow(""),
+    subheadline: Joi.string().trim().max(220).allow(""),
+    cta: Joi.string().trim().max(80).allow(""),
+    visualBrief: Joi.string().trim().max(1000).allow(""),
+    assets: Joi.array().items(assetOrderAssetSchema).max(20),
+  }).min(2),
+};
+
 marketingCampaignRouter.post("/internal/prepare", marketingCampaignController.prepareWorker as never);
 marketingCampaignRouter.post("/internal/media", marketingCampaignController.mediaWorker as never);
 marketingCampaignRouter.post("/internal/verify", marketingCampaignController.verifyWorker as never);
@@ -178,6 +216,47 @@ marketingCampaignRouter.get("/calendar", validateRequest(calendarSchema), market
 marketingCampaignRouter.post("/", validateRequest(createSchema), marketingCampaignController.create as never);
 marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id/sheet", marketingCampaignController.getSheet as never);
+marketingCampaignRouter.get("/:id/asset-orders", validateRequest({ params: Joi.object({ id: objectId } ) }), marketingCampaignController.listAssetOrders as never);
+marketingCampaignRouter.post("/:id/asset-orders", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: assetOrderBody,
+}), marketingCampaignController.createAssetOrder as never);
+marketingCampaignRouter.patch("/:id/asset-orders/:orderId", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  ...updateAssetOrderBody,
+}), marketingCampaignController.updateAssetOrder as never);
+marketingCampaignRouter.delete("/:id/asset-orders/:orderId", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+}), marketingCampaignController.archiveAssetOrder as never);
+marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/preview", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  body: Joi.object({
+    idempotencyKey: Joi.string().trim().min(8).max(200).required(),
+    instruction: Joi.string().trim().max(2000).allow("").optional(),
+  }),
+}), marketingCampaignController.previewAssetOrderAI as never);
+marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/apply", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  body: Joi.object({
+    expectedRevision: Joi.number().integer().min(0).required(),
+    fieldKeys: Joi.array().items(Joi.string().valid("headline", "subheadline", "cta", "visualBrief")).max(4).optional(),
+  }),
+}), marketingCampaignController.applyAssetOrderAI as never);
+marketingCampaignRouter.post("/:id/asset-orders/:orderId/bulk/preview", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  body: Joi.object({ templateId: objectId }),
+}), marketingCampaignController.previewAssetOrderBulk as never);
+marketingCampaignRouter.post("/:id/asset-orders/:orderId/bulk", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  body: Joi.object({
+    templateId: objectId,
+    idempotencyKey: Joi.string().trim().min(8).max(200).required(),
+  }),
+}), marketingCampaignController.createAssetOrderBulk as never);
+marketingCampaignRouter.post("/:id/asset-orders/:orderId/bulk/sync", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  body: Joi.object({}),
+}), marketingCampaignController.syncAssetOrderBulk as never);
 marketingCampaignRouter.post("/:id/sheet/columns", validateRequest({
   params: Joi.object({ id: objectId }),
   body: sheetColumnBody,

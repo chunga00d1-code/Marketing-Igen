@@ -29,30 +29,33 @@ const MAX_ROWS = 500;
 const MAX_AI_ROWS = 100;
 const MAX_BULK_CELLS = 1000;
 const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
-const EDITABLE_SLOT_STATUSES = new Set([
-  "planned",
-  "queued",
-  "pending_approval",
-  "needs_attention",
-  "failed",
-  "skipped",
-]);
+// Sheet is the planning and review surface for a slot. A slot remains editable
+// while it is in the campaign pipeline; only terminal slots are immutable.
+// This must match the bulk-AI eligibility query below.
+const READ_ONLY_SLOT_STATUSES = new Set(["published", "cancelled"]);
 const EDITABLE_CANONICAL_FIELDS = new Set(["pillar", "objective", "topicBrief", "funnelStage", "mediaType"]);
 
 const DEFAULT_COLUMNS: ICampaignSheetColumn[] = [
   systemColumn("scheduledAt", "Ngày đăng", "datetime", 0, false, 170),
   systemColumn("platform", "Nền tảng", "short_text", 1, false, 110),
   systemColumn("page", "Page / tài khoản", "short_text", 2, false, 170),
-  systemColumn("pillar", "Content Pillar", "short_text", 3, true, 170, "constraint"),
+  systemColumn("pillar", "Nhóm nội dung", "short_text", 3, true, 170, "constraint"),
   systemColumn("funnelStage", "Funnel", "select", 4, true, 100, "constraint", ["TOFU", "MOFU", "BOFU"]),
   systemColumn("objective", "Mục tiêu", "short_text", 5, true, 180, "constraint"),
-  systemColumn("topicBrief", "Chủ đề / tiêu đề", "long_text", 6, true, 260, "constraint"),
+  systemColumn("topicBrief", "Nội dung cần quay/chụp", "long_text", 6, true, 260, "constraint"),
   systemColumn("title", "Tiêu đề bài", "short_text", 7, true, 240, "approved_override"),
   systemColumn("bodyText", "Nội dung", "long_text", 8, true, 360, "approved_override"),
   systemColumn("cta", "CTA", "short_text", 9, true, 180, "constraint"),
   systemColumn("hashtags", "Hashtag", "short_text", 10, true, 180, "constraint"),
   systemColumn("mediaType", "Media", "select", 11, false, 110, "constraint", ["text", "image", "video", "human-video"]),
   systemColumn("status", "Trạng thái", "short_text", 12, false, 140),
+];
+
+const ORDER_INPUT_COLUMNS: ICampaignSheetColumn[] = [
+  orderInputColumn("productionBrief", "Chi tiết yêu cầu", "long_text", 13, 280),
+  orderInputColumn("assetFormat", "Định dạng", "select", 14, 150, ["Ảnh", "Video", "Ảnh + Video"]),
+  orderInputColumn("proposedQuantity", "SL đề xuất", "short_text", 15, 150),
+  orderInputColumn("usageChannels", "Phục vụ", "short_text", 16, 180),
 ];
 
 function systemColumn(
@@ -83,6 +86,34 @@ function systemColumn(
       knowledgeDocumentTypes: [],
     },
     display: { order, width, frozen: order < 2, hidden: false },
+  };
+}
+
+function orderInputColumn(
+  key: string,
+  label: string,
+  dataType: CampaignSheetDataType,
+  order: number,
+  width: number,
+  options: string[] = []
+): ICampaignSheetColumn {
+  return {
+    id: `order:${key}`,
+    key,
+    label,
+    kind: "custom",
+    dataType,
+    required: false,
+    archived: false,
+    options,
+    fieldPolicy: "input",
+    ai: {
+      enabled: false,
+      allowedSources: ["row", "campaign"],
+      sensitiveBusinessField: false,
+      knowledgeDocumentTypes: [],
+    },
+    display: { order, width, hidden: false, frozen: false },
   };
 }
 
@@ -171,6 +202,13 @@ function projectSystemValues(slot: any, content: any) {
   };
 }
 
+function getKnowledgePageId(integration: unknown) {
+  if (!integration || typeof integration !== "object") return undefined;
+  const value = integration as { username?: unknown };
+  const pageId = String(value.username || "").trim();
+  return pageId || undefined;
+}
+
 async function assertCampaign(companyCode: string, campaignId: string) {
   if (!mongoose.isValidObjectId(campaignId)) throw httpError("ID chiến dịch không hợp lệ.", 400);
   const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode }).lean();
@@ -179,18 +217,26 @@ async function assertCampaign(companyCode: string, campaignId: string) {
 }
 
 async function getOrCreateConfig(companyCode: string, campaignId: string) {
-  return CampaignSheetConfigModel.findOneAndUpdate(
+  const config = await CampaignSheetConfigModel.findOneAndUpdate(
     { companyCode, campaignId },
     {
       $setOnInsert: {
         companyCode,
         campaignId,
-        columns: DEFAULT_COLUMNS,
+        columns: [...DEFAULT_COLUMNS, ...ORDER_INPUT_COLUMNS],
         revision: 1,
       },
     },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
   );
+  const currentKeys = new Set((config.columns || []).map((column) => column.key));
+  const missingOrderColumns = ORDER_INPUT_COLUMNS.filter((column) => !currentKeys.has(column.key));
+  if (missingOrderColumns.length) {
+    config.columns.push(...missingOrderColumns);
+    config.revision += 1;
+    await config.save();
+  }
+  return config;
 }
 
 async function getOrCreateRow(companyCode: string, campaignId: string, slotId: string) {
@@ -290,7 +336,7 @@ export const campaignContentSheetService = {
         return {
           slotId: String(slot._id),
           revision: row?.revision || 0,
-          readOnly: !EDITABLE_SLOT_STATUSES.has(slot.status),
+          readOnly: READ_ONLY_SLOT_STATUSES.has(slot.status),
           system: projectSystemValues(slot, content || candidate),
           fields: customFields,
           updatedAt: row?.updatedAt || slot.updatedAt,
@@ -462,8 +508,8 @@ export const campaignContentSheetService = {
     const campaign = await assertCampaign(companyCode, campaignId);
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw httpError("Không tìm thấy bài viết trong chiến dịch.", 404);
-    if (!EDITABLE_SLOT_STATUSES.has(slot.status)) {
-      throw httpError("Bài viết đang xử lý, chờ duyệt hoặc đã xuất bản nên chưa thể chỉnh sửa Sheet.", 409, "ROW_READ_ONLY");
+    if (READ_ONLY_SLOT_STATUSES.has(slot.status)) {
+      throw httpError("Bài viết đã xuất bản hoặc đã hủy nên không thể chỉnh sửa Sheet.", 409, "ROW_READ_ONLY");
     }
     const config = await getOrCreateConfig(companyCode, campaignId);
     const columnMap = new Map(config.columns.filter((column) => !column.archived).map((column) => [column.key, column]));
@@ -631,7 +677,9 @@ export const campaignContentSheetService = {
     }
   ) {
     const campaign = await assertCampaign(companyCode, campaignId);
-    const slot = await MarketingCampaignSlotModel.findOne({ _id: input.slotId, campaignId, companyCode }).lean();
+    const slot = await MarketingCampaignSlotModel.findOne({ _id: input.slotId, campaignId, companyCode })
+      .populate("integrationId", "username")
+      .lean();
     if (!slot) throw httpError("Không tìm thấy bài viết trong chiến dịch.", 404);
     const config = await getOrCreateConfig(companyCode, campaignId);
     const row = await getOrCreateRow(companyCode, campaignId, input.slotId);
@@ -672,6 +720,7 @@ export const campaignContentSheetService = {
           channel: slot.platform === "TikTok" ? "tiktok" : "facebook",
           purpose: "marketing",
           topK: 5,
+          pageId: getKnowledgePageId(slot.integrationId),
           documentTypes: Array.from(
             new Set(targetColumns.flatMap((column) => column.ai.knowledgeDocumentTypes || []))
           ) as KnowledgeDocumentType[],

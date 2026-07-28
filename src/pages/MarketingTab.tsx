@@ -22,6 +22,7 @@ import { isRenderableVideoUrl } from "../components/marketing/CardWidgets";
 import TikTokPublishModal from "../components/marketing/TikTokPublishModal";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { openContentStudio } from "../utils/contentStudioNavigation";
+import { openVideoStudio } from "../utils/videoStudioNavigation";
 
 // Lazy-loaded subcomponents
 const IdeationTab = lazy(() => import("../components/marketing/IdeationTab"));
@@ -622,15 +623,12 @@ export default function MarketingTab() {
       const isAvatarThree = card.engineType === 'avatar_iii';
       const isMyVoice = isAvatarThree || card.usePersonalVoice;
       if (isMyVoice) {
-        openContentStudio({
-          tab: 'video',
-          videoSubTab: 'heygen',
+        openVideoStudio({
+          tool: 'human-video',
           prompt: voiceScript,
           cardId: card.id,
           image: card.referenceImage,
           autoTrigger: false,
-          title: voiceTitle,
-          description: voiceDescription,
           engineType: card.engineType,
           usePersonalVoice: card.usePersonalVoice,
         });
@@ -660,13 +658,12 @@ export default function MarketingTab() {
         )
       );
 
-      openContentStudio({
-        tab: 'voice',
+      openVideoStudio({
+        tool: 'voice',
         prompt: voiceScript,
         cardId: card.id,
         image: card.referenceImage,
         autoTrigger: false,
-        videoSubTab: 'heygen',
         title: voiceTitle,
         description: voiceDescription,
       });
@@ -689,12 +686,34 @@ export default function MarketingTab() {
       }
     }
 
+    if (selectedType === 'video') {
+      openVideoStudio({
+        tool: 'ai-video',
+        prompt: cleanText,
+        cardId: card.id,
+        image: card.referenceImage,
+        autoTrigger: true,
+      });
+      return;
+    }
+
+    if (selectedType === 'voice') {
+      openVideoStudio({
+        tool: 'voice',
+        prompt: cleanText,
+        cardId: card.id,
+        image: card.referenceImage,
+        autoTrigger: true,
+      });
+      return;
+    }
+
     openContentStudio({
       tab: selectedType,
       prompt: cleanText,
       cardId: card.id,
       image: card.referenceImage,
-      autoTrigger: true
+      autoTrigger: true,
     });
   };
 

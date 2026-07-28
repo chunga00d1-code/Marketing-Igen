@@ -255,6 +255,89 @@ export interface CampaignSheetRevision {
   createdAt: string;
 }
 
+export type CampaignAssetOrderFormat = 'image' | 'video' | 'image_video';
+export type CampaignAssetOrderStatus = 'draft' | 'needs_assets' | 'ready' | 'bulk_queued' | 'completed' | 'cancelled';
+export type CampaignAssetSource = 'manual' | 'sheet' | 'drive' | 'upload';
+export type CampaignAssetRole = 'primary' | 'secondary' | 'logo' | 'video' | 'other';
+
+export interface CampaignAssetOrderAsset {
+  role: CampaignAssetRole;
+  sourceUrl: string;
+  originalName?: string;
+  source: CampaignAssetSource;
+  order: number;
+}
+
+export interface CampaignAssetOrder {
+  _id: string;
+  campaignId: string;
+  slotId?: string;
+  title: string;
+  source: CampaignAssetSource;
+  format: CampaignAssetOrderFormat;
+  aspectRatio: '1:1' | '4:5' | '9:16' | '16:9';
+  templateId?: string;
+  headline: string;
+  subheadline?: string;
+  cta?: string;
+  visualBrief?: string;
+  assets: CampaignAssetOrderAsset[];
+  status: CampaignAssetOrderStatus;
+  revision: number;
+  bulkJobId?: string;
+  outputUrls: string[];
+  aiProposal?: {
+    idempotencyKey: string;
+    headline: string;
+    subheadline?: string;
+    cta?: string;
+    visualBrief?: string;
+    references: Array<{
+      kind: 'campaign' | 'slot' | 'knowledge_document' | 'knowledge_chunk';
+      id: string;
+      title?: string;
+      excerpt?: string;
+    }>;
+    warnings: string[];
+    createdAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  slot?: {
+    _id: string;
+    topicBrief: string;
+    pillar: string;
+    platform: string;
+    status: string;
+    scheduledAt: string;
+    mediaType: string;
+  };
+}
+
+export interface CampaignAssetOrderData {
+  campaign: { id: string; title: string; timezone: string };
+  slots: Array<{
+    _id: string;
+    topicBrief: string;
+    pillar: string;
+    platform: string;
+    status: string;
+    scheduledAt: string;
+    mediaType: string;
+    page: string;
+  }>;
+  orders: CampaignAssetOrder[];
+}
+
+export interface CampaignAssetOrderBulkPreview {
+  orderId: string;
+  template: { _id: string; name: string; canvas: { width: number; height: number } };
+  values: Record<string, string>;
+  mapping: Array<{ layerId: string; fieldName: string; source: string; value: string }>;
+  missing: Array<{ layerId: string; fieldName: string; type: 'text' | 'image' }>;
+  ready: boolean;
+}
+
 export interface MarketingCampaignCalendarSlot {
   _id: string;
   campaignId: string;
@@ -482,6 +565,93 @@ export const marketingCampaignService = {
 
   getSheet(campaignId: string) {
     return request<CampaignSheetData>(`/api/v1/marketing-campaigns/${campaignId}/sheet`);
+  },
+
+  getAssetOrders(campaignId: string) {
+    return request<CampaignAssetOrderData>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders`);
+  },
+
+  createAssetOrder(campaignId: string, input: {
+    slotId?: string;
+    title?: string;
+    source?: CampaignAssetSource;
+    format?: CampaignAssetOrderFormat;
+    aspectRatio?: CampaignAssetOrder['aspectRatio'];
+    templateId?: string;
+    headline?: string;
+    subheadline?: string;
+    cta?: string;
+    visualBrief?: string;
+    assets?: CampaignAssetOrderAsset[];
+  }) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  updateAssetOrder(campaignId: string, orderId: string, input: {
+    expectedRevision: number;
+    slotId?: string;
+    title?: string;
+    source?: CampaignAssetSource;
+    format?: CampaignAssetOrderFormat;
+    aspectRatio?: CampaignAssetOrder['aspectRatio'];
+    templateId?: string;
+    headline?: string;
+    subheadline?: string;
+    cta?: string;
+    visualBrief?: string;
+    assets?: CampaignAssetOrderAsset[];
+  }) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  },
+
+  archiveAssetOrder(campaignId: string, orderId: string) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  previewAssetOrderAI(campaignId: string, orderId: string, input: { idempotencyKey: string; instruction?: string }) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/ai/preview`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  applyAssetOrderAI(campaignId: string, orderId: string, input: {
+    expectedRevision: number;
+    fieldKeys?: Array<'headline' | 'subheadline' | 'cta' | 'visualBrief'>;
+  }) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/ai/apply`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  previewAssetOrderBulk(campaignId: string, orderId: string, templateId: string) {
+    return request<CampaignAssetOrderBulkPreview>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/bulk/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ templateId }),
+    });
+  },
+
+  createAssetOrderBulk(campaignId: string, orderId: string, input: { templateId: string; idempotencyKey: string }) {
+    return request<{ order: CampaignAssetOrder; job: { _id: string; status: string } }>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/bulk`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  syncAssetOrderBulk(campaignId: string, orderId: string) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/bulk/sync`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
   },
 
   addSheetColumn(campaignId: string, input: {

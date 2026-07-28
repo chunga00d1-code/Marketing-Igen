@@ -1,6 +1,14 @@
 export const VIDEO_CAPTION_MODES = ["speech", "context", "combined"] as const;
 export type VideoCaptionMode = (typeof VIDEO_CAPTION_MODES)[number];
 
+export const VIDEO_CAPTION_TRANSCRIPTION_LANGUAGES = [
+  "vi",
+  "auto",
+  "en",
+] as const;
+export type VideoCaptionTranscriptionLanguage =
+  (typeof VIDEO_CAPTION_TRANSCRIPTION_LANGUAGES)[number];
+
 export const VIDEO_CAPTION_LANES = ["speech", "context"] as const;
 export type VideoCaptionLane = (typeof VIDEO_CAPTION_LANES)[number];
 
@@ -81,6 +89,8 @@ export type VideoCaptionPosition =
   | "bottom"
   | "safe_auto";
 
+export type VideoCaptionTextAlign = "left" | "center" | "right";
+
 export interface VideoCaptionStyle {
   preset: "classic" | "clean" | "highlight" | "custom";
   fontFamily: string;
@@ -90,6 +100,7 @@ export interface VideoCaptionStyle {
   backgroundColor: string;
   backgroundOpacity: number;
   position: VideoCaptionPosition;
+  textAlign: VideoCaptionTextAlign;
   maxLines: 1 | 2;
   safeAreaPercent: number;
 }
@@ -103,6 +114,7 @@ export const DEFAULT_VIDEO_CAPTION_STYLE: VideoCaptionStyle = {
   backgroundColor: "#000000",
   backgroundOpacity: 0.72,
   position: "bottom",
+  textAlign: "center",
   maxLines: 2,
   safeAreaPercent: 8,
 };
@@ -120,7 +132,21 @@ export interface VideoCaptionMetadata {
   containerDurationMs?: number;
   videoStreamDurationMs?: number;
   audioStreamDurationMs?: number;
+  containerStartMs?: number;
+  videoStreamStartMs?: number;
+  audioStreamStartMs?: number;
   durationSource?: "container" | "video_stream" | "audio_stream";
+  timing?: {
+    status: "verified" | "rejected";
+    providerDurationMs?: number;
+    sourceDurationMs?: number;
+    scale?: number;
+    offsetMs?: number;
+    driftRatio?: number;
+    wordCoverageRatio?: number;
+    alignmentMethod?: "word" | "word_pause";
+    pauseBoundaryCoverageRatio?: number;
+  };
   width?: number;
   height?: number;
   fps?: number;
@@ -252,6 +278,7 @@ export interface CreateVideoCaptionProjectInput {
   name: string;
   mode: VideoCaptionMode;
   source: Omit<VideoCaptionSource, "fingerprint">;
+  language?: VideoCaptionTranscriptionLanguage;
   contextLinks?: VideoCaptionContextLinks;
   contextBrief?: string;
   style?: Partial<VideoCaptionStyle>;
@@ -347,6 +374,12 @@ export interface SpeechTranscriptionProvider {
         providerRequestId?: string;
         transcription: {
           language?: string;
+          /**
+           * Duration reported by the transcription provider for the audio
+           * that was actually analyzed. Used only to reconcile small
+           * audio/video timebase differences before building caption blocks.
+           */
+          durationMs?: number;
           words: Array<{
             text: string;
             startMs: number;

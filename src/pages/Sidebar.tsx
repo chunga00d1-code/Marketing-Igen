@@ -12,6 +12,7 @@ import {
   Wallet,
   BookOpen,
   LibraryBig,
+  Clapperboard,
 } from "lucide-react";
 import {
   BRAND_LOGO_PATH,
@@ -23,6 +24,7 @@ import {
 } from "../config/brand";
 import type { TabType } from "../types";
 import { useAuth } from "../context/AuthContext";
+import { openVideoStudio } from "../utils/videoStudioNavigation";
 
 interface SidebarProps {
   activeTab: TabType;
@@ -85,9 +87,16 @@ const baseMenuItems: MenuItem[] = [
   {
     label: "XUONG NOI DUNG",
     title: "Xưởng nội dung",
-    desc: "Tạo ảnh, video và thiết kế hàng loạt",
+    desc: "Tạo ảnh và thiết kế hàng loạt",
     icon: Palette,
     tone: "blue",
+  },
+  {
+    label: "VIDEO STUDIO",
+    title: "Video Studio",
+    desc: "Tạo video, giọng đọc và phụ đề",
+    icon: Clapperboard,
+    tone: "indigo",
   },
   {
     label: "KHO TRI THUC",
@@ -184,7 +193,13 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
           return (
             <button
               key={item.label}
-              onClick={() => setActiveTab(item.label)}
+              onClick={() => {
+                if (item.label === "VIDEO STUDIO") {
+                  openVideoStudio();
+                  return;
+                }
+                setActiveTab(item.label);
+              }}
               className={`group flex w-full items-center justify-between rounded-2xl border px-3.5 py-3.5 text-left font-sans transition-all active:scale-[0.98] ${
                 isActive ? `${tone.active} shadow-xs` : "border-transparent text-gray-600 hover:border-gray-100 hover:bg-gray-50 hover:text-gray-900"
               }`}

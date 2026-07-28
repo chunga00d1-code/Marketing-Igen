@@ -9,6 +9,8 @@ import { MetricsSyncService } from "../service/metrics-sync.service";
 import { MarketingAnalyticsService } from "../service/marketing-analytics.service";
 import { campaignContentSheetService } from "../service/campaign-content-sheet.service";
 import { enqueueCampaignSheetAIJob } from "../queue/campaign-content-sheet-queue";
+import { campaignAssetOrderService } from "../service/campaign-asset-order.service";
+import { enqueueBulkCreateJob } from "../queue/bulk-create-queue";
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
@@ -127,6 +129,123 @@ export const marketingCampaignController = {
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
       return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải Content Sheet." });
+    }
+  },
+
+  async listAssetOrders(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.list(companyCode, req.params.id);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải Order ảnh, video." });
+    }
+  },
+
+  async createAssetOrder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignAssetOrderService.create(companyCode, req.params.id, userId, req.body);
+      return res.status(201).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tạo Order ảnh, video." });
+    }
+  },
+
+  async updateAssetOrder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignAssetOrderService.update(companyCode, req.params.id, req.params.orderId, userId, req.body);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể lưu Order ảnh, video." });
+    }
+  },
+
+  async archiveAssetOrder(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.archive(companyCode, req.params.id, req.params.orderId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể hủy Order ảnh, video." });
+    }
+  },
+
+  async previewAssetOrderAI(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const estimate = await campaignAssetOrderService.getAiCost(companyCode, req.params.id);
+      await walletService.checkBalance(userId, estimate);
+      const data = await campaignAssetOrderService.createAiProposal(
+        companyCode,
+        req.params.id,
+        req.params.orderId,
+        req.body
+      );
+      await walletService.deductBalance(
+        userId,
+        estimate,
+        "Chi phí AI tạo brief Order ảnh, video",
+        `asset-order-ai:${companyCode}:${req.params.orderId}:${req.body.idempotencyKey}`
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number; status?: number })?.statusCode || (error as { status?: number })?.status || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "AI không thể tạo brief cho Order." });
+    }
+  },
+
+  async applyAssetOrderAI(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.applyAiProposal(companyCode, req.params.id, req.params.orderId, req.body);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể áp dụng đề xuất AI." });
+    }
+  },
+
+  async previewAssetOrderBulk(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.previewBulkMapping(companyCode, req.params.id, req.params.orderId, req.body.templateId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể kiểm tra map Bulk Create." });
+    }
+  },
+
+  async createAssetOrderBulk(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignAssetOrderService.createBulkJob(companyCode, req.params.id, userId, req.params.orderId, req.body);
+      await enqueueBulkCreateJob(String(data.job._id));
+      return res.status(202).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể tạo Bulk Create job." });
+    }
+  },
+
+  async syncAssetOrderBulk(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.syncBulkJob(companyCode, req.params.id, req.params.orderId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật kết quả Bulk Create." });
     }
   },
 

@@ -10,6 +10,7 @@ import {
 } from "../../shared/video-caption.contract";
 import { cloudinaryService } from "./cloudinary.service";
 import { VideoCaptionError } from "./video-caption-error";
+import { resolveMediaBinary } from "./media-binary.service";
 
 const RENDER_TIMEOUT_MS = 45 * 60 * 1000;
 const PREVIEW_DURATION_SECONDS = 15;
@@ -63,13 +64,20 @@ function escapeAssText(value: string | undefined) {
 function alignment(
   lane: VideoCaptionSegmentDto["lane"],
   position: VideoCaptionStyle["position"],
+  textAlign: VideoCaptionStyle["textAlign"],
   combined: boolean
 ) {
-  if (lane === "context") return 8;
-  if (combined && lane === "speech") return 2;
-  if (position === "top") return 8;
-  if (position === "center") return 5;
-  return 2;
+  const verticalPosition =
+    lane === "context"
+      ? "top"
+      : combined && lane === "speech"
+        ? "bottom"
+        : position;
+  const verticalBase =
+    verticalPosition === "top" ? 7 : verticalPosition === "center" ? 4 : 1;
+  const horizontalOffset =
+    textAlign === "left" ? 0 : textAlign === "right" ? 2 : 1;
+  return verticalBase + horizontalOffset;
 }
 
 function buildAss(
@@ -115,6 +123,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
         `\\an${alignment(
           segment.lane,
           segmentStyle.position,
+          segmentStyle.textAlign,
           combined
         )}`,
         `\\fs${Math.max(18, Math.round(segmentStyle.fontSize * (width / 1920)))}`,
@@ -129,19 +138,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
   return `${header}\n${events.join("\n")}\n`;
 }
 
-function escapeFilterPath(filePath: string) {
-  return filePath
-    .replace(/\\/g, "/")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "\\'");
-}
-
-function runFfmpeg(args: string[]) {
+function runFfmpeg(args: string[], cwd?: string) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn("ffmpeg", args, {
-      shell: false,
-      windowsHide: true,
-    });
+    const child = spawn(
+      resolveMediaBinary("ffmpeg", process.env.VIDEO_CAPTION_FFMPEG_PATH),
+      args,
+      {
+        shell: false,
+        windowsHide: true,
+        cwd,
+      }
+    );
     let stderr = "";
     let settled = false;
     const timer = setTimeout(() => {
@@ -242,7 +249,7 @@ class FfmpegVideoCaptionRenderProvider
           ? ["-t", String(PREVIEW_DURATION_SECONDS)]
           : []),
         "-vf",
-        `ass='${escapeFilterPath(subtitlePath)}'`,
+        "ass=filename=captions.ass",
         "-map",
         "0:v:0",
         "-map",
@@ -261,7 +268,7 @@ class FfmpegVideoCaptionRenderProvider
         "+faststart",
         outputPath,
       ];
-      await runFfmpeg(args);
+      await runFfmpeg(args, tempDirectory);
       const outputUrl = await cloudinaryService.uploadMedia(
         outputPath,
         input.preview

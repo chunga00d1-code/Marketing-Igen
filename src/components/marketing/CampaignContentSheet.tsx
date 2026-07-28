@@ -33,6 +33,22 @@ interface CampaignContentSheetProps {
 }
 
 const READ_ONLY_KEYS = new Set(['scheduledAt', 'platform', 'page', 'status']);
+const ORDER_COLUMN_KEYS = [
+  'pillar',
+  'topicBrief',
+  'productionBrief',
+  'assetFormat',
+  'proposedQuantity',
+  'usageChannels',
+];
+const ORDER_COLUMN_LABELS: Record<string, string> = {
+  pillar: 'Nhóm nội dung',
+  topicBrief: 'Nội dung cần quay/chụp',
+  productionBrief: 'Chi tiết yêu cầu',
+  assetFormat: 'Định dạng',
+  proposedQuantity: 'SL đề xuất',
+  usageChannels: 'Phục vụ',
+};
 const DATA_TYPES: Array<{ id: CampaignSheetDataType; label: string }> = [
   { id: 'short_text', label: 'Văn bản ngắn' },
   { id: 'long_text', label: 'Văn bản dài' },
@@ -73,6 +89,10 @@ function displayValue(value: unknown, column: CampaignSheetColumn, timezone: str
   return String(value);
 }
 
+function displayColumnLabel(column: CampaignSheetColumn) {
+  return ORDER_COLUMN_LABELS[column.key] || column.label;
+}
+
 function createIdempotencyKey() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return `sheet-ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -103,7 +123,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
   const [addingRow, setAddingRow] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [sortKey, setSortKey] = useState('scheduledAt');
+  const [sortKey, setSortKey] = useState('pillar');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showColumnSettings, setShowColumnSettings] = useState(false);
   const [pasting, setPasting] = useState(false);
@@ -157,9 +177,19 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     () => (data?.config.columns || []).filter((column) => !column.archived),
     [data?.config.columns]
   );
+  const orderColumns = useMemo(() => {
+    const orderIndex = new Map(ORDER_COLUMN_KEYS.map((key, index) => [key, index]));
+    return allColumns
+      .filter((column) => orderIndex.has(column.key) || column.kind === 'custom')
+      .sort((left, right) => {
+        const leftOrder = orderIndex.get(left.key) ?? ORDER_COLUMN_KEYS.length + left.display.order;
+        const rightOrder = orderIndex.get(right.key) ?? ORDER_COLUMN_KEYS.length + right.display.order;
+        return leftOrder - rightOrder;
+      });
+  }, [allColumns]);
   const columns = useMemo(
-    () => allColumns.filter((column) => !column.display.hidden),
-    [allColumns]
+    () => orderColumns.filter((column) => !column.display.hidden),
+    [orderColumns]
   );
   const bulkAIColumns = useMemo(
     () => columns.filter((column) => column.ai.enabled && !READ_ONLY_KEYS.has(column.key)),
@@ -531,9 +561,9 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3">
         <div>
-          <h3 className="text-sm font-extrabold text-slate-800">Campaign Content Sheet</h3>
+          <h3 className="text-sm font-extrabold text-slate-800">Order ảnh, video</h3>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Mỗi dòng là một bài viết. AI chỉ tạo đề xuất và không ghi đè trường đã khóa.
+            Mỗi dòng là một yêu cầu sản xuất để chuẩn bị dữ liệu cho Tạo hàng loạt.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -543,7 +573,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
           >
             <Plus className="h-3.5 w-3.5" />
-            Thêm bài
+            Thêm yêu cầu
           </button>
           <button
             type="button"
@@ -579,7 +609,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Tìm trong tiêu đề, nội dung, pillar..."
+            placeholder="Tìm nhóm nội dung, yêu cầu quay/chụp..."
             className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-3 text-xs outline-none focus:border-teal-400"
           />
         </label>
@@ -602,14 +632,14 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
           </button>
           {showColumnSettings && (
             <div className="absolute right-0 top-11 z-50 max-h-80 w-64 overflow-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
-              {allColumns.map((column) => (
+              {orderColumns.map((column) => (
                 <button
                   key={column.id}
                   type="button"
                   onClick={() => void setColumnHidden(column, !column.display.hidden)}
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50"
                 >
-                  <span className="truncate">{column.label}</span>
+                    <span className="truncate">{displayColumnLabel(column)}</span>
                   {column.display.hidden
                     ? <EyeOff className="h-3.5 w-3.5 text-slate-400" />
                     : <Eye className="h-3.5 w-3.5 text-teal-600" />}
@@ -752,9 +782,9 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                       <button
                         type="button"
                         disabled={creatingBulkJob || Boolean(runningJob)}
-                        onClick={() => void createBulkAIJob([column.key], column.label)}
+                        onClick={() => void createBulkAIJob([column.key], displayColumnLabel(column))}
                         className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 font-bold normal-case tracking-normal text-violet-700 hover:bg-violet-200 disabled:opacity-50"
-                        title={`AI tạo ${column.label} hàng loạt`}
+                        title={`AI tạo ${displayColumnLabel(column)} hàng loạt`}
                       >
                         <Sparkles className="h-2.5 w-2.5" /> AI điền
                       </button>

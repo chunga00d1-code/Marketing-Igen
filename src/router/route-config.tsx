@@ -24,6 +24,10 @@ export const APP_ROUTES: AppRoute[] = [
     component: lazy(() => import("../pages/ContentStudioPage")),
   },
   {
+    tab: "VIDEO STUDIO",
+    component: lazy(() => import("../pages/VideoStudioPage")),
+  },
+  {
     tab: "KHO TRI THUC",
     component: lazy(() => import("../pages/CompanyKnowledgePage")),
   },
