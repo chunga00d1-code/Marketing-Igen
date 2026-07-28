@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { VIDEO_STUDIO_SEO_MAP } from "../../seo/seo-config";
 import {
   VIDEO_STUDIO_ROUTES,
   openVideoStudio,
@@ -9,6 +10,7 @@ import {
 
 test("maps the templates tool to its Video Studio route", () => {
   assert.equal(VIDEO_STUDIO_ROUTES.templates, "/video-studio/templates");
+  assert.equal(VIDEO_STUDIO_SEO_MAP.templates.path, "/video-studio/templates");
   assert.equal(videoStudioPathToTool("/video-studio/templates"), "templates");
   assert.equal(videoStudioPathToTool("/video-studio/templates/"), "templates");
 });

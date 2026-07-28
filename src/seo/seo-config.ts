@@ -218,6 +218,14 @@ export const VIDEO_STUDIO_SEO_MAP: Record<VideoStudioTool, SeoMeta> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
+  templates: {
+    title: "Mẫu video",
+    description: "Chọn mẫu video có sẵn và tùy chỉnh thành nội dung phù hợp với thương hiệu.",
+    keywords: "mẫu video, template video, chỉnh sửa mẫu video, video marketing",
+    path: "/video-studio/templates",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
   "ai-video": {
     title: "Tạo video từ nội dung",
     description: "Tạo video marketing bằng AI từ nội dung mô tả hoặc hình ảnh.",
