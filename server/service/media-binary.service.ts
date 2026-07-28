@@ -9,7 +9,12 @@ function remotionBinaryCandidates(binaryName: "ffmpeg" | "ffprobe") {
       ? ["@remotion/compositor-win32-x64-msvc"]
       : process.platform === "darwin"
         ? ["@remotion/compositor-darwin-x64", "@remotion/compositor-darwin-arm64"]
-        : ["@remotion/compositor-linux-x64-gnu", "@remotion/compositor-linux-arm64-gnu"];
+        : [
+            "@remotion/compositor-linux-x64-gnu",
+            "@remotion/compositor-linux-x64-musl",
+            "@remotion/compositor-linux-arm64-gnu",
+            "@remotion/compositor-linux-arm64-musl",
+          ];
 
   return platformPackages.map((packageName) =>
     path.resolve(process.cwd(), "node_modules", ...packageName.split("/"), executable)
