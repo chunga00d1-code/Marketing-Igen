@@ -1,12 +1,13 @@
-export type ContentStudioTab = 'image' | 'bulk';
+export type ContentStudioTab = 'image' | 'template' | 'bulk';
 
 export const CONTENT_STUDIO_TAB_ROUTES: Record<ContentStudioTab, string> = {
   image: '/xuong-noi-dung/tao-hinh-anh',
+  template: '/xuong-noi-dung/thiet-ke-tu-mau',
   bulk: '/xuong-noi-dung/thiet-ke-hang-loat',
 };
 
 export interface ContentStudioLaunchParams {
-  tab: 'image';
+  tab: 'image' | 'template';
   prompt: string;
   cardId: string;
   image?: string;
@@ -34,7 +35,7 @@ export function readContentStudioLaunchParams(): ContentStudioLaunchParams | nul
   try {
     const parsed = JSON.parse(raw) as Partial<ContentStudioLaunchParams>;
     if (
-      parsed.tab !== 'image' ||
+      (parsed.tab !== 'image' && parsed.tab !== 'template') ||
       !parsed.cardId ||
       typeof parsed.prompt !== 'string'
     ) {

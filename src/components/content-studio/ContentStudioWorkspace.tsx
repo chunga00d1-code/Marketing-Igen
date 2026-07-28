@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { ImageIcon, Layers3 } from 'lucide-react';
+import { ImageIcon, Layers3, LayoutTemplate } from 'lucide-react';
 import { BulkCreateWorkspace } from './BulkCreateWorkspace';
 import { ImageGenerationWorkspace } from './ImageGenerationWorkspace';
+import { CreativeImageWorkspace } from './CreativeImageWorkspace';
 import type { ContentStudioTab } from '../../utils/contentStudioNavigation';
 
 interface ContentStudioWorkspaceProps {
   initialTab?: ContentStudioTab;
   initialParams?: {
-    tab: 'image';
+    tab: 'image' | 'template';
     prompt: string;
     cardId: string;
     image?: string;
@@ -66,6 +67,15 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
               Tạo hình ảnh
             </button>
             <button
+              onClick={() => changeTab('template')}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'template' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
+              }`}
+            >
+              <LayoutTemplate className="h-3.5 w-3.5" />
+              Thiết kế từ mẫu
+            </button>
+            <button
               onClick={() => changeTab('bulk')}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'bulk' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
@@ -88,6 +98,7 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
             autoTrigger={initialParams?.autoTrigger}
           />
         )}
+        {activeTab === 'template' && <CreativeImageWorkspace onMediaSaved={onMediaSaved} cardId={initialParams?.tab === 'template' ? initialParams.cardId : undefined} />}
         {activeTab === 'bulk' && <BulkCreateWorkspace onClose={() => changeTab(prevTab)} />}
       </div>
     </div>
