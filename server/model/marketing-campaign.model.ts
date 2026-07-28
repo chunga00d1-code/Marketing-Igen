@@ -72,6 +72,16 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
       },
       default: ["google", "facebook", "tiktok"],
     },
+    assetOrderCustomFields: {
+      type: [{
+        key: { type: String, required: true, maxlength: 40 },
+        label: { type: String, required: true, maxlength: 120 },
+        archived: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now },
+        _id: false,
+      }],
+      default: [],
+    },
     statistics: {
       totalSlots: { type: Number, default: 0 },
       publishedSlots: { type: Number, default: 0 },

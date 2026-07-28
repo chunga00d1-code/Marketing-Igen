@@ -42,7 +42,10 @@ const CampaignAssetOrderSchema = new Schema<ICampaignAssetOrder>(
     subheadline: { type: String, default: "", maxlength: 220 },
     cta: { type: String, default: "", maxlength: 80 },
     visualBrief: { type: String, default: "", maxlength: 1000 },
+    videoScript: { type: String, default: "", maxlength: 4000 },
     assets: { type: [assetSchema], default: [] },
+    customFields: { type: Map, of: String, default: {} },
+    manualFieldKeys: { type: [String], default: [] },
     status: {
       type: String,
       enum: ["draft", "needs_assets", "ready", "bulk_queued", "completed", "cancelled"],
@@ -54,18 +57,23 @@ const CampaignAssetOrderSchema = new Schema<ICampaignAssetOrder>(
     outputUrls: { type: [String], default: [] },
     aiProposal: {
       idempotencyKey: { type: String },
+      generationJobId: { type: String },
+      modelName: { type: String },
       contentGroup: { type: String, maxlength: 240 },
       shootingContent: { type: String, maxlength: 1000 },
       productionRequirements: { type: String, maxlength: 2000 },
       quantitySuggestion: { type: String, maxlength: 120 },
       usageChannels: { type: String, maxlength: 500 },
+      format: { type: String, enum: ["image", "video", "image_video"] },
       headline: { type: String, maxlength: 120 },
       subheadline: { type: String, maxlength: 220 },
       cta: { type: String, maxlength: 80 },
       visualBrief: { type: String, maxlength: 1000 },
+      videoScript: { type: String, maxlength: 4000 },
       references: { type: [aiReferenceSchema], default: [] },
       warnings: { type: [String], default: [] },
       createdAt: { type: Date },
+      appliedAt: { type: Date },
       _id: false,
     },
   },
@@ -74,5 +82,12 @@ const CampaignAssetOrderSchema = new Schema<ICampaignAssetOrder>(
 
 CampaignAssetOrderSchema.index({ companyCode: 1, campaignId: 1, updatedAt: -1 });
 CampaignAssetOrderSchema.index({ companyCode: 1, campaignId: 1, slotId: 1, status: 1 });
+CampaignAssetOrderSchema.index(
+  { companyCode: 1, campaignId: 1, slotId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { slotId: { $type: "objectId" } },
+  }
+);
 
 export const CampaignAssetOrderModel = model<ICampaignAssetOrder>("CampaignAssetOrder", CampaignAssetOrderSchema);

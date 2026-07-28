@@ -16,6 +16,7 @@ import type {
   BulkAsset,
   BulkDataColumn,
 } from '../../../services/bulkCreateService';
+import type { MarketingCampaignSummary } from '../../../services/marketingCampaignService';
 import { TOOLS } from './constants';
 import { CanvasSizePicker } from './CanvasSizePicker';
 import { TemplatePreview } from './TemplatePreview';
@@ -36,6 +37,10 @@ export interface EditorPanelProps {
   sheetInput: string;
   googleSheetUrl: string;
   loadingSheet: boolean;
+  campaigns: MarketingCampaignSummary[];
+  selectedCampaignId: string;
+  loadingCampaigns: boolean;
+  loadingCampaignOrders: boolean;
   readyCount: number;
   canvasSize: { width: number; height: number };
   systemTemplates: BulkMarketingPreset[];
@@ -55,6 +60,9 @@ export interface EditorPanelProps {
   onDataStep: (step: 1 | 2 | 3) => void;
   onGoogleSheetUrl: (value: string) => void;
   onImportGoogleSheet: () => void;
+  onLoadCampaigns: () => void;
+  onSelectCampaign: (campaignId: string) => void;
+  onImportCampaignOrders: () => void;
   onConnectLayer: (layerId: string, columnKey: string) => void;
   onAutoMatch: () => void;
   onToggleRow: (rowId: string) => void;

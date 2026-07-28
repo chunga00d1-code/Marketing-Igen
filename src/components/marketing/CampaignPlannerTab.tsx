@@ -52,6 +52,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [loadingPreviews, setLoadingPreviews] = useState(false);
   const [apifySources, setApifySources] = useState<string[]>(['google', 'facebook', 'tiktok']);
   const isSinglePost = creationMode === 'single';
+  const canUseLocalMockFacebookPage = typeof window !== 'undefined'
+    && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
 
   // Cleanup customSchedule when date range changes
   useEffect(() => {
@@ -438,7 +440,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     if (imageMode === 'real' && !googleDriveFolderUrl.trim()) return toast.warning('Vui lòng điền link thư mục Google Drive công khai.');
     if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
-    if (!integrationId && !hasPersonalFacebook) {
+    if (!integrationId && !hasPersonalFacebook && !canUseLocalMockFacebookPage) {
       return toast.warning('Vui lòng kết nối một Facebook Page trước khi tạo lịch tự động.');
     }
 
@@ -906,7 +908,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     >
                       {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
                       {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
-                      {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
+                      {!integrations.length && !userProfile?.facebookIntegration?.isConnected && (
+                        <option value="">{canUseLocalMockFacebookPage ? 'Fanpage Facebook giả lập (local)' : 'Chưa có Facebook Page được kết nối'}</option>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -966,7 +970,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                         >
                           {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
                           {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
-                          {!integrations.length && !userProfile?.facebookIntegration?.isConnected && <option value="">Chưa có Facebook Page được kết nối</option>}
+                          {!integrations.length && !userProfile?.facebookIntegration?.isConnected && (
+                            <option value="">{canUseLocalMockFacebookPage ? 'Fanpage Facebook giả lập (local)' : 'Chưa có Facebook Page được kết nối'}</option>
+                          )}
                         </select>
                       </div>
                     </div>
