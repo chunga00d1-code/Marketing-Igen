@@ -64,13 +64,20 @@ function escapeAssText(value: string | undefined) {
 function alignment(
   lane: VideoCaptionSegmentDto["lane"],
   position: VideoCaptionStyle["position"],
+  textAlign: VideoCaptionStyle["textAlign"],
   combined: boolean
 ) {
-  if (lane === "context") return 8;
-  if (combined && lane === "speech") return 2;
-  if (position === "top") return 8;
-  if (position === "center") return 5;
-  return 2;
+  const verticalPosition =
+    lane === "context"
+      ? "top"
+      : combined && lane === "speech"
+        ? "bottom"
+        : position;
+  const verticalBase =
+    verticalPosition === "top" ? 7 : verticalPosition === "center" ? 4 : 1;
+  const horizontalOffset =
+    textAlign === "left" ? 0 : textAlign === "right" ? 2 : 1;
+  return verticalBase + horizontalOffset;
 }
 
 function buildAss(
@@ -116,6 +123,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text`
         `\\an${alignment(
           segment.lane,
           segmentStyle.position,
+          segmentStyle.textAlign,
           combined
         )}`,
         `\\fs${Math.max(18, Math.round(segmentStyle.fontSize * (width / 1920)))}`,

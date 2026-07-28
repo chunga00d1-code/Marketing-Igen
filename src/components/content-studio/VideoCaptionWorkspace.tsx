@@ -114,9 +114,9 @@ const MODE_OPTIONS: Array<{
     description: "Nhận diện giọng nói và đặt đúng thời gian.",
   },
   {
-    id: "combined",
+    id: "context",
     title: "Theo AI",
-    description: "Tự tạo phụ đề và chữ bổ sung phù hợp với video.",
+    description: "Tự tạo chữ theo ngữ cảnh video, không lấy phụ đề theo lời thoại.",
   },
 ];
 
@@ -132,7 +132,23 @@ const TRANSCRIPTION_LANGUAGE_OPTIONS: Array<{
 
 const CAPTION_FONT_OPTIONS = [
   "Arial",
+  "Arial Black",
+  "Arial Narrow",
   "Helvetica",
+  "Calibri",
+  "Cambria",
+  "Candara",
+  "Comic Sans MS",
+  "Consolas",
+  "Corbel",
+  "Courier New",
+  "Georgia",
+  "Impact",
+  "Segoe UI",
+  "Tahoma",
+  "Times New Roman",
+  "Trebuchet MS",
+  "Verdana",
   "Inter",
   "Roboto",
   "Montserrat",
@@ -306,6 +322,8 @@ export function VideoCaptionWorkspace() {
   const autosaveStyleTimerRef = useRef<number | null>(null);
   const saveTimelineRef = useRef<(() => Promise<void>) | null>(null);
   const saveStyleRef = useRef<(() => Promise<void>) | null>(null);
+  const styleSaveRequestRef = useRef(0);
+  const pendingExportProjectIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -487,6 +505,28 @@ export function VideoCaptionWorkspace() {
   }, [detail?.project, openProject]);
 
   useEffect(() => {
+    const project = detail?.project;
+    if (
+      !project ||
+      project.status !== "completed" ||
+      !project.output?.captionedVideoUrl ||
+      pendingExportProjectIdRef.current !== project.id
+    ) {
+      return;
+    }
+    pendingExportProjectIdRef.current = null;
+    void videoCaptionService.downloadRenderedVideo(project.id).catch(
+      (downloadError) => {
+        setError(
+          downloadError instanceof Error
+            ? downloadError.message
+            : "Không thể tải video caption đã xuất."
+        );
+      }
+    );
+  }, [detail?.project]);
+
+  useEffect(() => {
     const preferredUrl =
       detail?.project.video.proxyUrl || detail?.project.source.url || "";
     setPlayerUrl(preferredUrl);
@@ -632,6 +672,13 @@ export function VideoCaptionWorkspace() {
         });
         await videoCaptionService.generateContext(detail.project.id);
       } else if (action === "renderFinal") {
+        if (
+          detail.project.status === "completed" &&
+          detail.project.output?.captionedVideoUrl
+        ) {
+          await videoCaptionService.downloadRenderedVideo(detail.project.id);
+          return;
+        }
         if (autosaveSegmentsTimerRef.current !== null) {
           window.clearTimeout(autosaveSegmentsTimerRef.current);
           autosaveSegmentsTimerRef.current = null;
@@ -677,6 +724,7 @@ export function VideoCaptionWorkspace() {
           snapshot: JSON.stringify(project.style),
         };
         await videoCaptionService.render(detail.project.id, false);
+        pendingExportProjectIdRef.current = detail.project.id;
       } else if (action === "retry") {
         await videoCaptionService.retry(detail.project.id);
       } else {
@@ -751,29 +799,49 @@ export function VideoCaptionWorkspace() {
 
   async function saveStyle() {
     if (!detail) return;
+    const projectId = detail.project.id;
+    const submittedStyle = detail.project.style;
+    const submittedSnapshot = JSON.stringify(submittedStyle);
+    const requestId = ++styleSaveRequestRef.current;
     setActionBusy(true);
     setError("");
     try {
       const { project } = await videoCaptionService.update(
-        detail.project.id,
-        { style: detail.project.style }
+        projectId,
+        { style: submittedStyle }
       );
-      setDetail((current) =>
-        current ? { ...current, project } : current
-      );
-      mergeProject(project);
+      if (requestId !== styleSaveRequestRef.current) return;
+      const savedProject = {
+        ...project,
+        style: { ...project.style, ...submittedStyle },
+      };
+      setDetail((current) => {
+        if (
+          !current ||
+          current.project.id !== projectId ||
+          JSON.stringify(current.project.style) !== submittedSnapshot
+        ) {
+          return current;
+        }
+        return { ...current, project: savedProject };
+      });
+      mergeProject(savedProject);
       autosaveStyleRef.current = {
-        projectId: project.id,
-        snapshot: JSON.stringify(project.style),
+        projectId: savedProject.id,
+        snapshot: JSON.stringify(savedProject.style),
       };
     } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Không thể lưu kiểu caption."
-      );
+      if (requestId === styleSaveRequestRef.current) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Không thể lưu kiểu caption."
+        );
+      }
     } finally {
-      setActionBusy(false);
+      if (requestId === styleSaveRequestRef.current) {
+        setActionBusy(false);
+      }
     }
   }
 
@@ -878,16 +946,7 @@ export function VideoCaptionWorkspace() {
       ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [activeTimelineSegmentId]);
 
-  const filteredSegments =
-    detail?.segments.filter((segment) => {
-      if (segmentLaneFilter !== "all" && segment.lane !== segmentLaneFilter) {
-        return false;
-      }
-      if (segmentSearchQuery.trim()) {
-        return segment.text.toLowerCase().includes(segmentSearchQuery.toLowerCase());
-      }
-      return true;
-    }) || [];
+  const visibleSegments = detail?.segments || [];
   const hasSegments = Boolean(detail?.segments.length);
   const isCaptionJobActive = Boolean(
     detail && ACTIVE_STATUSES.has(detail.project.status)
@@ -980,7 +1039,7 @@ export function VideoCaptionWorkspace() {
         ((event.clientX - timelineDrag.originClientX) /
           timelineDrag.trackWidth) *
         timelineDurationMs;
-      const snappedDeltaMs = Math.round(deltaMs / 50) * 50;
+      const snappedDeltaMs = Math.round(deltaMs);
       const segmentDurationMs =
         timelineDrag.originEndMs - timelineDrag.originStartMs;
 
@@ -1085,6 +1144,15 @@ export function VideoCaptionWorkspace() {
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function formatCaptionTime(ms: number) {
+    const safeMs = Math.max(0, Math.round(ms));
+    const totalSecs = Math.floor(safeMs / 1000);
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    const centiseconds = Math.floor((safeMs % 1000) / 10);
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(centiseconds).padStart(2, "0")}`;
   }
 
   function commitFontSize(value: string) {
@@ -1544,6 +1612,7 @@ export function VideoCaptionWorkspace() {
                             fontFamily: style.fontFamily,
                             fontSize: `${Math.max(10, style.fontSize / 4.2)}px`,
                             fontWeight: style.fontWeight,
+                            textAlign: style.textAlign,
                             backgroundColor: `${style.backgroundColor}${Math.round(
                               style.backgroundOpacity * 255
                             )
@@ -1646,6 +1715,199 @@ export function VideoCaptionWorkspace() {
               {activeTab === "styling" && (
                 <div className={`flex min-h-0 flex-1 flex-col ${HEYGEN_THEME.surfaceMuted}`}>
                   <div className="flex-1 space-y-5 overflow-y-auto p-4">
+                    <div className={`relative -mx-1 rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-1 shadow-sm`}>
+                      <div className="flex h-10 items-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const positions: VideoCaptionStyle["position"][] = [
+                              "bottom",
+                              "center",
+                              "top",
+                            ];
+                            const currentIndex = positions.indexOf(
+                              detail.project.style.position
+                            );
+                            updateStyle({
+                              position:
+                                positions[(currentIndex + 1) % positions.length],
+                              preset: "custom",
+                            });
+                          }}
+                          className="flex h-full w-8 shrink-0 items-center justify-center rounded-lg text-sm font-black text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                          title="Đổi vị trí phụ đề: dưới, giữa, trên"
+                          aria-label="Đổi vị trí phụ đề"
+                        >
+                          {detail.project.style.position === "top"
+                            ? "↑"
+                            : detail.project.style.position === "center"
+                              ? "↕"
+                              : "↓"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const alignments: VideoCaptionStyle["textAlign"][] = [
+                              "left",
+                              "center",
+                              "right",
+                            ];
+                            const currentIndex = alignments.indexOf(
+                              detail.project.style.textAlign
+                            );
+                            updateStyle({
+                              textAlign:
+                                alignments[(currentIndex + 1) % alignments.length],
+                              preset: "custom",
+                            });
+                          }}
+                          className="ml-1 flex h-full w-8 shrink-0 items-center justify-center border-l border-slate-100 text-sm font-black text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                          title="Đổi căn lề: trái, giữa, phải"
+                          aria-label="Đổi căn lề phụ đề"
+                        >
+                          <span
+                            className={`block w-5 text-[14px] leading-none ${
+                              detail.project.style.textAlign === "left"
+                                ? "text-left"
+                                : detail.project.style.textAlign === "right"
+                                  ? "text-right"
+                                  : "text-center"
+                            }`}
+                          >
+                            ≡
+                          </span>
+                        </button>
+
+                        <select
+                          value={detail.project.style.fontFamily}
+                          onChange={(event) =>
+                            updateStyle({
+                              fontFamily: event.target.value,
+                              preset: "custom",
+                            })
+                          }
+                          aria-label="Chọn font chữ"
+                          className="ml-1 h-full min-w-0 flex-1 border-l border-slate-100 bg-transparent px-2 text-xs font-bold text-slate-700 outline-none"
+                        >
+                          {CAPTION_FONT_OPTIONS.map((fontFamily) => (
+                            <option key={fontFamily} value={fontFamily}>
+                              {fontFamily}
+                            </option>
+                          ))}
+                        </select>
+
+                        <div className="relative ml-1 flex h-full w-14 shrink-0 items-center border-l border-slate-100">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={fontSizeDraft}
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              if (/^\d{0,3}$/.test(nextValue)) {
+                                setFontSizeDraft(nextValue);
+                              }
+                            }}
+                            onBlur={() => commitFontSize(fontSizeDraft)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                commitFontSize(fontSizeDraft);
+                                event.currentTarget.blur();
+                              }
+                              if (event.key === "Escape") {
+                                setFontSizeDraft(String(detail.project.style.fontSize));
+                                setFontSizeMenuOpen(false);
+                                event.currentTarget.blur();
+                              }
+                            }}
+                            aria-label="Cỡ chữ phụ đề"
+                            className="h-full min-w-0 flex-1 bg-transparent px-1 text-center text-xs font-extrabold text-slate-800 outline-none"
+                          />
+                          <button
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setFontSizeMenuOpen((current) => !current)}
+                            className="flex h-full w-6 items-center justify-center text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
+                            aria-label="Mở danh sách cỡ chữ"
+                            aria-expanded={fontSizeMenuOpen}
+                          >
+                            <ChevronDown className={`h-4 w-4 transition ${fontSizeMenuOpen ? "rotate-180" : ""}`} />
+                          </button>
+                        </div>
+
+                        <label
+                          className="relative ml-1 flex h-full w-9 shrink-0 cursor-pointer items-center justify-center border-l border-slate-100 text-lg font-black text-slate-700 transition hover:bg-slate-50"
+                          title="Màu chữ"
+                        >
+                          <span>A</span>
+                          <span
+                            className="absolute bottom-1 h-0.5 w-5 rounded-full"
+                            style={{ backgroundColor: detail.project.style.textColor }}
+                          />
+                          <input
+                            type="color"
+                            value={detail.project.style.textColor}
+                            onChange={(event) =>
+                              updateStyle({ textColor: event.target.value, preset: "custom" })
+                            }
+                            aria-label="Màu chữ"
+                            className="absolute inset-0 cursor-pointer opacity-0"
+                          />
+                        </label>
+
+                        <label
+                          className="relative ml-1 flex h-full w-9 shrink-0 cursor-pointer items-center justify-center border-l border-slate-100 text-slate-600 transition hover:bg-slate-50"
+                          title="Màu nền phụ đề"
+                        >
+                          <PaintBucket className="h-4 w-4" />
+                          <span
+                            className="absolute bottom-1 h-0.5 w-5 rounded-full"
+                            style={{ backgroundColor: detail.project.style.backgroundColor }}
+                          />
+                          <input
+                            type="color"
+                            value={detail.project.style.backgroundColor}
+                            onChange={(event) =>
+                              updateStyle({ backgroundColor: event.target.value, preset: "custom" })
+                            }
+                            aria-label="Màu nền phụ đề"
+                            className="absolute inset-0 cursor-pointer opacity-0"
+                          />
+                        </label>
+
+                      </div>
+
+                      {fontSizeMenuOpen && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Đóng danh sách cỡ chữ"
+                            className="fixed inset-0 z-40 cursor-default"
+                            onClick={() => setFontSizeMenuOpen(false)}
+                          />
+                          <div className={`absolute left-0 top-full z-50 mt-1.5 max-h-48 w-44 overflow-y-auto rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-1.5 shadow-xl`}>
+                            <div className="grid grid-cols-3 gap-1">
+                              {CAPTION_FONT_SIZES.map((fontSize) => (
+                                <button
+                                  key={fontSize}
+                                  type="button"
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={() => commitFontSize(String(fontSize))}
+                                  className={`rounded-lg px-2 py-2 text-xs font-bold transition ${
+                                    detail.project.style.fontSize === fontSize
+                                      ? `${HEYGEN_THEME.accentBg} text-indigo-700`
+                                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                  }`}
+                                >
+                                  {fontSize}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
                     <div>
                       <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                         <Type className="h-3.5 w-3.5" />
@@ -1680,146 +1942,6 @@ export function VideoCaptionWorkspace() {
                       </div>
                     </div>
 
-                    <div className={`grid grid-cols-2 gap-3 border-t ${HEYGEN_THEME.border} pt-4`}>
-                      <div className="col-span-2">
-                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Cỡ chữ
-                        </span>
-                        <div className="relative">
-                          <div className={`flex h-10 w-full items-center overflow-hidden rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} transition focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100`}>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={fontSizeDraft}
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                if (/^\d{0,3}$/.test(nextValue)) {
-                                  setFontSizeDraft(nextValue);
-                                }
-                              }}
-                              onBlur={() => commitFontSize(fontSizeDraft)}
-                              onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                  commitFontSize(fontSizeDraft);
-                                  event.currentTarget.blur();
-                                }
-                                if (event.key === "Escape") {
-                                  setFontSizeDraft(String(detail.project.style.fontSize));
-                                  setFontSizeMenuOpen(false);
-                                  event.currentTarget.blur();
-                                }
-                              }}
-                              aria-label="Cỡ chữ phụ đề"
-                              className="h-full min-w-0 flex-1 bg-transparent px-3 text-center text-xs font-extrabold text-slate-800 outline-none"
-                            />
-                            <span className="border-l border-slate-100 px-2 text-[10px] font-bold text-slate-400">
-                              px
-                            </span>
-                          <button
-                            type="button"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => setFontSizeMenuOpen((current) => !current)}
-                              className="flex h-full w-10 items-center justify-center border-l border-slate-100 text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
-                              aria-label="Mở danh sách cỡ chữ"
-                              aria-expanded={fontSizeMenuOpen}
-                          >
-                              <ChevronDown className={`h-4 w-4 transition ${fontSizeMenuOpen ? "rotate-180" : ""}`} />
-                          </button>
-                          </div>
-
-                          {fontSizeMenuOpen && (
-                            <>
-                              <button
-                                type="button"
-                                aria-label="Đóng danh sách cỡ chữ"
-                                className="fixed inset-0 z-40 cursor-default"
-                                onClick={() => setFontSizeMenuOpen(false)}
-                              />
-                              <div className={`absolute left-0 right-0 top-full z-50 mt-1.5 max-h-48 overflow-y-auto rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-1.5 shadow-xl`}>
-                                <div className="grid grid-cols-3 gap-1">
-                                  {CAPTION_FONT_SIZES.map((fontSize) => (
-                                    <button
-                                      key={fontSize}
-                                      type="button"
-                                      onMouseDown={(event) => event.preventDefault()}
-                                      onClick={() => commitFontSize(String(fontSize))}
-                                      className={`rounded-lg px-2 py-2 text-xs font-bold transition ${
-                                        detail.project.style.fontSize === fontSize
-                                          ? `${HEYGEN_THEME.accentBg} text-indigo-700`
-                                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                                      }`}
-                                    >
-                                      {fontSize}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      <label>
-                        <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Màu chữ
-                        </span>
-                        <span className={`flex h-10 cursor-pointer items-center gap-2 rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} px-3`}>
-                          <span
-                            className="h-5 w-5 rounded-md border border-slate-200 shadow-inner"
-                            style={{ backgroundColor: detail.project.style.textColor }}
-                          />
-                          <span className="text-[11px] font-bold uppercase text-slate-600">
-                            {detail.project.style.textColor}
-                          </span>
-                          <input
-                            type="color"
-                            value={detail.project.style.textColor}
-                            onChange={(event) => updateStyle({ textColor: event.target.value, preset: "custom" })}
-                            className="sr-only"
-                          />
-                        </span>
-                      </label>
-
-                      <label>
-                        <span className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          <PaintBucket className="h-3.5 w-3.5" />
-                          Màu nền
-                        </span>
-                        <span className={`flex h-10 cursor-pointer items-center gap-2 rounded-xl border ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} px-3`}>
-                          <span
-                            className="h-5 w-5 rounded-md border border-slate-200 shadow-inner"
-                            style={{ backgroundColor: detail.project.style.backgroundColor }}
-                          />
-                          <span className="text-[11px] font-bold uppercase text-slate-600">
-                            {detail.project.style.backgroundColor}
-                          </span>
-                          <input
-                            type="color"
-                            value={detail.project.style.backgroundColor}
-                            onChange={(event) => updateStyle({ backgroundColor: event.target.value, preset: "custom" })}
-                            className="sr-only"
-                          />
-                        </span>
-                      </label>
-
-                      <div className="col-span-2">
-                        <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          <span>Độ đậm nền</span>
-                          <span className="text-indigo-700">
-                            {Math.round(detail.project.style.backgroundOpacity * 100)}%
-                          </span>
-                        </div>
-                        <input
-                          type="range"
-                          min={0}
-                          max={1}
-                          step={0.05}
-                          value={detail.project.style.backgroundOpacity}
-                          onChange={(event) => updateStyle({ backgroundOpacity: Number(event.target.value), preset: "custom" })}
-                          className="h-1.5 w-full cursor-pointer rounded-lg bg-slate-200 accent-indigo-600"
-                        />
-                      </div>
-                    </div>
                   </div>
 
                 </div>
@@ -1858,7 +1980,7 @@ export function VideoCaptionWorkspace() {
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col">
                   {/* Search and Filters */}
-                  <div className={`shrink-0 space-y-2 border-b ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-3`}>
+                  <div className={`hidden shrink-0 space-y-2 border-b ${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} p-3`}>
                     <div className="relative">
                       <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                       <input
@@ -1889,8 +2011,8 @@ export function VideoCaptionWorkspace() {
                   </div>
 
                   {/* List of segments */}
-                  <div className="flex-1 overflow-y-auto divide-y divide-slate-250 p-2 space-y-2">
-                    {filteredSegments.length === 0 ? (
+                  <div className="flex-1 divide-y divide-slate-200 overflow-y-auto">
+                    {visibleSegments.length === 0 ? (
                       <div className="flex min-h-64 items-center justify-center p-4 text-center">
                         <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                           <span
@@ -1986,7 +2108,7 @@ export function VideoCaptionWorkspace() {
                         </div>
                       </div>
                     ) : (
-                      filteredSegments.map((segment) => {
+                      visibleSegments.map((segment) => {
                         const active =
                           captionCurrentTimeMs >= segment.startMs &&
                           captionCurrentTimeMs < segment.endMs;
@@ -1997,17 +2119,18 @@ export function VideoCaptionWorkspace() {
                               if (element) segmentItemRefs.current.set(segment.id, element);
                               else segmentItemRefs.current.delete(segment.id);
                             }}
-                            className={`p-3 rounded-xl border transition-all ${
+                            className={`grid grid-cols-[72px_minmax(0,1fr)] items-start gap-x-3 border-b px-3 py-3 transition-colors ${
                               active
-                                ? "border-indigo-400 bg-indigo-50 shadow-sm ring-1 ring-indigo-100"
-                                : `${HEYGEN_THEME.border} ${HEYGEN_THEME.surface} hover:border-slate-300`
+                                ? "border-l-2 border-l-indigo-500 bg-indigo-50"
+                                : `${HEYGEN_THEME.surface} hover:bg-slate-50`
                             }`}
                           >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-[10px] font-extrabold text-slate-400 tabular-nums">
-                                {formatTime(segment.startMs)} – {formatTime(segment.endMs)}
+                            <div className="flex min-h-10 flex-col justify-center">
+                              <span className="flex flex-col text-[10px] font-extrabold leading-5 text-slate-400 tabular-nums">
+                                <span>{formatCaptionTime(segment.startMs)}</span>
+                                <span>{formatCaptionTime(segment.endMs)}</span>
                               </span>
-                              <div className="flex items-center gap-1.5">
+                              <div className="hidden">
                                 <button
                                   type="button"
                                   onClick={() => seekToSegment(segment)}
@@ -2034,15 +2157,23 @@ export function VideoCaptionWorkspace() {
                                   lockedByUser: true,
                                 })
                               }
-                              rows={3}
+                              onInput={(event) => {
+                                const input = event.currentTarget;
+                                input.style.height = "0px";
+                                input.style.height = `${input.scrollHeight}px`;
+                              }}
+                              rows={Math.max(
+                                2,
+                                Math.min(4, Math.ceil(segment.text.length / 36))
+                              )}
                               spellCheck
-                              aria-label={`Chỉnh sửa phụ đề từ ${formatTime(segment.startMs)} đến ${formatTime(segment.endMs)}`}
+                              aria-label={`Chỉnh sửa phụ đề từ ${formatCaptionTime(segment.startMs)} đến ${formatCaptionTime(segment.endMs)}`}
                               title="Bấm để sửa nội dung. Thay đổi được tự động lưu."
-                              className="min-h-[72px] w-full cursor-text resize-y rounded-lg border border-slate-200/80 bg-white p-2 text-xs font-bold leading-relaxed text-slate-700 outline-none transition hover:border-indigo-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                              className="min-h-12 w-full resize-none overflow-hidden rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-semibold leading-6 text-slate-700 outline-none transition-all duration-150 placeholder:text-slate-400 hover:bg-white/70 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100"
                               placeholder="Nhập phụ đề..."
                             />
 
-                            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-100">
+                            <div className="hidden">
                               <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                                 Bắt đầu (giây)
                                 <input
@@ -2275,17 +2406,6 @@ export function VideoCaptionWorkspace() {
               </div>
 
               <div className="flex items-center gap-2">
-                {detail.project.output?.captionedVideoUrl && (
-                  <a
-                    href={detail.project.output.captionedVideoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded-full border border-emerald-500/50 bg-emerald-950/40 px-3 py-1 text-xs font-bold text-emerald-200 transition hover:bg-emerald-900/60"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Tải video đã xuất
-                  </a>
-                )}
                 <button
                   type="button"
                   disabled={actionBusy || isCaptionJobActive || !hasSegments}

@@ -223,6 +223,35 @@ export const videoCaptionService = {
     URL.revokeObjectURL(objectUrl);
   },
 
+  async downloadRenderedVideo(projectId: string) {
+    const response = await fetch(
+      `/api/v1/video-caption-projects/${projectId}/download`,
+      { headers: authHeaders(false) }
+    );
+    if (!response.ok) {
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      throw new Error(
+        result.message || "Không thể tải video caption đã xuất."
+      );
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const filename = encodedName
+      ? decodeURIComponent(encodedName)
+      : "caption-video.mp4";
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+  },
+
   cancel(projectId: string) {
     return request<{ project: VideoCaptionProjectDto }>(
       `/api/v1/video-caption-projects/${projectId}/cancel`,

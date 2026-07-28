@@ -134,6 +134,7 @@ function projectDto(project: IVideoCaptionProject): VideoCaptionProjectDto {
       backgroundColor: project.style.backgroundColor,
       backgroundOpacity: project.style.backgroundOpacity,
       position: project.style.position,
+      textAlign: project.style.textAlign,
       maxLines: project.style.maxLines,
       safeAreaPercent: project.style.safeAreaPercent,
     },
@@ -823,6 +824,7 @@ export const videoCaptionService = {
   ) {
     const project = await requireProject(companyCode, projectId);
     const set: Record<string, unknown> = {};
+    const unset: Record<string, 1> = {};
     if (input.name !== undefined) set.name = input.name.trim();
     if (input.mode !== undefined) set.mode = input.mode;
     if (input.contextLinks !== undefined) {
@@ -836,12 +838,23 @@ export const videoCaptionService = {
         ...project.style,
         ...input.style,
       });
+      if (
+        ["ready_for_review", "completed", "failed", "cancelled"].includes(
+          project.status
+        )
+      ) {
+        set.status = "ready_for_review";
+        unset["output.captionedVideoUrl"] = 1;
+        unset["output.previewUrl"] = 1;
+        unset["output.renderHash"] = 1;
+      }
     }
 
     const updated = await VideoCaptionProjectModel.findOneAndUpdate(
       { _id: project._id, companyCode: project.companyCode },
       {
         $set: set,
+        ...(Object.keys(unset).length ? { $unset: unset } : {}),
         $push: {
           transitions: {
             $each: [
@@ -1393,7 +1406,7 @@ export const videoCaptionService = {
       _id: completedJob.projectId,
       companyCode: completedJob.companyCode,
       status: "ready_for_review",
-      mode: { $in: ["speech", "combined"] },
+      mode: { $in: ["speech", "context", "combined"] },
     });
     if (!project) return null;
 
@@ -1451,6 +1464,9 @@ export const videoCaptionService = {
         return project.video.hasAudio
           ? prepareOperation("transcribe")
           : null;
+      }
+      if (project.mode === "context") {
+        return prepareOperation("generate_context");
       }
       return project.video.hasAudio
         ? prepareOperation("transcribe")
@@ -2769,6 +2785,11 @@ export const videoCaptionService = {
         $set: {
           currentVersion: nextVersion,
           status: "ready_for_review",
+        },
+        $unset: {
+          "output.captionedVideoUrl": 1,
+          "output.previewUrl": 1,
+          "output.renderHash": 1,
         },
       },
       { returnDocument: "after" }

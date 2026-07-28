@@ -35,6 +35,7 @@ const styleSchema = Joi.object({
   position: Joi.string()
     .valid("top", "center", "bottom", "safe_auto")
     .optional(),
+  textAlign: Joi.string().valid("left", "center", "right").optional(),
   maxLines: Joi.number().valid(1, 2).optional(),
   safeAreaPercent: Joi.number().min(0).max(30).optional(),
 });
@@ -209,6 +210,11 @@ videoCaptionRouter.get(
     }),
   }),
   videoCaptionController.downloadSubtitles as never
+);
+videoCaptionRouter.get(
+  "/:id/download",
+  validateRequest(idParams),
+  videoCaptionController.downloadRenderedVideo as never
 );
 videoCaptionRouter.post(
   "/:id/cancel",
