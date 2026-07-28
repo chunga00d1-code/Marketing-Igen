@@ -12,3 +12,7 @@ firebase-applet-config
 temp_key
 package-lock.json
 claude-render.hyperframe-tmp
+
+# Local agent planning and working documents
+.superpowers/
+docs/superpowers/

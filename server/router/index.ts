@@ -21,6 +21,9 @@ import { professionalRouter } from "./professional.router";
 import { klingRouter } from "./kling.router";
 import { opusclipRouter } from "./opusclip.router";
 import { marketingCampaignRouter } from "./marketing-campaign.router";
+import { videoTemplateRouter } from "./video-template.router";
+import { videoProjectRouter } from "./video-project.router";
+import { shotstackWebhookRouter } from "./shotstack-webhook.router";
 import { bulkCreateRouter } from "./bulk-create.router";
 import { videoCaptionRouter } from "./video-caption.router";
 import { companyKnowledgeRouter } from "./company-knowledge.router";
@@ -66,12 +69,15 @@ apiRouter.get("/webhooks/tiktok", (req, res) => {
   });
 });
 apiRouter.post("/webhooks/tiktok", tiktokController.receiveWebhook as any);
+apiRouter.use(shotstackWebhookRouter);
 apiRouter.use("/tiktok", tiktokRouter);
 apiRouter.use("/tiktok-business", tiktokRouter);
 
 // Gáº¯n káº¿t router phá»¥ cá»§a Scheduler
 apiRouter.use("/scheduler", schedulerRouter);
 apiRouter.use("/marketing-campaigns", marketingCampaignRouter);
+apiRouter.use(videoTemplateRouter);
+apiRouter.use(videoProjectRouter);
 apiRouter.use("/bulk-create", bulkCreateRouter);
 apiRouter.use("/video-caption-projects", videoCaptionRouter);
 apiRouter.use("/company-knowledge", companyKnowledgeRouter);
