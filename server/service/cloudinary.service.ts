@@ -50,7 +50,7 @@ export const cloudinaryService = {
    * @param folder ThÆ° má»¥c lÆ°u trá»¯ trÃªn Cloudinary
    * @returns URL cÃ´ng khai báº£o máº­t (secure_url)
    */
-  async uploadMediaBuffer(buffer: Buffer, folder: string): Promise<string> {
+  async uploadMediaBuffer(buffer: Buffer, folder: string, publicId?: string): Promise<string> {
     if (
       !process.env.CLOUDINARY_CLOUD_NAME ||
       !process.env.CLOUDINARY_API_KEY ||
@@ -65,6 +65,7 @@ export const cloudinaryService = {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           folder: folder || "igen_erp",
+          ...(publicId ? { public_id: publicId, overwrite: true, unique_filename: false } : {}),
           resource_type: "auto",
           timeout: 600000, // TÄƒng timeout lÃªn 10 phÃºt cho video lá»›n
         },

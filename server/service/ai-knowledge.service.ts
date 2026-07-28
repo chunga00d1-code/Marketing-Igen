@@ -1,14 +1,85 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import crypto from "crypto";
+import mongoose from "mongoose";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../model/ai-knowledge.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
+import { SocialIntegrationModel } from "../model/social-integration.model";
 
 const EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_TOP_K = 5;
 const MAX_CONTEXT_CHARS = 4500;
 const MAX_CHUNKS_TO_RANK = 1000;
 
-type ChannelScope = "facebook" | "zalo" | "all";
+type ChannelScope = "facebook" | "zalo" | "tiktok" | "all";
+type PurposeScope =
+  | "sales"
+  | "support"
+  | "marketing"
+  | "caption"
+  | "all";
+type PageScope = "all" | "selected";
+export type KnowledgeDocumentType =
+  | "company_profile" | "product" | "service" | "policy" | "pricing"
+  | "faq" | "brand_guideline" | "general";
+
+function inferDocumentType(
+  requestedType: KnowledgeDocumentType | undefined,
+  sourceTitle: string,
+  text: string
+): KnowledgeDocumentType {
+  if (requestedType && requestedType !== "general") return requestedType;
+
+  const normalizedTitle = normalizeForLookup(sourceTitle);
+  const normalizedText = normalizeForLookup(text.slice(0, 12000));
+  const hasPricingTitle = /\b(bang gia|bao gia|price list|pricing|retail price|wholesale price)\b/.test(normalizedTitle);
+  const isSpreadsheet =
+    /\.(xlsx?|csv)$/i.test(sourceTitle) ||
+    /\bsheet\s*:|\btieu de cot\s*:|\bgoogle sheet\b/i.test(text);
+  const hasPriceColumn =
+    /\b(gia|gia ban|gia le|gia si|don gia|price|retail price|wholesale price|vnd|vnđ)\b/.test(normalizedText);
+  const hasProductColumn =
+    /\b(san pham|ten hang|ten hang hoa|ma hang|sku|model|product)\b/.test(normalizedText);
+  const structuredRows = (text.match(/^(Sản phẩm|Dòng)\s+\d+\s*:/gim) || []).length;
+
+  if (
+    hasPricingTitle ||
+    (isSpreadsheet && hasPriceColumn && (hasProductColumn || structuredRows >= 2))
+  ) {
+    return "pricing";
+  }
+  return requestedType || "general";
+}
+
+function normalizePageTarget(pageScope?: PageScope, pageIds?: string[]) {
+  const normalizedIds = Array.from(new Set((pageIds || []).map((id) => String(id).trim()).filter(Boolean)));
+  const normalizedScope: PageScope = pageScope === "selected" ? "selected" : "all";
+  if (normalizedScope === "selected" && normalizedIds.length === 0) {
+    const error = new Error("Vui lòng chọn ít nhất một Facebook Page.");
+    (error as Error & { status?: number }).status = 400;
+    throw error;
+  }
+  return {
+    pageScope: normalizedScope,
+    pageIds: normalizedScope === "selected" ? normalizedIds : [],
+  };
+}
+
+async function validateCompanyFacebookPages(companyCode: string, pageScope: PageScope, pageIds: string[]) {
+  if (pageScope !== "selected") return;
+  const validPageIds = await SocialIntegrationModel.distinct("username", {
+    companyCode,
+    platform: "Facebook",
+    isConnected: true,
+    username: { $in: pageIds },
+  });
+  const validSet = new Set(validPageIds.map(String));
+  const invalidPageIds = pageIds.filter((id) => !validSet.has(id));
+  if (invalidPageIds.length > 0) {
+    const error = new Error("Một hoặc nhiều Facebook Page không thuộc doanh nghiệp hoặc đã ngắt kết nối.");
+    (error as Error & { status?: number }).status = 400;
+    throw error;
+  }
+}
 
 const CANDIDATE_STOPWORDS = new Set([
   "toi", "muon", "dat", "mua", "ban", "cai", "cho", "cua", "co", "shop",
@@ -135,8 +206,9 @@ function buildRankedContextItems(params: {
   normalizedQuery: string;
   queryVector: number[];
   queryTokens: string[];
+  pageId?: string;
 }) {
-  const { chunks, documentMap, normalizedQuery, queryVector, queryTokens } = params;
+  const { chunks, documentMap, normalizedQuery, queryVector, queryTokens, pageId } = params;
 
   return chunks.map((chunk) => {
     const doc = documentMap.get(String(chunk.documentId));
@@ -156,11 +228,18 @@ function buildRankedContextItems(params: {
         /\b(gia|gia ban|don gia|bao gia|price|vnd|vnđ)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
         ? 0.35
         : 0;
+    const pageBoost =
+      pageId && doc?.pageScope === "selected" && doc?.pageIds?.includes(pageId)
+        ? 0.2
+        : 0;
     const score =
-      semanticScore + lexicalScore * 0.9 + titleBoost * 0.6 + looseMatchScore * 0.7 + productDocBoost + pricingBoost;
+      semanticScore + lexicalScore * 0.9 + titleBoost * 0.6 + looseMatchScore * 0.7 +
+      productDocBoost + pricingBoost + pageBoost;
 
     return {
+      chunkId: chunk._id,
       documentId: chunk.documentId,
+      version: chunk.version,
       embedding: chunk.embedding,
       text: chunk.text,
       score,
@@ -324,11 +403,25 @@ export const aiKnowledgeService = {
     sourceUrl?: string;
     createdBy?: string;
     channelScope?: ChannelScope[];
+    purposeScope?: PurposeScope[];
+    pageScope?: PageScope;
+    pageIds?: string[];
+    documentType?: KnowledgeDocumentType;
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
     const text = normalizeText(params.text);
     const contentHash = crypto.createHash("sha256").update(text).digest("hex");
     const channelScope = params.channelScope?.length ? params.channelScope : ["all"];
+    const purposeScope = params.purposeScope?.length
+      ? params.purposeScope
+      : ["all"];
+    const pageTarget = normalizePageTarget(params.pageScope, params.pageIds);
+    const documentType = inferDocumentType(
+      params.documentType,
+      params.sourceTitle,
+      text
+    );
+    await validateCompanyFacebookPages(companyCode, pageTarget.pageScope, pageTarget.pageIds);
 
     if (!text) {
       await AIKnowledgeDocumentModel.deleteMany({
@@ -360,10 +453,14 @@ export const aiKnowledgeService = {
         status: "active",
         version,
         channelScope,
+        purposeScope,
+        pageScope: pageTarget.pageScope,
+        pageIds: pageTarget.pageIds,
+        documentType,
         contentHash,
         createdBy: params.createdBy || "",
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
     );
 
     await AIKnowledgeChunkModel.deleteMany({ documentId: document._id });
@@ -379,6 +476,9 @@ export const aiKnowledgeService = {
           embedding: embedText(chunk),
           tokensApprox: Math.ceil(chunk.length / 4),
           channelScope,
+          purposeScope,
+          pageScope: pageTarget.pageScope,
+          pageIds: pageTarget.pageIds,
           version,
         }))
       );
@@ -391,7 +491,10 @@ export const aiKnowledgeService = {
     companyCode?: string;
     query: string;
     channel?: "facebook" | "zalo" | "tiktok";
+    purpose?: Exclude<PurposeScope, "all">;
     topK?: number;
+    pageId?: string;
+    documentTypes?: KnowledgeDocumentType[];
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
     const normalizedQuery = normalizeText(params.query);
@@ -399,6 +502,7 @@ export const aiKnowledgeService = {
     const rawQueryTokens = tokenize(normalizedQuery);
     const queryTokens = rawQueryTokens.filter((token) => !CANDIDATE_STOPWORDS.has(token));
     const channel = params.channel || "facebook";
+    const purpose = params.purpose || "sales";
 
     const hasCommerceIntent = /\b(san pham|mua|ban|xem hang|xem san pham|danh sach|catalog|bang gia|bao gia|gia|bao nhieu|co gi|con gi|loai nao|mau nao|size nao|model nao|con hang|het hang|lay|dat hang|ship|gui)\b/.test(normalizedQuery);
     const isProductQuery = hasCommerceIntent;
@@ -412,10 +516,43 @@ export const aiKnowledgeService = {
     let chunks: any[] = [];
 
     // Luôn luôn tìm kiếm ngữ cảnh tài liệu RAG trong mọi trường hợp (kể cả câu hỏi về sản phẩm)
+    let permittedDocumentIds: mongoose.Types.ObjectId[] | undefined;
+    if (params.documentTypes?.length) {
+      const permittedDocuments = await AIKnowledgeDocumentModel.find({
+        companyCode,
+        documentType: { $in: params.documentTypes },
+        status: "active",
+      }).select("_id").lean();
+      permittedDocumentIds = permittedDocuments.map((document) => document._id);
+    }
+
     const filter: any = {
       companyCode,
       channelScope: { $in: ["all", channel] },
+      $and: [
+        {
+          $or: [
+            { purposeScope: { $in: ["all", purpose] } },
+            { purposeScope: { $exists: false } },
+          ],
+        },
+        {
+          $or: params.pageId
+            ? [
+                { pageScope: "selected", pageIds: params.pageId },
+                { pageScope: "all" },
+                { pageScope: { $exists: false } },
+              ]
+            : [
+                { pageScope: "all" },
+                { pageScope: { $exists: false } },
+              ],
+        },
+      ],
     };
+    if (permittedDocumentIds) {
+      filter.documentId = { $in: permittedDocumentIds };
+    }
 
     if (queryTokens.length > 0) {
       filter.$or = queryTokens.map((token) => ({
@@ -432,7 +569,30 @@ export const aiKnowledgeService = {
       const fallbackFilter = {
         companyCode,
         channelScope: { $in: ["all", channel] },
+        $and: [
+          {
+            $or: [
+              { purposeScope: { $in: ["all", purpose] } },
+              { purposeScope: { $exists: false } },
+            ],
+          },
+          {
+            $or: params.pageId
+              ? [
+                  { pageScope: "selected", pageIds: params.pageId },
+                  { pageScope: "all" },
+                  { pageScope: { $exists: false } },
+                ]
+              : [
+                  { pageScope: "all" },
+                  { pageScope: { $exists: false } },
+                ],
+          },
+        ],
       };
+      if (permittedDocumentIds) {
+        (fallbackFilter as any).documentId = { $in: permittedDocumentIds };
+      }
       chunks = await AIKnowledgeChunkModel.find(fallbackFilter as any)
         .sort({ updatedAt: -1 })
         .limit(MAX_CHUNKS_TO_RANK)
@@ -443,7 +603,7 @@ export const aiKnowledgeService = {
     const documents = await AIKnowledgeDocumentModel.find({
       _id: { $in: documentIds },
     })
-      .select("_id sourceTitle sourceUrl")
+      .select("_id sourceTitle sourceUrl pageScope pageIds")
       .lean();
     const documentMap = new Map(documents.map((doc) => [String(doc._id), doc]));
 
@@ -453,6 +613,7 @@ export const aiKnowledgeService = {
       normalizedQuery,
       queryVector,
       queryTokens,
+      pageId: params.pageId,
     })
       .filter((item) => item.score > 0.12)
       .sort((a, b) => b.score - a.score)
@@ -466,6 +627,7 @@ export const aiKnowledgeService = {
             normalizedQuery,
             queryVector,
             queryTokens,
+            pageId: params.pageId,
           })
             .filter((item) => item.score > 0.04)
             .sort((a, b) => b.score - a.score)
@@ -476,12 +638,14 @@ export const aiKnowledgeService = {
 
     let usedChars = 0;
     const selected: string[] = [];
+    const selectedItems: typeof finalRanked = [];
 
     for (const item of finalRanked) {
       if (usedChars + item.text.length > maxContextChars) break;
       const labeledText = `[Tai lieu] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`;
       if (usedChars + labeledText.length > maxContextChars) break;
       selected.push(labeledText);
+      selectedItems.push(item);
       usedChars += labeledText.length;
     }
 
@@ -508,6 +672,15 @@ export const aiKnowledgeService = {
         return `[Nguon ${index}]\n${text}`;
       }).join("\n\n---\n\n"),
       matches: finalRanked.length,
+      items: selectedItems.map((item) => ({
+        chunkId: String(item.chunkId),
+        documentId: String(item.documentId),
+        version: String(item.version || ""),
+        title: item.title,
+        sourceUrl: item.sourceUrl,
+        text: item.text,
+        score: item.score,
+      })),
       bestScore,
       productCandidateNames,
       shouldAskProductConfirmation,
@@ -627,13 +800,140 @@ export const aiKnowledgeService = {
       latestSyncAt: documents[0]?.updatedAt || null,
       latestReplyAt: latestLog?.createdAt || null,
       documents: documents.slice(0, 5).map((doc) => ({
+        id: String(doc._id),
         title: doc.sourceTitle,
         sourceType: doc.sourceType,
         status: doc.status,
         version: doc.version,
+        channelScope: doc.channelScope,
+        purposeScope: doc.purposeScope,
         updatedAt: doc.updatedAt,
       })),
     };
+  },
+
+  async listKnowledgeDocuments(companyCode?: string) {
+    const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    const documents = await AIKnowledgeDocumentModel.find({
+      companyCode: normalizedCompanyCode,
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+    const chunkCounts = await AIKnowledgeChunkModel.aggregate<{
+      _id: mongoose.Types.ObjectId;
+      count: number;
+    }>([
+      {
+        $match: {
+          companyCode: normalizedCompanyCode,
+          documentId: { $in: documents.map((document) => document._id) },
+        },
+      },
+      { $group: { _id: "$documentId", count: { $sum: 1 } } },
+    ]);
+    const countByDocumentId = new Map(
+      chunkCounts.map((item) => [String(item._id), item.count])
+    );
+
+    return {
+      companyCode: normalizedCompanyCode,
+      documents: documents.map((document) => ({
+        id: String(document._id),
+        title: document.sourceTitle,
+        sourceType: document.sourceType,
+        sourceUrl: document.sourceUrl || "",
+        status: document.status,
+        version: document.version,
+        channelScope: document.channelScope || ["all"],
+        purposeScope: document.purposeScope || ["all"],
+        pageScope: document.pageScope || "all",
+        pageIds: document.pageIds || [],
+        documentType: document.documentType || "general",
+        chunksCount: countByDocumentId.get(String(document._id)) || 0,
+        createdBy: document.createdBy || "",
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+      })),
+    };
+  },
+
+  async updateKnowledgeDocumentScopes(params: {
+    companyCode?: string;
+    documentId: string;
+    channelScope: ChannelScope[];
+    purposeScope: PurposeScope[];
+    pageScope?: PageScope;
+    pageIds?: string[];
+    documentType?: KnowledgeDocumentType;
+  }) {
+    const companyCode = normalizeCompanyCode(params.companyCode);
+    const existing = await AIKnowledgeDocumentModel.findOne({
+      _id: params.documentId,
+      companyCode,
+    }).select("pageScope pageIds documentType");
+    if (!existing) return null;
+    const pageTarget = normalizePageTarget(
+      params.pageScope || existing.pageScope || "all",
+      params.pageIds ?? existing.pageIds ?? []
+    );
+    await validateCompanyFacebookPages(companyCode, pageTarget.pageScope, pageTarget.pageIds);
+    const document = await AIKnowledgeDocumentModel.findOneAndUpdate(
+      { _id: params.documentId, companyCode },
+      {
+        $set: {
+          channelScope: params.channelScope,
+          purposeScope: params.purposeScope,
+          pageScope: pageTarget.pageScope,
+          pageIds: pageTarget.pageIds,
+          documentType: params.documentType || existing.documentType || "general",
+        },
+      },
+      { returnDocument: "after" }
+    );
+    if (!document) return null;
+    await AIKnowledgeChunkModel.updateMany(
+      { documentId: document._id, companyCode },
+      {
+        $set: {
+          channelScope: params.channelScope,
+          purposeScope: params.purposeScope,
+          pageScope: pageTarget.pageScope,
+          pageIds: pageTarget.pageIds,
+        },
+      }
+    );
+    return {
+      id: String(document._id),
+      channelScope: document.channelScope,
+      purposeScope: document.purposeScope,
+      pageScope: document.pageScope,
+      pageIds: document.pageIds,
+      documentType: document.documentType,
+      version: document.version,
+      updatedAt: document.updatedAt,
+    };
+  },
+
+  async deleteKnowledgeDocument(companyCode: string | undefined, documentId: string) {
+    const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    const document = await AIKnowledgeDocumentModel.findOne({
+      _id: documentId,
+      companyCode: normalizedCompanyCode,
+    })
+      .select("_id sourceTitle")
+      .lean();
+    if (!document) return null;
+    await Promise.all([
+      AIKnowledgeChunkModel.deleteMany({
+        documentId: document._id,
+        companyCode: normalizedCompanyCode,
+      }),
+      AIKnowledgeDocumentModel.deleteOne({
+        _id: document._id,
+        companyCode: normalizedCompanyCode,
+      }),
+    ]);
+    return { id: String(document._id), title: document.sourceTitle };
   },
 
   async clearKnowledge(companyCode?: string) {

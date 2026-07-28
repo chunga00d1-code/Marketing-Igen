@@ -27,6 +27,8 @@ export interface UserFormModalProps {
   setUserHeyGenVoiceId: (val: string) => void;
   userHeyGenApiKey: string;
   setUserHeyGenApiKey: (val: string) => void;
+  userElevenLabsApiKey: string;
+  setUserElevenLabsApiKey: (val: string) => void;
   getAvailableRoles: () => Array<{ role: string; displayName: string; level: number }>;
   userProfile: UserProfile | null;
   companies: CompanyProfile[];
@@ -60,6 +62,8 @@ export function UserFormModal({
   setUserHeyGenVoiceId,
   userHeyGenApiKey,
   setUserHeyGenApiKey,
+  userElevenLabsApiKey,
+  setUserElevenLabsApiKey,
   getAvailableRoles,
   userProfile,
   companies,
@@ -284,6 +288,31 @@ export function UserFormModal({
                   value={userHeyGenApiKey}
                   onChange={(e) => setUserHeyGenApiKey(e.target.value)}
                   className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-violet-100 bg-violet-50/30 p-4 space-y-3 text-left">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-violet-800">
+                  Cấu hình ElevenLabs của thành viên
+                </p>
+                <p className="mt-1 text-[11px] text-violet-900/70">
+                  Nhập khóa API ElevenLabs riêng cho tài khoản này. Để trống để dùng khóa của doanh nghiệp hoặc hệ thống.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Khóa API ElevenLabs (Override)
+                </label>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Để trống nếu muốn dùng khóa ElevenLabs mặc định"
+                  value={userElevenLabsApiKey}
+                  onChange={(e) => setUserElevenLabsApiKey(e.target.value)}
+                  className="w-full px-3.5 py-2 border border-gray-200 rounded-xl text-xs font-mono outline-none focus:ring-2 focus:ring-violet-500 bg-white"
                 />
               </div>
             </div>

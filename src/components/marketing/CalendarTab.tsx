@@ -1,19 +1,44 @@
 ﻿/* eslint-disable @typescript-eslint/no-unused-vars */
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Calendar, Clock } from "lucide-react";
 import { ContentApprovalCard, PublishEvent } from "../../types";
 import { toast } from "../../pages/Toast";
+import { marketingCampaignService, MarketingCampaignCalendarSlot } from "../../services/marketingCampaignService";
 
 interface CalendarTabProps {
   isUserRole: boolean;
   approvalCards: ContentApprovalCard[];
 }
 
+type CalendarEvent = PublishEvent & { statusLabel: string };
+
+const campaignStatusLabel: Record<string, string> = {
+  planned: "Đã lên lịch",
+  queued: "Chờ xử lý",
+  generating: "Đang tạo",
+  researching: "Đang nghiên cứu",
+  writing: "Đang viết",
+  scoring: "Đang chấm điểm",
+  generating_media: "Đang tạo media",
+  verifying: "Đang kiểm tra",
+  pending_approval: "Chờ duyệt",
+  ready_to_publish: "Sẵn sàng đăng",
+  publishing: "Đang đăng",
+  published: "Đã đăng",
+  retrying: "Đang thử lại",
+  needs_attention: "Cần xử lý",
+  failed: "Thất bại",
+  skipped: "Đã bỏ qua",
+  cancelled: "Đã hủy",
+};
+
 export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabProps) {
   // 1. Calendar States
   const [currentMonth, setCurrentMonth] = useState<number>(new Date().getMonth());
   const [currentYear, setCurrentYear] = useState<number>(new Date().getFullYear());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [campaignSlots, setCampaignSlots] = useState<MarketingCampaignCalendarSlot[]>([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(false);
 
   const monthNamesVi = [
     "THÁNG 1", "THÁNG 2", "THÁNG 3", "THÁNG 4", "THÁNG 5", "THÁNG 6",
@@ -47,30 +72,73 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
 
   const prevMonthLastDate = new Date(currentYear, currentMonth, 0).getDate();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-  const joinedEvents: PublishEvent[] = (approvalCards || [])
-    .filter((c) => c.status === "scheduled")
-    .map((c, index): PublishEvent | null => {
-      let assignedDay = ((index * 5 + 11) % 28) + 1;
-      if (c.scheduledDate) {
-        const dateObj = new Date(c.scheduledDate);
-        if (!isNaN(dateObj.getTime())) {
-          if (dateObj.getFullYear() === currentYear && dateObj.getMonth() === currentMonth) {
-            assignedDay = dateObj.getDate();
-          } else {
-            return null;
-          }
+
+  useEffect(() => {
+    let active = true;
+    const month = String(currentMonth + 1).padStart(2, "0");
+    const startDate = `${currentYear}-${month}-01`;
+    const endDate = `${currentYear}-${month}-${String(daysInMonth).padStart(2, "0")}`;
+    setLoadingCalendar(true);
+    marketingCampaignService.calendar(startDate, endDate)
+      .then((result) => {
+        if (active) setCampaignSlots(result.slots);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setCampaignSlots([]);
+        toast.error(error instanceof Error ? error.message : "Không thể tải lịch chiến dịch.");
+      })
+      .finally(() => {
+        if (active) setLoadingCalendar(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentMonth, currentYear, daysInMonth]);
+
+  const joinedEvents = useMemo<CalendarEvent[]>(() => {
+    const campaignEvents = campaignSlots
+      .map((slot): CalendarEvent | null => {
+        const scheduledAt = new Date(slot.scheduledAt);
+        if (!Number.isFinite(scheduledAt.getTime()) || scheduledAt.getFullYear() !== currentYear || scheduledAt.getMonth() !== currentMonth) return null;
+        const time = scheduledAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+        const failedStatus = ["failed", "needs_attention", "cancelled", "skipped"].includes(slot.status);
+        return {
+          id: `campaign-${slot._id}`,
+          date: scheduledAt.getDate(),
+          title: `${slot.campaignType === "single" ? "[Bài đăng nhanh]" : `[${slot.campaignTitle}]`} ${slot.topicBrief} - ${time}`,
+          type: slot.mediaType,
+          channel: slot.platform,
+          status: slot.status === "published" ? "Published" : failedStatus ? "Draft" : "Approved",
+          statusLabel: campaignStatusLabel[slot.status] || slot.status,
+        };
+      })
+      .filter((event): event is CalendarEvent => event !== null);
+
+    const legacyEvents = (approvalCards || [])
+      .filter((card) => card.status === "scheduled" && !card.campaignSlotId)
+      .map((card, index): CalendarEvent | null => {
+        let assignedDay = ((index * 5 + 11) % 28) + 1;
+        if (card.scheduledDate) {
+          const dateObj = new Date(card.scheduledDate);
+          if (!Number.isFinite(dateObj.getTime())) return null;
+          if (dateObj.getFullYear() !== currentYear || dateObj.getMonth() !== currentMonth) return null;
+          assignedDay = dateObj.getDate();
         }
-      }
-      return {
-        id: c.id,
-        date: assignedDay,
-        title: `[Lịch Đăng] ${c.title}${c.scheduledTime ? ` - ${c.scheduledTime}` : ""}`,
-        type: c.contentType,
-        channel: c.channel,
-        status: "Approved" as const,
-      };
-    })
-    .filter((e): e is PublishEvent => e !== null);
+        return {
+          id: `legacy-${card.id}`,
+          date: assignedDay,
+          title: `[Nội dung cũ] ${card.title}${card.scheduledTime ? ` - ${card.scheduledTime}` : ""}`,
+          type: card.contentType,
+          channel: card.channel,
+          status: "Approved",
+          statusLabel: "Đã lên lịch",
+        };
+      })
+      .filter((event): event is CalendarEvent => event !== null);
+
+    return [...campaignEvents, ...legacyEvents];
+  }, [approvalCards, campaignSlots, currentMonth, currentYear]);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6" id="publishing_calendar_block">
@@ -177,7 +245,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
             <div className="flex-1 overflow-y-auto mt-6 space-y-4 text-xs text-slate-550 text-left">
               {joinedEvents.filter(e => e.date === selectedDay).length === 0 ? (
                 <div className="p-8 text-center bg-gray-50 text-gray-400 italic rounded-xl">
-                  Không có lịch đăng tải nào được lập cho ngày này! Bạn có thể chuyển bản nháp sang Chờ đăng tải.
+                  {loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong ngày này."}
                 </div>
               ) : (
                 joinedEvents.filter(e => e.date === selectedDay).map(event => (
@@ -192,7 +260,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                             ? "bg-blue-600"
                             : "bg-amber-500"
                         }`}>
-                        {event.status}
+                        {event.statusLabel}
                       </span>
                     </div>
                     <h5 className="font-bold font-sans text-xs text-slate-800 leading-normal">{event.title}</h5>
@@ -212,7 +280,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                 Lịch Đăng tháng {currentMonth + 1}/{currentYear}
               </h4>
               <span className="px-2 py-0.5 bg-slate-100 rounded font-mono text-[9px] font-bold border border-gray-200">
-                {joinedEvents.length} bài viết
+                {loadingCalendar ? "Đang tải..." : `${joinedEvents.length} bài viết`}
               </span>
             </div>
             <p className="text-xs text-gray-400 mt-1">Tất cả bài đăng dự kiến trong tháng này.</p>
@@ -220,7 +288,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
             <div className="flex-1 overflow-y-auto mt-6 space-y-4 text-xs text-slate-550 text-left">
               {joinedEvents.length === 0 ? (
                 <div className="p-8 text-center bg-gray-50 text-gray-400 italic rounded-xl">
-                  Không có lịch đăng tải nào được lập trong tháng này!
+                  {loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong tháng này!"}
                 </div>
               ) : (
                 [...joinedEvents]
@@ -237,7 +305,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                               ? "bg-blue-600"
                               : "bg-amber-500"
                           }`}>
-                          {event.status}
+                          {event.statusLabel}
                         </span>
                       </div>
                       <h5 className="font-bold font-sans text-xs text-slate-800 leading-normal">{event.title}</h5>

@@ -12,7 +12,9 @@ import { cloudinaryService } from "../cloudinary.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { VisualAnalystAgentService } from "./visual-analyst-agent.service";
 import { approvalNotifierService } from "../approval-notifier.service";
+import { applyCampaignVideoCaption } from "./campaign-caption.service";
 import { broadcastEvent } from "../../socket";
+import { campaignContentSheetService } from "../campaign-content-sheet.service";
 
 function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: string; status: string }, extra?: Record<string, unknown>) {
   try {
@@ -196,6 +198,12 @@ export class CampaignOrchestratorService {
     }
 
     try {
+      const sheetInput = await campaignContentSheetService.getWorkerInput(
+        slot.companyCode,
+        String(slot.campaignId),
+        String(slot._id)
+      );
+      const manualBodyText = sheetInput.bodyOverride || slot.customBodyText || "";
       let candidate: {
         _id?: unknown;
         title: string;
@@ -221,7 +229,7 @@ export class CampaignOrchestratorService {
 
         let researchContext = "";
         let visualContext = "";
-        if (!slot.customBodyText) {
+        if (!manualBodyText) {
           researchContext = await getResearchContext(slot, campaign);
           visualContext = await getVisualContext(slot, campaign);
         }
@@ -236,21 +244,21 @@ export class CampaignOrchestratorService {
         await slot.save();
         emitSlotUpdate(slot);
 
-        if (slot.customBodyText) {
+        if (manualBodyText) {
           // Use pre-written content
           candidate = {
-            title: slot.topicBrief || "Bài đăng chiến dịch",
-            bodyText: slot.customBodyText,
-            outline: "Nội dung tự soạn thảo từ Google Sheet",
+            title: sheetInput.titleOverride || slot.topicBrief || "Bài đăng chiến dịch",
+            bodyText: manualBodyText,
+            outline: "Nội dung được người dùng khóa trong Campaign Content Sheet",
             mediaPrompt: "Sử dụng ảnh thật Google Drive",
-            voiceScript: slot.customBodyText,
+            voiceScript: manualBodyText,
           };
         } else {
           // Let copywriter write it based on the sheet brief
           candidate = await CopywriterAgentService.write(
             slot,
             campaign,
-            `${researchContext}\n\n${visualContext}`.trim()
+            `${researchContext}\n\n${visualContext}\n\n${sheetInput.contextText}`.trim()
           );
         }
       } else {
@@ -280,10 +288,26 @@ export class CampaignOrchestratorService {
         emitSlotUpdate(slot);
 
         // Run Copywriter Agent (Single-Variant Content Generation)
-        candidate = await CopywriterAgentService.write(slot, campaign, researchContext);
+        if (manualBodyText) {
+          candidate = {
+            title: sheetInput.titleOverride || slot.topicBrief || "Bài đăng chiến dịch",
+            bodyText: manualBodyText,
+            outline: "Nội dung được người dùng khóa trong Campaign Content Sheet",
+            mediaPrompt: "",
+            voiceScript: slot.mediaType === "video" || slot.mediaType === "human-video" ? manualBodyText : "",
+          };
+        } else {
+          candidate = await CopywriterAgentService.write(
+            slot,
+            campaign,
+            `${researchContext}\n\n${sheetInput.contextText}`.trim()
+          );
+        }
       }
 
-      if (!slot.customBodyText) {
+      if (sheetInput.titleOverride) candidate.title = sheetInput.titleOverride;
+
+      if (!manualBodyText) {
         const contentCost = campaign.qualityMode === "budget"
           ? API_COSTS.CAMPAIGN_CONTENT_BUDGET
           : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
@@ -342,7 +366,7 @@ export class CampaignOrchestratorService {
             transitions: {
               from: "writing",
               to: nextStatus,
-              reason: `Đã hoàn thành nội dung bản nháp. Chuyển sang bước kế tiếp: ${nextStatus}.`,
+              reason: `Đã hoàn thành nội dung bản nháp. Content Sheet row v${sheetInput.rowRevision}, config v${sheetInput.configRevision}. Chuyển sang bước kế tiếp: ${nextStatus}.`,
               at: new Date(),
             },
           },
@@ -420,6 +444,25 @@ export class CampaignOrchestratorService {
       return;
     }
 
+    const mediaLeaseMs = 20 * 60 * 1000;
+    const heartbeat = setInterval(() => {
+      void MarketingCampaignSlotModel.updateOne(
+        { _id: slotId, lockId, status: "generating_media" },
+        {
+          $set: {
+            lockedAt: new Date(),
+            lockExpiresAt: new Date(Date.now() + mediaLeaseMs),
+          },
+        }
+      ).catch((error: unknown) => {
+        console.error(
+          `[Orchestrator] Unable to renew media lease for slot ${slotId}:`,
+          error
+        );
+      });
+    }, Math.floor(mediaLeaseMs / 4));
+    heartbeat.unref?.();
+
     try {
       const nextStatus = campaign.publishMode === "auto" ? "verifying" : "pending_approval";
 
@@ -444,6 +487,18 @@ export class CampaignOrchestratorService {
             content.mediaType = "image";
           }
           await content.save();
+          if (
+            content.videoUrl &&
+            (slot.mediaType === "video" ||
+              slot.mediaType === "human-video")
+          ) {
+            await applyCampaignVideoCaption({
+              campaign,
+              slot,
+              content,
+              videoUrl: content.videoUrl,
+            });
+          }
         }
 
         await MarketingCampaignSlotModel.updateOne(
@@ -507,6 +562,8 @@ export class CampaignOrchestratorService {
       console.error(`[Orchestrator] Error during slot ${slotId} media phase:`, error);
       await releaseWithFailure(slotId, lockId, "media", error);
       emitSlotUpdate({ _id: slot._id, campaignId: slot.campaignId, companyCode: slot.companyCode, status: "failed" });
+    } finally {
+      clearInterval(heartbeat);
     }
   }
 

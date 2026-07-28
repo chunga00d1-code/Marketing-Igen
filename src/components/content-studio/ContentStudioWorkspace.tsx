@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { ImageIcon, Mic, Video } from 'lucide-react';
+import { ImageIcon, Layers3, Mic, Video } from 'lucide-react';
+import { BulkCreateWorkspace } from './BulkCreateWorkspace';
 import { ImageGenerationWorkspace } from './ImageGenerationWorkspace';
 import { VideoGenerationWorkspace, VideoToolTab } from './VideoGenerationWorkspace';
 import { VoiceGenerationWorkspace } from './VoiceGenerationWorkspace';
+import type { ContentStudioTab } from '../../utils/contentStudioNavigation';
 
 interface ContentStudioWorkspaceProps {
+  initialTab?: ContentStudioTab;
   initialParams?: {
     tab: 'image' | 'video' | 'voice';
     prompt: string;
@@ -19,12 +22,22 @@ interface ContentStudioWorkspaceProps {
   } | null;
   onClearParams?: () => void;
   onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
+  onTabChange?: (tab: ContentStudioTab) => void;
 }
 
-export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSaved }: ContentStudioWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<'image' | 'video' | 'voice'>(initialParams?.tab || 'image');
+export function ContentStudioWorkspace({ initialParams, initialTab, onClearParams, onMediaSaved, onTabChange }: ContentStudioWorkspaceProps) {
+  const [activeTab, setActiveTab] = useState<ContentStudioTab>(initialParams?.tab || initialTab || 'image');
+  const [prevTab, setPrevTab] = useState<ContentStudioTab>('image');
   const [videoSubTab, setVideoSubTab] = useState<VideoToolTab>('templates');
   const clearParamsRef = useRef(onClearParams);
+
+  const changeTab = (tab: ContentStudioTab) => {
+    if (activeTab !== 'bulk') {
+      setPrevTab(activeTab);
+    }
+    setActiveTab(tab);
+    onTabChange?.(tab);
+  };
 
   useEffect(() => {
     clearParamsRef.current = onClearParams;
@@ -40,6 +53,10 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
   }, [initialParams]);
 
   useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
+  useEffect(() => {
     return () => {
       clearParamsRef.current?.();
     };
@@ -51,7 +68,7 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
         <div className="mx-auto flex w-full max-w-[1500px] items-center justify-center py-1.5 px-4 md:px-6">
           <div className="inline-flex w-fit items-center gap-1 rounded-2xl border border-slate-200/50 bg-slate-100/80 p-1 shadow-2xs">
             <button
-              onClick={() => setActiveTab('image')}
+              onClick={() => changeTab('image')}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'image' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
               }`}
@@ -60,7 +77,7 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
               Tạo hình ảnh
             </button>
             <button
-              onClick={() => setActiveTab('video')}
+              onClick={() => changeTab('video')}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'video' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
               }`}
@@ -69,7 +86,7 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
               Tạo video
             </button>
             <button
-              onClick={() => setActiveTab('voice')}
+              onClick={() => changeTab('voice')}
               className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'voice' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
               }`}
@@ -77,11 +94,20 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
               <Mic className="h-3.5 w-3.5" />
               Tạo giọng nói
             </button>
+            <button
+              onClick={() => changeTab('bulk')}
+              className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'bulk' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200/40 ring-1 ring-slate-100' : 'text-slate-500 hover:bg-white/60 hover:text-slate-800'
+              }`}
+            >
+              <Layers3 className="h-3.5 w-3.5" />
+              Thiết kế hàng loạt
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 md:px-6 md:py-4" id="content_studio_tab_body">
+      <div className={`min-h-0 flex-1 ${activeTab === 'bulk' ? 'overflow-hidden' : 'overflow-y-auto px-4 py-3 md:px-6 md:py-4'}`} id="content_studio_tab_body">
         {activeTab === 'image' && (
           <ImageGenerationWorkspace
             initialPrompt={initialParams?.prompt}
@@ -113,10 +139,11 @@ export function ContentStudioWorkspace({ initialParams, onClearParams, onMediaSa
             onMediaSaved={onMediaSaved}
             onNavigateToHumanVideo={() => {
               setVideoSubTab('heygen');
-              setActiveTab('video');
+              changeTab('video');
             }}
           />
         )}
+        {activeTab === 'bulk' && <BulkCreateWorkspace onClose={() => changeTab(prevTab)} />}
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { MarketingCampaignModel } from "../../model/marketing-campaign.model";
 import { geminiService } from "../gemini.service";
 import { piapiService } from "../piapi.service";
 import { API_COSTS, walletService } from "../wallet.service";
+import { applyCampaignVideoCaption } from "./campaign-caption.service";
 
 export class MediaCreatorAgentService {
   public static async createMedia(
@@ -25,7 +26,19 @@ export class MediaCreatorAgentService {
     }
 
     if (content.videoUrl || content.imageUrl) {
-      return content.videoUrl || content.imageUrl || "";
+      if (
+        content.videoUrl &&
+        (slot.mediaType === "video" ||
+          slot.mediaType === "human-video")
+      ) {
+        return applyCampaignVideoCaption({
+          campaign,
+          slot,
+          content,
+          videoUrl: content.videoUrl,
+        });
+      }
+      return content.imageUrl || "";
     }
 
     const isBudget = campaign.qualityMode === "budget";
@@ -68,15 +81,21 @@ export class MediaCreatorAgentService {
         content.videoUrl = videoResult.url;
         await content.save();
 
-        console.log(`[MediaCreatorAgent] Generated video successfully: ${videoResult.url}`);
-        return videoResult.url;
+        const finalVideoUrl = await applyCampaignVideoCaption({
+          campaign,
+          slot,
+          content,
+          videoUrl: videoResult.url,
+        });
+
+        console.log(`[MediaCreatorAgent] Generated video successfully: ${finalVideoUrl}`);
+        return finalVideoUrl;
       } catch (err: unknown) {
-        console.warn(`[MediaCreatorAgent] Video generation failed. Attempting fallback to image...`, err);
-        slot.mediaType = "image";
-        await slot.save();
-        content.mediaType = "image";
-        await content.save();
-        // Fall through to the image generation logic below
+        throw new Error(
+          `Tạo video chiến dịch thất bại; không được tự động hạ yêu cầu video xuống ảnh: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
       }
     }
 

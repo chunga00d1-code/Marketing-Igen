@@ -166,11 +166,9 @@ export class ApifyResearchService {
   ): number {
     const totalSlots = campaign.statistics?.totalSlots || 8;
     
-    // Base quota per source
-    let baseQuota = 5; // Default for short campaigns (<= 10 slots)
-    if (totalSlots > 10 && totalSlots <= 30) {
-      baseQuota = 8;
-    } else if (totalSlots > 30) {
+    // Keep every provider request at or above the strictest actor minimum.
+    let baseQuota = 10;
+    if (totalSlots > 30) {
       baseQuota = 12;
     }
 
@@ -180,7 +178,7 @@ export class ApifyResearchService {
     if (funnel === "TOFU") multiplier = 1.2;
     else if (funnel === "BOFU") multiplier = 0.6;
 
-    return Math.max(3, Math.round(baseQuota * multiplier));
+    return Math.max(10, Math.round(baseQuota * multiplier));
   }
 
   private static async collectGoogle(
@@ -189,7 +187,17 @@ export class ApifyResearchService {
     targetQuota: number,
     remainingBudgetUsd?: number
   ): Promise<CollectorResult> {
-    const resultsPerQuery = Math.min(targetQuota, parsePositiveInt(process.env.APIFY_GOOGLE_MAX_RESULTS, 5, MAX_RESULTS_PER_SOURCE));
+    const resultsPerQuery = Math.max(
+      10,
+      Math.min(
+        targetQuota,
+        parsePositiveInt(
+          process.env.APIFY_GOOGLE_MAX_RESULTS,
+          10,
+          MAX_RESULTS_PER_SOURCE
+        )
+      )
+    );
     const estimatedCostUsd = queries.length * 0.0045;
     const actorId = process.env.APIFY_GOOGLE_ACTOR_ID || "apify/google-search-scraper";
     const result = await this.runActor("google", actorId, {
@@ -223,7 +231,17 @@ export class ApifyResearchService {
     targetQuota: number,
     remainingBudgetUsd?: number
   ): Promise<CollectorResult> {
-    const maxResults = Math.min(targetQuota, parsePositiveInt(process.env.APIFY_FACEBOOK_MAX_RESULTS, 5, MAX_RESULTS_PER_SOURCE));
+    const maxResults = Math.max(
+      10,
+      Math.min(
+        targetQuota,
+        parsePositiveInt(
+          process.env.APIFY_FACEBOOK_MAX_RESULTS,
+          10,
+          MAX_RESULTS_PER_SOURCE
+        )
+      )
+    );
     const actorId = process.env.APIFY_FACEBOOK_ACTOR_ID || "powerai/facebook-post-search-scraper";
     const query = queries[0] || "marketing";
     const result = await this.runActor("facebook", actorId, {
@@ -258,7 +276,17 @@ export class ApifyResearchService {
     targetQuota: number,
     remainingBudgetUsd?: number
   ): Promise<CollectorResult> {
-    const maxResults = Math.min(targetQuota, parsePositiveInt(process.env.APIFY_TIKTOK_MAX_RESULTS, 5, MAX_RESULTS_PER_SOURCE));
+    const maxResults = Math.max(
+      10,
+      Math.min(
+        targetQuota,
+        parsePositiveInt(
+          process.env.APIFY_TIKTOK_MAX_RESULTS,
+          10,
+          MAX_RESULTS_PER_SOURCE
+        )
+      )
+    );
     const actorId = process.env.APIFY_TIKTOK_ACTOR_ID || "clockworks/tiktok-scraper";
     const result = await this.runActor("tiktok", actorId, {
       searchQueries: queries,

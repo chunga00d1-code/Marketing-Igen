@@ -3,6 +3,7 @@ import {
   ChevronRight,
   LayoutDashboard,
   Megaphone,
+  Palette,
   MessageSquareShare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -10,6 +11,7 @@ import {
   Shield,
   Wallet,
   BookOpen,
+  LibraryBig,
 } from "lucide-react";
 import {
   BRAND_LOGO_PATH,
@@ -79,6 +81,20 @@ const baseMenuItems: MenuItem[] = [
     desc: "Sáng tạo nội dung và đăng lịch",
     icon: Megaphone,
     tone: "purple",
+  },
+  {
+    label: "XUONG NOI DUNG",
+    title: "Xưởng nội dung",
+    desc: "Tạo ảnh, video và thiết kế hàng loạt",
+    icon: Palette,
+    tone: "blue",
+  },
+  {
+    label: "KHO TRI THUC",
+    title: "Kho tri thức",
+    desc: "Tài liệu dùng chung toàn doanh nghiệp",
+    icon: LibraryBig,
+    tone: "indigo",
   },
   {
     label: "SALES CRM",

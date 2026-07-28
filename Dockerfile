@@ -28,8 +28,9 @@ RUN yarn build
 # Step 2: Production runner stage (keeps the final image lightweight)
 FROM node:22-alpine AS runner
 
-# Cài ca-certificates (Alpine)
-RUN apk add --no-cache ca-certificates
+# Runtime media pipeline: HTTPS downloads plus ffmpeg/ffprobe for video analysis and rendering.
+RUN apk add --no-cache ca-certificates ffmpeg font-dejavu
+RUN ffprobe -version && ffmpeg -version
 
 WORKDIR /app
 
@@ -41,6 +42,9 @@ COPY --from=builder /app/package.json /app/yarn.lock ./
 
 # Install only production dependencies
 RUN yarn install --production --frozen-lockfile
+
+# Fail the image build before deployment if Sharp or its bundled musl libvips is missing.
+RUN node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"
 
 # Copy only the compiled output directory from builder
 COPY --from=builder /app/dist ./dist

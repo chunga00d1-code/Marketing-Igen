@@ -20,6 +20,14 @@ export const APP_ROUTES: AppRoute[] = [
     component: lazy(() => import("../pages/MarketingTab")),
   },
   {
+    tab: "XUONG NOI DUNG",
+    component: lazy(() => import("../pages/ContentStudioPage")),
+  },
+  {
+    tab: "KHO TRI THUC",
+    component: lazy(() => import("../pages/CompanyKnowledgePage")),
+  },
+  {
     tab: "SALES CRM",
     component: lazy(() => import("../pages/CRMTab")),
   },

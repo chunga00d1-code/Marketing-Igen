@@ -4,6 +4,8 @@ import { AIChatConfig } from "./crm";
 export type TabType =
   | "TONG QUAN"
   | "MARKETING"
+  | "XUONG NOI DUNG"
+  | "KHO TRI THUC"
   | "SALES CRM"
   | "QUAN TRI USER"
   | "VI & NAP TIEN"
@@ -25,6 +27,9 @@ export interface UserProfile {
     avatarIds?: string[];
     avatarId?: string;
     voiceId?: string;
+    apiKey?: string;
+  } | null;
+  elevenlabsAccess?: {
     apiKey?: string;
   } | null;
   jobTitle?: string;

@@ -342,8 +342,11 @@ async function parseUploadedDocument(base64Data: string, mimeType: string, fileN
     normMime.includes("powerpoint") ||
     fileName.endsWith(".pptx") ||
     fileName.endsWith(".ppt");
+  const isImage =
+    normMime.startsWith("image/") ||
+    /\.(png|jpe?g|webp)$/i.test(fileName);
 
-  if (isPdf || isDocx || isPptx) {
+  if (isPdf || isDocx || isPptx || isImage) {
     if (!process.env.OPENROUTER_API_KEY) {
       throw new Error("OPENROUTER_API_KEY is not configured");
     }
@@ -355,6 +358,7 @@ async function parseUploadedDocument(base64Data: string, mimeType: string, fileN
     if (isPdf) cleanMime = "application/pdf";
     else if (isDocx) cleanMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     else if (isPptx) cleanMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    else if (!cleanMime.startsWith("image/")) cleanMime = "image/jpeg";
 
     const result = await openrouterChat({
       model,
@@ -1047,7 +1051,16 @@ export const geminiController = {
    */
   async uploadLocalDocument(req: AuthenticatedRequest, res: Response) {
     try {
-      const { fileName, fileBase64, mimeType } = req.body;
+      const {
+        fileName,
+        fileBase64,
+        mimeType,
+        channelScope = ["all"],
+        purposeScope = ["all"],
+        pageScope = "all",
+        pageIds = [],
+        documentType = "general",
+      } = req.body;
       if (!fileName || !fileBase64 || !mimeType) {
         return res.status(400).json({
           status: "error",
@@ -1082,7 +1095,11 @@ export const geminiController = {
         sourceUrl,
         text: extractedText,
         createdBy: req.user?.id,
-        channelScope: ["all"],
+        channelScope,
+        purposeScope,
+        pageScope,
+        pageIds,
+        documentType,
       });
 
       await walletService.deductBalance(userId, API_COSTS.GEMINI_FAQ, `Chi phí trích xuất & nạp tài liệu upload (${fileName})`);
@@ -1105,7 +1122,14 @@ export const geminiController = {
    */
   async syncGoogleDrive(req: AuthenticatedRequest, res: Response) {
     try {
-      const { docLink } = req.body;
+      const {
+        docLink,
+        channelScope = ["all"],
+        purposeScope = ["all"],
+        pageScope = "all",
+        pageIds = [],
+        documentType = "general",
+      } = req.body;
       if (!docLink) {
         return res.status(400).json({
           status: "error",
@@ -1132,8 +1156,15 @@ export const geminiController = {
         isFolder = true;
         docIds = await fetchDriveFolderFileIds(folderId);
       } else {
-        const matches = [...docLink.matchAll(/\/document\/d\/([a-zA-Z0-9-_]+)/g)];
-        docIds = matches.map(m => m[1]).filter(Boolean);
+        const matches = [
+          ...docLink.matchAll(
+            /\/(?:document|spreadsheets|presentation|file)\/d\/([a-zA-Z0-9-_]+)/g
+          ),
+          ...docLink.matchAll(/[?&]id=([a-zA-Z0-9-_]+)/g),
+        ];
+        docIds = Array.from(
+          new Set(matches.map((match) => match[1]).filter(Boolean))
+        );
       }
 
       let extractedText = "";
@@ -1175,7 +1206,11 @@ export const geminiController = {
               sourceUrl: `https://drive.google.com/open?id=${file.fileId}`,
               text: file.text,
               createdBy: req.user?.id,
-              channelScope: ["all"],
+              channelScope,
+              purposeScope,
+              pageScope,
+              pageIds,
+              documentType,
             });
 
             syncedDocuments.push({

@@ -11,6 +11,12 @@ const MarketingContentSchema = new Schema<IMarketingContent>(
     outline: { type: String },
     imageUrl: { type: String },
     videoUrl: { type: String },
+    sourceVideoUrl: { type: String },
+    videoCaptionProjectId: {
+      type: Schema.Types.ObjectId,
+      ref: "VideoCaptionProject",
+      index: true,
+    },
     mediaPrompt: { type: String },
     voiceScript: { type: String },
     motionText: { type: String },

@@ -2,6 +2,7 @@
 import React from "react";
 import { Sliders, Zap, Clock3 } from "lucide-react";
 import { AIChatConfig } from "../../types";
+import { KnowledgeCenterSummaryCard } from "../knowledge/KnowledgeCenterSummaryCard";
 
 interface AiAssistantConfigPanelProps {
   onClose?: () => void;
@@ -143,8 +144,13 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
           />
         </div>
 
+        <KnowledgeCenterSummaryCard
+          health={knowledgeHealth}
+          compact
+        />
+
         {/* Google Drive Link Sync */}
-        <div className="pt-4 border-t border-slate-100 space-y-2">
+        <div className="hidden">
           <label className="block font-extrabold text-slate-700 flex items-center gap-1.5">
             <svg className="h-3.5 w-3.5 text-emerald-600 fill-emerald-600/10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
@@ -182,7 +188,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
         </div>
 
         {/* Upload File Trực Tiếp */}
-        <div className="pt-4 border-t border-slate-100 space-y-2">
+        <div className="hidden">
           <label className="block font-extrabold text-slate-700 flex items-center gap-1.5">
             <svg className="h-3.5 w-3.5 text-blue-600 fill-blue-600/10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
@@ -352,7 +358,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
         </div>
 
         {/* Training knowledge base input */}
-        <div className="pt-4 border-t border-slate-100 space-y-2">
+        <div className="hidden">
           <div className="flex items-center justify-between">
             <label className="block font-extrabold text-slate-700">Dữ liệu huấn luyện AI</label>
             <div className="flex items-center gap-2">

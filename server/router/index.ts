@@ -24,6 +24,10 @@ import { marketingCampaignRouter } from "./marketing-campaign.router";
 import { videoTemplateRouter } from "./video-template.router";
 import { videoProjectRouter } from "./video-project.router";
 import { shotstackWebhookRouter } from "./shotstack-webhook.router";
+import { bulkCreateRouter } from "./bulk-create.router";
+import { videoCaptionRouter } from "./video-caption.router";
+import { companyKnowledgeRouter } from "./company-knowledge.router";
+import { elevenLabsSttWebhookController } from "../controller/elevenlabs-stt-webhook.controller";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -66,6 +70,20 @@ apiRouter.get("/webhooks/tiktok", (req, res) => {
 });
 apiRouter.post("/webhooks/tiktok", tiktokController.receiveWebhook as any);
 apiRouter.use(shotstackWebhookRouter);
+apiRouter.get("/webhooks/elevenlabs/speech-to-text", (req, res) => {
+  return res.status(200).json({
+    status: "ok",
+    configured: Boolean(
+      process.env.ELEVENLABS_STT_WEBHOOK_SECRET?.trim() ||
+      process.env.ELEVENLABS_STT_WEBHOOK_SECRETS?.trim()
+    ),
+    path: "/api/v1/webhooks/elevenlabs/speech-to-text",
+  });
+});
+apiRouter.post(
+  "/webhooks/elevenlabs/speech-to-text",
+  elevenLabsSttWebhookController.receive as any
+);
 apiRouter.use("/tiktok", tiktokRouter);
 apiRouter.use("/tiktok-business", tiktokRouter);
 
@@ -74,6 +92,9 @@ apiRouter.use("/scheduler", schedulerRouter);
 apiRouter.use("/marketing-campaigns", marketingCampaignRouter);
 apiRouter.use(videoTemplateRouter);
 apiRouter.use(videoProjectRouter);
+apiRouter.use("/bulk-create", bulkCreateRouter);
+apiRouter.use("/video-caption-projects", videoCaptionRouter);
+apiRouter.use("/company-knowledge", companyKnowledgeRouter);
 
 // Gáº¯n káº¿t router phá»¥ cá»§a Media Cloudinary Relay
 apiRouter.use("/media", mediaRouter);

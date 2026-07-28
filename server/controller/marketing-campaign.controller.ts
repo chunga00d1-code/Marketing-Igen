@@ -7,6 +7,8 @@ import { marketingCampaignFacebookWorkerService } from "../service/marketing-cam
 import { cloudinaryService } from "../service/cloudinary.service";
 import { MetricsSyncService } from "../service/metrics-sync.service";
 import { MarketingAnalyticsService } from "../service/marketing-analytics.service";
+import { campaignContentSheetService } from "../service/campaign-content-sheet.service";
+import { enqueueCampaignSheetAIJob } from "../queue/campaign-content-sheet-queue";
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
@@ -93,6 +95,20 @@ export const marketingCampaignController = {
     }
   },
 
+  async calendar(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const result = await marketingCampaignService.getCalendar(
+        companyCode,
+        String(req.query.startDate),
+        String(req.query.endDate)
+      );
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải lịch chiến dịch." });
+    }
+  },
+
   async detail(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);
@@ -100,6 +116,226 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data: detail });
     } catch (error: unknown) {
       return res.status(404).json({ status: "error", message: error instanceof Error ? error.message : "Không tìm thấy chiến dịch." });
+    }
+  },
+
+  async getSheet(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignContentSheetService.getSheet(companyCode, req.params.id);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải Content Sheet." });
+    }
+  },
+
+  async addSheetColumn(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.addColumn(companyCode, req.params.id, userId, req.body);
+      return res.status(201).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thêm cột." });
+    }
+  },
+
+  async addSheetRow(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.addRow(companyCode, req.params.id, userId, req.body);
+      return res.status(201).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thêm bài viết." });
+    }
+  },
+
+  async updateSheetColumn(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.updateColumn(companyCode, req.params.id, req.params.columnId, userId, req.body);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật cột." });
+    }
+  },
+
+  async archiveSheetColumn(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.archiveColumn(companyCode, req.params.id, req.params.columnId, userId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể xóa cột." });
+    }
+  },
+
+  async updateSheetRow(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.updateRow(
+        companyCode,
+        req.params.id,
+        req.params.slotId,
+        userId,
+        req.body
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể lưu dòng dữ liệu." });
+    }
+  },
+
+  async updateSheetCells(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.updateCells(
+        companyCode,
+        req.params.id,
+        userId,
+        req.body
+      );
+      return res.status(data.conflicts.length ? 207 : 200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({
+        status: "error",
+        code,
+        message: error instanceof Error ? error.message : "Không thể lưu vùng dữ liệu.",
+      });
+    }
+  },
+
+  async previewSheetAI(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const estimate = await campaignContentSheetService.getAICostEstimate(companyCode, req.params.id);
+      await walletService.checkBalance(userId, estimate);
+      const data = await campaignContentSheetService.createAIPreview(
+        companyCode,
+        req.params.id,
+        userId,
+        req.body
+      );
+      await walletService.deductBalance(
+        userId,
+        Number(data.actualCost || estimate),
+        "Chi phí AI hỗ trợ Campaign Content Sheet",
+        `campaign-sheet-ai:${companyCode}:${req.body.idempotencyKey}`
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number; status?: number })?.statusCode || (error as { status?: number })?.status || 400);
+      const code = (error as { code?: string })?.code;
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "AI không thể tạo đề xuất." });
+    }
+  },
+
+  async applySheetAI(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.applyAIProposal(
+        companyCode,
+        req.params.id,
+        req.params.jobId,
+        userId,
+        req.body.fieldKeys
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể áp dụng đề xuất AI." });
+    }
+  },
+
+  async createSheetAIJob(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const unitCost = await campaignContentSheetService.getAICostEstimate(companyCode, req.params.id);
+      await walletService.checkBalance(userId, unitCost * req.body.slotIds.length);
+      const job = await campaignContentSheetService.createBulkAIJob(
+        companyCode,
+        req.params.id,
+        userId,
+        req.body
+      );
+      await enqueueCampaignSheetAIJob(String(job._id));
+      return res.status(202).json({ status: "success", data: job });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number; status?: number })?.statusCode || (error as { status?: number })?.status || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tạo AI job hàng loạt." });
+    }
+  },
+
+  async getSheetAIJob(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignContentSheetService.getAIJob(companyCode, req.params.id, req.params.jobId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải AI job." });
+    }
+  },
+
+  async cancelSheetAIJob(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignContentSheetService.cancelAIJob(companyCode, req.params.id, req.params.jobId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể hủy AI job." });
+    }
+  },
+
+  async retrySheetAIJob(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignContentSheetService.retryAIJob(companyCode, req.params.id, req.params.jobId);
+      await enqueueCampaignSheetAIJob(String(data._id), true);
+      return res.status(202).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thử lại AI job." });
+    }
+  },
+
+  async listSheetRevisions(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignContentSheetService.listRevisions(
+        companyCode,
+        req.params.id,
+        Number(req.query.limit || 50)
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải lịch sử Sheet." });
+    }
+  },
+
+  async revertSheetRevision(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const data = await campaignContentSheetService.revertRevision(
+        companyCode,
+        req.params.id,
+        req.params.revisionId,
+        userId
+      );
+      return res.status(data.conflicts.length ? 207 : 200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể hoàn tác phiên bản." });
     }
   },
 

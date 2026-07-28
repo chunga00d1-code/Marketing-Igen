@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, Globe, Info, Loader2, Lock, MessageSquare,
-  Music, Repeat, Scissors, ShieldCheck, Tag, Users, X,
+  AlertTriangle, CheckCircle2, Info, Loader2, MessageSquare,
+  Music, Repeat, Scissors, ShieldCheck, Tag, X,
 } from "lucide-react";
 import { ContentApprovalCard } from "../../types";
 import { extractDraftContent } from "../../services/marketingService";
@@ -37,13 +37,6 @@ const PRIVACY_LABELS: Record<TikTokPrivacyLevel, string> = {
   MUTUAL_FOLLOW_FRIENDS: "Bạn bè",
   FOLLOWER_OF_CREATOR: "Người theo dõi",
   SELF_ONLY: "Chỉ mình tôi",
-};
-
-const PRIVACY_ICONS: Record<TikTokPrivacyLevel, React.ReactNode> = {
-  PUBLIC_TO_EVERYONE: <Globe className="h-4 w-4" />,
-  MUTUAL_FOLLOW_FRIENDS: <Users className="h-4 w-4" />,
-  FOLLOWER_OF_CREATOR: <Users className="h-4 w-4" />,
-  SELF_ONLY: <Lock className="h-4 w-4" />,
 };
 
 export default function TikTokPublishModal({
@@ -91,8 +84,8 @@ export default function TikTokPublishModal({
     socialIntegrationService.getTikTokCreatorInfo(tiktokAccount?.integrationId)
       .then((info) => {
         if (cancelled) return;
-        if (!info.maxVideoPostDurationSec || info.privacyLevelOptions.length === 0) {
-          throw new Error("TikTok chưa trả về đầy đủ quyền đăng và giới hạn video của tài khoản.");
+        if (!info.creatorNickname || !info.maxVideoPostDurationSec || info.privacyLevelOptions.length === 0) {
+          throw new Error("Tài khoản TikTok hiện chưa thể đăng thêm bài. Vui lòng thử lại sau.");
         }
         setCreatorInfo(info);
       })
@@ -112,6 +105,11 @@ export default function TikTokPublishModal({
   const durationTooLong = videoDurationSeconds !== null && maxDuration > 0 && videoDurationSeconds > maxDuration;
   const commercialSelectionMissing = brandContentToggle && !brandContent && !brandOrganic;
   const brandedPrivate = brandContent && privacyLevel === "SELF_ONLY";
+  const commercialLabel = brandContent
+    ? "Your video will be labeled as 'Paid partnership'"
+    : brandOrganic
+      ? "Your video will be labeled as 'Promotional content'"
+      : "";
   const canPublish = Boolean(
     creatorInfo && privacyLevel && consentAccepted && videoDurationSeconds && !videoMetadataError &&
     !durationTooLong && !commercialSelectionMissing && !brandedPrivate && !isPublishing
@@ -137,7 +135,6 @@ export default function TikTokPublishModal({
 
   const setBrandedContent = (enabled: boolean) => {
     setBrandContent(enabled);
-    if (enabled && privacyLevel === "SELF_ONLY") setPrivacyLevel("");
   };
 
   return (
@@ -187,19 +184,27 @@ export default function TikTokPublishModal({
 
             <div className="space-y-5">
               <div className="space-y-2">
-                <div className="flex items-center justify-between"><label className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider"><Tag className="h-4 w-4 text-cyan-300" />Mô tả và hashtag</label><span className="text-[10px] text-slate-400">{caption.length}/2200</span></div>
-                <textarea value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={2200} rows={5} className="w-full resize-none rounded-2xl border border-slate-700 bg-[#18181c] p-3.5 text-xs outline-none focus:border-cyan-400" />
+                <div className="flex items-center justify-between"><label htmlFor="tiktok-post-title" className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider"><Tag className="h-4 w-4 text-cyan-300" />Tiêu đề / Caption và hashtag</label><span className="text-[10px] text-slate-400">{caption.length}/2200</span></div>
+                <textarea id="tiktok-post-title" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={2200} rows={5} className="w-full resize-none rounded-2xl border border-slate-700 bg-[#18181c] p-3.5 text-xs outline-none focus:border-cyan-400" />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-extrabold uppercase tracking-wider">Quyền riêng tư *</label>
-                <p className="text-[11px] text-slate-400">Bạn phải tự chọn một tùy chọn TikTok đang cho phép.</p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(creatorInfo?.privacyLevelOptions || []).map((option) => {
-                    const disabled = option === "SELF_ONLY" && brandContent;
-                    return <button key={option} type="button" disabled={disabled} onClick={() => setPrivacyLevel(option)} title={disabled ? "Branded content visibility cannot be set to private." : undefined} className={`flex min-h-20 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-[11px] font-bold ${privacyLevel === option ? "border-cyan-300 bg-cyan-300/10 text-cyan-200" : "border-slate-700 bg-[#18181c] text-slate-300"} disabled:cursor-not-allowed disabled:opacity-35`}>{PRIVACY_ICONS[option]}{PRIVACY_LABELS[option]}</button>;
-                  })}
-                </div>
+                <label htmlFor="tiktok-privacy-level" className="text-xs font-extrabold uppercase tracking-wider">Quyền riêng tư *</label>
+                <p className="text-[11px] text-slate-400">Bạn phải tự chọn từ dropdown các tùy chọn TikTok đang cho phép.</p>
+                <select
+                  id="tiktok-privacy-level"
+                  value={privacyLevel}
+                  onChange={(event) => setPrivacyLevel(event.target.value as TikTokPrivacyLevel | "")}
+                  className="w-full rounded-2xl border border-slate-700 bg-[#18181c] p-3.5 text-xs text-white outline-none focus:border-cyan-400"
+                >
+                  <option value="">Chọn quyền riêng tư</option>
+                  {(creatorInfo?.privacyLevelOptions || []).map((option) => (
+                    <option key={option} value={option} disabled={option === "SELF_ONLY" && brandContent}>
+                      {PRIVACY_LABELS[option]}
+                    </option>
+                  ))}
+                </select>
+                {brandContent && <p className="text-[11px] text-amber-200">Branded content visibility cannot be set to private.</p>}
               </div>
             </div>
           </div>
@@ -222,9 +227,10 @@ export default function TikTokPublishModal({
               <input type="checkbox" checked={brandContentToggle} onChange={(event) => toggleCommercialDisclosure(event.target.checked)} className="h-4 w-4 accent-[#FE2C55]" />
             </label>
             {brandContentToggle && <div className="grid gap-2 border-t border-slate-700 pt-3 sm:grid-cols-2">
-              <label className="cursor-pointer rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs"><span className="flex items-center gap-2 font-bold"><input type="checkbox" checked={brandOrganic} onChange={(event) => setBrandOrganic(event.target.checked)} className="accent-[#FE2C55]" />Your Brand</span><span className="mt-1 block text-[10px] text-amber-200">Your video will be labeled as 'Promotional content'</span></label>
-              <label className="cursor-pointer rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs"><span className="flex items-center gap-2 font-bold"><input type="checkbox" checked={brandContent} onChange={(event) => setBrandedContent(event.target.checked)} className="accent-[#FE2C55]" />Branded Content</span><span className="mt-1 block text-[10px] text-amber-200">Your video will be labeled as 'Paid partnership'</span></label>
+              <label className="cursor-pointer rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs"><span className="flex items-center gap-2 font-bold"><input type="checkbox" checked={brandOrganic} onChange={(event) => setBrandOrganic(event.target.checked)} className="accent-[#FE2C55]" />Your Brand</span><span className="mt-1 block text-[10px] text-slate-400">Promoting yourself or your own business</span></label>
+              <label title={privacyLevel === "SELF_ONLY" ? "Branded content visibility cannot be set to private." : undefined} className={`rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs ${privacyLevel === "SELF_ONLY" ? "cursor-not-allowed opacity-35" : "cursor-pointer"}`}><span className="flex items-center gap-2 font-bold"><input type="checkbox" checked={brandContent} disabled={privacyLevel === "SELF_ONLY"} onChange={(event) => setBrandedContent(event.target.checked)} className="accent-[#FE2C55]" />Branded Content</span><span className="mt-1 block text-[10px] text-slate-400">Promoting another brand or a third party</span></label>
             </div>}
+            {commercialLabel && <p className="text-[11px] text-amber-200">{commercialLabel}</p>}
             {commercialSelectionMissing && <p className="text-[11px] text-red-300">You need to indicate if your content promotes yourself, a third party, or both.</p>}
           </div>
 
@@ -241,7 +247,7 @@ export default function TikTokPublishModal({
           <div className="flex items-center gap-2 rounded-xl bg-slate-800/70 p-3 text-[11px] text-slate-300"><Music className="h-4 w-4 shrink-0 text-cyan-300" />Sau khi đăng, TikTok có thể cần vài phút để xử lý và hiển thị video trên hồ sơ.</div>
           <div className="flex items-center justify-between gap-3 border-t border-slate-800 pt-4">
             <span className="flex items-center gap-1.5 text-xs text-slate-400">{canPublish ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <AlertTriangle className="h-4 w-4 text-amber-400" />}{canPublish ? "Sẵn sàng đăng" : "Hoàn tất các mục bắt buộc"}</span>
-            <div className="flex gap-2"><button type="button" onClick={onClose} disabled={isPublishing} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold disabled:opacity-50">Hủy</button><button type="submit" disabled={!canPublish} className="flex items-center gap-2 rounded-xl bg-[#FE2C55] px-6 py-2.5 text-xs font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40">{isPublishing ? <><Loader2 className="h-4 w-4 animate-spin" />Đang gửi...</> : "Share to TikTok"}</button></div>
+            <div className="flex gap-2"><button type="button" onClick={onClose} disabled={isPublishing} className="rounded-xl bg-slate-800 px-4 py-2.5 text-xs font-bold disabled:opacity-50">Hủy</button><span title={commercialSelectionMissing ? "You need to indicate if your content promotes yourself, a third party, or both." : undefined}><button type="submit" disabled={!canPublish} className="flex items-center gap-2 rounded-xl bg-[#FE2C55] px-6 py-2.5 text-xs font-extrabold text-white disabled:cursor-not-allowed disabled:opacity-40">{isPublishing ? <><Loader2 className="h-4 w-4 animate-spin" />Đang gửi...</> : "Share to TikTok"}</button></span></div>
           </div>
         </form>
       </div>

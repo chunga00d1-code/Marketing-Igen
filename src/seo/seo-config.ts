@@ -1,5 +1,6 @@
 import { BRAND_LOGO_URL, BRAND_NAME, SERVICE_WEBSITE_URL } from "../config/brand";
 import type { TabType } from "../types";
+import type { ContentStudioTab } from "../utils/contentStudioNavigation";
 
 export type SeoMeta = {
   title: string;
@@ -107,6 +108,26 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.9",
     changeFrequency: "daily",
   },
+  "XUONG NOI DUNG": {
+    title: "Xưởng nội dung - Hình ảnh, video và thiết kế hàng loạt",
+    description:
+      "Tạo hình ảnh, video, giọng nói và thiết kế hàng loạt từ dữ liệu bảng tính trong một workspace trực quan.",
+    keywords: "xưởng nội dung, tạo hình ảnh AI, tạo video AI, thiết kế hàng loạt, bulk create",
+    path: "/xuong-noi-dung",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  "KHO TRI THUC": {
+    title: "Kho tri thức doanh nghiệp",
+    description:
+      "Quản lý tài liệu dùng chung cho Sale, Reply AI, Marketing và Caption video theo phạm vi doanh nghiệp.",
+    keywords:
+      "kho tri thức doanh nghiệp, RAG, tài liệu AI, company knowledge, caption AI",
+    path: "/kho-tri-thuc",
+    robots: "noindex, nofollow",
+    priority: "0.3",
+    changeFrequency: "weekly",
+  },
   "SALES CRM": {
     title: "Sales CRM - Lead, hội thoại và chăm sóc khách hàng",
     description:
@@ -157,10 +178,47 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
   },
 };
 
+export const CONTENT_STUDIO_SEO_MAP: Record<ContentStudioTab, SeoMeta> = {
+  image: {
+    title: "Tạo hình ảnh AI",
+    description: "Tạo và chỉnh sửa hình ảnh phục vụ bài đăng mạng xã hội, quảng cáo và chiến dịch marketing bằng AI.",
+    keywords: "tạo hình ảnh AI, ảnh marketing, thiết kế bài đăng, AI image generator",
+    path: "/xuong-noi-dung/tao-hinh-anh",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  video: {
+    title: "Tạo video AI",
+    description: "Sản xuất video marketing bằng AI từ prompt, hình ảnh, avatar và các công cụ video tích hợp.",
+    keywords: "tạo video AI, video marketing, avatar AI, video mạng xã hội",
+    path: "/xuong-noi-dung/tao-video",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+  voice: {
+    title: "Tạo giọng nói AI",
+    description: "Chuyển nội dung thành giọng nói AI tự nhiên để dùng cho video, quảng cáo và nội dung mạng xã hội.",
+    keywords: "tạo giọng nói AI, text to speech, voice AI tiếng Việt, thuyết minh video",
+    path: "/xuong-noi-dung/tao-giong-noi",
+    priority: "0.7",
+    changeFrequency: "weekly",
+  },
+  bulk: {
+    title: "Thiết kế hàng loạt từ Excel và Google Sheets",
+    description: "Tạo hàng loạt hình ảnh từ template và dữ liệu Excel hoặc Google Sheets, hỗ trợ trường chữ và trường ảnh.",
+    keywords: "bulk create, thiết kế hàng loạt, tạo ảnh từ Excel, template dữ liệu, Canva bulk create",
+    path: "/xuong-noi-dung/thiet-ke-hang-loat",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
+};
+
 export const PUBLIC_SEO_PAGES: SeoMeta[] = [
   DEFAULT_SEO,
   TAB_SEO_MAP["TONG QUAN"],
   TAB_SEO_MAP.MARKETING,
+  TAB_SEO_MAP["XUONG NOI DUNG"],
+  ...Object.values(CONTENT_STUDIO_SEO_MAP),
   TAB_SEO_MAP["SALES CRM"],
   PRIVACY_SEO,
   TERMS_SEO,
@@ -198,6 +256,8 @@ export function getSeoForPath(requestPath: string): SeoMeta {
   if (normalized === "/user-data-deletion" || normalized === "/user-data-deletion.html") {
     return DELETION_SEO;
   }
+  const contentStudioMeta = Object.values(CONTENT_STUDIO_SEO_MAP).find((meta) => meta.path === normalized);
+  if (contentStudioMeta) return contentStudioMeta;
   const tab = pathToTab(normalized);
   return tab ? getSeoForTab(tab) : DEFAULT_SEO;
 }
@@ -215,6 +275,7 @@ export function pathToTab(pathname: string): TabType | null {
   if (normalized.length > 1 && normalized.endsWith("/")) {
     normalized = normalized.slice(0, -1);
   }
+  if (normalized.toLowerCase().startsWith("/xuong-noi-dung/")) return "XUONG NOI DUNG";
   const matched = (Object.entries(TAB_SEO_MAP) as Array<[TabType, SeoMeta | undefined]>).find(
     ([, meta]) => meta?.path.toLowerCase() === normalized.toLowerCase()
   );

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Suspense, lazy, useState, useEffect } from 'react';
-import { Clapperboard, Sparkles, Wand2, Film, Scissors, LayoutTemplate } from 'lucide-react';
+import { Captions, Clapperboard, Sparkles, Wand2, Film, Scissors, LayoutTemplate } from 'lucide-react';
 import { SimpleVideoWorkspace } from './SimpleVideoWorkspace';
 import { EditVideoWorkspace } from './EditVideoWorkspace';
 import LongToShortTab from '../../pages/LongToShortTab';
@@ -16,6 +16,10 @@ const KlingMotionWorkspace = lazy(() =>
   import('./KlingMotionWorkspace').then((module) => ({ default: module.KlingMotionWorkspace }))
 );
 
+const VideoCaptionWorkspace = lazy(() =>
+  import('./VideoCaptionWorkspace').then((module) => ({ default: module.VideoCaptionWorkspace }))
+);
+
 interface VideoGenerationWorkspaceProps {
   initialPrompt?: string;
   cardId?: string;
@@ -27,7 +31,14 @@ interface VideoGenerationWorkspaceProps {
   usePersonalVoice?: boolean;
 }
 
-export type VideoToolTab = 'templates' | 'veo' | 'heygen' | 'kling-motion' | 'edit-video' | 'long-to-short';
+export type VideoToolTab =
+  | 'templates'
+  | 'veo'
+  | 'heygen'
+  | 'kling-motion'
+  | 'edit-video'
+  | 'long-to-short'
+  | 'caption';
 
 const VIDEO_TOOL_TABS: Array<{
   id: VideoToolTab;
@@ -40,6 +51,7 @@ const VIDEO_TOOL_TABS: Array<{
   { id: 'kling-motion', label: 'Motion Control', icon: Film },
   { id: 'edit-video', label: 'Chỉnh sửa video', icon: Wand2 },
   { id: 'long-to-short', label: 'Long to Short', icon: Scissors },
+  { id: 'caption', label: 'Phụ đề', icon: Captions },
 ];
 
 export function VideoGenerationWorkspace({
@@ -185,6 +197,20 @@ export function VideoGenerationWorkspace({
 
       {activeVideoTab === 'long-to-short' && (
         <LongToShortTab />
+      )}
+
+      {activeVideoTab === 'caption' && (
+        <Suspense
+          fallback={
+            <div className="mx-auto w-full max-w-[1500px] px-2">
+              <div className="flex min-h-[420px] items-center justify-center rounded-[28px] border border-slate-200 bg-white/80 text-sm font-medium text-slate-500 shadow-sm">
+                Đang tải workspace phụ đề...
+              </div>
+            </div>
+          }
+        >
+          <VideoCaptionWorkspace />
+        </Suspense>
       )}
     </div>
   );
