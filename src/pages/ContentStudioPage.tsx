@@ -17,12 +17,18 @@ export default function ContentStudioPage() {
   const [activeTab, setActiveTab] = useState<ContentStudioTab>(() => initialParams?.tab || contentStudioPathToTab(window.location.pathname) || 'image');
 
   useEffect(() => {
-    if (!contentStudioPathToTab(window.location.pathname)) {
+    const currentTab = contentStudioPathToTab(window.location.pathname);
+    if (!currentTab || window.location.pathname !== CONTENT_STUDIO_TAB_ROUTES[currentTab]) {
       window.history.replaceState(null, '', CONTENT_STUDIO_TAB_ROUTES[activeTab]);
     }
     const handlePopState = () => {
       const tab = contentStudioPathToTab(window.location.pathname);
-      if (tab) setActiveTab(tab);
+      if (tab) {
+        setActiveTab(tab);
+        if (window.location.pathname !== CONTENT_STUDIO_TAB_ROUTES[tab]) {
+          window.history.replaceState(null, '', CONTENT_STUDIO_TAB_ROUTES[tab]);
+        }
+      }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);

@@ -52,6 +52,10 @@ import { PageStrip } from './bulk-create/PageStrip';
 import { EditorCanvas } from './bulk-create/EditorCanvas';
 import { ContextMenu } from './bulk-create/ContextMenu';
 import {
+  BULK_MARKETING_PRESETS,
+  type BulkMarketingPreset,
+} from './bulk-create/systemTemplates';
+import {
   BULK_SCENE_VERSION,
   type BulkSceneDocument,
 } from './bulk-create/SceneCanvas';
@@ -1427,6 +1431,34 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setJobItems([]);
   };
 
+  const applySystemTemplate = (template: BulkMarketingPreset) => {
+    autoSaveVersionRef.current += 1;
+    designSessionRef.current += 1;
+    savedTemplateIdRef.current = '';
+    setSavedTemplateId('');
+    setAutoSaveStatus('idle');
+    setTemplateName(template.name);
+    setLayers(template.layers);
+    setCanvasSize(template.canvas);
+    setBackgroundImage('');
+    setBackgroundId(template.backgroundId);
+    setSelectedLayerId('');
+    setSelectedLayerIds([]);
+    setBackgroundSelected(false);
+    setRows([createRow(template.layers)]);
+    setDataColumns([]);
+    setDataSourceName('');
+    setDataStep(1);
+    setPagesCreated(false);
+    setPageResults({});
+    setActiveJobPageIds([]);
+    setActiveJob(null);
+    setJobItems([]);
+    undoRef.current = [];
+    redoRef.current = [];
+    toast.success(`Đã mở mẫu “${template.name}”. Bạn có thể chỉnh sửa hoặc map dữ liệu ngay.`);
+  };
+
   const createNewTemplate = () => {
     autoSaveVersionRef.current += 1;
     designSessionRef.current += 1;
@@ -1860,6 +1892,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           loadingSheet={loadingSheet}
           readyCount={readyCount}
           canvasSize={canvasSize}
+          systemTemplates={BULK_MARKETING_PRESETS}
           templates={templates}
           communityTemplates={communityTemplates}
           jobs={jobs}
@@ -1888,6 +1921,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onCreatePages={createPages}
           onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
           onCanvasSize={setCanvasSize}
+          onApplySystemTemplate={applySystemTemplate}
           onAddRow={addRow}
           onSelectRow={setActiveRowId}
           onUpdateCell={updateCell}

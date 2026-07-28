@@ -117,7 +117,7 @@ export function CreativeImageWorkspace({ onMediaSaved, cardId }: Props) {
   return <div className="mx-auto grid w-full max-w-[1540px] gap-4 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
     <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
       <div className="mb-3 flex items-center gap-2 px-1 text-sm font-extrabold text-slate-800"><LayoutTemplate className="h-4 w-4 text-indigo-600" /> Mẫu thiết kế</div>
-      <div className="space-y-2">{templates.map((item) => <button key={item.id} type="button" onClick={() => changeTemplate(item)} className={`w-full rounded-xl border p-3 text-left transition ${item.id === templateId ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
+      <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">{templates.map((item) => <button key={item.id} type="button" onClick={() => changeTemplate(item)} className={`w-full rounded-xl border p-3 text-left transition ${item.id === templateId ? "border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200" : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"}`}>
         <div className="mb-1 h-1.5 rounded-full" style={{ backgroundColor: item.accent }} />
         <div className="text-xs font-extrabold text-slate-800">{item.name}</div><div className="mt-1 text-[11px] leading-4 text-slate-500">{item.description}</div>
       </button>)}</div>

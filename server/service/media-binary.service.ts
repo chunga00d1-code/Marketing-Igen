@@ -21,14 +21,19 @@ function remotionBinaryCandidates(binaryName: "ffmpeg" | "ffprobe") {
   );
 }
 
+function isUsableConfiguredBinary(configured: string) {
+  const looksLikeCommandName = !configured.includes("/") && !configured.includes("\\");
+  return looksLikeCommandName || existsSync(configured);
+}
+
 export function resolveMediaBinary(
   binaryName: "ffmpeg" | "ffprobe",
   configuredPath?: string
 ) {
   const configured = configuredPath?.trim();
-  if (configured) return configured;
+  if (configured && isUsableConfiguredBinary(configured)) return configured;
 
-  if (binaryName === "ffmpeg" && ffmpegStaticPath) {
+  if (binaryName === "ffmpeg" && ffmpegStaticPath && existsSync(ffmpegStaticPath)) {
     return ffmpegStaticPath;
   }
 
