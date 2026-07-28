@@ -309,6 +309,9 @@ export function VideoCaptionWorkspace() {
   const [timelineDrag, setTimelineDrag] = useState<TimelineDragState | null>(null);
   const [timelineZoom, setTimelineZoom] = useState<number | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [displayedCaptionProgress, setDisplayedCaptionProgress] = useState(0);
+  const captionProgressProjectIdRef = useRef<string | null>(null);
+  const captionProgressCreepAtRef = useRef(0);
   const createIdempotencyKeyRef = useRef<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const segmentItemRefs = useRef(new Map<string, HTMLDivElement>());
@@ -911,6 +914,84 @@ export function VideoCaptionWorkspace() {
   const currentStatus = detail
     ? STATUS_LABELS[detail.project.status]
     : null;
+  const serverCaptionProgress = Math.max(
+    0,
+    Math.min(100, Math.round(detail?.project.progress?.percent ?? 0))
+  );
+  const captionProgressPercent = displayedCaptionProgress;
+  const captionProgressMessage =
+    detail?.project.progress?.message ||
+    currentStatus?.label ||
+    "Đang chuẩn bị tác vụ phụ đề.";
+  const captionProgressCeiling = (() => {
+    if (!detail || !ACTIVE_STATUSES.has(detail.project.status)) {
+      return serverCaptionProgress;
+    }
+    if (["queued_analysis", "retrying"].includes(detail.project.status)) {
+      return Math.max(serverCaptionProgress, 9);
+    }
+    if (detail.project.status === "analyzing") {
+      return Math.max(serverCaptionProgress, 24);
+    }
+    if (detail.project.status === "transcribing") {
+      return Math.max(
+        serverCaptionProgress,
+        ["processing_transcription", "segmenting"].includes(
+          detail.project.progress?.stage || ""
+        )
+          ? 94
+          : 69
+      );
+    }
+    if (detail.project.status === "generating_context") {
+      return Math.max(serverCaptionProgress, 84);
+    }
+    return Math.max(serverCaptionProgress, 94);
+  })();
+
+  useEffect(() => {
+    const projectId = detail?.project.id;
+    if (!projectId) {
+      captionProgressProjectIdRef.current = null;
+      setDisplayedCaptionProgress(0);
+      return;
+    }
+
+    if (captionProgressProjectIdRef.current !== projectId) {
+      captionProgressProjectIdRef.current = projectId;
+      captionProgressCreepAtRef.current = 0;
+      setDisplayedCaptionProgress(0);
+    }
+
+    const isActive = ACTIVE_STATUSES.has(detail.project.status);
+    const confirmedProgress = isActive
+      ? Math.max(serverCaptionProgress, serverCaptionProgress === 0 ? 3 : 0)
+      : serverCaptionProgress;
+    const timer = window.setInterval(() => {
+      setDisplayedCaptionProgress((current) => {
+        if (current < confirmedProgress) return current + 1;
+        if (
+          current > confirmedProgress &&
+          (!isActive || detail.project.status === "retrying")
+        ) {
+          return current - 1;
+        }
+        if (!isActive || current >= captionProgressCeiling) return current;
+
+        const now = Date.now();
+        if (now - captionProgressCreepAtRef.current < 900) return current;
+        captionProgressCreepAtRef.current = now;
+        return current + 1;
+      });
+    }, 70);
+
+    return () => window.clearInterval(timer);
+  }, [
+    captionProgressCeiling,
+    detail?.project.id,
+    detail?.project.status,
+    serverCaptionProgress,
+  ]);
   const previewUrl = playerUrl;
   const isLandscapePreview = Boolean(
     detail?.project.video.width &&
@@ -1547,16 +1628,38 @@ export function VideoCaptionWorkspace() {
               {/* If active processing loader is showing */}
               {ACTIVE_STATUSES.has(detail.project.status) && (
                 <div className="absolute inset-0 z-40 bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
-                  <div className="h-16 w-16 rounded-full border-4 border-slate-800 border-t-indigo-500 animate-spin mb-4" />
-                  <h3 className="text-md font-bold">Đang xử lý phụ đề video...</h3>
+                  <div className="relative mb-4 flex h-16 w-16 items-center justify-center">
+                    <div className="absolute inset-0 rounded-full border-4 border-slate-800 border-t-indigo-500 animate-spin" />
+                    <span className="absolute rounded-full bg-slate-950 px-1 text-[11px] font-extrabold text-white">
+                      {captionProgressPercent}%
+                    </span>
+                  </div>
+                  <h3 className="text-md font-bold">
+                    Đang xử lý phụ đề · {captionProgressPercent}%
+                  </h3>
                   <p className="text-xs text-slate-400 mt-2 max-w-sm">
-                    {detail.project.progress?.message || currentStatus?.label}
+                    {captionProgressMessage}
                   </p>
-                  {detail.project.progress?.percent !== undefined && (
-                    <div className="mt-4 w-48 bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-indigo-500 h-full rounded-full transition-all duration-300" style={{ width: `${detail.project.progress.percent}%` }} />
-                    </div>
-                  )}
+                  <div
+                    className="mt-4 w-56 overflow-hidden rounded-full bg-slate-800 h-2"
+                    role="progressbar"
+                    aria-label="Tiến độ xử lý phụ đề"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={captionProgressPercent}
+                  >
+                    <div
+                      className="h-full rounded-full bg-indigo-500 transition-all duration-500"
+                      style={{ width: `${captionProgressPercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px] text-slate-500">
+                    {captionProgressPercent === 0
+                      ? "Đang chờ worker nhận tác vụ..."
+                      : captionProgressPercent < captionProgressCeiling
+                        ? "Đang tiếp tục xử lý, tiến độ được ước tính theo từng giai đoạn."
+                        : "Đang chờ bước xử lý tiếp theo hoàn tất."}
+                  </p>
                 </div>
               )}
 
@@ -2066,6 +2169,35 @@ export function VideoCaptionWorkspace() {
                                       ? "Hệ thống không tìm thấy lời nói rõ ràng trong video. Bạn có thể thử lại hoặc tạo chữ theo ngữ cảnh."
                                       : "Chọn cách tạo phụ đề phù hợp để hệ thống bắt đầu xử lý video."}
                           </p>
+
+                          {isCaptionJobActive && (
+                            <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-left">
+                              <div className="flex items-center justify-between gap-3 text-[11px] font-bold text-indigo-800">
+                                <span>Tiến độ xử lý</span>
+                                <span>{captionProgressPercent}%</span>
+                              </div>
+                              <div
+                                className="mt-2 h-1.5 overflow-hidden rounded-full bg-indigo-100"
+                                role="progressbar"
+                                aria-label="Tiến độ tạo phụ đề"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={captionProgressPercent}
+                              >
+                                <div
+                                  className="h-full rounded-full bg-indigo-600 transition-all duration-500"
+                                  style={{ width: `${captionProgressPercent}%` }}
+                                />
+                              </div>
+                              <p className="mt-2 text-[10px] leading-4 text-indigo-700">
+                                {captionProgressPercent === 0
+                                  ? "Đang chờ worker bắt đầu xử lý."
+                                  : captionProgressPercent < captionProgressCeiling
+                                    ? "Đang tiếp tục xử lý, tiến độ được ước tính theo từng giai đoạn."
+                                    : captionProgressMessage}
+                              </p>
+                            </div>
+                          )}
 
                           {!hasSegments && !isCaptionJobActive && (
                             <div className="mt-4 flex flex-col gap-2">

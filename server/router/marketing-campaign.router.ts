@@ -166,6 +166,11 @@ const optionalAssetOrderId = Joi.string().pattern(/^[a-f\d]{24}$/i).allow("").op
 const assetOrderBody = Joi.object({
   slotId: optionalAssetOrderId,
   title: Joi.string().trim().max(240).allow("").default(""),
+  contentGroup: Joi.string().trim().max(240).allow("").default(""),
+  shootingContent: Joi.string().trim().max(1000).allow("").default(""),
+  productionRequirements: Joi.string().trim().max(2000).allow("").default(""),
+  quantitySuggestion: Joi.string().trim().max(120).allow("").default(""),
+  usageChannels: Joi.string().valid("Facebook").default("Facebook"),
   source: Joi.string().valid("manual", "sheet", "drive", "upload").default("manual"),
   format: Joi.string().valid("image", "video", "image_video").default("image"),
   aspectRatio: Joi.string().valid("1:1", "4:5", "9:16", "16:9").default("4:5"),
@@ -181,6 +186,11 @@ const updateAssetOrderBody = {
     expectedRevision: Joi.number().integer().min(0).required(),
     slotId: optionalAssetOrderId,
     title: Joi.string().trim().max(240).allow(""),
+    contentGroup: Joi.string().trim().max(240).allow(""),
+    shootingContent: Joi.string().trim().max(1000).allow(""),
+    productionRequirements: Joi.string().trim().max(2000).allow(""),
+    quantitySuggestion: Joi.string().trim().max(120).allow(""),
+    usageChannels: Joi.string().valid("Facebook"),
     source: Joi.string().valid("manual", "sheet", "drive", "upload"),
     format: Joi.string().valid("image", "video", "image_video"),
     aspectRatio: Joi.string().valid("1:1", "4:5", "9:16", "16:9"),
@@ -239,7 +249,17 @@ marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/apply", validateRequ
   params: Joi.object({ id: objectId, orderId: objectId }),
   body: Joi.object({
     expectedRevision: Joi.number().integer().min(0).required(),
-    fieldKeys: Joi.array().items(Joi.string().valid("headline", "subheadline", "cta", "visualBrief")).max(4).optional(),
+    fieldKeys: Joi.array().items(Joi.string().valid(
+      "contentGroup",
+      "shootingContent",
+      "productionRequirements",
+      "quantitySuggestion",
+      "usageChannels",
+      "headline",
+      "subheadline",
+      "cta",
+      "visualBrief"
+    )).max(9).optional(),
   }),
 }), marketingCampaignController.applyAssetOrderAI as never);
 marketingCampaignRouter.post("/:id/asset-orders/:orderId/bulk/preview", validateRequest({

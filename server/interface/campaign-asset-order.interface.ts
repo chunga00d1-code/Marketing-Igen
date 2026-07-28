@@ -22,6 +22,11 @@ export interface ICampaignAssetOrderReference {
 
 export interface ICampaignAssetOrderAiProposal {
   idempotencyKey: string;
+  contentGroup?: string;
+  shootingContent?: string;
+  productionRequirements?: string;
+  quantitySuggestion?: string;
+  usageChannels?: string;
   headline: string;
   subheadline?: string;
   cta?: string;
@@ -37,6 +42,11 @@ export interface ICampaignAssetOrder extends Document {
   slotId?: Types.ObjectId;
   createdBy: string;
   title: string;
+  contentGroup?: string;
+  shootingContent?: string;
+  productionRequirements?: string;
+  quantitySuggestion?: string;
+  usageChannels?: string;
   source: CampaignAssetSource;
   format: CampaignAssetOrderFormat;
   aspectRatio: "1:1" | "4:5" | "9:16" | "16:9";
