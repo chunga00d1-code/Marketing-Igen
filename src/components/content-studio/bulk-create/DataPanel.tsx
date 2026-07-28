@@ -27,10 +27,17 @@ interface DataPanelProps {
   sheetInput: string;
   googleSheetUrl: string;
   loadingSheet: boolean;
+  campaigns: Array<{ _id: string; title: string; startDate: string; endDate: string; statistics: { totalSlots: number } }>;
+  selectedCampaignId: string;
+  loadingCampaigns: boolean;
+  loadingCampaignOrders: boolean;
   readyCount: number;
   onDataStep: (step: 1 | 2 | 3) => void;
   onGoogleSheetUrl: (value: string) => void;
   onImportGoogleSheet: () => void;
+  onLoadCampaigns: () => void;
+  onSelectCampaign: (campaignId: string) => void;
+  onImportCampaignOrders: () => void;
   onImportExcel: (file: File) => void;
   onSheetInput: (value: string) => void;
   onImportSheet: () => void;
@@ -132,6 +139,51 @@ export function DataPanel(props: DataPanelProps) {
               ) : (
                 <><Link2 className="h-4 w-4" /> Nhập từ Google Sheet</>
               )}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                <Database className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-extrabold text-slate-900">Order ảnh từ chiến dịch</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">Nhập các Order dạng Ảnh vào Bulk Create; Order Video được giữ ở luồng kịch bản.</p>
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <select
+                value={props.selectedCampaignId}
+                onChange={(event) => props.onSelectCampaign(event.target.value)}
+                disabled={props.loadingCampaigns || props.loadingCampaignOrders}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-violet-500 disabled:opacity-60"
+              >
+                <option value="">Chọn chiến dịch</option>
+                {props.campaigns.map((campaign) => (
+                  <option key={campaign._id} value={campaign._id}>
+                    {campaign.title} · {campaign.statistics.totalSlots} bài
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={props.onLoadCampaigns}
+                disabled={props.loadingCampaigns || props.loadingCampaignOrders}
+                className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-60"
+              >
+                {props.loadingCampaigns ? <LoaderCircle className="h-4 w-4 animate-spin" /> : 'Tải'}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={props.onImportCampaignOrders}
+              disabled={!props.selectedCampaignId || props.loadingCampaignOrders}
+              className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 text-sm font-extrabold text-white hover:bg-violet-700 disabled:bg-slate-300"
+            >
+              {props.loadingCampaignOrders
+                ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Đang nhập Order...</>
+                : <><FileSpreadsheet className="h-4 w-4" /> Nhập Order vào Bulk Create</>}
             </button>
           </div>
 

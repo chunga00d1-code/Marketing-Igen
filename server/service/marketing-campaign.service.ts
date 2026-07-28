@@ -67,6 +67,36 @@ async function validateIntegrations(companyCode: string, platforms: MarketingCam
   }
 }
 
+function canUseLocalMockFacebookPage() {
+  return process.env.NODE_ENV !== "production" && process.env.DISABLE_LOCAL_MOCKS !== "true";
+}
+
+async function ensureLocalMockFacebookPage(companyCode: string, createdBy: string) {
+  const existing = await SocialIntegrationModel.findOne({
+    companyCode,
+    platform: "Facebook",
+    isConnected: true,
+    isMock: true,
+  })
+    .select("_id")
+    .lean();
+  if (existing) return String(existing._id);
+
+  const suffix = companyCode.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "local";
+  const integration = await SocialIntegrationModel.create({
+    companyCode,
+    platform: "Facebook",
+    displayName: "Fanpage Facebook giả lập (local)",
+    username: `mock_local_${suffix}`,
+    accessToken: `mock_local_facebook_token_${randomUUID()}`,
+    isConnected: true,
+    isMock: true,
+    createdBy,
+  });
+  console.log(`[Marketing Campaign] Đã tạo Fanpage Facebook giả lập cho local. company=${companyCode}`);
+  return String(integration._id);
+}
+
 export const marketingCampaignService = {
   async create(companyCode: string, createdBy: string, input: CreateCampaignInput) {
     const timezone = input.timezone || "Asia/Ho_Chi_Minh";
@@ -110,7 +140,15 @@ export const marketingCampaignService = {
         );
       }
     }
-    await validateIntegrations(companyCode, input.platforms, input.integrationIds);
+    const integrationIds = { ...(input.integrationIds || {}) };
+    if (
+      canUseLocalMockFacebookPage()
+      && input.platforms.includes("Facebook")
+      && !integrationIds.Facebook
+    ) {
+      integrationIds.Facebook = await ensureLocalMockFacebookPage(companyCode, createdBy);
+    }
+    await validateIntegrations(companyCode, input.platforms, integrationIds);
 
     const imageMode = input.imageMode || "ai";
     const googleDriveFolderUrl = input.googleDriveFolderUrl || "";
@@ -296,7 +334,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       postsPerDay: input.postsPerDay,
       postingTimes: input.postingTimes,
       platforms: input.platforms,
-      integrationIds: input.integrationIds || {},
+      integrationIds,
       candidateCount: input.candidateCount ?? 1,
       generationLeadMinutes,
       verificationLeadMinutes,
@@ -319,7 +357,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     try {
       const slots = await MarketingCampaignSlotModel.insertMany(schedule.map((scheduledSlot, index) => {
         const brief = strategy.slots[index];
-        const integrationId = input.integrationIds?.[scheduledSlot.platform];
+        const integrationId = integrationIds[scheduledSlot.platform];
 
         // Map funnel stage according to schedule timeline progress ratio
         // Week 1 (0% - 25%): TOFU | Week 2-3 (25% - 75%): MOFU | Week 4 (75% - 100%): BOFU

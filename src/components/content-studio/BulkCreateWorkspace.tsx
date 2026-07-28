@@ -28,6 +28,10 @@ import {
   type BulkTemplate,
   type BulkTemplatePayload,
 } from '../../services/bulkCreateService';
+import {
+  marketingCampaignService,
+  type MarketingCampaignSummary,
+} from '../../services/marketingCampaignService';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import type { UserProfile } from '../../types';
@@ -322,6 +326,12 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [dataSourceName, setDataSourceName] = useState('');
   const [googleSheetUrl, setGoogleSheetUrl] = useState('');
   const [loadingSheet, setLoadingSheet] = useState(false);
+  const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [loadingCampaignOrders, setLoadingCampaignOrders] = useState(false);
+  const [campaignOrderImportId, setCampaignOrderImportId] = useState('');
+  const syncedOrderBulkJobsRef = useRef(new Set<string>());
   const [templateName, setTemplateName] = useState('Thiết kế chưa đặt tên');
   const [savedTemplateId, setSavedTemplateId] = useState('');
   const savedTemplateIdRef = useRef('');
@@ -502,6 +512,20 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         syncPageResults(items, activeJobPageIds);
         setJobs((current) => [job, ...current.filter((item) => item._id !== job._id)]);
         if (!['queued', 'processing'].includes(job.status)) {
+          if (
+            campaignOrderImportId &&
+            ['completed', 'partial'].includes(job.status) &&
+            !syncedOrderBulkJobsRef.current.has(job._id)
+          ) {
+            syncedOrderBulkJobsRef.current.add(job._id);
+            void marketingCampaignService.syncAssetOrdersFromBulkImport(campaignOrderImportId, job._id)
+              .then((result) => {
+                if (result.updatedCount) toast.info(`Đã gắn ${result.updatedCount} ảnh Bulk Create về Order nguồn.`);
+              })
+              .catch((error) => {
+                toast.warning(error instanceof Error ? error.message : 'Chưa thể đồng bộ ảnh Bulk Create về Order.');
+              });
+          }
           if (job.status === 'completed') {
             toast.success(`Đã tạo xong ${job.completedItems} ảnh.`);
           } else if (job.status === 'partial') {
@@ -531,7 +555,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [activeJobPageIds, polledJobId, polledJobStatus, syncPageResults]);
+  }, [activeJobPageIds, campaignOrderImportId, polledJobId, polledJobStatus, syncPageResults]);
 
   useEffect(() => {
     const viewport = editorViewportRef.current;
@@ -1045,11 +1069,14 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const applyImportedData = (
     columns: BulkDataColumn[],
     importedRows: BulkImportedRow[],
-    sourceName: string
+    sourceName: string,
+    sourceCampaignId = ''
   ) => {
     const nextLayers = matchLayersToColumns(layers, columns);
     const nextRows: DataRow[] = importedRows.map((row) => ({
       id: row.id || makeId('row'),
+      campaignAssetOrderId: row.cells.order_id || undefined,
+      campaignSlotId: row.cells.slot_id || undefined,
       sourceCells: row.cells,
       selected: row.selected !== false,
       values: Object.fromEntries(nextLayers.map((layer) => [
@@ -1064,6 +1091,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setRows(nextRows);
     setActiveRowId(nextRows[0]?.id || '');
     setDataSourceName(sourceName);
+    setCampaignOrderImportId(sourceCampaignId);
     setDataStep(2);
     setSheetInput('');
     setPagesCreated(false);
@@ -1337,7 +1365,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         uploadedImageUrls.set(source, uploadedUrls[index]);
       });
     }
-    const uploaded = readyRows.map((row) => ({
+      const uploaded = readyRows.map((row) => ({
       ...row.values,
       ...Object.fromEntries(layers
         .filter((layer) => layer.type === 'image')
@@ -1345,6 +1373,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           const source = row.values[layer.id] || '';
           return [layer.id, uploadedImageUrls.get(source) || source];
         })),
+      ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
+      ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
     }));
     setRows((current) => current.map((row) => {
       const index = readyRows.findIndex((ready) => ready.id === row.id);
@@ -1423,12 +1453,55 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setRows([createRow(template.layers)]);
     setDataColumns([]);
     setDataSourceName('');
+    setCampaignOrderImportId('');
     setDataStep(1);
     setPagesCreated(false);
     setPageResults({});
     setActiveJobPageIds([]);
     setActiveJob(null);
     setJobItems([]);
+  };
+
+  const loadCampaignsForImport = useCallback(async () => {
+    setLoadingCampaigns(true);
+    try {
+      const result = await marketingCampaignService.list(1, 100);
+      const facebookCampaigns = result.campaigns.filter((campaign) => campaign.platforms.includes('Facebook'));
+      setCampaigns(facebookCampaigns);
+      setSelectedCampaignId((current) => current || facebookCampaigns[0]?._id || '');
+      if (!facebookCampaigns.length) toast.warning('Chưa có chiến dịch Facebook để nhập Order.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể tải danh sách chiến dịch.');
+    } finally {
+      setLoadingCampaigns(false);
+    }
+  }, []);
+
+  const importCampaignOrders = async () => {
+    if (!selectedCampaignId) return;
+    setLoadingCampaignOrders(true);
+    setErrorMessage('');
+    try {
+      const preview = await marketingCampaignService.exportAssetOrdersForBulk(selectedCampaignId);
+      if (!preview.rows.length) {
+        toast.warning('Chiến dịch chưa có Order ảnh có thể nhập vào Bulk Create.');
+        return;
+      }
+      applyImportedData(preview.columns, preview.rows, preview.sourceName, selectedCampaignId);
+      const notices = [
+        preview.skipped.length ? `${preview.skipped.length} Order video giữ lại ở luồng video` : '',
+        preview.missingPrimaryAssetCount ? `${preview.missingPrimaryAssetCount} dòng chưa có ảnh chính` : '',
+        preview.rows.length > preview.maxBulkRows ? `Bulk Create hiện tạo tối đa ${preview.maxBulkRows} ảnh mỗi job` : '',
+      ].filter(Boolean);
+      toast.success(`Đã nhập ${preview.rows.length} Order ảnh từ chiến dịch.`);
+      if (notices.length) toast.warning(notices.join(' · '));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể nhập Order chiến dịch.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setLoadingCampaignOrders(false);
+    }
   };
 
   const applySystemTemplate = (template: BulkMarketingPreset) => {
@@ -1448,6 +1521,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setRows([createRow(template.layers)]);
     setDataColumns([]);
     setDataSourceName('');
+    setCampaignOrderImportId('');
     setDataStep(1);
     setPagesCreated(false);
     setPageResults({});
@@ -1470,6 +1544,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setRows([createRow([])]);
     setDataColumns([]);
     setDataSourceName('');
+    setCampaignOrderImportId('');
     setDataStep(1);
     setGoogleSheetUrl('');
     setBackgroundId('blank');
@@ -1890,6 +1965,10 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           sheetInput={sheetInput}
           googleSheetUrl={googleSheetUrl}
           loadingSheet={loadingSheet}
+          campaigns={campaigns}
+          selectedCampaignId={selectedCampaignId}
+          loadingCampaigns={loadingCampaigns}
+          loadingCampaignOrders={loadingCampaignOrders}
           readyCount={readyCount}
           canvasSize={canvasSize}
           systemTemplates={BULK_MARKETING_PRESETS}
@@ -1914,6 +1993,9 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onDataStep={setDataStep}
           onGoogleSheetUrl={setGoogleSheetUrl}
           onImportGoogleSheet={() => void importGoogleSheet()}
+          onLoadCampaigns={() => void loadCampaignsForImport()}
+          onSelectCampaign={setSelectedCampaignId}
+          onImportCampaignOrders={() => void importCampaignOrders()}
           onConnectLayer={connectLayerData}
           onAutoMatch={autoMatchData}
           onToggleRow={toggleImportedRow}

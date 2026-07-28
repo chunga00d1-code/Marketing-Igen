@@ -93,6 +93,29 @@ export class PublisherAgentService {
         integrationId: slot.integrationId,
       });
 
+      if (
+        credentials.isMock
+        && credentials.pageId.startsWith("mock_local_")
+        && process.env.NODE_ENV !== "production"
+      ) {
+        const postId = `mock-local-${slot._id}-${Date.now()}`;
+        const postUrl = `http://localhost:3000/mock-facebook/${postId}`;
+        content.status = "published";
+        content.publishedAt = new Date();
+        content.facebookPostId = postId;
+        content.postUrl = postUrl;
+        await content.save();
+
+        slot.status = "published";
+        slot.publishedPostId = postId;
+        slot.publishedUrl = postUrl;
+        await slot.save();
+
+        await marketingCampaignService.syncCampaignStatusAndStats(campaign._id);
+        console.log(`[PublisherAgent] Local mock published slot ${slot._id}.`);
+        return { status: "published", postId, postUrl };
+      }
+
       console.log(`[PublisherAgent] Publishing slot ${slot._id} to Facebook page ${credentials.pageId}...`);
 
       // Detect retry: slot already had a publish attempt before

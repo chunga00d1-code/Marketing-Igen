@@ -228,7 +228,7 @@ test("keeps export but omits create-template save and submission actions", () =>
 
 test("has no active create-template navigation or submission modal wiring", () => {
   const activeSources = [
-    "src/components/content-studio/VideoGenerationWorkspace.tsx",
+    "src/pages/VideoStudioPage.tsx",
     "src/components/content-studio/video-templates/VideoTemplateLibrary.tsx",
     "src/components/content-studio/video-templates/VideoTemplateCard.tsx",
     "src/components/template-editor/TemplateEditorWorkspace.tsx",

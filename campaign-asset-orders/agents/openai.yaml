@@ -1,0 +1,7 @@
+interface:
+  display_name: "Campaign Asset Orders"
+  short_description: "Thiết kế order ảnh/video theo từng bài"
+  default_prompt: "Use $campaign-asset-orders to plan or implement the campaign asset-order workflow."
+
+policy:
+  allow_implicit_invocation: true
