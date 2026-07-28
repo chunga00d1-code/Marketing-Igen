@@ -198,6 +198,14 @@ export const CONTENT_STUDIO_SEO_MAP: Record<ContentStudioTab, SeoMeta> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
+  template: {
+    title: "Thiết kế ảnh từ mẫu",
+    description: "Tạo ảnh marketing PNG từ các mẫu thiết kế có sẵn, tùy chỉnh nội dung, màu sắc và hình ảnh sản phẩm.",
+    keywords: "thiết kế ảnh từ mẫu, HTML to image, tạo ảnh marketing, template social media",
+    path: "/xuong-noi-dung/thiet-ke-tu-mau",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
   bulk: {
     title: "Thiết kế hàng loạt từ Excel và Google Sheets",
     description: "Tạo hàng loạt hình ảnh từ template và dữ liệu Excel hoặc Google Sheets, hỗ trợ trường chữ và trường ảnh.",

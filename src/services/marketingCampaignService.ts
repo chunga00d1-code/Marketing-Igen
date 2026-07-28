@@ -273,6 +273,11 @@ export interface CampaignAssetOrder {
   campaignId: string;
   slotId?: string;
   title: string;
+  contentGroup?: string;
+  shootingContent?: string;
+  productionRequirements?: string;
+  quantitySuggestion?: string;
+  usageChannels?: 'Facebook';
   source: CampaignAssetSource;
   format: CampaignAssetOrderFormat;
   aspectRatio: '1:1' | '4:5' | '9:16' | '16:9';
@@ -288,6 +293,11 @@ export interface CampaignAssetOrder {
   outputUrls: string[];
   aiProposal?: {
     idempotencyKey: string;
+    contentGroup?: string;
+    shootingContent?: string;
+    productionRequirements?: string;
+    quantitySuggestion?: string;
+    usageChannels?: 'Facebook';
     headline: string;
     subheadline?: string;
     cta?: string;
@@ -574,6 +584,11 @@ export const marketingCampaignService = {
   createAssetOrder(campaignId: string, input: {
     slotId?: string;
     title?: string;
+    contentGroup?: string;
+    shootingContent?: string;
+    productionRequirements?: string;
+    quantitySuggestion?: string;
+    usageChannels?: 'Facebook';
     source?: CampaignAssetSource;
     format?: CampaignAssetOrderFormat;
     aspectRatio?: CampaignAssetOrder['aspectRatio'];
@@ -594,6 +609,11 @@ export const marketingCampaignService = {
     expectedRevision: number;
     slotId?: string;
     title?: string;
+    contentGroup?: string;
+    shootingContent?: string;
+    productionRequirements?: string;
+    quantitySuggestion?: string;
+    usageChannels?: 'Facebook';
     source?: CampaignAssetSource;
     format?: CampaignAssetOrderFormat;
     aspectRatio?: CampaignAssetOrder['aspectRatio'];
@@ -625,7 +645,17 @@ export const marketingCampaignService = {
 
   applyAssetOrderAI(campaignId: string, orderId: string, input: {
     expectedRevision: number;
-    fieldKeys?: Array<'headline' | 'subheadline' | 'cta' | 'visualBrief'>;
+    fieldKeys?: Array<
+      | 'contentGroup'
+      | 'shootingContent'
+      | 'productionRequirements'
+      | 'quantitySuggestion'
+      | 'usageChannels'
+      | 'headline'
+      | 'subheadline'
+      | 'cta'
+      | 'visualBrief'
+    >;
   }) {
     return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/ai/apply`, {
       method: 'POST',

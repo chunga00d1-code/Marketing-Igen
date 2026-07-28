@@ -21,6 +21,7 @@ import { CanvasSizePicker } from './CanvasSizePicker';
 import { TemplatePreview } from './TemplatePreview';
 import { DataPanel } from './DataPanel';
 import { JobPanel } from './JobPanel';
+import type { BulkMarketingPreset } from './systemTemplates';
 
 export interface EditorPanelProps {
   activeTool: EditorTool;
@@ -37,6 +38,7 @@ export interface EditorPanelProps {
   loadingSheet: boolean;
   readyCount: number;
   canvasSize: { width: number; height: number };
+  systemTemplates: BulkMarketingPreset[];
   templates: BulkTemplate[];
   communityTemplates: BulkTemplate[];
   jobs: BulkRenderJob[];
@@ -60,6 +62,7 @@ export interface EditorPanelProps {
   onCreatePages: () => void;
   onImportExcel: (file: File) => void;
   onCanvasSize: (size: { width: number; height: number }) => void;
+  onApplySystemTemplate: (template: BulkMarketingPreset) => void;
   onAddRow: () => void;
   onSelectRow: (id: string) => void;
   onUpdateCell: (rowId: string, layerId: string, value: string) => void;
@@ -99,6 +102,27 @@ export function EditorPanel(props: EditorPanelProps) {
       <div className="min-h-0 flex-1 overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
         {activeTool === 'background' && (
           <div className="space-y-4">
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+              <div>
+                <p className="text-sm font-extrabold text-slate-800">Mẫu marketing có sẵn</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-slate-500">Chọn mẫu để mở trong trình biên tập, sau đó sửa layer hoặc map dữ liệu để tạo hàng loạt.</p>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {props.systemTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => props.onApplySystemTemplate(template)}
+                    className="group min-h-24 rounded-xl border border-white bg-white p-2.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
+                  >
+                    <span className="mb-2 block h-1.5 w-10 rounded-full" style={{ backgroundColor: template.accent }} />
+                    <span className="block text-xs font-extrabold text-slate-800">{template.name}</span>
+                    <span className="mt-1 block text-[10px] leading-snug text-slate-500">{template.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">
                 <div>
