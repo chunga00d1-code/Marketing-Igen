@@ -896,6 +896,68 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     return slot;
   },
 
+  async publishNowSlotDirect(companyCode: string, campaignId: string, slotId: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
+      throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
+    }
+    const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
+    if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+
+    if (slot.status === "published") {
+      throw new Error("Slot này đã được đăng trước đó.");
+    }
+
+    if (slot.status !== "ready_to_publish") {
+      throw new Error(`Slot chưa sẵn sàng để xuất bản (Trạng thái hiện tại: ${slot.status}). Vui lòng phê duyệt trước.`);
+    }
+
+    const { randomUUID } = await import("crypto");
+    const lockId = randomUUID();
+    const now = new Date();
+    const LEASE_MS = 20 * 60000;
+
+    const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
+      {
+        _id: slotId,
+        campaignId,
+        companyCode,
+        status: "ready_to_publish",
+        $or: [
+          { lockExpiresAt: { $exists: false } },
+          { lockExpiresAt: null },
+          { lockExpiresAt: { $lte: now } },
+        ],
+      },
+      {
+        $set: {
+          status: "publishing",
+          lockId,
+          lockedAt: now,
+          lockExpiresAt: new Date(now.getTime() + LEASE_MS),
+        },
+        $push: {
+          transitions: {
+            from: "ready_to_publish",
+            to: "publishing",
+            reason: "Immediate publish requested by user",
+            at: now,
+          },
+        },
+      },
+      { new: true }
+    );
+
+    if (!claimed) {
+      throw new Error("Không thể chiếm quyền xuất bản slot. Slot có thể đang được xử lý bởi một tiến trình khác.");
+    }
+
+    const { CampaignOrchestratorService } = await import("./agents/campaign-orchestrator.service");
+    await CampaignOrchestratorService.orchestratePublish(slotId, lockId);
+
+    const updatedSlot = await MarketingCampaignSlotModel.findById(slotId).populate("marketingContentId").lean();
+    return updatedSlot;
+  },
+
   async previewDrive(googleDriveFolderUrl: string) {
     if (!googleDriveFolderUrl) {
       throw new Error("Vui lòng cung cấp đường dẫn thư mục Google Drive.");

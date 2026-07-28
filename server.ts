@@ -19,6 +19,7 @@ import { initBulkCreateWorker } from "./server/queue/bulk-create-queue";
   import { initVideoCaptionWorker } from "./server/queue/video-caption-queue";
   import { initCampaignContentSheetAIWorker } from "./server/queue/campaign-content-sheet-queue";
 import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
+import { videoProjectRenderQueue } from "./server/queue/video-project-render-queue";
 
 dotenv.config();
 
@@ -202,6 +203,9 @@ async function startServer() {
 
   // Khởi động hàng đợi xử lý Remotion
   remotionQueueService.initWorker();
+
+  // Initialize the dedicated template-editor render worker once.
+  void videoProjectRenderQueue.initWorker();
 
   // Khởi động hàng đợi xử lý Campaign
   initCampaignWorkers();
