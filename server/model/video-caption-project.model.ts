@@ -126,6 +126,11 @@ const StyleSchema = new Schema(
       enum: ["top", "center", "bottom", "safe_auto"],
       default: DEFAULT_VIDEO_CAPTION_STYLE.position,
     },
+    textAlign: {
+      type: String,
+      enum: ["left", "center", "right"],
+      default: DEFAULT_VIDEO_CAPTION_STYLE.textAlign,
+    },
     maxLines: {
       type: Number,
       enum: [1, 2],

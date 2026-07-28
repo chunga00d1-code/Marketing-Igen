@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { Readable } from "stream";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { enqueueVideoCaptionJob } from "../queue/video-caption-queue";
 import {
@@ -246,6 +247,65 @@ export const videoCaptionController = {
         `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`
       );
       return res.status(200).send(result.content);
+    } catch (error) {
+      return sendError(res, error);
+    }
+  },
+
+  async downloadRenderedVideo(
+    req: AuthenticatedRequest,
+    res: Response
+  ) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const detail = await videoCaptionService.getProjectDetail(
+        companyCode,
+        req.params.id
+      );
+      const outputUrl = detail.project.output?.captionedVideoUrl;
+      if (!outputUrl) {
+        throw new VideoCaptionError(
+          "Video caption chưa xuất xong để tải xuống.",
+          "CAPTION_VIDEO_NOT_READY",
+          "validation",
+          false,
+          409
+        );
+      }
+
+      const upstream = await fetch(outputUrl);
+      if (!upstream.ok || !upstream.body) {
+        throw new VideoCaptionError(
+          "Không thể tải video caption từ kho lưu trữ.",
+          "CAPTION_VIDEO_DOWNLOAD_FAILED",
+          "provider",
+          true,
+          502
+        );
+      }
+
+      const filename = `${detail.project.name
+        .replace(/[^\p{L}\p{N}._-]+/gu, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80) || "caption-video"}.mp4`;
+      res.status(200);
+      res.setHeader(
+        "Content-Type",
+        upstream.headers.get("content-type") || "video/mp4"
+      );
+      const contentLength = upstream.headers.get("content-length");
+      if (contentLength) res.setHeader("Content-Length", contentLength);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`
+      );
+      Readable.fromWeb(upstream.body as never)
+        .on("error", (error) => {
+          console.error("[Video Caption Download] Stream error:", error);
+          if (!res.headersSent) res.status(502).end();
+          else res.destroy(error);
+        })
+        .pipe(res);
     } catch (error) {
       return sendError(res, error);
     }

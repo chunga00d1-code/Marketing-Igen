@@ -202,6 +202,13 @@ function projectSystemValues(slot: any, content: any) {
   };
 }
 
+function getKnowledgePageId(integration: unknown) {
+  if (!integration || typeof integration !== "object") return undefined;
+  const value = integration as { username?: unknown };
+  const pageId = String(value.username || "").trim();
+  return pageId || undefined;
+}
+
 async function assertCampaign(companyCode: string, campaignId: string) {
   if (!mongoose.isValidObjectId(campaignId)) throw httpError("ID chiến dịch không hợp lệ.", 400);
   const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode }).lean();
@@ -670,7 +677,9 @@ export const campaignContentSheetService = {
     }
   ) {
     const campaign = await assertCampaign(companyCode, campaignId);
-    const slot = await MarketingCampaignSlotModel.findOne({ _id: input.slotId, campaignId, companyCode }).lean();
+    const slot = await MarketingCampaignSlotModel.findOne({ _id: input.slotId, campaignId, companyCode })
+      .populate("integrationId", "username")
+      .lean();
     if (!slot) throw httpError("Không tìm thấy bài viết trong chiến dịch.", 404);
     const config = await getOrCreateConfig(companyCode, campaignId);
     const row = await getOrCreateRow(companyCode, campaignId, input.slotId);
@@ -711,6 +720,7 @@ export const campaignContentSheetService = {
           channel: slot.platform === "TikTok" ? "tiktok" : "facebook",
           purpose: "marketing",
           topK: 5,
+          pageId: getKnowledgePageId(slot.integrationId),
           documentTypes: Array.from(
             new Set(targetColumns.flatMap((column) => column.ai.knowledgeDocumentTypes || []))
           ) as KnowledgeDocumentType[],

@@ -341,6 +341,7 @@ for (const expectedPath of [
   "/:id/generate-context",
   "/:id/render",
   "/:id/subtitles/:format",
+  "/:id/download",
 ]) {
   assert.ok(routePaths.includes(expectedPath), expectedPath);
 }

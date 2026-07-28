@@ -168,10 +168,10 @@ function AppContent() {
       <SEOHead meta={getSeoForTab(activeTab)} />
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-      <div className="flex h-screen flex-1 flex-col overflow-hidden" id="main_content_area">
+      <div className="flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden" id="main_content_area">
         <Header currentTab={activeTab} onSearchSelect={handleSearchNavigation} />
 
-        <main className="flex-1 overflow-hidden bg-surface p-6" id="primary_page_container">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-surface p-6" id="primary_page_container">
           <AppRouterView activeTab={activeTab} userProfile={userProfile} />
         </main>
       </div>

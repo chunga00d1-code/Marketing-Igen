@@ -4,7 +4,7 @@ import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketi
 import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
 import { socketService } from '../../services/socketService';
-import CampaignContentSheet from './CampaignContentSheet';
+import CampaignAssetOrders from './CampaignAssetOrders';
 
 interface CampaignSlot {
   _id: string;
@@ -798,7 +798,7 @@ export default function CampaignDetailModal({
               )}
 
               {activeMainTab === 'asset_orders' && (
-                <CampaignContentSheet
+                <CampaignAssetOrders
                   key={campaignDetail.campaign._id}
                   campaignId={campaignDetail.campaign._id}
                 />

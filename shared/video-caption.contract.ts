@@ -89,6 +89,8 @@ export type VideoCaptionPosition =
   | "bottom"
   | "safe_auto";
 
+export type VideoCaptionTextAlign = "left" | "center" | "right";
+
 export interface VideoCaptionStyle {
   preset: "classic" | "clean" | "highlight" | "custom";
   fontFamily: string;
@@ -98,6 +100,7 @@ export interface VideoCaptionStyle {
   backgroundColor: string;
   backgroundOpacity: number;
   position: VideoCaptionPosition;
+  textAlign: VideoCaptionTextAlign;
   maxLines: 1 | 2;
   safeAreaPercent: number;
 }
@@ -111,6 +114,7 @@ export const DEFAULT_VIDEO_CAPTION_STYLE: VideoCaptionStyle = {
   backgroundColor: "#000000",
   backgroundOpacity: 0.72,
   position: "bottom",
+  textAlign: "center",
   maxLines: 2,
   safeAreaPercent: 8,
 };
