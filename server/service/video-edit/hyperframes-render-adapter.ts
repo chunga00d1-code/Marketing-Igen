@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { cloudinaryService } from "../cloudinary.service";
 import { hyperframeService } from "./hyperframe";
 import {
@@ -66,6 +67,38 @@ function assertValidInput(input: VideoRenderInput) {
   }
 }
 
+function resolutionPresetFor(aspectRatio: VideoRenderInput["aspectRatio"]) {
+  if (aspectRatio === "9:16") return "portrait";
+  if (aspectRatio === "1:1") return "square";
+  return "landscape";
+}
+
+function waitForRenderer(
+  child: HyperframesRenderProcess,
+  onRendering: () => void
+) {
+  return new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
+    let stderr = "";
+
+    child.stdout.on("data", () => {
+      onRendering();
+    });
+    child.stderr.on("data", (data) => {
+      stderr = `${stderr}${String(data)}`.slice(-8192);
+    });
+    child.on("error", (error) => {
+      reject(new VideoRenderAdapterError(
+        "RENDER_PROCESS_START_FAILED",
+        "Hyperframes renderer could not start.",
+        { reason: error.message.slice(0, 512) }
+      ));
+    });
+    child.on("close", (code) => {
+      resolve({ code, stderr });
+    });
+  });
+}
+
 export function createHyperframesRenderAdapter(
   dependencies: HyperframesRenderAdapterDependencies
 ): VideoRenderAdapter {
@@ -88,11 +121,129 @@ export function createHyperframesRenderAdapter(
       assertValidInput(input);
     },
 
-    async render() {
-      throw new VideoRenderAdapterError(
-        "RENDER_ADAPTER_UNAVAILABLE",
-        "Hyperframes rendering is not implemented."
-      );
+    async render(input, context) {
+      assertValidInput(input);
+      await context.onProgress({
+        stage: "runtime-check",
+        progress: 5,
+        message: "Checking Hyperframes runtime.",
+      });
+      const capability = await this.checkCapability();
+      if (!capability.available) {
+        throw new VideoRenderAdapterError(
+          "RENDER_ADAPTER_UNAVAILABLE",
+          "Hyperframes runtime is unavailable."
+        );
+      }
+
+      const htmlPath = join(context.temporaryDirectory, "composition.html");
+      const outputPath = join(context.temporaryDirectory, "output.mp4");
+
+      try {
+        await dependencies.fileSystem.mkdir(context.temporaryDirectory, {
+          recursive: true,
+        });
+        await context.onProgress({
+          stage: "html-preparation",
+          progress: 20,
+          message: "Preparing HTML composition.",
+        });
+        const html = dependencies.compileBlueprintToHtml({
+          ...input.blueprint,
+          resolution: input.resolution,
+        });
+        await dependencies.fileSystem.writeFile(htmlPath, html);
+
+        await context.onProgress({
+          stage: "renderer-start",
+          progress: 35,
+          message: "Starting Hyperframes renderer.",
+        });
+        let child: HyperframesRenderProcess;
+        try {
+          child = dependencies.spawnProcess(
+            dependencies.nodeExecutable,
+            [
+              dependencies.cliPath,
+              "render",
+              "-c",
+              htmlPath,
+              "-o",
+              outputPath,
+              "--resolution",
+              resolutionPresetFor(input.aspectRatio),
+              "--strict",
+            ],
+            {
+              cwd: context.temporaryDirectory,
+              shell: false,
+              windowsHide: true,
+            }
+          );
+        } catch (error) {
+          throw new VideoRenderAdapterError(
+            "RENDER_PROCESS_START_FAILED",
+            "Hyperframes renderer could not start.",
+            {
+              reason: error instanceof Error
+                ? error.message.slice(0, 512)
+                : "Unknown process error.",
+            }
+          );
+        }
+
+        let renderingReported = false;
+        const processResult = await waitForRenderer(child, () => {
+          if (renderingReported) return;
+          renderingReported = true;
+          void context.onProgress({
+            stage: "rendering",
+            progress: 60,
+            message: "Rendering video frames.",
+          });
+        });
+        if (processResult.code !== 0) {
+          throw new VideoRenderAdapterError(
+            "RENDER_PROCESS_FAILED",
+            "Hyperframes rendering failed.",
+            {
+              exitCode: processResult.code,
+              stderr: processResult.stderr,
+            }
+          );
+        }
+
+        await context.onProgress({
+          stage: "output-verification",
+          progress: 80,
+          message: "Verifying rendered output.",
+        });
+        let output: Buffer;
+        try {
+          output = await dependencies.fileSystem.readFile(outputPath);
+        } catch {
+          throw new VideoRenderAdapterError(
+            "RENDER_OUTPUT_MISSING",
+            "Hyperframes output is missing."
+          );
+        }
+
+        await context.onProgress({
+          stage: "uploading",
+          progress: 90,
+          message: "Uploading rendered video.",
+        });
+        const outputUrl = await dependencies.uploadOutput(output);
+        return {
+          engine: "hyperframes",
+          outputUrl,
+        };
+      } finally {
+        await dependencies.fileSystem.rm(context.temporaryDirectory, {
+          recursive: true,
+          force: true,
+        }).catch(() => undefined);
+      }
     },
   };
 }
