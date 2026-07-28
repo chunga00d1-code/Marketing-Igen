@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import {
   createHyperframesRenderAdapter,
+  sanitizeRenderDiagnostic,
   type HyperframesRenderProcess,
   type HyperframesRenderAdapterDependencies,
 } from "../hyperframes-render-adapter";
@@ -228,4 +229,131 @@ test("maps a missing renderer output to a coded failure and cleans up", async ()
       error.code === "RENDER_OUTPUT_MISSING"
   );
   assert.deepEqual(removedDirectories, ["C:/tmp/render-1"]);
+});
+
+test("kills a timed-out renderer and cleans up", async () => {
+  const child = new FakeRenderProcess();
+  const removedDirectories: string[] = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: () => child,
+    fileSystem: {
+      ...createDependencies().fileSystem,
+      rm: async (path) => {
+        removedDirectories.push(path);
+      },
+    },
+  }));
+
+  await assert.rejects(
+    adapter.render(validInput, {
+      signal: new AbortController().signal,
+      timeoutMs: 5,
+      temporaryDirectory: "C:/tmp/render-1",
+      onProgress: () => undefined,
+    }),
+    (error: unknown) =>
+      error instanceof VideoRenderAdapterError &&
+      error.code === "RENDER_PROCESS_TIMEOUT"
+  );
+  assert.equal(child.killCalls, 1);
+  assert.deepEqual(removedDirectories, ["C:/tmp/render-1"]);
+});
+
+test("kills an aborted renderer and cleans up", async () => {
+  const child = new FakeRenderProcess();
+  const controller = new AbortController();
+  const removedDirectories: string[] = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: () => {
+      queueMicrotask(() => controller.abort());
+      return child;
+    },
+    fileSystem: {
+      ...createDependencies().fileSystem,
+      rm: async (path) => {
+        removedDirectories.push(path);
+      },
+    },
+  }));
+
+  await assert.rejects(
+    adapter.render(validInput, {
+      signal: controller.signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-1",
+      onProgress: () => undefined,
+    }),
+    (error: unknown) =>
+      error instanceof VideoRenderAdapterError &&
+      error.code === "RENDER_PROCESS_ABORTED"
+  );
+  assert.equal(child.killCalls, 1);
+  assert.deepEqual(removedDirectories, ["C:/tmp/render-1"]);
+});
+
+test("maps an asynchronous spawn error to a coded failure", async () => {
+  const child = new FakeRenderProcess();
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: () => {
+      queueMicrotask(() => child.emit("error", new Error("spawn failed")));
+      return child;
+    },
+  }));
+
+  await assert.rejects(
+    adapter.render(validInput, {
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-1",
+      onProgress: () => undefined,
+    }),
+    (error: unknown) =>
+      error instanceof VideoRenderAdapterError &&
+      error.code === "RENDER_PROCESS_START_FAILED"
+  );
+});
+
+test("maps upload failure to a coded safe error and cleans up", async () => {
+  const child = new FakeRenderProcess();
+  const removedDirectories: string[] = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: () => {
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+    uploadOutput: async () => {
+      throw new Error("upload failed at C:/secret/output.mp4");
+    },
+    fileSystem: {
+      ...createDependencies().fileSystem,
+      rm: async (path) => {
+        removedDirectories.push(path);
+      },
+    },
+  }));
+
+  await assert.rejects(
+    adapter.render(validInput, {
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-1",
+      onProgress: () => undefined,
+    }),
+    (error: unknown) =>
+      error instanceof VideoRenderAdapterError &&
+      error.code === "RENDER_UPLOAD_FAILED" &&
+      error.message === "Rendered video upload failed." &&
+      !JSON.stringify(error.diagnostics).includes("C:/secret")
+  );
+  assert.deepEqual(removedDirectories, ["C:/tmp/render-1"]);
+});
+
+test("sanitizes local paths and bounds renderer diagnostics", () => {
+  const localPath = "C:/tmp/render-1";
+  const diagnostic = `${localPath}/output.mp4 ${"x".repeat(10_000)}`;
+
+  const sanitized = sanitizeRenderDiagnostic(diagnostic, [localPath]);
+
+  assert.equal(sanitized.includes(localPath), false);
+  assert.ok(sanitized.length <= 8192);
 });

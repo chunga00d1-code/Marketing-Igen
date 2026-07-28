@@ -51,6 +51,27 @@ export interface HyperframesRenderAdapterDependencies {
 
 const supportedAspectRatios = new Set(["16:9", "9:16", "1:1"]);
 const supportedResolutions = new Set(["720p", "1080p"]);
+const maximumDiagnosticLength = 8192;
+
+export function sanitizeRenderDiagnostic(
+  value: string,
+  sensitivePaths: readonly string[]
+) {
+  let sanitized = value;
+  for (const sensitivePath of sensitivePaths) {
+    if (!sensitivePath) continue;
+    const variants = new Set([
+      sensitivePath,
+      sensitivePath.replace(/\\/g, "/"),
+      sensitivePath.replace(/\//g, "\\"),
+    ]);
+    for (const variant of variants) {
+      sanitized = sanitized.split(variant).join("[path]");
+    }
+  }
+  sanitized = sanitized.replace(/\b[A-Za-z]:[\\/][^\s"'`]+/g, "[path]");
+  return sanitized.slice(-maximumDiagnosticLength);
+}
 
 function assertValidInput(input: VideoRenderInput) {
   if (
@@ -75,27 +96,73 @@ function resolutionPresetFor(aspectRatio: VideoRenderInput["aspectRatio"]) {
 
 function waitForRenderer(
   child: HyperframesRenderProcess,
+  signal: AbortSignal,
+  timeoutMs: number,
+  sensitivePaths: readonly string[],
   onRendering: () => void
 ) {
   return new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
     let stderr = "";
+    let settled = false;
+
+    const finish = (
+      action: () => void
+    ) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", handleAbort);
+      action();
+    };
+    const handleAbort = () => {
+      finish(() => {
+        child.kill();
+        reject(new VideoRenderAdapterError(
+          "RENDER_PROCESS_ABORTED",
+          "Hyperframes rendering was aborted."
+        ));
+      });
+    };
+    const timeout = setTimeout(() => {
+      finish(() => {
+        child.kill();
+        reject(new VideoRenderAdapterError(
+          "RENDER_PROCESS_TIMEOUT",
+          "Hyperframes rendering timed out."
+        ));
+      });
+    }, timeoutMs);
 
     child.stdout.on("data", () => {
       onRendering();
     });
     child.stderr.on("data", (data) => {
-      stderr = `${stderr}${String(data)}`.slice(-8192);
+      stderr = sanitizeRenderDiagnostic(
+        `${stderr}${String(data)}`,
+        sensitivePaths
+      );
     });
     child.on("error", (error) => {
-      reject(new VideoRenderAdapterError(
-        "RENDER_PROCESS_START_FAILED",
-        "Hyperframes renderer could not start.",
-        { reason: error.message.slice(0, 512) }
-      ));
+      finish(() => {
+        reject(new VideoRenderAdapterError(
+          "RENDER_PROCESS_START_FAILED",
+          "Hyperframes renderer could not start.",
+          {
+            reason: sanitizeRenderDiagnostic(
+              error.message,
+              sensitivePaths
+            ).slice(0, 512),
+          }
+        ));
+      });
     });
     child.on("close", (code) => {
-      resolve({ code, stderr });
+      finish(() => {
+        resolve({ code, stderr });
+      });
     });
+    signal.addEventListener("abort", handleAbort, { once: true });
+    if (signal.aborted) handleAbort();
   });
 }
 
@@ -193,15 +260,25 @@ export function createHyperframesRenderAdapter(
         }
 
         let renderingReported = false;
-        const processResult = await waitForRenderer(child, () => {
-          if (renderingReported) return;
-          renderingReported = true;
-          void context.onProgress({
-            stage: "rendering",
-            progress: 60,
-            message: "Rendering video frames.",
-          });
-        });
+        const processResult = await waitForRenderer(
+          child,
+          context.signal,
+          context.timeoutMs,
+          [
+            context.temporaryDirectory,
+            dependencies.cliPath,
+            process.cwd(),
+          ],
+          () => {
+            if (renderingReported) return;
+            renderingReported = true;
+            void context.onProgress({
+              stage: "rendering",
+              progress: 60,
+              message: "Rendering video frames.",
+            });
+          }
+        );
         if (processResult.code !== 0) {
           throw new VideoRenderAdapterError(
             "RENDER_PROCESS_FAILED",
@@ -233,7 +310,21 @@ export function createHyperframesRenderAdapter(
           progress: 90,
           message: "Uploading rendered video.",
         });
-        const outputUrl = await dependencies.uploadOutput(output);
+        let outputUrl: string;
+        try {
+          outputUrl = await dependencies.uploadOutput(output);
+        } catch (error) {
+          throw new VideoRenderAdapterError(
+            "RENDER_UPLOAD_FAILED",
+            "Rendered video upload failed.",
+            {
+              reason: sanitizeRenderDiagnostic(
+                error instanceof Error ? error.message : "Unknown upload error.",
+                [context.temporaryDirectory, process.cwd()]
+              ).slice(0, 512),
+            }
+          );
+        }
         return {
           engine: "hyperframes",
           outputUrl,
