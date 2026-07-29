@@ -45,16 +45,22 @@ export class PublisherAgentService {
       slot.publishRequestedAt = new Date();
       await slot.save();
 
+      const postOptions = slot.tiktokPublishOptions;
+      if (!postOptions?.consentAccepted || !postOptions.privacyLevel || !postOptions.videoDurationSeconds) {
+        throw new Error("Cần mở màn hình đăng TikTok để chọn quyền riêng tư, xác nhận điều khoản và kiểm tra thời lượng video trước khi đăng.");
+      }
+
       const result = await tiktokService.publishVideo(
         String(content._id),
-        (content.title || "") + "\n" + (content.bodyText || ""),
+        postOptions.caption,
         content.videoUrl || "",
-        "PUBLIC",
+        postOptions.privacyLevel,
         undefined,
         undefined,
         undefined,
         slot.integrationId ? String(slot.integrationId) : undefined,
-        slot.companyCode
+        slot.companyCode,
+        postOptions
       );
 
       if (result.status === "success" && result.data?.success) {

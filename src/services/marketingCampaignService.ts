@@ -2,6 +2,20 @@ import { getAccessToken } from './authService';
 
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'cancelled' | 'failed';
 
+export type TikTokCampaignPublishOptions = {
+  caption: string;
+  privacyLevel: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY';
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  brandContentToggle: boolean;
+  brandContent: boolean;
+  brandOrganic: boolean;
+  isAigc: boolean;
+  videoDurationSeconds: number;
+  consentAccepted: boolean;
+};
+
 export interface MarketingCampaignSummary {
   _id: string;
   title: string;
@@ -54,6 +68,7 @@ export interface CampaignSlot {
   errorMessage?: string;
   publishedPostUrl?: string;
   platform?: string;
+  integrationId?: string;
   approvedBy?: string;
   approvedAt?: string;
   marketingContentId?: string;
@@ -511,12 +526,18 @@ export const marketingCampaignService = {
     return request<{ retriedCount: number }>(`/api/v1/marketing-campaigns/${campaignId}/retry-all`, { method: 'POST' });
   },
 
-  approveSlot(campaignId: string, slotId: string) {
-    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, { method: 'POST' });
+  approveSlot(campaignId: string, slotId: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(tiktokPublishOptions ? { tiktokPublishOptions } : {}),
+    });
   },
 
-  publishNowSlot(campaignId: string, slotId: string) {
-    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/publish-now`, { method: 'POST' });
+  publishNowSlot(campaignId: string, slotId: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/publish-now`, {
+      method: 'POST',
+      body: JSON.stringify(tiktokPublishOptions ? { tiktokPublishOptions } : {}),
+    });
   },
 
   updateSlotContent(campaignId: string, slotId: string, updates: { title?: string; bodyText?: string; outline?: string; mediaPrompt?: string }) {

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, AlertTriangle, RotateCcw, Check, Upload, Image, Zap } from 'lucide-react';
 import { CampaignSlot } from './CampaignDetailModal';
-import { MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
+import { MarketingCampaignSummary, marketingCampaignService, type TikTokCampaignPublishOptions } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
+import TikTokPublishModal from './TikTokPublishModal';
+import type { ContentApprovalCard } from '../../types/marketing';
 
 const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
   planned: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -32,8 +34,8 @@ const DEFAULT_SLOT_STATUS_LABEL: Record<string, string> = {
   researching: 'Đang nghiên cứu web',
   writing: 'Đang viết bài',
   scoring: 'Đang chấm điểm AI',
-  awaiting_assets: 'Chờ ảnh thiết kế',
-  generating_media: 'Đang thiết kế ảnh',
+  awaiting_assets: 'Chờ media từ Drive',
+  generating_media: 'Đang kiểm tra media',
   verifying: 'Đang kiểm duyệt',
   pending_approval: 'Chờ duyệt',
   ready_to_publish: 'Sẵn sàng đăng',
@@ -73,6 +75,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
   const [isSavingContent, setIsSavingContent] = useState(false);
   const [isReplacingImage, setIsReplacingImage] = useState(false);
   const [retryingSlotId, setRetryingSlotId] = useState<string | null>(null);
+  const [tiktokAction, setTiktokAction] = useState<'approve' | 'publish' | null>(null);
 
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
@@ -80,6 +83,20 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
   const [aiLogTab, setAiLogTab] = useState<'research' | 'visual' | 'ops'>('research');
 
   const isEditable = ['pending_approval', 'needs_attention', 'failed'].includes(activeSlot.status);
+  const tiktokCard: ContentApprovalCard | null = activeSlot.platform === 'TikTok' && activeSlot.content?._id && activeSlot.content.videoUrl
+    ? {
+      id: activeSlot.content._id,
+      title: activeSlot.content.title || activeSlot.topicBrief,
+      channel: 'TikTok',
+      contentType: 'video',
+      status: 'approved',
+      bodyText: activeSlot.content.bodyText || '',
+      videoUrl: activeSlot.content.videoUrl,
+      mediaType: 'video',
+      generatedAt: new Date().toISOString(),
+      integrationId: activeSlot.integrationId,
+    }
+    : null;
 
   // Sync edits when active slot changes
   useEffect(() => {
@@ -96,6 +113,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
 
   // Handle Slot Approval
   const handleApproveSlot = async () => {
+    if (activeSlot.platform === 'TikTok') {
+      if (!tiktokCard) {
+        toast.warning('TikTok cần video hoàn chỉnh trước khi duyệt đăng.');
+        return;
+      }
+      setTiktokAction('approve');
+      return;
+    }
     setIsApproving(true);
     if (onUpdateSlot) {
       onUpdateSlot(activeSlot._id, { status: 'ready_to_publish' });
@@ -118,6 +143,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
 
   // Handle Instant Publish (Đăng ngay)
   const handlePublishNowSlot = async () => {
+    if (activeSlot.platform === 'TikTok') {
+      if (!tiktokCard) {
+        toast.warning('TikTok cần video hoàn chỉnh trước khi đăng.');
+        return;
+      }
+      setTiktokAction('publish');
+      return;
+    }
     if (!window.confirm('Bạn có chắc chắn muốn phát bài viết này lên Trang ngay lập tức không?')) return;
     setIsPublishingNow(true);
     if (onUpdateSlot) {
@@ -136,6 +169,28 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
       }
     } finally {
       setIsPublishingNow(false);
+    }
+  };
+
+  const handleTikTokConfirm = async (options: TikTokCampaignPublishOptions) => {
+    if (!tiktokAction) return;
+    setIsPublishingNow(tiktokAction === 'publish');
+    setIsApproving(tiktokAction === 'approve');
+    try {
+      if (tiktokAction === 'publish') {
+        await marketingCampaignService.publishNowSlot(campaign._id, activeSlot._id, options);
+        toast.success('TikTok đang nhận video để đăng. Hệ thống sẽ cập nhật trạng thái khi hoàn tất.');
+      } else {
+        await marketingCampaignService.approveSlot(campaign._id, activeSlot._id, options);
+        toast.success('Đã duyệt video TikTok theo lịch đăng.');
+      }
+      setTiktokAction(null);
+      if (onRefresh) await onRefresh();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể gửi video TikTok.');
+    } finally {
+      setIsPublishingNow(false);
+      setIsApproving(false);
     }
   };
 
@@ -893,6 +948,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
           </div>
         </div>
       )}
+      <TikTokPublishModal
+        isOpen={Boolean(tiktokAction)}
+        onClose={() => setTiktokAction(null)}
+        card={tiktokCard}
+        tiktokAccount={{ isConnected: true, integrationId: activeSlot.integrationId }}
+        onConfirmPublish={handleTikTokConfirm}
+        isPublishing={isPublishingNow || isApproving}
+      />
     </div>
   );
 };
