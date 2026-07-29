@@ -34,3 +34,10 @@ export const CREATIVE_IMAGE_CANVASES: Record<CreativeImageFormat, CreativeImageC
   "9:16": { format: "9:16", width: 1080, height: 1920 },
   "1.91:1": { format: "1.91:1", width: 1200, height: 630 },
 };
+
+export const CREATIVE_IMAGE_CANVAS_LABELS: Record<CreativeImageFormat, { label: string; channels: string }> = {
+  "1:1": { label: "Bài đăng vuông", channels: "Facebook · Instagram" },
+  "4:5": { label: "Bài đăng dọc", channels: "Facebook · Instagram" },
+  "9:16": { label: "Story / Reels", channels: "TikTok · Reels · Story" },
+  "1.91:1": { label: "Ảnh ngang", channels: "Facebook · Zalo · Website" },
+};

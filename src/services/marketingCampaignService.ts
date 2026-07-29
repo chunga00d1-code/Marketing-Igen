@@ -15,6 +15,9 @@ export interface MarketingCampaignSummary {
   postingTimes: string[];
   platforms: Array<'Facebook' | 'TikTok'>;
   candidateCount: number;
+  preparationMode?: 'monthly';
+  monthlyPreparationLeadDays?: number;
+  preparationScheduleVersion?: number;
   contentPillars: string[];
   publishMode?: 'auto' | 'manual';
   captionMode?: 'none' | 'speech' | 'context' | 'combined';
@@ -388,6 +391,30 @@ export interface CampaignAssetOrderData {
   orders: CampaignAssetOrder[];
 }
 
+export interface CampaignDriveImportPreview {
+  totalOrders: number;
+  totalFiles: number;
+  mappedOrders: number;
+  missingOrders: Array<{
+    orderId: string;
+    slotId: string;
+    title: string;
+    scheduledAt: string;
+    position: number;
+  }>;
+  unmatchedFiles: DriveFileItem[];
+  mappings: Array<{
+    orderId: string;
+    slotId: string;
+    title: string;
+    scheduledAt: string;
+    position: number;
+    files: DriveFileItem[];
+  }>;
+  appliedOrders?: number;
+  queuedSlots?: number;
+}
+
 export interface CampaignAssetOrderBulkPreview {
   orderId: string;
   template: { _id: string; name: string; canvas: { width: number; height: number } };
@@ -450,7 +477,7 @@ export const marketingCampaignService = {
     candidateCount: number;
     qualityMode?: 'premium' | 'budget';
     publishMode?: 'auto' | 'manual';
-    imageMode?: 'ai' | 'real';
+    imageMode?: 'ai' | 'real' | 'order';
     publishNow?: boolean;
     googleDriveFolderUrl?: string;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
@@ -459,7 +486,10 @@ export const marketingCampaignService = {
     customSchedule?: Record<string, string[]>;
     apifySources?: string[];
   }) {
-    return request<{ campaign: MarketingCampaignSummary }>('/api/v1/marketing-campaigns', {
+    return request<{
+      campaign: MarketingCampaignSummary;
+      preparation: { enqueued: number; deferred: number };
+    }>('/api/v1/marketing-campaigns', {
       method: 'POST',
       body: JSON.stringify(input),
     });
@@ -628,6 +658,20 @@ export const marketingCampaignService = {
 
   getAssetOrders(campaignId: string) {
     return request<CampaignAssetOrderData>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders`);
+  },
+
+  previewAssetOrderDriveImport(campaignId: string, googleDriveFolderUrl: string) {
+    return request<CampaignDriveImportPreview>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/drive-import/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ googleDriveFolderUrl }),
+    });
+  },
+
+  applyAssetOrderDriveImport(campaignId: string, googleDriveFolderUrl: string) {
+    return request<CampaignDriveImportPreview>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/drive-import/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ googleDriveFolderUrl }),
+    });
   },
 
   createAssetOrder(campaignId: string, input: {

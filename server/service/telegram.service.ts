@@ -367,21 +367,28 @@ export const telegramService = {
     }
 
     if (command === "/w_media_drive") {
-      wizard.imageMode = "real";
-      wizard.step = "waiting_for_drive_url";
+      wizard.imageMode = "order";
+      wizard.step = "waiting_for_platform";
       campaignWizards.set(chatId, wizard);
 
-      await this.sendMessage(
+      await this.sendMessageWithCallbackButtons(
         chatId,
         [
-          `🔗 <b>Bước 2.5: Nhập link thư mục Google Drive</b>`,
-          `Nguồn media: <b>📁 Ảnh thật từ Drive</b>`,
+          `📢 <b>Bước 3/6: Chọn nền tảng đăng bài</b>`,
+          `Nguồn media: <b>📋 Order ảnh sau khi content hoàn tất</b>`,
           ``,
-          `Vui lòng nhập đường dẫn thư mục Google Drive chứa ảnh/video (Hãy cấu hình thư mục ở chế độ <b>Công khai/Mọi người có liên kết đều xem được</b> để hệ thống truy cập).`,
-          `<i>Lưu ý: Tên file ảnh/video nên chứa số thứ tự tương ứng (ví dụ: post_1.png, 2.jpg...)</i>`,
-          ``,
-          `<i>(Gõ /cancel để hủy)</i>`
-        ].join("\n")
+          `Sau khi đội thiết kế hoàn tất, nhập thư mục Drive tại tab <b>Order ảnh, video</b> trong chi tiết chiến dịch.`,
+        ].join("\n"),
+        [
+          [
+            { text: "🔵 Facebook Fanpage", callbackData: "/w_plat_fb" },
+            { text: "⚫ TikTok", callbackData: "/w_plat_tt" }
+          ],
+          [
+            { text: "🟣 Đăng cả hai (FB + TikTok)", callbackData: "/w_plat_both" }
+          ],
+          [{ text: "❌ Hủy", callbackData: "/cancel" }]
+        ]
       );
       return true;
     }
@@ -588,8 +595,7 @@ export const telegramService = {
         `=============================`,
         `• <b>Định hướng chiến dịch:</b>`,
         `  <i>"${wizard.brief}"</i>`,
-        `• <b>Nguồn ảnh/media:</b> <b>${wizard.imageMode === "ai" ? "Ảnh sinh bằng AI (Gemini)" : "Ảnh thật từ Google Drive"}</b>`,
-        wizard.imageMode === "real" ? `  Link Drive: <code>${wizard.googleDriveFolderUrl}</code>` : "",
+        `• <b>Nguồn ảnh/media:</b> <b>${wizard.imageMode === "ai" ? "Ảnh sinh bằng AI (Gemini)" : "Order ảnh sau content"}</b>`,
         `• <b>Nền tảng đăng:</b> <b>${wizard.platforms.join(", ")}</b>`,
         `• <b>Khoảng thời gian:</b> Từ <code>${wizard.startDate}</code> đến <code>${wizard.endDate}</code> (${wizard.days} ngày)`,
         `• <b>Tần suất:</b> ${wizard.postsPerDay} bài/ngày`,
@@ -3276,7 +3282,7 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
     days: number;
     postsPerDay: number;
     postingTimes: string[];
-    imageMode: "ai" | "real";
+    imageMode: "ai" | "order";
     googleDriveFolderUrl?: string;
     platforms: Array<"Facebook" | "TikTok">;
     publishMode: "auto" | "manual";
@@ -3297,7 +3303,7 @@ Trả về duy nhất JSON object theo cấu trúc:
   "days": number (số ngày chạy chiến dịch, mặc định 7 nếu không nói rõ),
   "postsPerDay": number (số bài đăng/ngày từ 1 đến 5, mặc định 1 nếu không nói rõ),
   "postingTimes": string[] (khung giờ đăng HH:MM tương ứng số bài/ngày, ví dụ ["09:00"] hoặc ["08:00", "20:00"]),
-  "imageMode": "ai" | "real" (nếu có nhắc tới Google Drive/ảnh thật thì "real", mặc định "ai"),
+  "imageMode": "ai" | "order" (nếu có nhắc tới Google Drive/ảnh thật thì "order", mặc định "ai"),
   "platforms": array chọn từ [${connectedPlatforms.map((p) => `"${p}"`).join(", ")}] (mặc định lấy tất cả nền tảng hiện có nếu người dùng không chỉ định riêng),
   "publishMode": "manual" | "auto" (mặc định "manual")
 }`;
@@ -3341,8 +3347,7 @@ Trả về duy nhất JSON object theo cấu trúc:
           days,
           postsPerDay,
           postingTimes,
-          imageMode: hasDrive || parsed.imageMode === "real" ? "real" : "ai",
-          googleDriveFolderUrl,
+          imageMode: hasDrive || parsed.imageMode === "order" || parsed.imageMode === "real" ? "order" : "ai",
           platforms: selectedPlatforms,
           publishMode: parsed.publishMode === "auto" ? "auto" : "manual",
         };
@@ -3375,8 +3380,7 @@ Trả về duy nhất JSON object theo cấu trúc:
       days,
       postsPerDay,
       postingTimes,
-      imageMode: hasDrive ? "real" : "ai",
-      googleDriveFolderUrl,
+      imageMode: hasDrive ? "order" : "ai",
       platforms: connectedPlatforms,
       publishMode: "manual",
     };
@@ -3487,8 +3491,7 @@ Trả về duy nhất JSON object theo cấu trúc:
           `📢 <b>Nền tảng:</b> <b>${parsedParams.platforms.join(", ")}</b>`,
           `📅 <b>Thời gian:</b> Từ <code>${startDate}</code> đến <code>${endDate}</code> (${parsedParams.days} ngày)`,
           `⏰ <b>Giờ đăng bài:</b> <code>${parsedParams.postingTimes.join(", ")}</code> (${parsedParams.postsPerDay} bài/ngày)`,
-          `🖼️ <b>Nguồn media:</b> <b>${parsedParams.imageMode === "real" ? "Ảnh thật từ Google Drive" : "Ảnh sinh tự động AI"}</b>`,
-          parsedParams.googleDriveFolderUrl ? `📁 <b>Link Drive:</b> <code>${parsedParams.googleDriveFolderUrl}</code>` : "",
+          `🖼️ <b>Nguồn media:</b> <b>${parsedParams.imageMode === "order" ? "Order ảnh sau content" : "Ảnh sinh tự động AI"}</b>`,
           `📊 <b>Số bài viết (Slots):</b> <b>${slots.length} bài</b>`,
           "=============================",
           `🔗 <a href="${campaignWebUrl}"><b>Nhấn vào đây để xem chi tiết chiến dịch trên Web ERP</b></a>`

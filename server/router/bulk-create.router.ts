@@ -72,8 +72,41 @@ const workbookPreviewSchema = {
     originalName: Joi.string().trim().max(255).optional(),
   }),
 };
+const aiSceneSchema = {
+  body: Joi.object({
+    prompt: Joi.string().trim().min(2).max(4_000).required(),
+    scene: Joi.object({
+      sceneVersion: Joi.number().integer().min(1).max(10).optional(),
+      canvas: templateFields.canvas,
+      background: templateFields.background,
+      layers: Joi.array().items(layerSchema).min(0).max(20).required(),
+    }).required(),
+    values: Joi.object()
+      .pattern(Joi.string().max(100), Joi.string().max(14_000_000))
+      .required(),
+    attachments: Joi.array().items(Joi.object({
+      type: Joi.string().valid("image", "document").required(),
+      name: Joi.string().trim().min(1).max(255).required(),
+      url: Joi.string().max(14_000_000).when("type", {
+        is: "image",
+        then: Joi.required(),
+        otherwise: Joi.forbidden(),
+      }),
+      text: Joi.string().max(20_000).when("type", {
+        is: "document",
+        then: Joi.required(),
+        otherwise: Joi.forbidden(),
+      }),
+    })).max(4).default([]),
+    history: Joi.array().items(Joi.object({
+      role: Joi.string().valid("user", "assistant").required(),
+      content: Joi.string().max(4_000).required(),
+    })).max(10).default([]),
+  }),
+};
 
 bulkCreateRouter.use(requireAuth as any, requirePermission("marketing:post") as any);
+bulkCreateRouter.post("/ai/scene", validateRequest(aiSceneSchema), bulkCreateController.updateSceneWithAi as any);
 bulkCreateRouter.post("/google-sheets/preview", validateRequest(googleSheetPreviewSchema), bulkCreateController.previewGoogleSheet as any);
 bulkCreateRouter.post("/workbooks/preview", validateRequest(workbookPreviewSchema), bulkCreateController.previewWorkbook as any);
 bulkCreateRouter.post("/assets", validateRequest(uploadAssetSchema), bulkCreateController.uploadAsset as any);
