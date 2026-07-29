@@ -15,9 +15,18 @@ const redisConfig = {
 
 const QUEUE_NAME = "campaign-task-queue";
 const DIRECT_FALLBACK_CONCURRENCY = 2;
+const REDIS_RECHECK_MS = 30_000;
+
+type CampaignQueueJobType = "prepare" | "media" | "verify" | "publish";
+
+export function buildCampaignQueueJobId(type: CampaignQueueJobType, slotId: string) {
+  // BullMQ reserves ':' in custom job IDs because it uses that separator in Redis keys.
+  return `campaign-${type}-${slotId}`;
+}
 
 let campaignQueue: Queue | null = null;
 let isRedisAvailable: boolean | null = null;
+let redisCheckedAt = 0;
 const directFallbackPending: Array<{
   slotId: string;
   type: "prepare" | "media" | "verify" | "publish";
@@ -36,14 +45,26 @@ function checkRedisConnection(host: string, port: number): Promise<boolean> {
 }
 
 async function ensureRedisConnection(): Promise<boolean> {
-  if (isRedisAvailable !== null) return isRedisAvailable;
+  if (
+    isRedisAvailable !== null &&
+    (isRedisAvailable || Date.now() - redisCheckedAt < REDIS_RECHECK_MS)
+  ) {
+    return isRedisAvailable;
+  }
   const { host, port } = redisConfig;
   const connected = await checkRedisConnection(host, port);
+  redisCheckedAt = Date.now();
   if (connected) {
     console.log(`[Campaign Queue] Connected to Redis successfully.`);
     isRedisAvailable = true;
     try {
       campaignQueue = new Queue(QUEUE_NAME, { connection: redisConfig });
+      campaignQueue.on("error", (error) => {
+        isRedisAvailable = false;
+        redisCheckedAt = Date.now();
+        campaignQueue = null;
+        console.error("[Campaign Queue] Redis queue error:", error.message);
+      });
     } catch (e: any) {
       console.error("[Campaign Queue] Error creating Queue:", e.message);
       isRedisAvailable = false;
@@ -186,7 +207,7 @@ export const campaignQueueService = {
       return { id: "direct-prepare" };
     }
     return await campaignQueue.add("prepare", { slotId }, {
-      jobId: `prepare:${slotId}`,
+      jobId: buildCampaignQueueJobId("prepare", slotId),
       removeOnComplete: true,
       removeOnFail: false,
     });
@@ -199,7 +220,7 @@ export const campaignQueueService = {
       return { id: "direct-media" };
     }
     return await campaignQueue.add("media", { slotId }, {
-      jobId: `media:${slotId}`,
+      jobId: buildCampaignQueueJobId("media", slotId),
       removeOnComplete: true,
       removeOnFail: false,
     });
@@ -212,7 +233,7 @@ export const campaignQueueService = {
       return { id: "direct-verify" };
     }
     return await campaignQueue.add("verify", { slotId }, {
-      jobId: `verify:${slotId}`,
+      jobId: buildCampaignQueueJobId("verify", slotId),
       removeOnComplete: true,
       removeOnFail: false,
     });
@@ -225,7 +246,7 @@ export const campaignQueueService = {
       return { id: "direct-publish" };
     }
     return await campaignQueue.add("publish", { slotId }, {
-      jobId: `publish:${slotId}`,
+      jobId: buildCampaignQueueJobId("publish", slotId),
       removeOnComplete: true,
       removeOnFail: false,
     });
