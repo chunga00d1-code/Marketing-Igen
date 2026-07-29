@@ -485,10 +485,10 @@ export default function LandingPage() {
               <div className="relative border border-slate-200/80 rounded-3xl bg-white shadow-xl p-6 space-y-6 text-left">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-slate-800">Tích hợp TikTok Developer</span>
+                    <span className="font-bold text-sm text-slate-800">Tích hợp TikTok Official API</span>
                   </div>
                   <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 text-[10px] font-bold rounded-full">
-                    Official API Connection
+                    Production API · Đã duyệt
                   </span>
                 </div>
 
@@ -546,7 +546,7 @@ export default function LandingPage() {
                     Đăng nhập và liên kết nhanh
                   </h4>
                   <p className="text-xs text-slate-400 pl-3.5 leading-relaxed">
-                    Sử dụng luồng Đăng nhập với TikTok để kết nối tài khoản sandbox hoặc tài khoản TikTok được người dùng cấp quyền.
+                    Sử dụng luồng Đăng nhập với TikTok để kết nối tài khoản thật do người dùng cấp quyền.
                   </p>
                 </div>
                 <div className="space-y-1">
@@ -604,7 +604,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Yêu cầu kết nối</h4>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                Tại trang Quản trị iGen Marketing, bạn truy cập mục "Cấu hình tích hợp", sau đó chọn "Kết nối TikTok Sandbox" để kích hoạt luồng kết nối.
+                Tại trang Quản trị iGen Marketing, bạn truy cập mục "Cấu hình tích hợp", sau đó chọn "Kết nối TikTok" để kích hoạt luồng kết nối chính thức.
               </p>
             </div>
 
@@ -615,7 +615,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Xác thực OAuth 2.0</h4>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                Hệ thống mở màn hình xác thực TikTok Sandbox. Bạn xác nhận cấp quyền user.info.basic và video.publish cho ứng dụng.
+                Hệ thống mở màn hình xác thực chính thức của TikTok. Bạn xác nhận cấp quyền user.info.basic và video.publish cho ứng dụng đã được duyệt.
               </p>
             </div>
 
@@ -626,7 +626,7 @@ export default function LandingPage() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm">Hoàn tất & Đồng bộ</h4>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                TikTok chuyển hướng trở lại iGen Marketing. Token kết nối được thiết lập, hệ thống sẵn sàng cho luồng đăng video demo.
+                TikTok chuyển hướng trở lại iGen Marketing. Token kết nối được lưu an toàn và hệ thống sẵn sàng đăng video thật.
               </p>
             </div>
 

@@ -16,7 +16,6 @@ const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./pages/TermsOfService"));
 const UserDataDeletion = lazy(() => import("./pages/UserDataDeletion"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
-const TikTokSandboxOAuth = lazy(() => import("./pages/TikTokSandboxOAuth"));
 const PublicSlotApproval = lazy(() => import("./pages/PublicSlotApproval"));
 const PublicDailySlotsApproval = lazy(() => import("./pages/PublicDailySlotsApproval"));
 const PublicMonthlyApproval = lazy(() => import("./pages/PublicMonthlyApproval"));
@@ -29,12 +28,11 @@ function AppContent() {
   const isPrivacyPage = currentPath === "/privacy-policy" || currentPath === "/privacy-policy.html";
   const isTermsPage = currentPath === "/terms-of-service" || currentPath === "/terms-of-service.html";
   const isDeletionPage = currentPath === "/user-data-deletion" || currentPath === "/user-data-deletion.html";
-  const isTiktokSandboxOauth = currentPath === "/tiktok-sandbox-oauth" || currentPath === "/tiktok-sandbox-oauth.html";
   const isSlotApprovalPage = currentPath === "/approve-post" || currentPath === "/approve-post.html";
   const isDailyApprovalPage = currentPath === "/approve-posts-day" || currentPath === "/approve-posts-day.html";
   const isMonthlyApprovalPage = currentPath === "/approve-posts-month" || currentPath === "/approve-posts-month.html";
   const isLegalPublicPage = isPrivacyPage || isTermsPage || isDeletionPage;
-  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isTiktokSandboxOauth || isSlotApprovalPage || isDailyApprovalPage || isMonthlyApprovalPage;
+  const isPublicPage = isLandingGuestPage || isLegalPublicPage || isSlotApprovalPage || isDailyApprovalPage || isMonthlyApprovalPage;
 
   const { activeTab, setActiveTab } = useTabRouter({
     enabled: !isPublicPage && !loading && Boolean(user && userProfile),
@@ -60,14 +58,6 @@ function AppContent() {
       }
     }
   }, [user, userProfile, loading, isPublicPage]);
-
-  if (isTiktokSandboxOauth) {
-    return (
-      <Suspense fallback={<div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center text-slate-500">Đang tải...</div>}>
-        <TikTokSandboxOAuth />
-      </Suspense>
-    );
-  }
 
   if (isSlotApprovalPage) {
     return (

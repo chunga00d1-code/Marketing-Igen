@@ -131,9 +131,7 @@ function translateTikTokError(errorMsg: string, errorCode?: string): string {
   const msg = String(errorMsg || "").toLowerCase();
 
   if (code === "unaudited_client_can_only_post_to_private_accounts" || msg.includes("unaudited_client_can_only_post_to_private_accounts") || msg.includes("private accounts")) {
-    return "Ứng dụng TikTok hiện đang ở chế độ thử nghiệm (Staging). TikTok chỉ cho phép đăng video lên tài khoản thỏa mãn 2 điều kiện sau:\n" +
-      "1. Tài khoản đó đã được thêm vào mục 'Sandbox Accounts' trong trang cấu hình ứng dụng trên TikTok Developer Console.\n" +
-      "2. Bạn PHẢI chuyển tài khoản TikTok đó sang chế độ 'Tài khoản riêng tư' (vào ứng dụng TikTok trên điện thoại -> Cài đặt & Quyền riêng tư -> Quyền riêng tư -> bật chế độ 'Tài khoản riêng tư').";
+    return "Ứng dụng TikTok chưa được cấp quyền đăng công khai cho tài khoản này. Hãy kiểm tra lại sản phẩm Content Posting API, scope video.publish và trạng thái phê duyệt trên TikTok Developer Console.";
   }
 
   if (code === "url_ownership_unverified" || msg.includes("url_ownership_unverified") || msg.includes("url ownership")) {
@@ -402,7 +400,7 @@ async function resolveDirectCredentials(
   }
 
   if (!resolvedAccessToken) {
-    throw new Error("Thiếu accessToken TikTok. Hãy kết nối TikTok sandbox hoặc truyền integrationId hợp lệ.");
+    throw new Error("Thiếu accessToken TikTok. Hãy kết nối tài khoản TikTok hoặc truyền integrationId hợp lệ.");
   }
 
   return {
@@ -445,7 +443,7 @@ async function oldResolveDirectCredentials(integrationId?: any, companyCode?: an
   }
 
   if (!resolvedAccessToken) {
-    throw new Error("Thieu accessToken TikTok. Hay ket noi TikTok sandbox hoac truyen integrationId hop le.");
+    throw new Error("Thieu accessToken TikTok. Hay ket noi tai khoan TikTok hoac truyen integrationId hop le.");
   }
 
   return {
@@ -878,27 +876,6 @@ export const tiktokService = {
       throw new Error("Branded Content không thể đăng ở chế độ Chỉ mình tôi.");
     }
 
-    if (
-      process.env.NODE_ENV !== "production" &&
-      String(process.env.TIKTOK_MOCK_PUBLISH).trim().toLowerCase() === "true"
-    ) {
-      console.log("[TikTok Service] Mock publish requested. Bypassing real API posting.");
-      const mockPostId = "v_" + Math.random().toString(36).substring(2, 15);
-      const mockShareUrl = `https://www.tiktok.com/@${username || "user"}/video/${mockPostId}`;
-      return {
-        status: "success",
-        message: "Dang video len TikTok thanh cong (MOCK/DEMO)",
-        provider: "tiktok_direct",
-        data: {
-          publishId: "pub_" + Math.random().toString(36).substring(2, 15),
-          postId: mockPostId,
-          shareUrl: mockShareUrl,
-          publishStatus: "PUBLISH_COMPLETE",
-          success: true,
-        },
-      };
-    }
-
     let userId: string | undefined = requestUserId;
     const card = cardId ? await MarketingContentModel.findById(cardId) : null;
     if (requestUserId) {
@@ -1319,7 +1296,7 @@ export const tiktokService = {
 
   async validateToken(username: string, accessToken: string) {
     if (!accessToken) {
-      throw new Error("Thieu access token TikTok de xac thuc sandbox.");
+      throw new Error("Thieu access token TikTok de xac thuc.");
     }
 
     try {

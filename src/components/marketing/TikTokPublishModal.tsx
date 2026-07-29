@@ -142,8 +142,11 @@ export default function TikTokPublishModal({
       <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-800 bg-[#121212] text-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 bg-[#161823] px-6 py-4">
           <div>
-            <h3 className="text-base font-extrabold">Share to TikTok</h3>
-            <p className="mt-1 text-xs text-slate-400">TikTok Direct Post · Xác nhận trước khi gửi video</p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-extrabold">Share to TikTok</h3>
+              <span className="rounded-md border border-emerald-400/25 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">Production API</span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">Ứng dụng TikTok đã được duyệt · Xác nhận trước khi gửi video</p>
           </div>
           <button type="button" onClick={onClose} disabled={isPublishing} className="rounded-xl bg-slate-800 p-2 text-slate-300 hover:text-white disabled:opacity-50"><X className="h-5 w-5" /></button>
         </div>
