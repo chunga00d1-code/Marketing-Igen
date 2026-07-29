@@ -27,7 +27,7 @@ export interface TikTokIntegration {
   connectedAt: string | Date;
   /** Mộc quyền riêng tư mặc định khi đăng (PUBLIC_TO_EVERYONE / SELF_ONLY) */
   privacyLevel?: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'SELF_ONLY';
-  /** Chế độ giả lập — không cần API thật */
+  /** Cờ tương thích dữ liệu tích hợp cũ; OAuth mới luôn lưu false. */
   isMock?: boolean;
 }
 
