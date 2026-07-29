@@ -1,7 +1,10 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any */
 import { v2 as cloudinary } from "cloudinary";
+import { spawn } from "child_process";
+import { resolveMediaBinary } from "./media-binary.service";
 
 let isConfigured = false;
+const TIKTOK_DURATION_PROBE_TIMEOUT_MS = 30_000;
 
 function ensureConfigured() {
   if (isConfigured) return;
@@ -37,6 +40,69 @@ function getCloudinaryVideoPublicId(videoUrl: string): string {
     throw new Error("Không thể xác định video Cloudinary để kiểm tra thời lượng TikTok.");
   }
   return assetPath;
+}
+
+function probeVideoDurationSeconds(videoUrl: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      resolveMediaBinary("ffprobe", process.env.TIKTOK_FFPROBE_PATH),
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        videoUrl,
+      ],
+      { shell: false, windowsHide: true }
+    );
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finishWithError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finishWithError(new Error("Hết thời gian đọc thời lượng video."));
+    }, TIKTOK_DURATION_PROBE_TIMEOUT_MS);
+    timer.unref();
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      finishWithError(
+        new Error(
+          error.code === "ENOENT"
+            ? "Máy chủ chưa cài ffprobe để đọc thời lượng video."
+            : `Không thể chạy ffprobe: ${error.message}`
+        )
+      );
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      if (code !== 0) {
+        finishWithError(new Error(`Không thể đọc metadata video: ${stderr.slice(-300)}`));
+        return;
+      }
+      const duration = Number.parseFloat(stdout.trim());
+      if (!Number.isFinite(duration) || duration <= 0) {
+        finishWithError(new Error("ffprobe không trả về thời lượng video hợp lệ."));
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(duration);
+    });
+  });
 }
 
 export const cloudinaryService = {
@@ -119,20 +185,26 @@ export const cloudinaryService = {
     }
     ensureConfigured();
 
-    const publicId = getCloudinaryVideoPublicId(videoUrl);
     try {
+      const publicId = getCloudinaryVideoPublicId(videoUrl);
       const resource = await cloudinary.api.resource(publicId, {
         resource_type: "video",
         type: "upload",
       });
       const duration = Number(resource.duration || 0);
-      if (!Number.isFinite(duration) || duration <= 0) {
-        throw new Error("Cloudinary chưa có metadata thời lượng cho video này.");
-      }
-      return duration;
+      if (Number.isFinite(duration) && duration > 0) return duration;
+      throw new Error("Cloudinary chưa có metadata thời lượng cho video này.");
     } catch (error: any) {
-      console.error("[cloudinaryService.getVideoDurationSeconds] Error:", error);
-      throw new Error(`Không thể xác minh thời lượng video TikTok: ${error.message || error}`);
+      console.warn(
+        "[cloudinaryService.getVideoDurationSeconds] Cloudinary metadata unavailable; probing the published video:",
+        error.message || error
+      );
+      try {
+        return await probeVideoDurationSeconds(videoUrl);
+      } catch (probeError: any) {
+        console.error("[cloudinaryService.getVideoDurationSeconds] Error:", probeError);
+        throw new Error(`Không thể xác minh thời lượng video TikTok: ${probeError.message || probeError}`);
+      }
     }
   },
 };

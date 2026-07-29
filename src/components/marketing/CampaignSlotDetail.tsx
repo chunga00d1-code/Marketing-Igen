@@ -521,51 +521,49 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
           {detailTab === 'preview' ? (
             <div className="space-y-4">
               {activeSlot.platform === 'TikTok' ? (
-                /* Realistic TikTok Post Preview */
-                <div className="border border-slate-200 rounded-xl bg-slate-950 text-white shadow-xs overflow-hidden font-sans text-left relative aspect-[9/16] max-h-[500px] mx-auto flex flex-col justify-between">
-                  {/* Media Content */}
-                  <div className="absolute inset-0 z-0 bg-slate-900 flex items-center justify-center">
-                    {tiktokPreviewVideoUrl ? (
-                      <video src={tiktokPreviewVideoUrl} controls className="w-full h-full object-contain" />
-                    ) : (
-                      <div className="flex flex-col items-center gap-2 px-8 text-center text-slate-400">
-                        <Video size={28} className="text-slate-500" />
-                        <span className="text-xs font-bold">Chưa có video TikTok</span>
-                        <span className="text-[10px] leading-relaxed">Tải video trực tiếp hoặc nhập từ Google Drive để xem trước.</span>
+                <div className="space-y-3">
+                  <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-sm">
+                    <div className="flex items-center justify-between border-b border-white/10 px-3.5 py-2.5 text-white">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#ff2c55] text-[10px] font-black">♪</span>
+                        <span className="text-xs font-bold">Video TikTok</span>
                       </div>
+                      <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[10px] font-semibold text-slate-200">Bản xem trước</span>
+                    </div>
+
+                    <div className="flex min-h-[230px] items-center justify-center bg-[radial-gradient(circle_at_top,_#334155,_#020617_68%)] p-3 sm:min-h-[290px]">
+                      {tiktokPreviewVideoUrl ? (
+                        <video
+                          src={tiktokPreviewVideoUrl}
+                          controls
+                          className="max-h-[420px] max-w-full rounded-lg bg-black shadow-2xl"
+                        />
+                      ) : (
+                        <div className="flex max-w-[250px] flex-col items-center gap-2 px-5 text-center text-slate-400">
+                          <Video size={28} className="text-slate-500" />
+                          <span className="text-xs font-bold">Chưa có video TikTok</span>
+                          <span className="text-[10px] leading-relaxed">Tải video trực tiếp hoặc nhập từ Google Drive để xem trước.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
+                          {campaign.title?.slice(0, 2).toUpperCase() || 'TT'}
+                        </div>
+                        <span className="truncate text-xs font-bold text-slate-800">@{campaign.title?.replace(/\s+/g, '').toLowerCase() || 'tiktok_channel'}</span>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">TikTok</span>
+                    </div>
+                    {(editTitle || activeSlot.content.title) && (
+                      <p className="mb-1.5 text-xs font-bold text-slate-800">{editTitle || activeSlot.content.title}</p>
                     )}
-                  </div>
-
-                  {/* Header Overlay */}
-                  <div className="relative z-10 p-3 bg-gradient-to-b from-black/55 to-transparent flex justify-between items-center text-xs">
-                    <span className="font-bold">Following | For You</span>
-                    <span>🔍</span>
-                  </div>
-
-                  {/* Right Side Icons */}
-                  <div className="absolute right-2 bottom-20 z-10 flex flex-col items-center gap-4 text-xs select-none">
-                    <div className="h-8 w-8 rounded-full bg-slate-700 border border-white flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                      {campaign.title?.slice(0, 2).toUpperCase() || 'TT'}
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-xl">❤️</span>
-                      <span className="text-[10px]">0</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-xl">💬</span>
-                      <span className="text-[10px]">0</span>
-                    </div>
-                    <div className="flex flex-col items-center">
-                      <span className="text-xl">⭐</span>
-                      <span className="text-[10px]">0</span>
-                    </div>
-                  </div>
-
-                  {/* Bottom Text Overlay */}
-                  <div className="relative z-10 p-3.5 bg-gradient-to-t from-black/75 to-transparent text-xs space-y-1.5">
-                    <h5 className="font-bold">@{campaign.title?.replace(/\s+/g, '').toLowerCase() || 'tiktok_channel'}</h5>
-                    <p className="line-clamp-3 leading-relaxed text-slate-200 whitespace-pre-wrap">{editBody || activeSlot.content.bodyText || activeSlot.topicBrief}</p>
-                    {(editTitle || activeSlot.content.title) && <p className="text-[10px] text-indigo-400 font-bold"># {editTitle || activeSlot.content.title}</p>}
+                    <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
+                      {editBody || activeSlot.content.bodyText || activeSlot.topicBrief}
+                    </p>
                   </div>
                 </div>
               ) : (
