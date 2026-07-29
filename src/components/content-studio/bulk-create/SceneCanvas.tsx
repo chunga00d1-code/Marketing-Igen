@@ -1,5 +1,6 @@
 import React from 'react';
 import type { BulkLayer, BulkTemplatePayload } from '../../../services/bulkCreateService';
+import { resolveTextFontSize } from './utils';
 
 export const BULK_SCENE_VERSION = 2;
 
@@ -24,11 +25,13 @@ export function SceneLayerContent({
   value,
   scale = 1,
   showPlaceholder = false,
+  canvas,
 }: {
   layer: BulkLayer;
   value: string;
   scale?: number;
   showPlaceholder?: boolean;
+  canvas?: { width: number; height: number };
 }) {
   if (layer.type === 'image') {
     if (value) {
@@ -79,7 +82,7 @@ export function SceneLayerContent({
         overflowWrap: 'break-word',
         color: layer.color || '#000000',
         fontFamily: layer.fontFamily || 'DejaVu Sans',
-        fontSize: `${(layer.fontSize || 60) * scale}px`,
+        fontSize: `${resolveTextFontSize(layer, value || layer.defaultValue || layer.fieldName, canvas) * scale}px`,
         fontWeight: layer.fontWeight || 700,
         fontStyle: layer.fontStyle || 'normal',
         textDecoration: layer.textDecoration || 'none',
@@ -156,6 +159,7 @@ export function SceneCanvas({
               value={String(values[layer.id] ?? values[layer.fieldName] ?? '')}
               scale={scale}
               showPlaceholder={showPlaceholders}
+              canvas={scene.canvas}
             />
           </div>
         ))}

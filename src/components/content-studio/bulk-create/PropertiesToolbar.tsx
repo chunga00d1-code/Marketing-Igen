@@ -25,6 +25,7 @@ interface PropertiesToolbarProps {
   changeLayer: (id: string, values: Partial<TemplateLayer>) => void;
   duplicateLayer: (layer: TemplateLayer) => void;
   removeLayer: (id: string) => void;
+  alignLayer: (alignment: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom') => void;
 }
 
 export function PropertiesToolbar({
@@ -34,6 +35,7 @@ export function PropertiesToolbar({
   changeLayer,
   duplicateLayer,
   removeLayer,
+  alignLayer,
 }: PropertiesToolbarProps) {
   return (
     <div className="flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -351,6 +353,26 @@ export function PropertiesToolbar({
             >
               Lên
             </button>
+            <div className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-1" title="Căn layer theo canvas">
+              {([
+                ['left', 'Trái'],
+                ['center-x', 'Giữa'],
+                ['right', 'Phải'],
+                ['top', 'Trên'],
+                ['center-y', 'Dọc'],
+                ['bottom', 'Dưới'],
+              ] as const).map(([alignment, label]) => (
+                <button
+                  key={alignment}
+                  type="button"
+                  onClick={() => alignLayer(alignment)}
+                  className="rounded-md px-1.5 py-1 text-[10px] font-extrabold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                  title={`Căn ${label.toLocaleLowerCase('vi-VN')}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={() => duplicateLayer(selectedLayer)}

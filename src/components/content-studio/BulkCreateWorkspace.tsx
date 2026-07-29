@@ -261,6 +261,34 @@ function estimateTextLayerWidth(text: string, fontSize: number, canvasWidth: num
   return clamp(Math.round((estimatedPixelWidth / canvasWidth) * 100), 18, 64);
 }
 
+function normalizeLayerBounds(
+  layer: TemplateLayer,
+  canvas: { width: number; height: number }
+): TemplateLayer {
+  const width = clamp(Number(layer.width), 1, 100);
+  const height = clamp(Number(layer.height), 1, 100);
+  return {
+    ...layer,
+    x: clamp(Number(layer.x), 0, 100 - width),
+    y: clamp(Number(layer.y), 0, 100 - height),
+    width,
+    height,
+    rotation: clamp(Number(layer.rotation), -360, 360),
+    zIndex: clamp(Number(layer.zIndex), 0, 1000),
+    fontSize: layer.type === 'text'
+      ? clamp(Number(layer.fontSize || 60), 8, Math.min(300, Math.max(8, canvas.width / 2)))
+      : layer.fontSize,
+  };
+}
+
+function snapToClosest(value: number, targets: number[], threshold = 1.2) {
+  const closest = targets.reduce(
+    (best, target) => Math.abs(target - value) < Math.abs(best - value) ? target : best,
+    value
+  );
+  return Math.abs(closest - value) <= threshold ? closest : value;
+}
+
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -609,16 +637,33 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   }, [layers]);
 
   const updateLayer = useCallback((layerId: string, updates: Partial<TemplateLayer>) => {
-    setLayers((current) => current.map((layer) => layer.id === layerId ? { ...layer, ...updates } : layer));
+    setLayers((current) => current.map((layer) => layer.id === layerId
+      ? normalizeLayerBounds({ ...layer, ...updates }, canvasSize)
+      : layer));
+  }, [canvasSize]);
+
+  const createEditorSnapshot = useCallback((): EditorSnapshot => ({
+      layers: layers.map((layer) => ({ ...layer })),
+      rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
+      canvasSize: { ...canvasSize },
+      backgroundId,
+      backgroundImage,
+      backgroundColor,
+  }), [backgroundColor, backgroundId, backgroundImage, canvasSize, layers, rows]);
+
+  const restoreEditorSnapshot = useCallback((snapshot: EditorSnapshot) => {
+    setLayers(snapshot.layers);
+    setRows(snapshot.rows);
+    setCanvasSize(snapshot.canvasSize);
+    setBackgroundId(snapshot.backgroundId);
+    setBackgroundImage(snapshot.backgroundImage);
+    setBackgroundColor(snapshot.backgroundColor);
   }, []);
 
   const recordLayerHistory = useCallback(() => {
-    undoRef.current = [...undoRef.current.slice(-29), {
-      layers: layers.map((layer) => ({ ...layer })),
-      rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
-    }];
+    undoRef.current = [...undoRef.current.slice(-29), createEditorSnapshot()];
     redoRef.current = [];
-  }, [layers, rows]);
+  }, [createEditorSnapshot]);
 
   const applyAiScene = useCallback((result: BulkAiSceneResult) => {
     recordLayerHistory();
@@ -679,9 +724,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const undoLayers = () => {
     const previous = undoRef.current.pop();
     if (!previous) return;
-    redoRef.current.push({ layers: layers.map((layer) => ({ ...layer })), rows: rows.map((row) => ({ ...row, values: { ...row.values } })) });
-    setLayers(previous.layers);
-    setRows(previous.rows);
+    redoRef.current.push(createEditorSnapshot());
+    restoreEditorSnapshot(previous);
     setSelectedLayerId('');
     setSelectedLayerIds([]);
   };
@@ -689,9 +733,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const redoLayers = () => {
     const next = redoRef.current.pop();
     if (!next) return;
-    undoRef.current.push({ layers: layers.map((layer) => ({ ...layer })), rows: rows.map((row) => ({ ...row, values: { ...row.values } })) });
-    setLayers(next.layers);
-    setRows(next.rows);
+    undoRef.current.push(createEditorSnapshot());
+    restoreEditorSnapshot(next);
     setSelectedLayerId('');
     setSelectedLayerIds([]);
   };
@@ -946,8 +989,26 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   ]);
 
   const handleResize = useCallback((width: number, height: number) => {
+    recordLayerHistory();
     setCanvasSize({ width, height });
-  }, []);
+  }, [recordLayerHistory]);
+
+  const alignLayer = useCallback((alignment: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom') => {
+    if (!selectedLayer) return;
+    const updates: Partial<TemplateLayer> =
+      alignment === 'left'
+        ? { x: 0 }
+        : alignment === 'center-x'
+          ? { x: (100 - selectedLayer.width) / 2 }
+          : alignment === 'right'
+            ? { x: 100 - selectedLayer.width }
+            : alignment === 'top'
+              ? { y: 0 }
+              : alignment === 'center-y'
+                ? { y: (100 - selectedLayer.height) / 2 }
+                : { y: 100 - selectedLayer.height };
+    changeLayer(selectedLayer.id, updates);
+  }, [changeLayer, selectedLayer]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1493,7 +1554,10 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setSavedTemplateId(template._id);
     setAutoSaveStatus('saved');
     setTemplateName(template.name);
-    setLayers(template.layers);
+    const normalizedLayers = template.layers.map((layer) =>
+      normalizeLayerBounds(layer, template.canvas)
+    );
+    setLayers(normalizedLayers);
     setCanvasSize(template.canvas);
     setSelectedLayerId('');
     setBackgroundSelected(false);
@@ -1509,7 +1573,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       const match = BACKGROUNDS.find((item) => item.colors.join(',') === (template.background.colors || []).join(','));
       setBackgroundId(match?.id || 'blank');
     }
-    setRows([createRow(template.layers)]);
+    setRows([createRow(normalizedLayers)]);
     setDataColumns([]);
     setDataSourceName('');
     setCampaignOrderImportId('');
@@ -1571,14 +1635,17 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setSavedTemplateId('');
     setAutoSaveStatus('idle');
     setTemplateName(template.name);
-    setLayers(template.layers);
+    const normalizedLayers = template.layers.map((layer) =>
+      normalizeLayerBounds(layer, template.canvas)
+    );
+    setLayers(normalizedLayers);
     setCanvasSize(template.canvas);
     setBackgroundImage('');
     setBackgroundId(template.backgroundId);
     setSelectedLayerId('');
     setSelectedLayerIds([]);
     setBackgroundSelected(false);
-    setRows([createRow(template.layers)]);
+    setRows([createRow(normalizedLayers)]);
     setDataColumns([]);
     setDataSourceName('');
     setCampaignOrderImportId('');
@@ -1850,11 +1917,36 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     if (!drag || !rect || event.buttons === 0) return;
     const layer = layers.find((item) => item.id === drag.layerId);
     if (!layer) return;
-    const x = (event.clientX - rect.left - drag.offsetX) / rect.width * 100;
-    const y = (event.clientY - rect.top - drag.offsetY) / rect.height * 100;
+    const rawX = (event.clientX - rect.left - drag.offsetX) / rect.width * 100;
+    const rawY = (event.clientY - rect.top - drag.offsetY) / rect.height * 100;
+    const otherLayers = layers.filter((item) => item.id !== layer.id);
+    const x = snapToClosest(rawX, [
+      0,
+      6,
+      50 - layer.width / 2,
+      94 - layer.width,
+      100 - layer.width,
+      ...otherLayers.flatMap((item) => [
+        item.x,
+        item.x + item.width - layer.width,
+        item.x + item.width / 2 - layer.width / 2,
+      ]),
+    ]);
+    const y = snapToClosest(rawY, [
+      0,
+      6,
+      50 - layer.height / 2,
+      94 - layer.height,
+      100 - layer.height,
+      ...otherLayers.flatMap((item) => [
+        item.y,
+        item.y + item.height - layer.height,
+        item.y + item.height / 2 - layer.height / 2,
+      ]),
+    ]);
     updateLayer(layer.id, {
       x: clamp(x, 0, Math.max(0, 100 - layer.width)),
-      y: clamp(y, 0, layer.type === 'image' ? 75 : 92),
+      y: clamp(y, 0, Math.max(0, 100 - layer.height)),
     });
   };
 
@@ -2053,14 +2145,15 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           activeJob={activeJob}
           jobItems={jobItems}
           onBackgroundUpload={(value) => {
+            recordLayerHistory();
             setBackgroundImage(value);
             setBackgroundId('');
             setBackgroundSelected(true);
             clearLayerSelection();
           }}
           onUploadAsset={(file, target) => void uploadLibraryAsset(file, target)}
-          onBackgroundColor={(value) => { setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
-          onRemoveBackground={() => { setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+          onBackgroundColor={(value) => { recordLayerHistory(); setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+          onRemoveBackground={() => { recordLayerHistory(); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
           onAddLayer={addLayer}
           onSelectLayer={(id) => { selectLayer(id); setBackgroundSelected(false); }}
           onSheetInput={setSheetInput}
@@ -2077,7 +2170,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onSelectAllRows={selectAllImportedRows}
           onCreatePages={createPages}
           onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
-          onCanvasSize={setCanvasSize}
+          onCanvasSize={(size) => handleResize(size.width, size.height)}
           onApplySystemTemplate={applySystemTemplate}
           onAddRow={addRow}
           onSelectRow={setActiveRowId}
@@ -2318,6 +2411,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           changeLayer={changeLayer}
           duplicateLayer={duplicateLayer}
           removeLayer={removeLayer}
+          alignLayer={alignLayer}
         />
 
         {errorMessage && (

@@ -32,6 +32,10 @@ export type DataColumn = BulkDataColumn;
 export interface EditorSnapshot {
   layers: TemplateLayer[];
   rows: DataRow[];
+  canvasSize: { width: number; height: number };
+  backgroundId: string;
+  backgroundImage: string;
+  backgroundColor: string;
 }
 
 export type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se' | 'w' | 'e';

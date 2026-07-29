@@ -10,7 +10,7 @@ import {
   RotateCw,
 } from 'lucide-react';
 import type { TemplateLayer, DataRow, ResizeCorner, SelectionBox } from './types';
-import { clamp } from './utils';
+import { clamp, resolveTextFontSize } from './utils';
 import { SceneLayerContent } from './SceneCanvas';
 
 interface EditorCanvasProps {
@@ -191,6 +191,18 @@ export function EditorCanvas({
                 : {}),
             }}
           >
+            {(selectedLayerIds.length > 0 || backgroundSelected) && (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-[6%] z-[1001] border border-dashed border-indigo-400/50"
+              >
+                <span className="absolute -top-5 left-0 rounded bg-indigo-600/85 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                  Vùng an toàn
+                </span>
+                <span className="absolute left-1/2 top-0 h-full border-l border-dashed border-indigo-400/25" />
+                <span className="absolute left-0 top-1/2 w-full border-t border-dashed border-indigo-400/25" />
+              </div>
+            )}
             {layers.map((layer) => {
               const value = activeRow?.values[layer.id] || '';
               const selected = selectedLayerId === layer.id || selectedLayerIds.includes(layer.id);
@@ -277,7 +289,8 @@ export function EditorCanvas({
                           }px`,
                           lineHeight: layer.lineHeight || 1.22,
                           fontSize: `${
-                            ((layer.fontSize || 60) * canvasDisplayWidth) / canvasSize.width
+                            (resolveTextFontSize(layer, value || layer.defaultValue || layer.fieldName, canvasSize)
+                              * canvasDisplayWidth) / canvasSize.width
                           }px`,
                           textAlign: layer.textAlign,
                         }}
@@ -288,6 +301,7 @@ export function EditorCanvas({
                       value={value}
                       scale={canvasDisplayWidth / canvasSize.width}
                       showPlaceholder
+                      canvas={canvasSize}
                     />
                   )}
                   {singleSelected && !layer.locked && (
