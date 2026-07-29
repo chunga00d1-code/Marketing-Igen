@@ -1,0 +1,228 @@
+import { getAccessToken } from "./authService";
+
+export type HtmlVideoAspectRatio = "16:9" | "9:16" | "1:1";
+export type HtmlVideoResolution = "720p" | "1080p";
+export type HtmlVideoRenderStatus =
+  | "queued"
+  | "rendering"
+  | "uploading"
+  | "completed"
+  | "failed";
+
+export type HtmlVideoPreviewRequest = {
+  html: string;
+  css: string;
+  durationSeconds: number;
+  aspectRatio: HtmlVideoAspectRatio;
+  resolution: HtmlVideoResolution;
+};
+
+export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
+  idempotencyKey: string;
+};
+
+export type HtmlVideoPreview = {
+  compositionHtml: string;
+  width: number;
+  height: number;
+};
+
+export type HtmlVideoRenderDetail = {
+  id: string;
+  status: HtmlVideoRenderStatus;
+  progress: number;
+  stageMessage: string;
+  aspectRatio: HtmlVideoAspectRatio;
+  resolution: HtmlVideoResolution;
+  durationSeconds: number;
+  outputUrl: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const validStatuses = new Set<HtmlVideoRenderStatus>([
+  "queued",
+  "rendering",
+  "uploading",
+  "completed",
+  "failed",
+]);
+const validAspectRatios = new Set<HtmlVideoAspectRatio>([
+  "16:9",
+  "9:16",
+  "1:1",
+]);
+const validResolutions = new Set<HtmlVideoResolution>(["720p", "1080p"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function authHeaders(includeJson = false): HeadersInit {
+  const headers: Record<string, string> = {};
+  const token = getAccessToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (includeJson) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+function envelopeData(payload: unknown) {
+  if (
+    !isRecord(payload) ||
+    payload.success !== true ||
+    !("data" in payload)
+  ) {
+    const message =
+      isRecord(payload) && typeof payload.message === "string"
+        ? payload.message
+        : "Phản hồi HTML-to-video không hợp lệ.";
+    throw new Error(message);
+  }
+  return payload.data;
+}
+
+export function parseHtmlVideoPreviewResponse(
+  payload: unknown
+): HtmlVideoPreview {
+  const raw = envelopeData(payload);
+  if (
+    !isRecord(raw) ||
+    typeof raw.compositionHtml !== "string" ||
+    !raw.compositionHtml.trim() ||
+    !Number.isInteger(raw.width) ||
+    Number(raw.width) <= 0 ||
+    !Number.isInteger(raw.height) ||
+    Number(raw.height) <= 0
+  ) {
+    throw new Error("Dữ liệu xem trước HTML-to-video không hợp lệ.");
+  }
+  return {
+    compositionHtml: raw.compositionHtml,
+    width: Number(raw.width),
+    height: Number(raw.height),
+  };
+}
+
+export function parseHtmlVideoRenderResponse(
+  payload: unknown
+): HtmlVideoRenderDetail {
+  const raw = envelopeData(payload);
+  if (!isRecord(raw)) {
+    throw new Error("Dữ liệu kết xuất HTML-to-video không hợp lệ.");
+  }
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  const status = raw.status as HtmlVideoRenderStatus;
+  const progress = raw.progress;
+  const aspectRatio = raw.aspectRatio as HtmlVideoAspectRatio;
+  const resolution = raw.resolution as HtmlVideoResolution;
+  const durationSeconds = raw.durationSeconds;
+  if (
+    !id ||
+    !validStatuses.has(status) ||
+    typeof progress !== "number" ||
+    !Number.isFinite(progress) ||
+    progress < 0 ||
+    progress > 100 ||
+    !validAspectRatios.has(aspectRatio) ||
+    !validResolutions.has(resolution) ||
+    !Number.isInteger(durationSeconds) ||
+    Number(durationSeconds) < 1 ||
+    Number(durationSeconds) > 60 ||
+    typeof raw.stageMessage !== "string" ||
+    typeof raw.createdAt !== "string" ||
+    !raw.createdAt ||
+    typeof raw.updatedAt !== "string" ||
+    !raw.updatedAt
+  ) {
+    throw new Error("Dữ liệu kết xuất HTML-to-video không hợp lệ.");
+  }
+
+  return {
+    id,
+    status,
+    progress: Number(progress),
+    stageMessage: raw.stageMessage,
+    aspectRatio,
+    resolution,
+    durationSeconds: Number(durationSeconds),
+    outputUrl:
+      status === "completed" &&
+      typeof raw.outputUrl === "string" &&
+      raw.outputUrl.trim()
+        ? raw.outputUrl.trim()
+        : null,
+    error:
+      status === "failed" && typeof raw.error === "string" && raw.error.trim()
+        ? raw.error.trim()
+        : null,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+async function readPayload(response: Response) {
+  return response.json().catch(() => ({}));
+}
+
+function requestError(payload: unknown, fallback: string) {
+  return new Error(
+    isRecord(payload) && typeof payload.message === "string"
+      ? payload.message
+      : fallback
+  );
+}
+
+export const htmlVideoRenderService = {
+  async preview(
+    input: HtmlVideoPreviewRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoPreview> {
+    const response = await fetch("/api/v1/html-video-renders/preview", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify(input),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tạo bản xem trước HTML-to-video.");
+    }
+    return parseHtmlVideoPreviewResponse(payload);
+  },
+
+  async create(
+    input: CreateHtmlVideoRenderRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoRenderDetail> {
+    const response = await fetch("/api/v1/html-video-renders", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify(input),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tạo tác vụ kết xuất HTML-to-video.");
+    }
+    return parseHtmlVideoRenderResponse(payload);
+  },
+
+  async get(
+    renderId: string,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoRenderDetail> {
+    const response = await fetch(
+      `/api/v1/html-video-renders/${encodeURIComponent(renderId)}`,
+      {
+        headers: authHeaders(),
+        signal,
+      }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải trạng thái kết xuất video.");
+    }
+    return parseHtmlVideoRenderResponse(payload);
+  },
+};
