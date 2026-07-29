@@ -5,6 +5,13 @@ export type MarketingCampaignPlatform = "Facebook" | "TikTok";
 export type MarketingCampaignMediaPolicy = "text" | "image" | "video" | "auto";
 export type MarketingCampaignType = "single" | "campaign";
 
+export interface ICampaignAssetOrderCustomField {
+  key: string;
+  label: string;
+  archived: boolean;
+  createdAt: Date;
+}
+
 export interface IMarketingCampaign extends Document {
   companyCode: string;
   createdBy: string;
@@ -21,6 +28,9 @@ export interface IMarketingCampaign extends Document {
   integrationIds: Partial<Record<MarketingCampaignPlatform, Types.ObjectId | string>>;
   candidateCount: number;
   generationLeadMinutes: number;
+  preparationMode: "monthly";
+  monthlyPreparationLeadDays: number;
+  preparationScheduleVersion: number;
   verificationLeadMinutes: number;
   latePublishWindowMinutes: number;
   minimumScore: number;
@@ -35,11 +45,13 @@ export interface IMarketingCampaign extends Document {
   };
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
-  imageMode?: "ai" | "real";
+  imageMode?: "ai" | "real" | "order";
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   researchReport?: string;
   apifySources?: string[];
+  /** Columns the team adds to the campaign's production-brief spreadsheet. */
+  assetOrderCustomFields: ICampaignAssetOrderCustomField[];
   contentMatrix?: Array<{
     pillar: string;
     direction: string;

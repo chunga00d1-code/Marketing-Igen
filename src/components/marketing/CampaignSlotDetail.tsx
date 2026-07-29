@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, AlertTriangle, RotateCcw, Check, Upload, Image, Zap } from 'lucide-react';
+import { X, Loader2, AlertTriangle, RotateCcw, Check, Upload, Image, Video, Zap } from 'lucide-react';
 import { CampaignSlot } from './CampaignDetailModal';
-import { MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
+import { MarketingCampaignSummary, marketingCampaignService, type TikTokCampaignPublishOptions } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
+import TikTokPublishModal from './TikTokPublishModal';
+import type { ContentApprovalCard } from '../../types/marketing';
 
 const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
   planned: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -11,6 +13,7 @@ const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
   researching: 'bg-teal-50 text-teal-700 border-teal-200 animate-pulse',
   writing: 'bg-violet-50 text-violet-750 border-violet-200 animate-pulse',
   scoring: 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse',
+  awaiting_assets: 'bg-amber-50 text-amber-700 border-amber-200',
   generating_media: 'bg-pink-50 text-pink-700 border-pink-200 animate-pulse',
   verifying: 'bg-cyan-50 text-cyan-700 border-cyan-200 animate-pulse',
   pending_approval: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
@@ -31,7 +34,8 @@ const DEFAULT_SLOT_STATUS_LABEL: Record<string, string> = {
   researching: 'Đang nghiên cứu web',
   writing: 'Đang viết bài',
   scoring: 'Đang chấm điểm AI',
-  generating_media: 'Đang thiết kế ảnh',
+  awaiting_assets: 'Chờ media từ Drive',
+  generating_media: 'Đang kiểm tra media',
   verifying: 'Đang kiểm duyệt',
   pending_approval: 'Chờ duyệt',
   ready_to_publish: 'Sẵn sàng đăng',
@@ -71,6 +75,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
   const [isSavingContent, setIsSavingContent] = useState(false);
   const [isReplacingImage, setIsReplacingImage] = useState(false);
   const [retryingSlotId, setRetryingSlotId] = useState<string | null>(null);
+  const [tiktokAction, setTiktokAction] = useState<'approve' | 'publish' | null>(null);
 
   const [editTitle, setEditTitle] = useState('');
   const [editBody, setEditBody] = useState('');
@@ -78,6 +83,25 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
   const [aiLogTab, setAiLogTab] = useState<'research' | 'visual' | 'ops'>('research');
 
   const isEditable = ['pending_approval', 'needs_attention', 'failed'].includes(activeSlot.status);
+  const tiktokPreviewVideoUrl = activeSlot.content?.videoUrl
+    || activeSlot.content?.mediaUrls?.[0]
+    || activeSlot.ingestedMedia?.[0]?.url
+    || activeSlot.realImageDirectUrls?.[0]
+    || '';
+  const tiktokCard: ContentApprovalCard | null = activeSlot.platform === 'TikTok' && activeSlot.content?._id && tiktokPreviewVideoUrl
+    ? {
+      id: activeSlot.content._id,
+      title: activeSlot.content.title || activeSlot.topicBrief,
+      channel: 'TikTok',
+      contentType: 'video',
+      status: 'approved',
+      bodyText: activeSlot.content.bodyText || '',
+      videoUrl: tiktokPreviewVideoUrl,
+      mediaType: 'video',
+      generatedAt: new Date().toISOString(),
+      integrationId: activeSlot.integrationId,
+    }
+    : null;
 
   // Sync edits when active slot changes
   useEffect(() => {
@@ -94,6 +118,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
 
   // Handle Slot Approval
   const handleApproveSlot = async () => {
+    if (activeSlot.platform === 'TikTok') {
+      if (!tiktokCard) {
+        toast.warning('TikTok cần video hoàn chỉnh trước khi duyệt đăng.');
+        return;
+      }
+      setTiktokAction('approve');
+      return;
+    }
     setIsApproving(true);
     if (onUpdateSlot) {
       onUpdateSlot(activeSlot._id, { status: 'ready_to_publish' });
@@ -116,6 +148,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
 
   // Handle Instant Publish (Đăng ngay)
   const handlePublishNowSlot = async () => {
+    if (activeSlot.platform === 'TikTok') {
+      if (!tiktokCard) {
+        toast.warning('TikTok cần video hoàn chỉnh trước khi đăng.');
+        return;
+      }
+      setTiktokAction('publish');
+      return;
+    }
     if (!window.confirm('Bạn có chắc chắn muốn phát bài viết này lên Trang ngay lập tức không?')) return;
     setIsPublishingNow(true);
     if (onUpdateSlot) {
@@ -134,6 +174,28 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
       }
     } finally {
       setIsPublishingNow(false);
+    }
+  };
+
+  const handleTikTokConfirm = async (options: TikTokCampaignPublishOptions) => {
+    if (!tiktokAction) return;
+    setIsPublishingNow(tiktokAction === 'publish');
+    setIsApproving(tiktokAction === 'approve');
+    try {
+      if (tiktokAction === 'publish') {
+        await marketingCampaignService.publishNowSlot(campaign._id, activeSlot._id, options);
+        toast.success('TikTok đang nhận video để đăng. Hệ thống sẽ cập nhật trạng thái khi hoàn tất.');
+      } else {
+        await marketingCampaignService.approveSlot(campaign._id, activeSlot._id, options);
+        toast.success('Đã duyệt video TikTok theo lịch đăng.');
+      }
+      setTiktokAction(null);
+      if (onRefresh) await onRefresh();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể gửi video TikTok.');
+    } finally {
+      setIsPublishingNow(false);
+      setIsApproving(false);
     }
   };
 
@@ -264,7 +326,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
     <div className="w-full lg:w-[450px] lg:shrink-0 border border-slate-200 rounded-2xl bg-slate-50/20 p-5 flex flex-col space-y-4 max-h-[75vh] overflow-y-auto transition-all duration-300">
       <div className="flex items-center justify-between border-b border-slate-150 pb-3">
         <div>
-          <h4 className="text-sm font-bold text-slate-800">Duyệt & Biên tập nội dung</h4>
+          <h4 className="text-sm font-bold text-slate-800">{activeSlot.platform === 'TikTok' ? 'Xem trước & duyệt video TikTok' : 'Duyệt & Biên tập nội dung'}</h4>
           <p className="text-[10px] text-slate-400 font-semibold font-mono mt-0.5">
             Giờ đăng: {dateFormatted}
           </p>
@@ -347,7 +409,13 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
           )}
         </div>
 
-        {activeSlot.status === 'pending_approval' && (() => {
+        {activeSlot.status === 'pending_approval' && activeSlot.platform === 'TikTok' && (
+          <div className="border-t border-slate-100 pt-2 text-[10px] font-semibold leading-relaxed text-indigo-650">
+            TikTok cần duyệt tại màn hình này để xem video và chọn quyền riêng tư, tương tác, thời lượng cùng điều khoản đăng.
+          </div>
+        )}
+
+        {activeSlot.status === 'pending_approval' && activeSlot.platform !== 'TikTok' && (() => {
           const localDateString = new Intl.DateTimeFormat('en-CA', {
             timeZone: campaign.timezone || 'Asia/Bangkok',
             year: 'numeric', month: '2-digit', day: '2-digit'
@@ -443,7 +511,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
               : 'border-transparent text-slate-400 hover:text-slate-655'
           }`}
         >
-          Biên tập nội dung
+          {activeSlot.platform === 'TikTok' ? 'Caption & nội dung' : 'Biên tập nội dung'}
         </button>
       </div>
 
@@ -457,14 +525,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
                 <div className="border border-slate-200 rounded-xl bg-slate-950 text-white shadow-xs overflow-hidden font-sans text-left relative aspect-[9/16] max-h-[500px] mx-auto flex flex-col justify-between">
                   {/* Media Content */}
                   <div className="absolute inset-0 z-0 bg-slate-900 flex items-center justify-center">
-                    {activeSlot.content.mediaUrls && activeSlot.content.mediaUrls.length > 0 ? (
-                      activeSlot.content.mediaType === 'video' ? (
-                        <video src={activeSlot.content.mediaUrls[0]} controls className="w-full h-full object-contain" />
-                      ) : (
-                        <img src={activeSlot.content.mediaUrls[0]} alt="TikTok Media" className="w-full h-full object-contain" />
-                      )
+                    {tiktokPreviewVideoUrl ? (
+                      <video src={tiktokPreviewVideoUrl} controls className="w-full h-full object-contain" />
                     ) : (
-                      <span className="text-xs text-slate-500 font-mono">Chưa có video/ảnh</span>
+                      <div className="flex flex-col items-center gap-2 px-8 text-center text-slate-400">
+                        <Video size={28} className="text-slate-500" />
+                        <span className="text-xs font-bold">Chưa có video TikTok</span>
+                        <span className="text-[10px] leading-relaxed">Tải video trực tiếp hoặc nhập từ Google Drive để xem trước.</span>
+                      </div>
                     )}
                   </div>
 
@@ -496,8 +564,8 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
                   {/* Bottom Text Overlay */}
                   <div className="relative z-10 p-3.5 bg-gradient-to-t from-black/75 to-transparent text-xs space-y-1.5">
                     <h5 className="font-bold">@{campaign.title?.replace(/\s+/g, '').toLowerCase() || 'tiktok_channel'}</h5>
-                    <p className="line-clamp-3 leading-relaxed text-slate-200 whitespace-pre-wrap">{editBody || 'Chưa có nội dung...'}</p>
-                    {editTitle && <p className="text-[10px] text-indigo-400 font-bold"># {editTitle}</p>}
+                    <p className="line-clamp-3 leading-relaxed text-slate-200 whitespace-pre-wrap">{editBody || activeSlot.content.bodyText || activeSlot.topicBrief}</p>
+                    {(editTitle || activeSlot.content.title) && <p className="text-[10px] text-indigo-400 font-bold"># {editTitle || activeSlot.content.title}</p>}
                   </div>
                 </div>
               ) : (
@@ -672,6 +740,37 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
               </div>
             </div>
           )}
+        </div>
+      ) : activeSlot.platform === 'TikTok' ? (
+        <div className="space-y-3">
+          <div className="mx-auto aspect-[9/16] max-h-[500px] w-full max-w-[280px] overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 text-white shadow-lg">
+            <div className="relative flex h-full flex-col justify-between">
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+                {tiktokPreviewVideoUrl ? (
+                  <video src={tiktokPreviewVideoUrl} controls className="h-full w-full object-contain" />
+                ) : (
+                  <div className="flex max-w-[190px] flex-col items-center gap-2 px-5 text-center text-slate-400">
+                    <Video size={30} className="text-slate-500" />
+                    <span className="text-xs font-bold">Đang chờ video TikTok</span>
+                    <span className="text-[10px] leading-relaxed">Tải video trực tiếp hoặc nhập từ Google Drive để xem tại đây.</span>
+                  </div>
+                )}
+              </div>
+              <div className="relative z-10 flex items-center justify-between bg-gradient-to-b from-black/65 to-transparent p-3 text-[10px] font-bold">
+                <span>Following&nbsp;&nbsp; For You</span>
+                <span>⌕</span>
+              </div>
+              <div className="relative z-10 bg-gradient-to-t from-black/85 to-transparent p-3.5 pt-12">
+                <p className="text-xs font-bold">@{campaign.title?.replace(/\s+/g, '').toLowerCase() || 'tiktok_channel'}</p>
+                <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[11px] leading-relaxed text-slate-200">{activeSlot.topicBrief}</p>
+                <p className="mt-2 text-[10px] font-bold text-cyan-300">Nội dung đang được AI chuẩn bị</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-3 text-[11px] leading-relaxed text-slate-650">
+            <p className="font-bold text-cyan-800">Xem trước TikTok</p>
+            <p className="mt-1">Video và caption sẽ được cập nhật tự động khi worker hoàn thành. TikTok chỉ cho duyệt/đăng sau khi có video hợp lệ.</p>
+          </div>
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-16 text-center bg-white border border-slate-150 rounded-2xl p-5 shadow-2xs">
@@ -891,6 +990,14 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
           </div>
         </div>
       )}
+      <TikTokPublishModal
+        isOpen={Boolean(tiktokAction)}
+        onClose={() => setTiktokAction(null)}
+        card={tiktokCard}
+        tiktokAccount={{ isConnected: true, integrationId: activeSlot.integrationId }}
+        onConfirmPublish={handleTikTokConfirm}
+        isPublishing={isPublishingNow || isApproving}
+      />
     </div>
   );
 };

@@ -27,10 +27,17 @@ interface DataPanelProps {
   sheetInput: string;
   googleSheetUrl: string;
   loadingSheet: boolean;
+  campaigns: Array<{ _id: string; title: string; startDate: string; endDate: string; statistics: { totalSlots: number } }>;
+  selectedCampaignId: string;
+  loadingCampaigns: boolean;
+  loadingCampaignOrders: boolean;
   readyCount: number;
   onDataStep: (step: 1 | 2 | 3) => void;
   onGoogleSheetUrl: (value: string) => void;
   onImportGoogleSheet: () => void;
+  onLoadCampaigns: () => void;
+  onSelectCampaign: (campaignId: string) => void;
+  onImportCampaignOrders: () => void;
   onImportExcel: (file: File) => void;
   onSheetInput: (value: string) => void;
   onImportSheet: () => void;
@@ -58,7 +65,7 @@ export function DataPanel(props: DataPanelProps) {
   const allRowsSelected = props.rows.length > 0 && selectedRows === props.rows.length;
 
   return (
-    <div className="min-w-0 space-y-4 overflow-x-hidden">
+    <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden">
       <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
         {STEPS.map((step) => {
           const active = props.dataStep === step.id;
@@ -76,7 +83,7 @@ export function DataPanel(props: DataPanelProps) {
                   props.onDataStep(step.id);
                 }
               }}
-              className={`rounded-lg px-1 py-2 text-center text-[11px] font-extrabold transition ${
+              className={`min-w-0 overflow-hidden rounded-lg px-1 py-2 text-center text-[11px] font-extrabold transition ${
                 active
                   ? 'bg-white text-indigo-700 shadow-sm'
                   : completed
@@ -89,7 +96,7 @@ export function DataPanel(props: DataPanelProps) {
               }`}>
                 {completed ? <Check className="h-3 w-3" /> : step.id}
               </span>
-              {step.label}
+              <span className="block min-w-0 break-words leading-tight">{step.label}</span>
             </button>
           );
         })}
@@ -104,8 +111,8 @@ export function DataPanel(props: DataPanelProps) {
             </p>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <div className="flex items-center gap-3">
+          <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-white p-3">
+            <div className="flex min-w-0 items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
                 <FileSpreadsheet className="h-4 w-4" />
               </span>
@@ -118,20 +125,65 @@ export function DataPanel(props: DataPanelProps) {
               aria-label="Liên kết Google Sheet"
               className="mt-3 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-emerald-500"
             />
-            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            <p className="mt-1.5 break-words text-[11px] leading-relaxed text-slate-500">
               Hệ thống tự tìm đúng tab và vùng bảng, đồng thời đọc ảnh chèn trực tiếp trong ô.
             </p>
             <button
               type="button"
               onClick={props.onImportGoogleSheet}
               disabled={!props.googleSheetUrl.trim() || props.loadingSheet}
-              className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 text-sm font-extrabold text-white hover:bg-emerald-700 disabled:bg-slate-300"
+              className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-emerald-600 px-2 text-sm font-extrabold text-white hover:bg-emerald-700 disabled:bg-slate-300"
             >
               {props.loadingSheet ? (
-                <><LoaderCircle className="h-4 w-4 animate-spin" /> Đang đọc dữ liệu...</>
+                <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang đọc dữ liệu...</span></>
               ) : (
-                <><Link2 className="h-4 w-4" /> Nhập từ Google Sheet</>
+                <><Link2 className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">Nhập từ Google Sheet</span></>
               )}
+            </button>
+          </div>
+
+          <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                <Database className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-extrabold text-slate-900">Order ảnh từ chiến dịch</p>
+                <p className="mt-0.5 break-words text-[11px] leading-relaxed text-slate-500">Nhập các Order dạng Ảnh vào Bulk Create; Order Video được giữ ở luồng kịch bản.</p>
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <select
+                value={props.selectedCampaignId}
+                onChange={(event) => props.onSelectCampaign(event.target.value)}
+                disabled={props.loadingCampaigns || props.loadingCampaignOrders}
+                className="h-10 min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-violet-500 disabled:opacity-60"
+              >
+                <option value="">Chọn chiến dịch</option>
+                {props.campaigns.map((campaign) => (
+                  <option key={campaign._id} value={campaign._id}>
+                    {campaign.title} · {campaign.statistics.totalSlots} bài
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={props.onLoadCampaigns}
+                disabled={props.loadingCampaigns || props.loadingCampaignOrders}
+                className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-60"
+              >
+                {props.loadingCampaigns ? <LoaderCircle className="h-4 w-4 animate-spin" /> : 'Tải'}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={props.onImportCampaignOrders}
+              disabled={!props.selectedCampaignId || props.loadingCampaignOrders}
+              className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-violet-600 px-2 text-sm font-extrabold text-white hover:bg-violet-700 disabled:bg-slate-300"
+            >
+              {props.loadingCampaignOrders
+                ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang nhập Order...</span></>
+                : <><FileSpreadsheet className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">Nhập Order vào Bulk Create</span></>}
             </button>
           </div>
 

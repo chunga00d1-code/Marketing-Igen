@@ -17,6 +17,7 @@ const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
   researching: 'bg-teal-50 text-teal-700 border-teal-200 animate-pulse',
   writing: 'bg-violet-50 text-violet-750 border-violet-200 animate-pulse',
   scoring: 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse',
+  awaiting_assets: 'bg-amber-50 text-amber-700 border-amber-200',
   generating_media: 'bg-pink-50 text-pink-700 border-pink-200 animate-pulse',
   verifying: 'bg-cyan-50 text-cyan-700 border-cyan-200 animate-pulse',
   pending_approval: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
@@ -37,6 +38,7 @@ const DEFAULT_SLOT_STATUS_LABEL: Record<string, string> = {
   researching: 'Đang nghiên cứu web',
   writing: 'Đang viết bài',
   scoring: 'Đang chấm điểm AI',
+  awaiting_assets: 'Chờ ảnh thiết kế',
   generating_media: 'Đang thiết kế ảnh',
   verifying: 'Đang kiểm duyệt',
   pending_approval: 'Chờ duyệt',
@@ -220,7 +222,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
   };
 
   const pendingApprovalSlots = useMemo(() => {
-    return sortedSlots.filter(s => s.status === 'pending_approval');
+    return sortedSlots.filter(s => s.status === 'pending_approval' && s.platform !== 'TikTok');
   }, [sortedSlots]);
 
   const handleSelectAllPending = () => {
@@ -350,7 +352,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
     let failCount = 0;
     try {
       const slotsToApprove = slots.filter(
-        s => selectedSlotIds.includes(s._id) && s.status === 'pending_approval'
+        s => selectedSlotIds.includes(s._id) && s.status === 'pending_approval' && s.platform !== 'TikTok'
       );
       
       if (slotsToApprove.length === 0) {
@@ -421,6 +423,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
   };
 
   const now = new Date();
+  const hasShareableReviewSlots = slots.some((slot) => slot.platform !== 'TikTok');
 
   return (
     <div className="space-y-3">
@@ -430,6 +433,8 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
           {activeSlot && <span className="text-[10px] text-indigo-650 font-bold bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded mt-1 inline-block">Bấm chọn slot để xem/sửa chi tiết</span>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {hasShareableReviewSlots && (
+            <>
           <button
             type="button"
             onClick={() => {
@@ -455,6 +460,8 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
             <Share2 size={11} className="text-slate-400" />
             Chia sẻ duyệt tháng này
           </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -568,7 +575,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
               className="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
             >
               {isBulkApproving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-              Duyệt hàng loạt ({slots.filter(s => selectedSlotIds.includes(s._id) && s.status === 'pending_approval').length})
+              Duyệt hàng loạt ({slots.filter(s => selectedSlotIds.includes(s._id) && s.status === 'pending_approval' && s.platform !== 'TikTok').length})
             </button>
             {onRetrySlot && (
               <button
@@ -810,6 +817,16 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                             );
                           }
                           if (slot.status === 'pending_approval') {
+                            if (slot.platform === 'TikTok') {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-650"
+                                  title="TikTok cần được duyệt trong màn hình preview để chọn tùy chọn đăng"
+                                >
+                                  Duyệt trong hệ thống
+                                </span>
+                              );
+                            }
                             return (
                               <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                                 <button
@@ -821,6 +838,13 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                                   Chia sẻ slot
                                 </button>
                               </div>
+                            );
+                          }
+                          if (slot.status === 'awaiting_assets') {
+                            return (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
+                                Chờ nhập Drive
+                              </span>
                             );
                           }
                           if ([
@@ -860,8 +884,11 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                             );
                           }
                           return (
-                            <span className="text-[10px] text-amber-600 font-medium select-none">
-                              Chờ xếp lịch chạy
+                            <span
+                              className="text-[10px] text-amber-600 font-medium select-none"
+                              title="Tác vụ đã đến thời điểm xử lý và đang chờ worker nhận theo giới hạn tải của hệ thống"
+                            >
+                              Đang chờ worker nhận tác vụ
                             </span>
                           );
                         })()}
@@ -876,12 +903,13 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
       </div>
 
       {/* Pagination Controls */}
-      {totalSlotPages > 1 && (
+      {totalSlots > 0 && (
         <div className="flex items-center justify-between pt-3 border-t border-slate-100 select-none">
           <span className="text-[11px] font-semibold text-slate-500">
             Hiển thị {(slotPage - 1) * SLOTS_PER_PAGE + 1} - {Math.min(slotPage * SLOTS_PER_PAGE, sortedSlots.length)} trong tổng số {sortedSlots.length} bài viết
           </span>
-          <div className="flex items-center gap-1.5">
+          {totalSlotPages > 1 && (
+            <div className="flex items-center gap-1.5">
             <button
               type="button"
               disabled={slotPage === 1}
@@ -927,7 +955,8 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
             >
               Sau
             </button>
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>

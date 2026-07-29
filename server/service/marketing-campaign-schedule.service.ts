@@ -35,6 +35,15 @@ function readZonedParts(value: Date, timezone: string) {
   };
 }
 
+export function formatDateInTimezone(value: Date, timezone: string): string {
+  const parts = readZonedParts(value, timezone);
+  return [
+    String(parts.year).padStart(4, "0"),
+    String(parts.month).padStart(2, "0"),
+    String(parts.day).padStart(2, "0"),
+  ].join("-");
+}
+
 export function zonedLocalTimeToUtc(date: string, time: string, timezone: string): Date {
   if (!DATE_PATTERN.test(date) || !TIME_PATTERN.test(time)) {
     throw new Error("Ngày hoặc giờ chiến dịch không đúng định dạng.");
@@ -81,6 +90,74 @@ function enumerateDates(startDate: string, endDate: string): string[] {
   return dates;
 }
 
+function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function addCalendarMonthsClamped(date: string, months: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const targetMonthStart = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(
+    targetMonthStart.getUTCFullYear(),
+    targetMonthStart.getUTCMonth() + 1,
+    0
+  )).getUTCDate();
+  targetMonthStart.setUTCDate(Math.min(day, lastDay));
+  return targetMonthStart.toISOString().slice(0, 10);
+}
+
+export function resolveCampaignMonthWindow(
+  campaignStartDate: string,
+  slotDate: string
+): { monthIndex: number; startsOn: string } {
+  if (!DATE_PATTERN.test(campaignStartDate) || !DATE_PATTERN.test(slotDate)) {
+    throw new Error("Khoảng ngày chiến dịch không đúng định dạng.");
+  }
+  if (slotDate < campaignStartDate) {
+    throw new Error("Ngày của slot không được đứng trước ngày bắt đầu chiến dịch.");
+  }
+
+  let monthIndex = 0;
+  while (monthIndex < 120) {
+    const nextMonthStart = addCalendarMonthsClamped(campaignStartDate, monthIndex + 1);
+    if (slotDate < nextMonthStart) {
+      return {
+        monthIndex,
+        startsOn: addCalendarMonthsClamped(campaignStartDate, monthIndex),
+      };
+    }
+    monthIndex += 1;
+  }
+
+  throw new Error("Khoảng tháng chiến dịch vượt quá giới hạn hỗ trợ.");
+}
+
+export function resolveMonthlyPrepareAt(input: {
+  campaignStartDate: string;
+  slotDate: string;
+  timezone: string;
+  campaignCreatedAt: Date;
+  leadDays?: number;
+}): Date {
+  const leadDays = input.leadDays ?? 10;
+  if (!Number.isInteger(leadDays) || leadDays < 1 || leadDays > 30) {
+    throw new Error("Số ngày chuẩn bị trước tháng phải từ 1 đến 30.");
+  }
+
+  const monthWindow = resolveCampaignMonthWindow(input.campaignStartDate, input.slotDate);
+  if (monthWindow.monthIndex === 0) {
+    return new Date(input.campaignCreatedAt);
+  }
+
+  return zonedLocalTimeToUtc(
+    addDays(monthWindow.startsOn, -leadDays),
+    "00:00",
+    input.timezone
+  );
+}
+
 export function buildCampaignSchedule(input: {
   startDate: string;
   endDate: string;
@@ -91,9 +168,11 @@ export function buildCampaignSchedule(input: {
   generationLeadMinutes: number;
   verificationLeadMinutes: number;
   customSchedule?: Record<string, string[]>;
+  campaignCreatedAt?: Date;
+  monthlyPreparationLeadDays?: number;
 }): CampaignScheduleSlotInput[] {
   const dates = enumerateDates(input.startDate, input.endDate);
-  if (dates.length > 90) throw new Error("Mỗi chiến dịch tối đa 90 ngày.");
+  if (dates.length > 93) throw new Error("Mỗi chiến dịch tối đa 3 tháng (93 ngày).");
   if (!Number.isInteger(input.postsPerDay) || input.postsPerDay < 1 || input.postsPerDay > 5) {
     throw new Error("Số bài mỗi ngày phải từ 1 đến 5.");
   }
@@ -139,6 +218,7 @@ export function buildCampaignSchedule(input: {
   }
 
   let globalSlotIndex = 0;
+  const campaignCreatedAt = input.campaignCreatedAt || new Date();
   return dates.flatMap((date) => {
     const times = input.customSchedule?.[date] || input.postingTimes;
     return times.map((time) => {
@@ -148,8 +228,14 @@ export function buildCampaignSchedule(input: {
       const progressRatio = totalSlots > 1 ? currentSlotIndex / (totalSlots - 1) : 0;
       return {
         scheduledAt,
-        prepareAt: zonedLocalTimeToUtc(date, '00:00', input.timezone),
-        verifyAt: zonedLocalTimeToUtc(date, '00:30', input.timezone),
+        prepareAt: resolveMonthlyPrepareAt({
+          campaignStartDate: input.startDate,
+          slotDate: date,
+          timezone: input.timezone,
+          campaignCreatedAt,
+          leadDays: input.monthlyPreparationLeadDays,
+        }),
+        verifyAt: new Date(scheduledAt.getTime() - input.verificationLeadMinutes * 60_000),
         platform: input.platforms[currentSlotIndex % input.platforms.length],
         slotIndex: currentSlotIndex,
         totalSlots,

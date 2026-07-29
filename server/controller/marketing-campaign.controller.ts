@@ -10,7 +10,10 @@ import { MarketingAnalyticsService } from "../service/marketing-analytics.servic
 import { campaignContentSheetService } from "../service/campaign-content-sheet.service";
 import { enqueueCampaignSheetAIJob } from "../queue/campaign-content-sheet-queue";
 import { campaignAssetOrderService } from "../service/campaign-asset-order.service";
+import { enqueueCampaignAssetOrderAIJob } from "../queue/campaign-asset-order-ai-queue";
 import { enqueueBulkCreateJob } from "../queue/bulk-create-queue";
+import type { MarketingCampaignPlatform } from "../interface/marketing-campaign.interface";
+import { tiktokService } from "../service/tiktok.service";
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
@@ -27,11 +30,18 @@ function assertWorkerSecret(req: AuthenticatedRequest) {
   if (!expectedSecret || req.headers["x-webhook-token"] !== expectedSecret) throw new Error("Worker token không hợp lệ.");
 }
 
+function getWorkerPlatform(req: AuthenticatedRequest): MarketingCampaignPlatform | undefined {
+  const platform = req.body?.platform;
+  if (platform === undefined) return undefined;
+  if (platform === "Facebook" || platform === "TikTok") return platform;
+  throw new Error("Nền tảng worker không hợp lệ.");
+}
+
 export const marketingCampaignController = {
   async prepareWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignWorkerService.prepareDueSlots(Number(req.body?.limit || 3));
+      const result = await marketingCampaignWorkerService.prepareDueSlots(Number(req.body?.limit || 3), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Prepare worker thất bại.";
@@ -42,7 +52,7 @@ export const marketingCampaignController = {
   async mediaWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignFacebookWorkerService.generateDueMedia(Number(req.body?.limit || 2));
+      const result = await marketingCampaignFacebookWorkerService.generateDueMedia(Number(req.body?.limit || 2), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Media worker thất bại.";
@@ -53,7 +63,7 @@ export const marketingCampaignController = {
   async verifyWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignFacebookWorkerService.verifyDueSlots(Number(req.body?.limit || 5));
+      const result = await marketingCampaignFacebookWorkerService.verifyDueSlots(Number(req.body?.limit || 5), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Verify worker thất bại.";
@@ -64,7 +74,7 @@ export const marketingCampaignController = {
   async publishWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignFacebookWorkerService.publishDueSlots(Number(req.body?.limit || 3));
+      const result = await marketingCampaignFacebookWorkerService.publishDueSlots(Number(req.body?.limit || 3), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Publish worker thất bại.";
@@ -143,6 +153,75 @@ export const marketingCampaignController = {
     }
   },
 
+  async tiktokStatusWorker(req: AuthenticatedRequest, res: Response) {
+    try {
+      assertWorkerSecret(req);
+      const result = await tiktokService.reconcilePendingPublishes({ limit: Number(req.body?.limit || 10) });
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "TikTok status worker thất bại.";
+      return res.status(message.includes("token") ? 401 : 500).json({ status: "error", message });
+    }
+  },
+
+  async previewAssetOrderDriveImport(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.previewDriveImport(
+        companyCode,
+        req.params.id,
+        req.body.googleDriveFolderUrl
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể quét ảnh Drive cho các Order.",
+      });
+    }
+  },
+
+  async applyAssetOrderDriveImport(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.applyDriveImport(
+        companyCode,
+        req.params.id,
+        req.body.googleDriveFolderUrl
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể nhập ảnh Drive vào các Order.",
+      });
+    }
+  },
+
+  async addAssetOrderCustomField(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.addCustomField(companyCode, req.params.id, req.body.label);
+      return res.status(201).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể thêm cột tùy chỉnh." });
+    }
+  },
+
+  async archiveAssetOrderCustomField(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.archiveCustomField(companyCode, req.params.id, req.params.fieldKey);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể ẩn cột tùy chỉnh." });
+    }
+  },
+
   async createAssetOrder(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode, userId } = getIdentity(req);
@@ -198,6 +277,67 @@ export const marketingCampaignController = {
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number; status?: number })?.statusCode || (error as { status?: number })?.status || 400);
       return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "AI không thể tạo brief cho Order." });
+    }
+  },
+
+  async fillAllAssetOrdersAI(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const estimate = await campaignAssetOrderService.getFillAllAiCost(companyCode, req.params.id);
+      if (!estimate.orderCount) {
+        return res.status(409).json({ status: "error", message: "Chưa có Order gắn với bài viết để AI điền." });
+      }
+      await walletService.checkBalance(userId, estimate.cost);
+      const data = await campaignAssetOrderService.createFillAllAIJob(companyCode, req.params.id, userId, req.body);
+      if (data.status === "queued") await enqueueCampaignAssetOrderAIJob(String(data._id));
+      return res.status(202).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number; status?: number })?.statusCode || (error as { status?: number })?.status || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "AI không thể điền toàn bộ Order." });
+    }
+  },
+
+  async exportAssetOrdersForBulk(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.exportForBulkCreate(companyCode, req.params.id);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể nhập Order vào Bulk Create." });
+    }
+  },
+
+  async syncAssetOrdersFromBulkImport(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.syncBulkCreateImport(companyCode, req.params.id, req.body.jobId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đồng bộ ảnh Bulk Create về Order." });
+    }
+  },
+
+  async getFillAllAssetOrdersAIJob(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.getFillAllAIJob(companyCode, req.params.id, req.params.jobId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải tiến trình AI điền Order." });
+    }
+  },
+
+  async cancelFillAllAssetOrdersAIJob(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.cancelFillAllAIJob(companyCode, req.params.id, req.params.jobId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể hủy AI job Order." });
     }
   },
 
@@ -491,7 +631,7 @@ export const marketingCampaignController = {
   async approveSlot(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode, userId } = getIdentity(req);
-      const slot = await marketingCampaignService.approveSlot(companyCode, req.params.id, req.params.slotId, userId);
+      const slot = await marketingCampaignService.approveSlot(companyCode, req.params.id, req.params.slotId, userId, req.body.tiktokPublishOptions);
       return res.status(200).json({ status: "success", data: slot });
     } catch (error: unknown) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể duyệt slot." });
@@ -501,7 +641,7 @@ export const marketingCampaignController = {
   async publishNowSlot(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode, userId } = getIdentity(req);
-      const slot = await marketingCampaignService.publishNowSlot(companyCode, req.params.id, req.params.slotId, userId);
+      const slot = await marketingCampaignService.publishNowSlot(companyCode, req.params.id, req.params.slotId, userId, req.body.tiktokPublishOptions);
       return res.status(200).json({ status: "success", data: slot });
     } catch (error: unknown) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đăng ngay slot này." });

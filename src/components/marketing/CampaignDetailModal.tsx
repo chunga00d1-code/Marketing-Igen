@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, X, Loader2, RotateCcw } from 'lucide-react';
+import { CalendarClock, FolderOpen, X, Loader2, RotateCcw } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
 import { socketService } from '../../services/socketService';
 import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
+
+const DETAIL_LIST_ITEMS_PER_PAGE = 8;
 
 interface CampaignSlot {
   _id: string;
@@ -15,8 +17,10 @@ interface CampaignSlot {
   status: string;
   variant?: string;
   platform?: string;
+  integrationId?: string;
   errorMessage?: string;
   publishedPostUrl?: string;
+  realImageDirectUrls?: string[];
   ingestedMedia?: Array<{ sourceUrl: string; url: string; uploadedAt: string }>;
   researchAnalysis?: {
     context: string;
@@ -78,6 +82,7 @@ interface CampaignSlot {
     outline?: string;
     mediaPrompt?: string;
     mediaUrls?: string[];
+    videoUrl?: string;
     mediaType?: 'text' | 'image' | 'video';
   } | null;
 }
@@ -94,6 +99,45 @@ interface CampaignDetailModalProps {
   onRetryAll?: (campaignId: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
   onUpdateSlot?: (slotId: string, updatedFields: Partial<CampaignSlot>) => void;
+}
+
+interface DetailListPaginationProps {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  onChange: (page: number) => void;
+}
+
+function DetailListPagination({ currentPage, totalPages, totalItems, onChange }: DetailListPaginationProps) {
+  const firstItem = (currentPage - 1) * DETAIL_LIST_ITEMS_PER_PAGE + 1;
+  const lastItem = Math.min(currentPage * DETAIL_LIST_ITEMS_PER_PAGE, totalItems);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs">
+      <span className="font-medium text-slate-500">
+        Hiển thị {firstItem}–{lastItem} / {totalItems} mục
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={currentPage === 1}
+          onClick={() => onChange(currentPage - 1)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-650 transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+        >
+          Trước
+        </button>
+        <span className="font-medium text-slate-500">Trang {currentPage}/{totalPages}</span>
+        <button
+          type="button"
+          disabled={currentPage === totalPages}
+          onClick={() => onChange(currentPage + 1)}
+          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-650 transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+        >
+          Sau
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function CampaignDetailModal({
@@ -114,6 +158,8 @@ export default function CampaignDetailModal({
   const [isBatchPreparing, setIsBatchPreparing] = useState(false);
   const [campaignResearchTab, setCampaignResearchTab] = useState<'summary' | 'evidence'>('summary');
   const [activeMainTab, setActiveMainTab] = useState<'published_links' | 'research' | 'overall_strategy' | 'content_pillar' | 'content_calendar' | 'asset_orders'>('content_calendar');
+  const [publishedPage, setPublishedPage] = useState(1);
+  const [researchEvidencePage, setResearchEvidencePage] = useState(1);
 
   // Filter slots that have published URLs
   const publishedSlotsList = React.useMemo(() => {
@@ -148,6 +194,17 @@ export default function CampaignDetailModal({
     }
     return list;
   }, [campaignDetail?.slots]);
+
+  const totalPublishedPages = Math.max(1, Math.ceil(publishedSlotsList.length / DETAIL_LIST_ITEMS_PER_PAGE));
+  const totalResearchEvidencePages = Math.max(1, Math.ceil(allResearchEvidence.length / DETAIL_LIST_ITEMS_PER_PAGE));
+  const paginatedPublishedSlots = React.useMemo(
+    () => publishedSlotsList.slice((publishedPage - 1) * DETAIL_LIST_ITEMS_PER_PAGE, publishedPage * DETAIL_LIST_ITEMS_PER_PAGE),
+    [publishedPage, publishedSlotsList]
+  );
+  const paginatedResearchEvidence = React.useMemo(
+    () => allResearchEvidence.slice((researchEvidencePage - 1) * DETAIL_LIST_ITEMS_PER_PAGE, researchEvidencePage * DETAIL_LIST_ITEMS_PER_PAGE),
+    [allResearchEvidence, researchEvidencePage]
+  );
 
   // 2. Parse the aggregated research summary & keywords from the slots
   const parsedEvidenceSummary = React.useMemo(() => {
@@ -209,7 +266,17 @@ export default function CampaignDetailModal({
   // Reset active slot when campaign changes
   useEffect(() => {
     setSelectedSlot(null);
+    setPublishedPage(1);
+    setResearchEvidencePage(1);
   }, [campaignDetail?.campaign?._id]);
+
+  useEffect(() => {
+    setPublishedPage((page) => Math.min(page, totalPublishedPages));
+  }, [totalPublishedPages]);
+
+  useEffect(() => {
+    setResearchEvidencePage((page) => Math.min(page, totalResearchEvidencePages));
+  }, [totalResearchEvidencePages]);
 
   // Subscribe to real-time socket updates for campaign slots
   useEffect(() => {
@@ -242,7 +309,7 @@ export default function CampaignDetailModal({
   const publishedSlots = sortedSlots.filter((s) => s.status === 'published').length;
 
   const inProgressSlots = sortedSlots.filter((s) =>
-    ['queued', 'generating', 'researching', 'writing', 'scoring', 'generating_media', 'verifying', 'pending_approval', 'ready_to_publish', 'publishing', 'retrying'].includes(s.status)
+    ['queued', 'generating', 'researching', 'writing', 'scoring', 'awaiting_assets', 'generating_media', 'verifying', 'pending_approval', 'ready_to_publish', 'publishing', 'retrying'].includes(s.status)
   ).length;
 
   return (
@@ -336,12 +403,12 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('asset_orders')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
+              className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
                 ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              Order ảnh, video
+              <FolderOpen size={14} /> Order media · Nhập Drive
             </button>
           </div>
         )}
@@ -368,7 +435,8 @@ export default function CampaignDetailModal({
                   </div>
 
                   {publishedSlotsList.length > 0 ? (
-                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <>
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                           <tr>
@@ -380,7 +448,7 @@ export default function CampaignDetailModal({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                          {publishedSlotsList.map((slot) => (
+                          {paginatedPublishedSlots.map((slot) => (
                             <tr key={slot._id} className="hover:bg-slate-50/80 transition-colors">
                               <td className="p-3 font-mono text-slate-600 whitespace-nowrap">
                                 {new Intl.DateTimeFormat('vi-VN', {
@@ -416,7 +484,16 @@ export default function CampaignDetailModal({
                           ))}
                         </tbody>
                       </table>
-                    </div>
+                      </div>
+                      {totalPublishedPages > 1 && (
+                        <DetailListPagination
+                          currentPage={publishedPage}
+                          totalPages={totalPublishedPages}
+                          totalItems={publishedSlotsList.length}
+                          onChange={setPublishedPage}
+                        />
+                      )}
+                    </>
                   ) : (
                     <div className="text-center py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 space-y-2">
                       <p className="text-sm font-bold text-slate-600">Chưa có bài viết nào được đăng lên MXH</p>
@@ -540,7 +617,7 @@ export default function CampaignDetailModal({
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-1">
-                          {allResearchEvidence.map((ev, i) => (
+                          {paginatedResearchEvidence.map((ev, i) => (
                             <div key={i} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
                               <div className="flex items-start justify-between gap-2">
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ev.source === 'facebook' ? 'bg-blue-100 text-blue-800' :
@@ -559,6 +636,14 @@ export default function CampaignDetailModal({
                             </div>
                           ))}
                         </div>
+                      )}
+                      {campaignResearchTab === 'evidence' && totalResearchEvidencePages > 1 && (
+                        <DetailListPagination
+                          currentPage={researchEvidencePage}
+                          totalPages={totalResearchEvidencePages}
+                          totalItems={allResearchEvidence.length}
+                          onChange={setResearchEvidencePage}
+                        />
                       )}
                     </div>
                   ) : (

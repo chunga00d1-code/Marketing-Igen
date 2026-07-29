@@ -161,7 +161,11 @@ export const tiktokController = {
         req.headers["x-tiktok-webhook-secret"] || req.headers["x-webhook-token"] || req.query.token || ""
       );
 
-      if (!tiktokService.verifyWebhookToken(token)) {
+      if (!tiktokService.verifyWebhookRequest({
+        signature: String(req.headers["tiktok-signature"] || ""),
+        rawBody: String((req as Request & { rawBody?: string }).rawBody || ""),
+        relayToken: token,
+      })) {
         return res.status(401).json({
           status: "error",
           message: "Webhook token khong hop le",

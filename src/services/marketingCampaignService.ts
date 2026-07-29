@@ -2,6 +2,20 @@ import { getAccessToken } from './authService';
 
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'cancelled' | 'failed';
 
+export type TikTokCampaignPublishOptions = {
+  caption: string;
+  privacyLevel: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY';
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  brandContentToggle: boolean;
+  brandContent: boolean;
+  brandOrganic: boolean;
+  isAigc: boolean;
+  videoDurationSeconds: number;
+  consentAccepted: boolean;
+};
+
 export interface MarketingCampaignSummary {
   _id: string;
   title: string;
@@ -15,6 +29,9 @@ export interface MarketingCampaignSummary {
   postingTimes: string[];
   platforms: Array<'Facebook' | 'TikTok'>;
   candidateCount: number;
+  preparationMode?: 'monthly';
+  monthlyPreparationLeadDays?: number;
+  preparationScheduleVersion?: number;
   contentPillars: string[];
   publishMode?: 'auto' | 'manual';
   captionMode?: 'none' | 'speech' | 'context' | 'combined';
@@ -51,6 +68,7 @@ export interface CampaignSlot {
   errorMessage?: string;
   publishedPostUrl?: string;
   platform?: string;
+  integrationId?: string;
   approvedBy?: string;
   approvedAt?: string;
   marketingContentId?: string;
@@ -286,22 +304,29 @@ export interface CampaignAssetOrder {
   subheadline?: string;
   cta?: string;
   visualBrief?: string;
+  videoScript?: string;
   assets: CampaignAssetOrderAsset[];
+  customFields?: Record<string, string>;
+  manualFieldKeys?: string[];
   status: CampaignAssetOrderStatus;
   revision: number;
   bulkJobId?: string;
   outputUrls: string[];
   aiProposal?: {
     idempotencyKey: string;
+    generationJobId?: string;
+    modelName?: string;
     contentGroup?: string;
     shootingContent?: string;
     productionRequirements?: string;
     quantitySuggestion?: string;
     usageChannels?: 'Facebook';
+    format?: CampaignAssetOrderFormat;
     headline: string;
     subheadline?: string;
     cta?: string;
     visualBrief?: string;
+    videoScript?: string;
     references: Array<{
       kind: 'campaign' | 'slot' | 'knowledge_document' | 'knowledge_chunk';
       id: string;
@@ -310,6 +335,7 @@ export interface CampaignAssetOrder {
     }>;
     warnings: string[];
     createdAt: string;
+    appliedAt?: string;
   };
   createdAt: string;
   updatedAt: string;
@@ -324,8 +350,48 @@ export interface CampaignAssetOrder {
   };
 }
 
+export interface CampaignAssetOrderAIJob {
+  _id: string;
+  status: 'queued' | 'processing' | 'completed' | 'partial' | 'failed' | 'cancelled';
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  skippedItems: number;
+  conflictedItems: number;
+  progress: number;
+  estimatedCost: number;
+  actualCost: number;
+  errorMessage?: string;
+  results: Array<{
+    orderId: string;
+    expectedRevision: number;
+    updatedFields: string[];
+    warnings: string[];
+    status: 'applied' | 'skipped' | 'conflict' | 'failed';
+  }>;
+}
+
+export interface CampaignAssetOrderBulkImport {
+  sourceName: string;
+  campaign: CampaignAssetOrderData['campaign'];
+  columns: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'image';
+    samples: string[];
+  }>;
+  rows: Array<{
+    id: string;
+    selected: boolean;
+    cells: Record<string, string>;
+  }>;
+  skipped: Array<{ orderId: string; reason: string }>;
+  missingPrimaryAssetCount: number;
+  maxBulkRows: number;
+}
+
 export interface CampaignAssetOrderData {
-  campaign: { id: string; title: string; timezone: string };
+  campaign: { id: string; title: string; timezone: string; platforms: Array<'Facebook' | 'TikTok'> };
   slots: Array<{
     _id: string;
     topicBrief: string;
@@ -336,7 +402,32 @@ export interface CampaignAssetOrderData {
     mediaType: string;
     page: string;
   }>;
+  customFieldColumns: Array<{ key: string; label: string }>;
   orders: CampaignAssetOrder[];
+}
+
+export interface CampaignDriveImportPreview {
+  totalOrders: number;
+  totalFiles: number;
+  mappedOrders: number;
+  missingOrders: Array<{
+    orderId: string;
+    slotId: string;
+    title: string;
+    scheduledAt: string;
+    position: number;
+  }>;
+  unmatchedFiles: DriveFileItem[];
+  mappings: Array<{
+    orderId: string;
+    slotId: string;
+    title: string;
+    scheduledAt: string;
+    position: number;
+    files: DriveFileItem[];
+  }>;
+  appliedOrders?: number;
+  queuedSlots?: number;
 }
 
 export interface CampaignAssetOrderBulkPreview {
@@ -401,8 +492,9 @@ export const marketingCampaignService = {
     candidateCount: number;
     qualityMode?: 'premium' | 'budget';
     publishMode?: 'auto' | 'manual';
-    imageMode?: 'ai' | 'real';
+    imageMode?: 'ai' | 'real' | 'order';
     publishNow?: boolean;
+    initialVideoUrl?: string;
     googleDriveFolderUrl?: string;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     captionMode?: 'none' | 'speech' | 'context' | 'combined';
@@ -410,7 +502,10 @@ export const marketingCampaignService = {
     customSchedule?: Record<string, string[]>;
     apifySources?: string[];
   }) {
-    return request<{ campaign: MarketingCampaignSummary }>('/api/v1/marketing-campaigns', {
+    return request<{
+      campaign: MarketingCampaignSummary;
+      preparation: { enqueued: number; deferred: number };
+    }>('/api/v1/marketing-campaigns', {
       method: 'POST',
       body: JSON.stringify(input),
     });
@@ -432,12 +527,18 @@ export const marketingCampaignService = {
     return request<{ retriedCount: number }>(`/api/v1/marketing-campaigns/${campaignId}/retry-all`, { method: 'POST' });
   },
 
-  approveSlot(campaignId: string, slotId: string) {
-    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, { method: 'POST' });
+  approveSlot(campaignId: string, slotId: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(tiktokPublishOptions ? { tiktokPublishOptions } : {}),
+    });
   },
 
-  publishNowSlot(campaignId: string, slotId: string) {
-    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/publish-now`, { method: 'POST' });
+  publishNowSlot(campaignId: string, slotId: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
+    return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/publish-now`, {
+      method: 'POST',
+      body: JSON.stringify(tiktokPublishOptions ? { tiktokPublishOptions } : {}),
+    });
   },
 
   updateSlotContent(campaignId: string, slotId: string, updates: { title?: string; bodyText?: string; outline?: string; mediaPrompt?: string }) {
@@ -581,6 +682,20 @@ export const marketingCampaignService = {
     return request<CampaignAssetOrderData>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders`);
   },
 
+  previewAssetOrderDriveImport(campaignId: string, googleDriveFolderUrl: string) {
+    return request<CampaignDriveImportPreview>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/drive-import/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ googleDriveFolderUrl }),
+    });
+  },
+
+  applyAssetOrderDriveImport(campaignId: string, googleDriveFolderUrl: string) {
+    return request<CampaignDriveImportPreview>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/drive-import/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ googleDriveFolderUrl }),
+    });
+  },
+
   createAssetOrder(campaignId: string, input: {
     slotId?: string;
     title?: string;
@@ -597,7 +712,9 @@ export const marketingCampaignService = {
     subheadline?: string;
     cta?: string;
     visualBrief?: string;
+    videoScript?: string;
     assets?: CampaignAssetOrderAsset[];
+    customFields?: Record<string, string>;
   }) {
     return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders`, {
       method: 'POST',
@@ -622,7 +739,9 @@ export const marketingCampaignService = {
     subheadline?: string;
     cta?: string;
     visualBrief?: string;
+    videoScript?: string;
     assets?: CampaignAssetOrderAsset[];
+    customFields?: Record<string, string>;
   }) {
     return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}`, {
       method: 'PATCH',
@@ -643,6 +762,48 @@ export const marketingCampaignService = {
     });
   },
 
+  addAssetOrderCustomField(campaignId: string, label: string) {
+    return request<{ key: string; label: string }>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/custom-fields`, {
+      method: 'POST',
+      body: JSON.stringify({ label }),
+    });
+  },
+
+  archiveAssetOrderCustomField(campaignId: string, fieldKey: string) {
+    return request<{ key: string; archived: boolean }>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/custom-fields/${fieldKey}`, {
+      method: 'DELETE',
+    });
+  },
+
+  fillAllAssetOrdersAI(campaignId: string, input: { idempotencyKey: string; instruction?: string; overwritePolicy?: 'empty_only' | 'replace_ai' }) {
+    return request<CampaignAssetOrderAIJob>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/ai/fill-all`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  getFillAllAssetOrdersAIJob(campaignId: string, jobId: string) {
+    return request<CampaignAssetOrderAIJob>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/ai/jobs/${jobId}`);
+  },
+
+  cancelFillAllAssetOrdersAIJob(campaignId: string, jobId: string) {
+    return request<CampaignAssetOrderAIJob>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/ai/jobs/${jobId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  exportAssetOrdersForBulk(campaignId: string) {
+    return request<CampaignAssetOrderBulkImport>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import`);
+  },
+
+  syncAssetOrdersFromBulkImport(campaignId: string, jobId: string) {
+    return request<{ updatedCount: number; unmatchedOrderIds: string[]; jobStatus: string }>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import/sync`, {
+      method: 'POST',
+      body: JSON.stringify({ jobId }),
+    });
+  },
+
   applyAssetOrderAI(campaignId: string, orderId: string, input: {
     expectedRevision: number;
     fieldKeys?: Array<
@@ -651,10 +812,12 @@ export const marketingCampaignService = {
       | 'productionRequirements'
       | 'quantitySuggestion'
       | 'usageChannels'
+      | 'format'
       | 'headline'
       | 'subheadline'
       | 'cta'
       | 'visualBrief'
+      | 'videoScript'
     >;
   }) {
     return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/ai/apply`, {
@@ -838,4 +1001,5 @@ export interface DriveFileItem {
   name: string;
   directUrl: string;
   isVideo: boolean;
+  isMedia?: boolean;
 }

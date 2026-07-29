@@ -11,9 +11,9 @@ import { buildCampaignSchedule, zonedLocalTimeToUtc } from "./marketing-campaign
 import { geminiService } from "./gemini.service";
 import { CampaignMatrixGeneratorService } from "./agents/campaign-matrix-generator.service";
 import { CampaignOrchestratorService } from "./agents/campaign-orchestrator.service";
-import { marketingCampaignWorkerService } from "./marketing-campaign-worker.service";
+import { scanAndEnqueueDueSlots } from "./campaign-scheduler.service";
 import { API_COSTS } from "./wallet.service";
-import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
+import { listGoogleDriveFolderFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
 
 interface CreateCampaignInput {
   sourceBrief: string;
@@ -35,8 +35,9 @@ interface CreateCampaignInput {
   images?: string[];
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
-  imageMode?: "ai" | "real";
+  imageMode?: "ai" | "real" | "order";
   publishNow?: boolean;
+  initialVideoUrl?: string;
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   apifySources?: string[];
@@ -48,11 +49,67 @@ interface CreateCampaignInput {
   };
 }
 
-const ACTIVE_SLOT_STATUSES: MarketingCampaignSlotStatus[] = ["planned", "queued", "generating", "scoring", "generating_media", "pending_approval", "ready_to_publish", "retrying"];
+const ACTIVE_SLOT_STATUSES: MarketingCampaignSlotStatus[] = [
+  "planned",
+  "queued",
+  "generating",
+  "researching",
+  "writing",
+  "scoring",
+  "awaiting_assets",
+  "generating_media",
+  "verifying",
+  "pending_approval",
+  "ready_to_publish",
+  "publishing",
+  "retrying",
+  "needs_attention",
+];
+
+type TikTokCampaignPublishOptions = {
+  caption: string;
+  privacyLevel: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  brandContentToggle: boolean;
+  brandContent: boolean;
+  brandOrganic: boolean;
+  isAigc: boolean;
+  videoDurationSeconds: number;
+  consentAccepted: boolean;
+};
+
+function validateTikTokCampaignPublishOptions(options?: TikTokCampaignPublishOptions) {
+  if (typeof options?.caption !== "string" || options.caption.length > 2200) {
+    throw new Error("Caption TikTok không hợp lệ.");
+  }
+  if (!options?.consentAccepted) {
+    throw new Error("Bạn phải xác nhận điều khoản TikTok trước khi duyệt đăng.");
+  }
+  if (!Number.isFinite(options.videoDurationSeconds) || options.videoDurationSeconds <= 0) {
+    throw new Error("Không đọc được thời lượng video TikTok. Vui lòng tải lại video trước khi đăng.");
+  }
+  if (options.brandContentToggle && !options.brandContent && !options.brandOrganic) {
+    throw new Error("Vui lòng chọn nội dung quảng bá cho thương hiệu của bạn, đối tác hoặc cả hai.");
+  }
+  if (options.brandContent && options.privacyLevel === "SELF_ONLY") {
+    throw new Error("Branded Content không thể đăng ở chế độ Chỉ mình tôi.");
+  }
+}
+
+function assertTikTokPublicApprovalDisabled(platform: MarketingCampaignPlatform) {
+  if (platform === "TikTok") {
+    throw new Error("TikTok cần được duyệt trong màn hình TikTok để chọn quyền riêng tư, thời lượng và điều khoản đăng.");
+  }
+}
 
 async function validateIntegrations(companyCode: string, platforms: MarketingCampaignPlatform[], integrationIds: CreateCampaignInput["integrationIds"]) {
   for (const platform of platforms) {
     const integrationId = integrationIds?.[platform];
+    if (platform === "TikTok" && !integrationId) {
+      throw new Error("Vui lòng chọn tài khoản TikTok doanh nghiệp đang hoạt động trước khi tạo chiến dịch.");
+    }
     if (!integrationId) continue;
     if (!mongoose.Types.ObjectId.isValid(integrationId)) {
       throw new Error(`Liên kết ${platform} không hợp lệ.`);
@@ -67,11 +124,64 @@ async function validateIntegrations(companyCode: string, platforms: MarketingCam
   }
 }
 
+function canUseLocalMockFacebookPage() {
+  return process.env.NODE_ENV !== "production" && process.env.DISABLE_LOCAL_MOCKS !== "true";
+}
+
+async function ensureLocalMockFacebookPage(companyCode: string, createdBy: string) {
+  const existing = await SocialIntegrationModel.findOne({
+    companyCode,
+    platform: "Facebook",
+    isConnected: true,
+    isMock: true,
+  })
+    .select("_id")
+    .lean();
+  if (existing) return String(existing._id);
+
+  const suffix = companyCode.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "local";
+  const integration = await SocialIntegrationModel.create({
+    companyCode,
+    platform: "Facebook",
+    displayName: "Fanpage Facebook giả lập (local)",
+    username: `mock_local_${suffix}`,
+    accessToken: `mock_local_facebook_token_${randomUUID()}`,
+    isConnected: true,
+    isMock: true,
+    createdBy,
+  });
+  console.log(`[Marketing Campaign] Đã tạo Fanpage Facebook giả lập cho local. company=${companyCode}`);
+  return String(integration._id);
+}
+
 export const marketingCampaignService = {
   async create(companyCode: string, createdBy: string, input: CreateCampaignInput) {
+    const requiresTikTokVideo = input.platforms.includes("TikTok");
+    const initialVideoUrl = input.initialVideoUrl?.trim() || "";
+    if (requiresTikTokVideo && (
+      input.mediaPolicy !== "video"
+      || input.imageMode === "ai"
+      || (input.images && input.images.length > 0)
+    )) {
+      throw new Error("Chiến dịch TikTok chỉ nhận video. Vui lòng tải video trực tiếp cho một bài hoặc nhập video từ Google Drive và không đính kèm ảnh.");
+    }
+    if (requiresTikTokVideo && input.publishMode === "auto") {
+      throw new Error("TikTok cần duyệt thủ công để chọn quyền riêng tư, thời lượng video và xác nhận điều khoản trước khi đăng.");
+    }
+    if (initialVideoUrl) {
+      const isSingleTikTokPost = input.campaignType === "single"
+        && input.platforms.length === 1
+        && input.platforms[0] === "TikTok";
+      const isCloudinaryVideo = /^https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\//i.test(initialVideoUrl);
+      if (!isSingleTikTokPost || !isCloudinaryVideo) {
+        throw new Error("Video tải trực tiếp chỉ áp dụng cho một bài TikTok và phải được tải lên hệ thống.");
+      }
+    }
     const timezone = input.timezone || "Asia/Ho_Chi_Minh";
     const generationLeadMinutes = input.generationLeadMinutes ?? 60;
     const verificationLeadMinutes = input.verificationLeadMinutes ?? 15;
+    const monthlyPreparationLeadDays = 10;
+    const now = new Date();
     const schedule = buildCampaignSchedule({
       startDate: input.startDate,
       endDate: input.endDate,
@@ -82,9 +192,10 @@ export const marketingCampaignService = {
       generationLeadMinutes,
       verificationLeadMinutes,
       customSchedule: input.customSchedule,
+      campaignCreatedAt: now,
+      monthlyPreparationLeadDays,
     });
 
-    const now = new Date();
     const minLeadTimeMs = 15 * 60 * 1000;
     if (!input.publishNow) {
       const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
@@ -110,123 +221,49 @@ export const marketingCampaignService = {
         );
       }
     }
-    await validateIntegrations(companyCode, input.platforms, input.integrationIds);
-
-    const imageMode = input.imageMode || "ai";
-    const googleDriveFolderUrl = input.googleDriveFolderUrl || "";
-
-    let researchReport = "";
-    let strategy: {
-      campaignTitle: string;
-      contentPillars: string[];
-      slots: Array<{
-        pillar: string;
-        objective: string;
-        topicBrief: string;
-        mediaType: "text" | "image" | "video" | "human-video";
-        customBodyText?: string;
-        realImageDriveUrls?: string[];
-        realImageDirectUrls?: string[];
-      }>;
-    };
-
-    if (imageMode === "real") {
-      if (!googleDriveFolderUrl) {
-        throw new Error("Vui lòng điền đường dẫn thư mục Google Drive khi chọn chế độ ảnh thật.");
-      }
-      
-      const files = await listGoogleDriveFolderFiles(googleDriveFolderUrl);
-      if (files.length === 0) {
-        throw new Error("Không tìm thấy tệp tin hình ảnh hoặc video nào trong thư mục Google Drive. Vui lòng kiểm tra lại quyền truy cập hoặc định dạng file.");
-      }
-      
-      const grouped = groupDriveFiles(files);
-      const realMediaBySlot = schedule.map((_, index) => {
-        const postIndex = index + 1;
-        const postFiles = grouped[postIndex] || [];
-
-        if (postFiles.length === 0) {
-          throw new Error(
-            `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
-          );
-        }
-
-        const hasVideo = postFiles.some((file) => file.isVideo);
-        return {
-          mediaType: hasVideo ? "video" as const : "image" as const,
-          fileNames: postFiles.map((file) => file.name),
-          realImageDriveUrls: postFiles.map((file) => `https://drive.google.com/file/d/${file.id}/view`),
-          realImageDirectUrls: postFiles.map((file) => file.directUrl),
-        };
-      });
-
-      const planningPrompt = `${input.sourceBrief.trim()}
-
-YÊU CẦU LẬP BẢN PHÁC THẢO CHO CHIẾN DỊCH DÙNG ẢNH THẬT:
-- Mỗi topicBrief là bản phác thảo ý tưởng để người dùng xem trước: nêu thông điệp chính, góc khai thác và giá trị mang lại cho người xem.
-- Không viết caption/bài đăng hoàn chỉnh ở bước này.
-- Không dùng cách ghi chung chung như "Bài đăng thứ N sử dụng ảnh từ Google Drive".
-- Không khẳng định chi tiết sản phẩm chưa có trong brief; nội dung sẽ được Vision Agent đối chiếu với ảnh thật gần giờ đăng.
-- Các tệp media đã được gán sẵn theo từng slot như sau:
-${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.join(", ")}`).join("\n")}`;
-
-      const aiStrategy = await geminiService.generateScheduledCampaign({
-        prompt: planningPrompt,
-        startDate: input.startDate,
-        endDate: input.endDate,
-        postsPerDay: input.postsPerDay,
-        postingTimes: input.postingTimes,
-        channels: input.platforms,
-        customSchedule: input.customSchedule,
-        rules: input.rules,
-      });
-
-      if (aiStrategy.slots.length !== schedule.length) {
-        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
-      }
-
-      researchReport = "Chiến dịch sử dụng ảnh thật; nghiên cứu và phân tích hình ảnh sẽ chạy theo từng slot gần giờ đăng.";
-      strategy = {
-        campaignTitle: aiStrategy.campaignTitle,
-        contentPillars: aiStrategy.contentPillars,
-        slots: aiStrategy.slots.map((brief, index) => {
-          const media = realMediaBySlot[index];
-          return {
-            pillar: brief.pillar,
-            objective: brief.objective,
-            topicBrief: brief.topicBrief,
-            mediaType: media.mediaType,
-            customBodyText: "",
-            realImageDriveUrls: media.realImageDriveUrls,
-            realImageDirectUrls: media.realImageDirectUrls,
-          };
-        }),
-      };
-    } else {
-      researchReport = await geminiService.conductWebResearch(input.sourceBrief);
-      const aiStrategy = await geminiService.generateScheduledCampaign({
-        prompt: input.sourceBrief,
-        startDate: input.startDate,
-        endDate: input.endDate,
-        postsPerDay: input.postsPerDay,
-        postingTimes: input.postingTimes,
-        channels: input.platforms,
-        images: input.images,
-        customSchedule: input.customSchedule,
-        researchReport,
-        rules: input.rules,
-      });
-
-      if (aiStrategy.slots.length !== schedule.length) {
-        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
-      }
-
-      strategy = {
-        campaignTitle: aiStrategy.campaignTitle,
-        contentPillars: aiStrategy.contentPillars,
-        slots: aiStrategy.slots,
-      };
+    const integrationIds = { ...(input.integrationIds || {}) };
+    if (
+      canUseLocalMockFacebookPage()
+      && input.platforms.includes("Facebook")
+      && !integrationIds.Facebook
+    ) {
+      integrationIds.Facebook = await ensureLocalMockFacebookPage(companyCode, createdBy);
     }
+    await validateIntegrations(companyCode, input.platforms, integrationIds);
+
+    // New campaigns never bind Drive media before their content exists. Legacy
+    // callers that still send "real" are migrated into the content-first order flow.
+    const imageMode: "ai" | "order" = input.imageMode === "ai" ? "ai" : "order";
+    const researchReport = await geminiService.conductWebResearch(input.sourceBrief);
+    const aiStrategy = await geminiService.generateScheduledCampaign({
+      prompt: input.sourceBrief,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      postsPerDay: input.postsPerDay,
+      postingTimes: input.postingTimes,
+      channels: input.platforms,
+      images: imageMode === "ai" ? input.images : undefined,
+      customSchedule: input.customSchedule,
+      researchReport,
+      rules: input.rules,
+    });
+
+    if (aiStrategy.slots.length !== schedule.length) {
+      throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
+    }
+
+    const strategy = {
+      campaignTitle: aiStrategy.campaignTitle,
+      contentPillars: aiStrategy.contentPillars,
+      slots: requiresTikTokVideo
+        ? aiStrategy.slots.map((slot) => ({ ...slot, mediaType: "video" as const }))
+        : imageMode === "order"
+        ? aiStrategy.slots.map((slot) => ({
+          ...slot,
+          mediaType: slot.mediaType === "text" ? "image" as const : slot.mediaType,
+        }))
+        : aiStrategy.slots,
+    };
 
     const isBudget = input.qualityMode === "budget";
     const pPlan = API_COSTS.CAMPAIGN_STRATEGY;
@@ -242,35 +279,22 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     const allAngles = contentMatrix.flatMap((p) => p.angles);
 
     let totalResearchCost = 0;
-    let totalVisionCost = 0;
+    const totalVisionCost = 0;
     let totalContentCost = 0;
     let totalMediaCost = 0;
 
     strategy.slots.forEach((brief) => {
       const type = brief.mediaType;
-      const requiresAiCopy = imageMode === "ai" || !brief.customBodyText;
+      const requiresAiCopy = true;
 
       if (requiresAiCopy) {
         totalResearchCost += pResearch;
       }
-      if (imageMode === "real" && requiresAiCopy) {
-        const imageCount = Math.max(
-          brief.realImageDriveUrls?.length || 0,
-          brief.realImageDirectUrls?.length || 0
-        );
-        totalVisionCost += Math.ceil(imageCount / 8) * API_COSTS.CAMPAIGN_VISION;
-      }
-      
-      // Calculate content write cost (only charge if AI Copywriter needs to generate copy)
-      if (imageMode === "real") {
-        if (!brief.customBodyText) {
-          totalContentCost += isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
-        }
-      } else {
+      if (requiresAiCopy) {
         totalContentCost += isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
       }
 
-      // Calculate media cost (always 0 for real image mode)
+      // Order mode receives media later, so it has no AI media or Vision estimate.
       if (imageMode === "ai") {
         if (type === "image") {
           totalMediaCost += isBudget ? API_COSTS.CAMPAIGN_IMAGE_BUDGET : API_COSTS.CAMPAIGN_IMAGE_PREMIUM;
@@ -296,9 +320,12 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       postsPerDay: input.postsPerDay,
       postingTimes: input.postingTimes,
       platforms: input.platforms,
-      integrationIds: input.integrationIds || {},
+      integrationIds,
       candidateCount: input.candidateCount ?? 1,
       generationLeadMinutes,
+      preparationMode: "monthly",
+      monthlyPreparationLeadDays,
+      preparationScheduleVersion: 2,
       verificationLeadMinutes,
       latePublishWindowMinutes: input.latePublishWindowMinutes ?? 30,
       minimumScore: input.minimumScore ?? 80,
@@ -308,7 +335,6 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       qualityMode: input.qualityMode || "premium",
       publishMode: input.publishMode || "manual",
       imageMode,
-      googleDriveFolderUrl,
       customSchedule: input.customSchedule,
       apifySources: input.apifySources || ["google", "facebook", "tiktok"],
       contentMatrix,
@@ -319,7 +345,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     try {
       const slots = await MarketingCampaignSlotModel.insertMany(schedule.map((scheduledSlot, index) => {
         const brief = strategy.slots[index];
-        const integrationId = input.integrationIds?.[scheduledSlot.platform];
+        const integrationId = integrationIds[scheduledSlot.platform];
 
         // Map funnel stage according to schedule timeline progress ratio
         // Week 1 (0% - 25%): TOFU | Week 2-3 (25% - 75%): MOFU | Week 4 (75% - 100%): BOFU
@@ -351,9 +377,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
           topicBrief: matchingAngle ? `${matchingAngle.title} — ${brief.topicBrief}` : brief.topicBrief,
           funnelStage,
           mediaType: brief.mediaType,
-          realImageDriveUrls: brief.realImageDriveUrls || [],
-          realImageDirectUrls: brief.realImageDirectUrls || [],
-          customBodyText: brief.customBodyText,
+          realImageDirectUrls: initialVideoUrl && scheduledSlot.platform === "TikTok" ? [initialVideoUrl] : [],
           status: "planned",
           attemptCount: 0,
           publishIdempotencyKey: `${campaign._id}:${index}:${scheduledSlot.platform}`,
@@ -361,13 +385,21 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         };
       }));
 
-      if (input.publishNow) {
-        marketingCampaignWorkerService.prepareDueSlots(schedule.length).catch((err) => {
-          console.error("[PublishNow] Error triggering prepare worker:", err);
+      let preparation = { enqueued: 0, deferred: 0 };
+      try {
+        const initialBatch = await scanAndEnqueueDueSlots({
+          campaignId: String(campaign._id),
+          limit: Math.min(schedule.length, 100),
         });
+        preparation = {
+          enqueued: initialBatch.enqueued,
+          deferred: initialBatch.deferred,
+        };
+      } catch (error) {
+        console.error("[Marketing Campaign] Unable to enqueue the initial monthly batch:", error);
       }
 
-      return { campaign, slots };
+      return { campaign, slots, preparation };
     } catch (error) {
       await MarketingCampaignModel.deleteOne({ _id: campaign._id, companyCode });
       throw error;
@@ -524,6 +556,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
             bodyText: contentDoc.bodyText,
             outline: contentDoc.outline,
             mediaPrompt: contentDoc.mediaPrompt,
+            videoUrl: contentDoc.videoUrl,
             mediaUrls: contentDoc.mediaUrls?.length
               ? contentDoc.mediaUrls
               : (contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : [])),
@@ -557,6 +590,23 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       { new: true }
     );
     if (!campaign) throw new Error("Trạng thái hiện tại không cho phép thao tác này.");
+
+    if (action === "pause") {
+      await MarketingCampaignSlotModel.updateMany(
+        { campaignId, companyCode, status: "queued" },
+        {
+          $set: { status: "planned" },
+          $push: {
+            transitions: {
+              from: "queued",
+              to: "planned",
+              reason: "Campaign paused before monthly preparation started",
+              at: new Date(),
+            },
+          },
+        }
+      );
+    }
 
     if (action === "cancel") {
       await MarketingCampaignSlotModel.updateMany(
@@ -602,7 +652,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     return { retriedCount: result.modifiedCount };
   },
 
-  async approveSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string) {
+  async approveSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
     if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
       throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
     }
@@ -611,6 +661,10 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
     if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể được duyệt ở trạng thái này: ${slot.status}`);
+    }
+    if (slot.platform === "TikTok") {
+      validateTikTokCampaignPublishOptions(tiktokPublishOptions);
+      slot.tiktokPublishOptions = tiktokPublishOptions;
     }
 
     const previousStatus = slot.status;
@@ -628,15 +682,19 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     return slot;
   },
 
-  async publishNowSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string) {
+  async publishNowSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
     if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
       throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    const allowedStatuses = ["pending_approval", "ready_to_publish", "needs_attention", "failed", "planned"];
+    const allowedStatuses = ["pending_approval", "ready_to_publish", "needs_attention", "failed"];
     if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể đăng ngay ở trạng thái này: ${slot.status}`);
+    }
+    if (slot.platform === "TikTok") {
+      validateTikTokCampaignPublishOptions(tiktokPublishOptions);
+      slot.tiktokPublishOptions = tiktokPublishOptions;
     }
 
     const previousStatus = slot.status;
@@ -688,6 +746,9 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
     if (!slot.marketingContentId) {
       throw new Error("Không tìm thấy nội dung bài viết liên kết với slot này.");
+    }
+    if (slot.platform === "TikTok" && updates.bodyText !== undefined && updates.bodyText.length > 2200) {
+      throw new Error("Caption TikTok không được vượt quá 2.200 ký tự.");
     }
 
     const content = await MarketingContentModel.findOneAndUpdate(
@@ -754,6 +815,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+    assertTikTokPublicApprovalDisabled(slot.platform);
     
     // Sign token valid for 30 days
     const token = jwt.sign(
@@ -830,6 +892,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
@@ -1079,6 +1142,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
@@ -1139,6 +1203,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (!["pending_approval", "needs_attention", "failed"].includes(slot.status)) {
         throw new Error(`Không thể chỉnh sửa nội dung ở trạng thái hiện tại (${slot.status}).`);
@@ -1274,6 +1339,7 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
@@ -1345,6 +1411,10 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       let skipped = 0;
 
       for (const slot of slots) {
+        if (slot.platform === "TikTok") {
+          skipped++;
+          continue;
+        }
         if (slot.status !== "pending_approval") {
           skipped++;
           continue;
@@ -1424,16 +1494,12 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { campaignQueueService } = require("../queue/campaign-queue");
-      const hasRedis = await campaignQueueService.checkRedis();
-      if (hasRedis) {
-        for (const slot of slots) {
-          await campaignQueueService.addPrepareJob(String(slot._id));
-        }
-      }
-    } catch (e) {
-      console.warn("[Batch Prepare] BullMQ not initialized or failed, slots will be picked up by legacy worker polling.", e);
+      await scanAndEnqueueDueSlots({
+        campaignId,
+        limit: Math.min(slots.length, 100),
+      });
+    } catch (error) {
+      console.warn("[Batch Prepare] Unable to enqueue the first bounded batch; scheduler will retry.", error);
     }
 
     return { enqueued, skipped: 0 };

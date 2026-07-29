@@ -12,6 +12,8 @@ interface CalendarTabProps {
 
 type CalendarEvent = PublishEvent & { statusLabel: string };
 
+const EVENTS_PER_PAGE = 6;
+
 const campaignStatusLabel: Record<string, string> = {
   planned: "Đã lên lịch",
   queued: "Chờ xử lý",
@@ -19,6 +21,7 @@ const campaignStatusLabel: Record<string, string> = {
   researching: "Đang nghiên cứu",
   writing: "Đang viết",
   scoring: "Đang chấm điểm",
+  awaiting_assets: "Chờ ảnh thiết kế",
   generating_media: "Đang tạo media",
   verifying: "Đang kiểm tra",
   pending_approval: "Chờ duyệt",
@@ -39,6 +42,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [campaignSlots, setCampaignSlots] = useState<MarketingCampaignCalendarSlot[]>([]);
   const [loadingCalendar, setLoadingCalendar] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const monthNamesVi = [
     "THÁNG 1", "THÁNG 2", "THÁNG 3", "THÁNG 4", "THÁNG 5", "THÁNG 6",
@@ -139,6 +143,53 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
 
     return [...campaignEvents, ...legacyEvents];
   }, [approvalCards, campaignSlots, currentMonth, currentYear]);
+
+  const displayedEvents = useMemo(
+    () => [...joinedEvents]
+      .filter((event) => selectedDay === null || event.date === selectedDay)
+      .sort((a, b) => a.date - b.date),
+    [joinedEvents, selectedDay],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(displayedEvents.length / EVENTS_PER_PAGE));
+  const paginatedEvents = displayedEvents.slice(
+    (currentPage - 1) * EVENTS_PER_PAGE,
+    currentPage * EVENTS_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [currentMonth, currentYear, selectedDay]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
+
+  const paginationControls = displayedEvents.length > EVENTS_PER_PAGE && (
+    <div className="mt-4 pt-4 border-t border-slate-200 flex items-center justify-between gap-3">
+      <span className="text-[10px] text-slate-400 font-mono">
+        Trang {currentPage}/{totalPages}
+      </span>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+          disabled={currentPage === 1}
+          className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Trước
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+          disabled={currentPage === totalPages}
+          className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Sau
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-6" id="publishing_calendar_block">
@@ -243,12 +294,12 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
             <p className="text-xs text-gray-400 mt-1">Danh sách chuỗi nội dung cần vận hành trong ngày.</p>
 
             <div className="flex-1 overflow-y-auto mt-6 space-y-4 text-xs text-slate-550 text-left">
-              {joinedEvents.filter(e => e.date === selectedDay).length === 0 ? (
+              {displayedEvents.length === 0 ? (
                 <div className="p-8 text-center bg-gray-50 text-gray-400 italic rounded-xl">
                   {loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong ngày này."}
                 </div>
               ) : (
-                joinedEvents.filter(e => e.date === selectedDay).map(event => (
+                paginatedEvents.map(event => (
                   <div key={event.id} className="p-4 bg-slate-50 border border-gray-155 rounded-xl relative flex flex-col gap-2">
                     <div className="flex justify-between items-center">
                       <span className="px-2 py-0.5 bg-slate-200 rounded-sm font-bold font-mono text-[9px] uppercase">
@@ -272,6 +323,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                 ))
               )}
             </div>
+            {paginationControls}
           </div>
         ) : (
           <div className="flex flex-col h-full">
@@ -286,18 +338,16 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
             <p className="text-xs text-gray-400 mt-1">Tất cả bài đăng dự kiến trong tháng này.</p>
 
             <div className="flex-1 overflow-y-auto mt-6 space-y-4 text-xs text-slate-550 text-left">
-              {joinedEvents.length === 0 ? (
+              {displayedEvents.length === 0 ? (
                 <div className="p-8 text-center bg-gray-50 text-gray-400 italic rounded-xl">
                   {loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong tháng này!"}
                 </div>
               ) : (
-                [...joinedEvents]
-                  .sort((a, b) => a.date - b.date)
-                  .map(event => (
+                paginatedEvents.map(event => (
                     <div key={event.id} className="p-4 bg-slate-50 border border-gray-150 rounded-xl relative flex flex-col gap-2">
                       <div className="flex justify-between items-center">
                         <span className="px-2 py-0.5 bg-slate-200 rounded-sm font-bold font-mono text-[9px] uppercase">
-                          NgÃ y {event.date} â€¢ {event.channel}
+                          Ngày {event.date} • {event.channel}
                         </span>
                         <span className={`px-2 py-0.5 rounded-sm font-bold font-mono text-[9px] uppercase text-white ${event.status === "Published"
                             ? "bg-green-500"
@@ -317,6 +367,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                   ))
               )}
             </div>
+            {paginationControls}
           </div>
         )}
       </div>

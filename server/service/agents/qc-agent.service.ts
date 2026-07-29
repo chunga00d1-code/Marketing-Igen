@@ -4,6 +4,7 @@ import { MarketingContentModel } from "../../model/marketing-content.model";
 import { openrouterChat } from "../openrouter.service";
 import { assertReachableMedia, loadAgentSkill, resolveFacebookCredentials } from "./campaign-utils";
 import { assertCampaignVideoReady } from "./campaign-caption.service";
+import { tiktokService } from "../tiktok.service";
 
 export class QcAgentService {
   public static async verify(
@@ -67,11 +68,19 @@ export class QcAgentService {
 
     // 2. Integration / Credential Verification
     try {
-      await resolveFacebookCredentials({
-        companyCode: slot.companyCode,
-        createdBy: campaign.createdBy,
-        integrationId: slot.integrationId,
-      });
+      if (slot.platform === "TikTok") {
+        await tiktokService.getCreatorInfoForIntegration({
+          integrationId: slot.integrationId ? String(slot.integrationId) : undefined,
+          companyCode: slot.companyCode,
+          userId: campaign.createdBy,
+        });
+      } else {
+        await resolveFacebookCredentials({
+          companyCode: slot.companyCode,
+          createdBy: campaign.createdBy,
+          integrationId: slot.integrationId,
+        });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       reasons.push(`Lỗi kết nối kênh đăng bài: ${msg}`);
@@ -83,9 +92,13 @@ export class QcAgentService {
 
     // 3. Editorial Checks via AI (QC Agent Sweep)
     const qcSkill = loadAgentSkill("qc");
+    const tiktokSkill = slot.platform === "TikTok"
+      ? loadAgentSkill("tiktok-content-publishing")
+      : "";
 
     const systemInstruction = `
 ${qcSkill}
+${tiktokSkill}
 
 You are the Quality Control (QC) Agent. Your task is to perform an editing sweep of the Vietnamese marketing copy.
 Scan the draft for:
@@ -93,6 +106,7 @@ Scan the draft for:
 2. Clichés and jargon (avoid words like "seamless", "cutting-edge", "innovative" without evidence).
 3. Passive voice, confusing sentences, or formatting issues.
 4. Exclamation points (minimize them).
+5. For TikTok, reject a caption over 2,200 characters or any scene-direction text in bodyText.
 
 Score the post content on a scale of 1 to 10 based on the Copy Editing Checklist.
 If the score is 7 or above AND there are no placeholders or critical errors, mark "passed" as true.

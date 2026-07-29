@@ -26,6 +26,9 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     },
     candidateCount: { type: Number, min: 1, max: 5, default: 3 },
     generationLeadMinutes: { type: Number, min: 15, max: 1440, default: 60 },
+    preparationMode: { type: String, enum: ["monthly"], default: "monthly" },
+    monthlyPreparationLeadDays: { type: Number, min: 1, max: 30, default: 10 },
+    preparationScheduleVersion: { type: Number, default: 2 },
     verificationLeadMinutes: { type: Number, min: 5, max: 180, default: 15 },
     latePublishWindowMinutes: { type: Number, min: 0, max: 1440, default: 30 },
     minimumScore: { type: Number, min: 0, max: 100, default: 80 },
@@ -44,7 +47,7 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     },
     qualityMode: { type: String, enum: ["premium", "budget"], default: "premium" },
     publishMode: { type: String, enum: ["auto", "manual"], default: "manual" },
-    imageMode: { type: String, enum: ["ai", "real"], default: "ai" },
+    imageMode: { type: String, enum: ["ai", "real", "order"], default: "ai" },
     googleDriveFolderUrl: { type: String },
     customSchedule: { type: Schema.Types.Map, of: [String] },
     researchReport: { type: String },
@@ -71,6 +74,16 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
         message: "Chỉ được chọn tối đa 3 nguồn dữ liệu Apify."
       },
       default: ["google", "facebook", "tiktok"],
+    },
+    assetOrderCustomFields: {
+      type: [{
+        key: { type: String, required: true, maxlength: 40 },
+        label: { type: String, required: true, maxlength: 120 },
+        archived: { type: Boolean, default: false },
+        createdAt: { type: Date, default: Date.now },
+        _id: false,
+      }],
+      default: [],
     },
     statistics: {
       totalSlots: { type: Number, default: 0 },

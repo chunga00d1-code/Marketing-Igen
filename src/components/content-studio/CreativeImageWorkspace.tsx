@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Download, ImagePlus, LayoutTemplate, Loader2, Save, Sparkles, Upload } from "lucide-react";
 import { creativeImageApi, type CreativeProject, type CreativeRender } from "../../api/creative-image";
 import { CreativeImageTemplate } from "../../creative-image/CreativeImageTemplate";
-import { CREATIVE_IMAGE_CANVASES, type CreativeImageCanvas, type CreativeImageProjectData, type CreativeImageTemplate as Template } from "../../creative-image/types";
+import { CREATIVE_IMAGE_CANVAS_LABELS, CREATIVE_IMAGE_CANVASES, type CreativeImageCanvas, type CreativeImageProjectData, type CreativeImageTemplate as Template } from "../../creative-image/types";
 import { toast } from "../../pages/Toast";
 
 type Props = { onMediaSaved?: (cardId: string, mediaUrl: string, type: "image" | "video" | "audio") => void; cardId?: string };
@@ -121,7 +121,7 @@ export function CreativeImageWorkspace({ onMediaSaved, cardId }: Props) {
         <div className="mb-1 h-1.5 rounded-full" style={{ backgroundColor: item.accent }} />
         <div className="text-xs font-extrabold text-slate-800">{item.name}</div><div className="mt-1 text-[11px] leading-4 text-slate-500">{item.description}</div>
       </button>)}</div>
-      <div className="mt-5 border-t border-slate-100 pt-4"><div className="mb-2 text-xs font-bold text-slate-600">Kích thước xuất</div><div className="grid grid-cols-2 gap-2">{Object.values(CREATIVE_IMAGE_CANVASES).map((item) => <button type="button" key={item.format} onClick={() => changeFormat(item.format)} className={`rounded-lg border px-2 py-2 text-[11px] font-bold ${canvas.format === item.format ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-500"}`}>{item.format}</button>)}</div></div>
+      <div className="mt-5 border-t border-slate-100 pt-4"><div className="mb-2 text-xs font-bold text-slate-600">Kích thước thường dùng</div><div className="grid grid-cols-2 gap-2">{Object.values(CREATIVE_IMAGE_CANVASES).map((item) => <button type="button" key={item.format} onClick={() => changeFormat(item.format)} title={CREATIVE_IMAGE_CANVAS_LABELS[item.format].channels} className={`flex h-14 flex-col items-center justify-center rounded-lg border px-2 text-center ${canvas.format === item.format ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-500"}`}><span className="text-[11px] font-extrabold">{CREATIVE_IMAGE_CANVAS_LABELS[item.format].label}</span><span className="text-[10px] font-medium opacity-75">{item.width}×{item.height}</span></button>)}</div></div>
     </aside>
 
     <main className="min-w-0 rounded-2xl border border-slate-200 bg-slate-100/70 p-4 shadow-sm">

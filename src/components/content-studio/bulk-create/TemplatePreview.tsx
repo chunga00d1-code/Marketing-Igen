@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import type { BulkTemplate } from '../../../services/bulkCreateService';
+import { getLayerFrameStyle } from './utils';
 
 interface TemplatePreviewProps {
   template: BulkTemplate;
@@ -47,9 +48,10 @@ export function TemplatePreview({ template }: TemplatePreviewProps) {
               letterSpacing: `${(layer.letterSpacing || 0) / 8}px`,
               lineHeight: layer.lineHeight || 1.22,
               textAlign: layer.textAlign,
+              ...getLayerFrameStyle(layer, 0.125),
             }}
           >
-            {layer.type === 'text' ? (
+            {layer.layerKind === 'shape' ? null : layer.type === 'text' ? (
               layer.fieldName
             ) : (
               <span className="flex h-full items-center justify-center border border-dashed border-white/80 bg-black/10">

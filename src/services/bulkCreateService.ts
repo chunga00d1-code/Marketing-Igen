@@ -1,11 +1,14 @@
 import { getAccessToken } from './authService';
 
 export type BulkLayerType = 'text' | 'image';
+export type BulkLayerKind = 'text' | 'shape' | 'badge' | 'cta' | 'icon';
 export type BulkJobStatus = 'queued' | 'processing' | 'completed' | 'partial' | 'failed' | 'cancelled';
 
 export interface BulkLayer {
   id: string;
   type: BulkLayerType;
+  layerKind?: BulkLayerKind;
+  groupId?: string;
   fieldName: string;
   x: number;
   y: number;
@@ -25,6 +28,15 @@ export interface BulkLayer {
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   letterSpacing?: number;
   lineHeight?: number;
+  autoFit?: boolean;
+  minFontSize?: number;
+  maxLines?: number;
+  fillColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  opacity?: number;
+  padding?: number;
   defaultValue?: string;
   dataBinding?: {
     columnKey: string;
@@ -86,6 +98,14 @@ export interface BulkTemplate extends BulkTemplatePayload {
   updatedAt: string;
 }
 
+export interface BulkTemplatePage {
+  items: BulkTemplate[];
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+}
+
 export interface BulkRenderJob {
   _id: string;
   templateId: string;
@@ -118,6 +138,40 @@ export interface BulkAsset {
   createdAt: string;
 }
 
+export interface BulkAiAttachment {
+  type: 'image' | 'document';
+  name: string;
+  url?: string;
+  text?: string;
+}
+
+export interface BulkAiHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface BulkAiScene {
+  sceneVersion?: number;
+  canvas: BulkTemplatePayload['canvas'];
+  background: BulkTemplatePayload['background'];
+  layers: BulkLayer[];
+}
+
+export type BulkAiOperation =
+  | { op: 'add'; layerId: string; label: string }
+  | { op: 'update'; layerId: string; label: string; fields: string[] }
+  | { op: 'remove'; layerId: string; label: string }
+  | { op: 'reorder'; layerId: string; label: string; zIndex: number }
+  | { op: 'replace-background'; label: string }
+  | { op: 'resize-canvas'; label: string; width: number; height: number };
+
+export interface BulkAiSceneResult {
+  reply: string;
+  scene: BulkAiScene;
+  values: Record<string, string>;
+  operations: BulkAiOperation[];
+}
+
 function headers(json = true): HeadersInit {
   const token = getAccessToken();
   return {
@@ -135,6 +189,24 @@ async function parse<T>(response: Response, fallback: string): Promise<T> {
 }
 
 export const bulkCreateService = {
+  async updateSceneWithAi(input: {
+    prompt: string;
+    scene: BulkAiScene;
+    values: Record<string, string>;
+    attachments?: BulkAiAttachment[];
+    history?: BulkAiHistoryMessage[];
+  }) {
+    const response = await fetch('/api/v1/bulk-create/ai/scene', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(input),
+    });
+    return (await parse<{ data: BulkAiSceneResult }>(
+      response,
+      'Không thể cập nhật thiết kế bằng AI.'
+    )).data;
+  },
+
   async uploadLibraryAsset(dataUrl: string, originalName: string) {
     const response = await fetch('/api/v1/bulk-create/assets', {
       method: 'POST',
@@ -210,6 +282,22 @@ export const bulkCreateService = {
   async listTemplates() {
     const response = await fetch('/api/v1/bulk-create/templates', { headers: headers(false) });
     return (await parse<{ data: BulkTemplate[] }>(response, 'Không thể tải danh sách template.')).data;
+  },
+
+  async listTemplatesPage(page = 1, pageSize = 6) {
+    const query = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+    });
+    const response = await fetch(`/api/v1/bulk-create/templates/paged?${query}`, {
+      headers: headers(false),
+    });
+    return (
+      await parse<{ data: BulkTemplatePage }>(
+        response,
+        'Không thể tải trang mẫu thiết kế.'
+      )
+    ).data;
   },
 
   async listCommunityTemplates() {

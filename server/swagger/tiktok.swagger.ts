@@ -2,11 +2,10 @@
   paths: {
     "/api/v1/tiktok/publish": {
       post: {
-        summary: "Đăng video lên TikTok (Blotato API / TikTok Direct API)",
+        summary: "Đăng video lên TikTok qua TikTok Production API",
         description:
-          "Hệ thống tự động chọn phương thức phù hợp:\n" +
-          "1. **Blotato API** (Khuyên dùng khi chưa có app TikTok được duyệt): Tự động kích hoạt khi có cấu hình `BLOTATO_API_KEY` và `BLOTATO_TIKTOK_ACCOUNT_ID` trong file `.env`. Hỗ trợ đăng ngay hoặc lên lịch bằng `scheduledTime`.\n" +
-          "2. **TikTok Direct API**: Kích hoạt khi không có Blotato API và truyền `accessToken`. Sử dụng cơ chế PULL_FROM_URL của TikTok API v2.\n" +
+          "Sử dụng TikTok Content Posting API v2 với OAuth 2.0 và cơ chế PULL_FROM_URL.\n" +
+          "Tài khoản đăng phải được kết nối qua TikTok OAuth và cấp scope `user.info.basic`, `video.publish`.\n" +
           "Lưu ý: Video đăng tải phải ở định dạng MP4/H.264, kích thước ≤ 500MB và có thể truy cập qua URL công khai.",
         tags: ["TikTok"],
         security: [{ bearerAuth: [] }],

@@ -82,7 +82,7 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
             autoTrigger={initialParams?.autoTrigger}
           />
         )}
-        {activeTab === 'bulk' && <BulkCreateWorkspace onClose={() => changeTab(prevTab)} />}
+        {activeTab === 'bulk' && <BulkCreateWorkspace onClose={() => changeTab(prevTab)} cardId={initialParams?.cardId} onMediaSaved={onMediaSaved} />}
       </div>
     </div>
   );

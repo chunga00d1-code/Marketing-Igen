@@ -28,8 +28,9 @@ const createSchema = {
       .default("none"),
     qualityMode: Joi.string().valid("premium", "budget").default("premium"),
     publishMode: Joi.string().valid("auto", "manual").default("manual"),
-    imageMode: Joi.string().valid("ai", "real").default("ai"),
+    imageMode: Joi.string().valid("ai", "real", "order").default("ai"),
     publishNow: Joi.boolean().default(false),
+    initialVideoUrl: Joi.string().uri({ scheme: ["https"] }).max(2048).optional(),
     googleDriveFolderUrl: Joi.string().allow("").optional(),
     customSchedule: Joi.object().optional(),
     images: Joi.array().items(Joi.string()).optional(),
@@ -58,6 +59,29 @@ const replaceImageSchema = {
   }),
 };
 
+const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required();
+
+const tiktokPublishOptionsSchema = Joi.object({
+  caption: Joi.string().allow("").max(2200).required(),
+  privacyLevel: Joi.string().valid("PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY").required(),
+  allowComment: Joi.boolean().required(),
+  allowDuet: Joi.boolean().required(),
+  allowStitch: Joi.boolean().required(),
+  brandContentToggle: Joi.boolean().required(),
+  brandContent: Joi.boolean().required(),
+  brandOrganic: Joi.boolean().required(),
+  isAigc: Joi.boolean().required(),
+  videoDurationSeconds: Joi.number().positive().required(),
+  consentAccepted: Joi.boolean().valid(true).required(),
+});
+
+const slotPublishSchema = {
+  params: Joi.object({ id: objectId, slotId: objectId }),
+  body: Joi.object({
+    tiktokPublishOptions: tiktokPublishOptionsSchema.optional(),
+  }),
+};
+
 const calendarSchema = {
   query: Joi.object({
     startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
@@ -65,7 +89,6 @@ const calendarSchema = {
   }),
 };
 
-const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required();
 const sheetDataType = Joi.string().valid(
   "short_text", "long_text", "number", "currency", "date", "datetime",
   "select", "multi_select", "url", "media_url", "boolean"
@@ -163,6 +186,9 @@ const assetOrderAssetSchema = Joi.object({
   order: Joi.number().integer().min(0).max(100).required(),
 });
 const optionalAssetOrderId = Joi.string().pattern(/^[a-f\d]{24}$/i).allow("").optional();
+const assetOrderCustomFields = Joi.object()
+  .pattern(/^custom_[a-f\d]{12}$/i, Joi.string().trim().max(500).allow(""))
+  .max(15);
 const assetOrderBody = Joi.object({
   slotId: optionalAssetOrderId,
   title: Joi.string().trim().max(240).allow("").default(""),
@@ -179,7 +205,9 @@ const assetOrderBody = Joi.object({
   subheadline: Joi.string().trim().max(220).allow("").default(""),
   cta: Joi.string().trim().max(80).allow("").default(""),
   visualBrief: Joi.string().trim().max(1000).allow("").default(""),
+  videoScript: Joi.string().trim().max(4000).allow("").default(""),
   assets: Joi.array().items(assetOrderAssetSchema).max(20).default([]),
+  customFields: assetOrderCustomFields.optional(),
 });
 const updateAssetOrderBody = {
   body: Joi.object({
@@ -199,7 +227,9 @@ const updateAssetOrderBody = {
     subheadline: Joi.string().trim().max(220).allow(""),
     cta: Joi.string().trim().max(80).allow(""),
     visualBrief: Joi.string().trim().max(1000).allow(""),
+    videoScript: Joi.string().trim().max(4000).allow(""),
     assets: Joi.array().items(assetOrderAssetSchema).max(20),
+    customFields: assetOrderCustomFields,
   }).min(2),
 };
 
@@ -207,6 +237,7 @@ marketingCampaignRouter.post("/internal/prepare", marketingCampaignController.pr
 marketingCampaignRouter.post("/internal/media", marketingCampaignController.mediaWorker as never);
 marketingCampaignRouter.post("/internal/verify", marketingCampaignController.verifyWorker as never);
 marketingCampaignRouter.post("/internal/publish", marketingCampaignController.publishWorker as never);
+marketingCampaignRouter.post("/internal/tiktok-status", marketingCampaignController.tiktokStatusWorker as never);
 marketingCampaignRouter.post("/internal/sync-metrics", marketingCampaignController.syncMetricsWorker as never);
 
 // Public endpoints (no auth required)
@@ -227,6 +258,30 @@ marketingCampaignRouter.post("/", validateRequest(createSchema), marketingCampai
 marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id/sheet", marketingCampaignController.getSheet as never);
 marketingCampaignRouter.get("/:id/asset-orders", validateRequest({ params: Joi.object({ id: objectId } ) }), marketingCampaignController.listAssetOrders as never);
+marketingCampaignRouter.post("/:id/asset-orders/drive-import/preview", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    googleDriveFolderUrl: Joi.string().trim().uri().max(2000).required(),
+  }),
+}), marketingCampaignController.previewAssetOrderDriveImport as never);
+marketingCampaignRouter.post("/:id/asset-orders/drive-import/apply", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    googleDriveFolderUrl: Joi.string().trim().uri().max(2000).required(),
+  }),
+}), marketingCampaignController.applyAssetOrderDriveImport as never);
+marketingCampaignRouter.post("/:id/asset-orders/custom-fields", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({ label: Joi.string().trim().min(1).max(120).required() }),
+}), marketingCampaignController.addAssetOrderCustomField as never);
+marketingCampaignRouter.delete("/:id/asset-orders/custom-fields/:fieldKey", validateRequest({
+  params: Joi.object({ id: objectId, fieldKey: Joi.string().pattern(/^custom_[a-f\d]{12}$/i).required() }),
+}), marketingCampaignController.archiveAssetOrderCustomField as never);
+marketingCampaignRouter.get("/:id/asset-orders/bulk-import", validateRequest({ params: Joi.object({ id: objectId } ) }), marketingCampaignController.exportAssetOrdersForBulk as never);
+marketingCampaignRouter.post("/:id/asset-orders/bulk-import/sync", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({ jobId: objectId }),
+}), marketingCampaignController.syncAssetOrdersFromBulkImport as never);
 marketingCampaignRouter.post("/:id/asset-orders", validateRequest({
   params: Joi.object({ id: objectId }),
   body: assetOrderBody,
@@ -238,6 +293,21 @@ marketingCampaignRouter.patch("/:id/asset-orders/:orderId", validateRequest({
 marketingCampaignRouter.delete("/:id/asset-orders/:orderId", validateRequest({
   params: Joi.object({ id: objectId, orderId: objectId }),
 }), marketingCampaignController.archiveAssetOrder as never);
+marketingCampaignRouter.post("/:id/asset-orders/ai/fill-all", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    idempotencyKey: Joi.string().trim().min(8).max(200).required(),
+    instruction: Joi.string().trim().max(2000).allow("").optional(),
+    overwritePolicy: Joi.string().valid("empty_only", "replace_ai").default("empty_only"),
+  }),
+}), marketingCampaignController.fillAllAssetOrdersAI as never);
+marketingCampaignRouter.get("/:id/asset-orders/ai/jobs/:jobId", validateRequest({
+  params: Joi.object({ id: objectId, jobId: objectId }),
+}), marketingCampaignController.getFillAllAssetOrdersAIJob as never);
+marketingCampaignRouter.post("/:id/asset-orders/ai/jobs/:jobId/cancel", validateRequest({
+  params: Joi.object({ id: objectId, jobId: objectId }),
+  body: Joi.object({}),
+}), marketingCampaignController.cancelFillAllAssetOrdersAIJob as never);
 marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/preview", validateRequest({
   params: Joi.object({ id: objectId, orderId: objectId }),
   body: Joi.object({
@@ -255,11 +325,13 @@ marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/apply", validateRequ
       "productionRequirements",
       "quantitySuggestion",
       "usageChannels",
+      "format",
       "headline",
       "subheadline",
       "cta",
-      "visualBrief"
-    )).max(9).optional(),
+      "visualBrief",
+      "videoScript"
+    )).max(11).optional(),
   }),
 }), marketingCampaignController.applyAssetOrderAI as never);
 marketingCampaignRouter.post("/:id/asset-orders/:orderId/bulk/preview", validateRequest({
@@ -322,8 +394,8 @@ marketingCampaignRouter.post("/:id/sheet/revisions/:revisionId/revert", validate
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
 marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
-marketingCampaignRouter.post("/:id/slots/:slotId/approve", marketingCampaignController.approveSlot as never);
-marketingCampaignRouter.post("/:id/slots/:slotId/publish-now", marketingCampaignController.publishNowSlot as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/approve", validateRequest(slotPublishSchema), marketingCampaignController.approveSlot as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/publish-now", validateRequest(slotPublishSchema), marketingCampaignController.publishNowSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/reject", marketingCampaignController.rejectSlot as never);
 marketingCampaignRouter.get("/:id/slots/:slotId/share-link", marketingCampaignController.getShareLink as never);
 marketingCampaignRouter.get("/:id/dates/:date/share-link", marketingCampaignController.getDailyShareLink as never);

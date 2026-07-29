@@ -3,6 +3,7 @@ import * as archiverModule from "archiver";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { bulkCreateService } from "../service/bulk-create.service";
 import { enqueueBulkCreateJob } from "../queue/bulk-create-queue";
+import { bulkCreateAiService } from "../service/bulk-create-ai.service";
 
 interface ZipArchive {
   on(event: "error", listener: (error: Error) => void): void;
@@ -57,6 +58,13 @@ async function fetchZipImage(value: string) {
 }
 
 export const bulkCreateController = {
+  async updateSceneWithAi(req: AuthenticatedRequest, res: Response) {
+    try {
+      const result = await bulkCreateAiService.updateScene(actorFrom(req), req.body);
+      return res.json({ status: "success", data: result });
+    } catch (error) { return handleError(res, error); }
+  },
+
   async previewGoogleSheet(req: AuthenticatedRequest, res: Response) {
     try {
       const preview = await bulkCreateService.previewPublicGoogleSheet(actorFrom(req), req.body);
@@ -103,6 +111,17 @@ export const bulkCreateController = {
     try {
       const templates = await bulkCreateService.listTemplates(actorFrom(req));
       return res.json({ status: "success", data: templates });
+    } catch (error) { return handleError(res, error); }
+  },
+
+  async listTemplatesPage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const result = await bulkCreateService.listTemplatesPage(
+        actorFrom(req),
+        Number(req.query.page),
+        Number(req.query.pageSize)
+      );
+      return res.json({ status: "success", data: result });
     } catch (error) { return handleError(res, error); }
   },
 

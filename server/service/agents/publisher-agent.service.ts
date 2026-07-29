@@ -29,6 +29,10 @@ export class PublisherAgentService {
         postUrl: slot.publishedUrl || content.postUrl || content.tiktokShareUrl,
       };
     }
+    if (slot.platform === "TikTok" && content.status === "processing" && content.tiktokPublishId) {
+      console.log(`[PublisherAgent] TikTok slot ${slot._id} already has publish_id ${content.tiktokPublishId}. Awaiting provider completion.`);
+      return { status: "publishing" };
+    }
 
     // 2. Late Publish Check
     const lateDeadline = new Date(slot.scheduledAt.getTime() + campaign.latePublishWindowMinutes * 60000);
@@ -45,16 +49,22 @@ export class PublisherAgentService {
       slot.publishRequestedAt = new Date();
       await slot.save();
 
+      const postOptions = slot.tiktokPublishOptions;
+      if (!postOptions?.consentAccepted || !postOptions.privacyLevel || !postOptions.videoDurationSeconds) {
+        throw new Error("Cần mở màn hình đăng TikTok để chọn quyền riêng tư, xác nhận điều khoản và kiểm tra thời lượng video trước khi đăng.");
+      }
+
       const result = await tiktokService.publishVideo(
         String(content._id),
-        (content.title || "") + "\n" + (content.bodyText || ""),
+        postOptions.caption,
         content.videoUrl || "",
-        "PUBLIC",
+        postOptions.privacyLevel,
         undefined,
         undefined,
         undefined,
         slot.integrationId ? String(slot.integrationId) : undefined,
-        slot.companyCode
+        slot.companyCode,
+        postOptions
       );
 
       if (result.status === "success" && result.data?.success) {
@@ -92,6 +102,29 @@ export class PublisherAgentService {
         createdBy: campaign.createdBy,
         integrationId: slot.integrationId,
       });
+
+      if (
+        credentials.isMock
+        && credentials.pageId.startsWith("mock_local_")
+        && process.env.NODE_ENV !== "production"
+      ) {
+        const postId = `mock-local-${slot._id}-${Date.now()}`;
+        const postUrl = `http://localhost:3000/mock-facebook/${postId}`;
+        content.status = "published";
+        content.publishedAt = new Date();
+        content.facebookPostId = postId;
+        content.postUrl = postUrl;
+        await content.save();
+
+        slot.status = "published";
+        slot.publishedPostId = postId;
+        slot.publishedUrl = postUrl;
+        await slot.save();
+
+        await marketingCampaignService.syncCampaignStatusAndStats(campaign._id);
+        console.log(`[PublisherAgent] Local mock published slot ${slot._id}.`);
+        return { status: "published", postId, postUrl };
+      }
 
       console.log(`[PublisherAgent] Publishing slot ${slot._id} to Facebook page ${credentials.pageId}...`);
 

@@ -8,6 +8,7 @@ export type MarketingCampaignSlotStatus =
   | "researching"
   | "writing"
   | "scoring"
+  | "awaiting_assets"
   | "generating_media"
   | "verifying"
   | "pending_approval"
@@ -30,6 +31,19 @@ export interface IMarketingCampaignSlot extends Document {
   approvedAt?: Date;
   platform: MarketingCampaignPlatform;
   integrationId?: Types.ObjectId;
+  tiktokPublishOptions?: {
+    caption: string;
+    privacyLevel: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
+    allowComment: boolean;
+    allowDuet: boolean;
+    allowStitch: boolean;
+    brandContentToggle: boolean;
+    brandContent: boolean;
+    brandOrganic: boolean;
+    isAigc: boolean;
+    videoDurationSeconds: number;
+    consentAccepted: boolean;
+  };
   pillar: string;
   objective: string;
   topicBrief: string;

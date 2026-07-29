@@ -12,6 +12,8 @@ const hexColor = Joi.string().pattern(/^#[0-9a-f]{6}$/i);
 const layerSchema = Joi.object({
   id: Joi.string().max(100).required(),
   type: Joi.string().valid("text", "image").required(),
+  layerKind: Joi.string().valid("text", "shape", "badge", "cta", "icon").optional(),
+  groupId: Joi.string().max(100).optional(),
   fieldName: Joi.string().trim().max(100).required(),
   x: Joi.number().min(0).max(100).required(),
   y: Joi.number().min(0).max(100).required(),
@@ -31,6 +33,15 @@ const layerSchema = Joi.object({
   textTransform: Joi.string().valid("none", "uppercase", "lowercase", "capitalize").optional(),
   letterSpacing: Joi.number().min(-5).max(30).optional(),
   lineHeight: Joi.number().min(0.8).max(3).optional(),
+  autoFit: Joi.boolean().optional(),
+  minFontSize: Joi.number().min(8).max(300).optional(),
+  maxLines: Joi.number().integer().min(1).max(20).optional(),
+  fillColor: hexColor.optional(),
+  borderColor: hexColor.optional(),
+  borderWidth: Joi.number().min(0).max(30).optional(),
+  borderRadius: Joi.number().min(0).max(100).optional(),
+  opacity: Joi.number().min(0.05).max(1).optional(),
+  padding: Joi.number().min(0).max(80).optional(),
   defaultValue: Joi.string().max(14_000_000).allow("").optional(),
   dataBinding: Joi.object({
     columnKey: Joi.string().trim().min(1).max(120).required(),
@@ -53,6 +64,12 @@ const templateFields = {
 const templateSchema = { body: Joi.object(templateFields) };
 const updateTemplateSchema = { body: Joi.object({ ...templateFields, name: templateFields.name.optional(), canvas: templateFields.canvas.optional(), background: templateFields.background.optional(), layers: templateFields.layers.optional() }).min(1) };
 const idSchema = { params: Joi.object({ id: Joi.string().hex().length(24).required() }) };
+const templatePaginationSchema = {
+  query: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    pageSize: Joi.number().integer().min(1).max(24).default(6),
+  }),
+};
 const previewSchema = { body: Joi.object({ templateId: Joi.string().hex().length(24).optional(), template: Joi.object(templateFields).optional(), values: Joi.object().pattern(Joi.string().max(100), Joi.string().max(14_000_000)).required() }).or("templateId", "template") };
 const createJobSchema = { body: Joi.object({ templateId: Joi.string().hex().length(24).required(), idempotencyKey: Joi.string().min(8).max(150).required(), rows: Joi.array().items(Joi.object().pattern(Joi.string().max(100), Joi.string().max(14_000_000))).min(1).max(100).required() }) };
 const uploadAssetSchema = {
@@ -72,8 +89,41 @@ const workbookPreviewSchema = {
     originalName: Joi.string().trim().max(255).optional(),
   }),
 };
+const aiSceneSchema = {
+  body: Joi.object({
+    prompt: Joi.string().trim().min(2).max(4_000).required(),
+    scene: Joi.object({
+      sceneVersion: Joi.number().integer().min(1).max(10).optional(),
+      canvas: templateFields.canvas,
+      background: templateFields.background,
+      layers: Joi.array().items(layerSchema).min(0).max(20).required(),
+    }).required(),
+    values: Joi.object()
+      .pattern(Joi.string().max(100), Joi.string().max(14_000_000))
+      .required(),
+    attachments: Joi.array().items(Joi.object({
+      type: Joi.string().valid("image", "document").required(),
+      name: Joi.string().trim().min(1).max(255).required(),
+      url: Joi.string().max(14_000_000).when("type", {
+        is: "image",
+        then: Joi.required(),
+        otherwise: Joi.forbidden(),
+      }),
+      text: Joi.string().max(20_000).when("type", {
+        is: "document",
+        then: Joi.required(),
+        otherwise: Joi.forbidden(),
+      }),
+    })).max(4).default([]),
+    history: Joi.array().items(Joi.object({
+      role: Joi.string().valid("user", "assistant").required(),
+      content: Joi.string().max(4_000).required(),
+    })).max(10).default([]),
+  }),
+};
 
 bulkCreateRouter.use(requireAuth as any, requirePermission("marketing:post") as any);
+bulkCreateRouter.post("/ai/scene", validateRequest(aiSceneSchema), bulkCreateController.updateSceneWithAi as any);
 bulkCreateRouter.post("/google-sheets/preview", validateRequest(googleSheetPreviewSchema), bulkCreateController.previewGoogleSheet as any);
 bulkCreateRouter.post("/workbooks/preview", validateRequest(workbookPreviewSchema), bulkCreateController.previewWorkbook as any);
 bulkCreateRouter.post("/assets", validateRequest(uploadAssetSchema), bulkCreateController.uploadAsset as any);
@@ -82,6 +132,7 @@ bulkCreateRouter.delete("/assets/:id", validateRequest(idSchema), bulkCreateCont
 bulkCreateRouter.post("/templates", validateRequest(templateSchema), bulkCreateController.createTemplate as any);
 bulkCreateRouter.get("/templates", bulkCreateController.listTemplates as any);
 bulkCreateRouter.get("/templates/community", bulkCreateController.listCommunityTemplates as any);
+bulkCreateRouter.get("/templates/paged", validateRequest(templatePaginationSchema), bulkCreateController.listTemplatesPage as any);
 bulkCreateRouter.post("/templates/:id/publish", validateRequest(idSchema), bulkCreateController.publishTemplate as any);
 bulkCreateRouter.post("/templates/:id/unpublish", validateRequest(idSchema), bulkCreateController.unpublishTemplate as any);
 bulkCreateRouter.post("/templates/:id/use", validateRequest(idSchema), bulkCreateController.useCommunityTemplate as any);
