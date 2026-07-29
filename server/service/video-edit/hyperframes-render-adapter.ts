@@ -339,7 +339,7 @@ export function createHyperframesRenderAdapter(
   };
 }
 
-const require = createRequire(import.meta.url);
+const require = createRequire(join(process.cwd(), "package.json"));
 
 export const hyperframesRenderAdapter = createHyperframesRenderAdapter({
   cliPath: require.resolve("hyperframes/dist/cli.js"),

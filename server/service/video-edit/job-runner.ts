@@ -1,9 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { AIMediaModel } from "../../model/ai-media.model";
 import { broadcastEvent } from "../../socket";
-import { hyperframeService } from "./hyperframe";
 import { remotionService } from "./remotion";
 import { runFFmpegFallback } from "./ffmpeg";
+import { VideoRenderAdapterError, type VideoRenderInput } from "./render-adapter";
+import { runRenderWaterfall } from "./render-waterfall";
+import { defaultVideoRenderAdapterRegistry } from "./video-render-adapters";
+
+const HYPERFRAMES_RENDER_TIMEOUT_MS = 15 * 60 * 1000;
+
+function safeRenderFailure(error: unknown) {
+  if (error instanceof VideoRenderAdapterError) {
+    return `${error.code}: ${error.message}`;
+  }
+  return "Renderer failed.";
+}
 
 /**
  * Thực thi tác vụ render video theo waterfall: Hyperframe → Remotion → FFmpeg.
@@ -65,55 +79,74 @@ export async function executeLocalRenderJob(
       if (resolution === "1080p") { targetWidth = 1920; targetHeight = 1080; }
     }
 
-    let finalVideoUrl = "";
-    let renderSuccess = false;
     const renderEngine = record?.metadata?.provider || process.env.VIDEO_RENDER_ENGINE || "hyperframe";
     const renderOptions = { aspectRatio: aspect, resolution };
+    const normalizedAspect: VideoRenderInput["aspectRatio"] =
+      aspect === "9:16" || aspect === "1:1" ? aspect : "16:9";
+    const normalizedResolution: VideoRenderInput["resolution"] =
+      resolution === "1080p" ? "1080p" : "720p";
+    const hyperframesAdapter =
+      defaultVideoRenderAdapterRegistry.get("hyperframes");
 
-    // ── Bước 1: Hyperframe (nhanh, CSS-based) ────────────────────────────────
     if (renderEngine !== "remotion") {
-      try {
-        await updateLogs(25, `[Render Engine] Bắt đầu kết xuất bằng Hyperframe (${aspect}, ${resolution})...`);
-        finalVideoUrl = await hyperframeService.renderVideo(
-          blueprint,
-          renderOptions,
-          async (progress, msg) => { await updateLogs(progress, msg); }
-        );
-        renderSuccess = true;
-        await updateLogs(86, "[Render Engine] ✅ Hyperframe kết xuất thành công.");
-      } catch (hypErr: any) {
-        const errMsg = hypErr.message || String(hypErr);
-        await updateLogs(30, `[Render Engine] Hyperframe thất bại (${errMsg.slice(0, 120)}). Thử Remotion...`);
-      }
+      await updateLogs(25, `[Render Engine] Bắt đầu kết xuất bằng Hyperframe (${aspect}, ${resolution})...`);
     }
 
-    // ── Bước 2: Remotion (chính xác, Chromium-based) ─────────────────────────
-    if (!renderSuccess) {
-      try {
+    const waterfallResult = await runRenderWaterfall({
+      selectedEngine: renderEngine,
+      hyperframesAdapter,
+      hyperframesInput: {
+        jobId: recordId,
+        blueprint: blueprint as VideoRenderInput["blueprint"],
+        aspectRatio: normalizedAspect,
+        resolution: normalizedResolution,
+        sourceVideoUrl: videoUrl,
+      },
+      hyperframesContext: {
+        signal: new AbortController().signal,
+        timeoutMs: HYPERFRAMES_RENDER_TIMEOUT_MS,
+        temporaryDirectory: join(
+          tmpdir(),
+          `igen-hyperframes-${recordId}-${randomUUID()}`
+        ),
+        onProgress: async ({ progress, message }) => {
+          const workerProgress = Math.min(85, 25 + Math.round(progress * 0.65));
+          await updateLogs(workerProgress, `[Hyperframe Engine] ${message}`);
+        },
+      },
+      renderWithRemotion: async () => {
         await updateLogs(35, `[Render Engine] Bắt đầu kết xuất bằng Remotion (${aspect}, ${resolution})...`);
-        finalVideoUrl = await remotionService.renderVideo(
+        return remotionService.renderVideo(
           blueprint,
           renderOptions,
           async (progress, msg) => { await updateLogs(progress, msg); }
         );
-        renderSuccess = true;
-        await updateLogs(86, "[Render Engine] ✅ Remotion kết xuất thành công.");
-      } catch (remErr: any) {
-        const errMsg = remErr.message || String(remErr);
-        await updateLogs(40, `[Render Engine Warning] Remotion thất bại (${errMsg.slice(0, 120)}). Chuyển sang FFmpeg Fallback...`);
-      }
-    }
+      },
+      renderWithFfmpeg: async () => {
+        await updateLogs(42, `[Render Engine] Bắt đầu FFmpeg fallback (${aspect}, ${resolution})...`);
+        return runFFmpegFallback(
+          recordId,
+          videoUrl,
+          blueprint,
+          { aspectRatio: aspect, resolution, targetWidth, targetHeight },
+          async (progress, msg) => { await updateLogs(progress, msg); }
+        );
+      },
+      onFailure: async (engine, error) => {
+        const safeFailure = safeRenderFailure(error);
+        if (engine === "hyperframes") {
+          await updateLogs(30, `[Render Engine] Hyperframe thất bại (${safeFailure}). Thử Remotion...`);
+          return;
+        }
+        await updateLogs(40, `[Render Engine Warning] Remotion thất bại (${safeFailure}). Chuyển sang FFmpeg Fallback...`);
+      },
+    });
 
-    // ── Bước 3: FFmpeg fallback ───────────────────────────────────────────────
-    if (!renderSuccess) {
-      await updateLogs(42, `[Render Engine] Bắt đầu FFmpeg fallback (${aspect}, ${resolution})...`);
-      finalVideoUrl = await runFFmpegFallback(
-        recordId,
-        videoUrl,
-        blueprint,
-        { aspectRatio: aspect, resolution, targetWidth, targetHeight },
-        async (progress, msg) => { await updateLogs(progress, msg); }
-      );
+    const finalVideoUrl = waterfallResult.outputUrl;
+    if (waterfallResult.engine === "hyperframes") {
+      await updateLogs(86, "[Render Engine] ✅ Hyperframe kết xuất thành công.");
+    } else if (waterfallResult.engine === "remotion") {
+      await updateLogs(86, "[Render Engine] ✅ Remotion kết xuất thành công.");
     }
 
     await updateLogs(95, "Cloudinary Đồng bộ hóa tài nguyên biên tập...");
