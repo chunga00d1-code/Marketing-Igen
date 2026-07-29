@@ -114,6 +114,17 @@ export const bulkCreateController = {
     } catch (error) { return handleError(res, error); }
   },
 
+  async listTemplatesPage(req: AuthenticatedRequest, res: Response) {
+    try {
+      const result = await bulkCreateService.listTemplatesPage(
+        actorFrom(req),
+        Number(req.query.page),
+        Number(req.query.pageSize)
+      );
+      return res.json({ status: "success", data: result });
+    } catch (error) { return handleError(res, error); }
+  },
+
   async listCommunityTemplates(req: AuthenticatedRequest, res: Response) {
     try {
       const templates = await bulkCreateService.listCommunityTemplates();

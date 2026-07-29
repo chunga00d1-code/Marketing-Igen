@@ -186,22 +186,49 @@ function renderTextLayer(layer: IBulkLayer, value: string, width: number, height
   let fontSize = Math.max(8, Math.round(layer.fontSize || 32));
   const letterSpacing = layer.letterSpacing || 0;
   const lineHeightRatio = layer.lineHeight || 1.22;
-  let lines = wrapText(renderedValue, Math.max(4, Math.floor(width / (fontSize * 0.58 + letterSpacing))));
-  while (fontSize > 8 && lines.length * fontSize * lineHeightRatio > height) {
+  const padding = Math.max(0, Math.round(layer.padding || 0));
+  const contentWidth = Math.max(1, width - padding * 2);
+  const contentHeight = Math.max(1, height - padding * 2);
+  let lines = wrapText(renderedValue, Math.max(4, Math.floor(contentWidth / (fontSize * 0.58 + letterSpacing))));
+  while (fontSize > 8 && lines.length * fontSize * lineHeightRatio > contentHeight) {
     fontSize -= 1;
-    lines = wrapText(renderedValue, Math.max(4, Math.floor(width / (fontSize * 0.58 + letterSpacing))));
+    lines = wrapText(renderedValue, Math.max(4, Math.floor(contentWidth / (fontSize * 0.58 + letterSpacing))));
   }
   const align = layer.textAlign || "left";
   const anchor = align === "center" ? "middle" : align === "right" ? "end" : "start";
-  const x = align === "center" ? width / 2 : align === "right" ? width : 0;
+  const x = align === "center" ? width / 2 : align === "right" ? width - padding : padding;
   const lineHeight = fontSize * lineHeightRatio;
-  const text = lines.slice(0, Math.max(1, Math.floor(height / lineHeight))).map((line, index) => (
-    `<text x="${x}" y="${fontSize + index * lineHeight}" text-anchor="${anchor}">${escapeXml(line)}</text>`
+  const visibleLines = lines.slice(0, Math.max(1, Math.floor(contentHeight / lineHeight)));
+  const verticallyCentered =
+    layer.layerKind === "badge" || layer.layerKind === "cta" || layer.layerKind === "icon";
+  const firstBaseline = verticallyCentered
+    ? Math.max(fontSize, (height - visibleLines.length * lineHeight) / 2 + fontSize)
+    : padding + fontSize;
+  const text = visibleLines.map((line, index) => (
+    `<text x="${x}" y="${firstBaseline + index * lineHeight}" text-anchor="${anchor}">${escapeXml(line)}</text>`
   )).join("");
   const supportedFonts = new Set<string>(BULK_FONT_FAMILIES);
   const fontFamily = supportedFonts.has(layer.fontFamily || "") ? layer.fontFamily! : "DejaVu Sans";
   const color = normalizeColor(layer.color, "#ffffff");
-  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><style>text{font-family:'${fontFamily}',Arial,sans-serif;font-size:${fontSize}px;font-weight:${layer.fontWeight || 700};font-style:${layer.fontStyle || "normal"};text-decoration:${layer.textDecoration || "none"};letter-spacing:${letterSpacing}px;fill:${color};}</style>${text}</svg>`);
+  const fill = layer.fillColor ? normalizeColor(layer.fillColor, "transparent") : "transparent";
+  const stroke = layer.borderWidth && layer.borderColor
+    ? normalizeColor(layer.borderColor, color)
+    : "none";
+  const radius = Math.max(0, Math.min(Math.min(width, height), layer.borderRadius || 0));
+  const opacity = Number.isFinite(layer.opacity) ? Math.max(0.05, Math.min(1, layer.opacity || 1)) : 1;
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><style>text{font-family:'${fontFamily}',Arial,sans-serif;font-size:${fontSize}px;font-weight:${layer.fontWeight || 700};font-style:${layer.fontStyle || "normal"};text-decoration:${layer.textDecoration || "none"};letter-spacing:${letterSpacing}px;fill:${color};}</style><g opacity="${opacity}"><rect width="${width}" height="${height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${layer.borderWidth || 0}"/>${text}</g></svg>`);
+}
+
+function renderShapeLayer(layer: IBulkLayer, width: number, height: number) {
+  const fill = normalizeColor(layer.fillColor, "#e2e8f0");
+  const stroke = layer.borderWidth && layer.borderColor
+    ? normalizeColor(layer.borderColor, "#0f172a")
+    : "none";
+  const radius = Math.max(0, Math.min(Math.min(width, height), layer.borderRadius || 0));
+  const opacity = Number.isFinite(layer.opacity) ? Math.max(0.05, Math.min(1, layer.opacity || 1)) : 1;
+  return Buffer.from(
+    `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><rect width="${width}" height="${height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${layer.borderWidth || 0}" opacity="${opacity}"/></svg>`
+  );
 }
 
 async function createBackground(snapshot: IBulkRenderJob["templateSnapshot"]) {
@@ -235,14 +262,18 @@ export async function renderBulkImage(
     const value = String(
       values[layer.id] ?? values[layer.fieldName] ?? layer.defaultValue ?? ""
     ).trim();
-    if (!value) throw new Error(`Thiếu dữ liệu cho trường '${layer.fieldName}'.`);
+    if (!value && layer.layerKind !== "shape") {
+      throw new Error(`Thiếu dữ liệu cho trường '${layer.fieldName}'.`);
+    }
     const targetWidth = Math.max(1, Math.round(canvasWidth * layer.width / 100));
     const targetHeight = Math.max(1, Math.round(canvasHeight * layer.height / 100));
     const left = Math.round(canvasWidth * layer.x / 100);
     const top = Math.round(canvasHeight * layer.y / 100);
 
     let input: Buffer;
-    if (layer.type === "image") {
+    if (layer.layerKind === "shape") {
+      input = renderShapeLayer(layer, targetWidth, targetHeight);
+    } else if (layer.type === "image") {
       input = await sharp(await loadImage(value))
         .resize(targetWidth, targetHeight, { fit: layer.fit || "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
         .png()

@@ -51,6 +51,14 @@ type BulkAiSceneResult = {
     layers: IBulkLayer[];
   };
   values: Record<string, string>;
+  operations: Array<
+    | { op: "add"; layerId: string; label: string }
+    | { op: "update"; layerId: string; label: string; fields: string[] }
+    | { op: "remove"; layerId: string; label: string }
+    | { op: "reorder"; layerId: string; label: string; zIndex: number }
+    | { op: "replace-background"; label: string }
+    | { op: "resize-canvas"; label: string; width: number; height: number }
+  >;
 };
 
 const ALLOWED_GRADIENTS = [
@@ -80,6 +88,12 @@ function stringValue(value: unknown, fallback = "", maxLength = 14_000_000) {
 function colorValue(value: unknown, fallback: string) {
   const candidate = stringValue(value);
   return HEX_COLOR.test(candidate) ? candidate.toLowerCase() : fallback;
+}
+
+function optionalColorValue(value: unknown, fallback?: string) {
+  const candidate = stringValue(value);
+  if (HEX_COLOR.test(candidate)) return candidate.toLowerCase();
+  return fallback && HEX_COLOR.test(fallback) ? fallback.toLowerCase() : undefined;
 }
 
 function parseJsonObject(text: string) {
@@ -167,11 +181,27 @@ function normalizeLayer(
   const safeDefaultValue = type === "image" && defaultValue && !allowedImages.has(defaultValue)
     ? current?.defaultValue || ""
     : defaultValue;
+  const resolvedFontSize = type === "text"
+    ? clamp(candidate.fontSize, 8, 300, current?.fontSize || 60)
+    : undefined;
+  const layerKind = type === "text" && (
+    candidate.layerKind === "text"
+    || candidate.layerKind === "shape"
+    || candidate.layerKind === "badge"
+    || candidate.layerKind === "cta"
+    || candidate.layerKind === "icon"
+  )
+    ? candidate.layerKind
+    : type === "text"
+      ? current?.layerKind || "text"
+      : undefined;
 
   return {
     ...(current || {}),
     id,
     type,
+    layerKind,
+    groupId: stringValue(candidate.groupId, current?.groupId || "", 100) || undefined,
     fieldName: stringValue(candidate.fieldName, current?.fieldName || (type === "text" ? "Nội dung" : "Hình ảnh"), 100).trim()
       || (type === "text" ? "Nội dung" : "Hình ảnh"),
     x: clamp(candidate.x, 0, 100 - width, Math.min(current?.x || 0, 100 - width)),
@@ -185,7 +215,7 @@ function normalizeLayer(
       ? candidate.fit
       : current?.fit || "contain",
     ...(type === "text" ? {
-      fontSize: clamp(candidate.fontSize, 8, 300, current?.fontSize || 60),
+      fontSize: resolvedFontSize,
       fontFamily: FONT_SET.has(stringValue(candidate.fontFamily))
         ? stringValue(candidate.fontFamily)
         : current?.fontFamily || "Be Vietnam Pro",
@@ -209,8 +239,232 @@ function normalizeLayer(
         : "none" as const,
       letterSpacing: clamp(candidate.letterSpacing, -5, 30, current?.letterSpacing || 0),
       lineHeight: clamp(candidate.lineHeight, 0.8, 3, current?.lineHeight || 1.2),
+      autoFit: typeof candidate.autoFit === "boolean"
+        ? candidate.autoFit
+        : current?.autoFit ?? true,
+      minFontSize: clamp(
+        candidate.minFontSize,
+        8,
+        resolvedFontSize || 300,
+        Math.min(current?.minFontSize || 12, resolvedFontSize || 300)
+      ),
+      maxLines: candidate.maxLines === undefined && current?.maxLines === undefined
+        ? undefined
+        : Math.round(clamp(candidate.maxLines, 1, 20, current?.maxLines || 3)),
     } : {}),
+    fillColor: optionalColorValue(candidate.fillColor, current?.fillColor),
+    borderColor: optionalColorValue(candidate.borderColor, current?.borderColor),
+    borderWidth: clamp(candidate.borderWidth, 0, 30, current?.borderWidth || 0),
+    borderRadius: clamp(candidate.borderRadius, 0, 100, current?.borderRadius || 0),
+    opacity: clamp(candidate.opacity, 0.05, 1, current?.opacity || 1),
+    padding: clamp(candidate.padding, 0, 80, current?.padding || 0),
     defaultValue: safeDefaultValue,
+  };
+}
+
+type AppliedOperation = BulkAiSceneResult["operations"][number];
+
+function describeSceneDiff(
+  input: BulkAiSceneInput,
+  scene: BulkAiSceneResult["scene"],
+  values: Record<string, string>
+): AppliedOperation[] {
+  const operations: AppliedOperation[] = [];
+  if (
+    scene.canvas.width !== input.scene.canvas.width
+    || scene.canvas.height !== input.scene.canvas.height
+  ) {
+    operations.push({
+      op: "resize-canvas",
+      label: `Đổi kích thước canvas thành ${scene.canvas.width}×${scene.canvas.height}`,
+      width: scene.canvas.width,
+      height: scene.canvas.height,
+    });
+  }
+  if (JSON.stringify(scene.background) !== JSON.stringify(input.scene.background)) {
+    operations.push({ op: "replace-background", label: "Thay đổi nền trang" });
+  }
+
+  const currentById = new Map(input.scene.layers.map((layer) => [layer.id, layer]));
+  const nextById = new Map(scene.layers.map((layer) => [layer.id, layer]));
+  input.scene.layers.forEach((layer) => {
+    if (!nextById.has(layer.id)) {
+      operations.push({ op: "remove", layerId: layer.id, label: `Xóa ${layer.fieldName}` });
+    }
+  });
+  scene.layers.forEach((layer) => {
+    const current = currentById.get(layer.id);
+    if (!current) {
+      operations.push({ op: "add", layerId: layer.id, label: `Thêm ${layer.fieldName}` });
+      return;
+    }
+    const fields = Object.keys(layer).filter((field) =>
+      JSON.stringify(layer[field as keyof IBulkLayer])
+      !== JSON.stringify(current[field as keyof IBulkLayer])
+    );
+    if (values[layer.id] !== input.values[layer.id]) fields.push("value");
+    if (fields.length > 0) {
+      operations.push({
+        op: "update",
+        layerId: layer.id,
+        label: `Chỉnh ${layer.fieldName}`,
+        fields: [...new Set(fields)],
+      });
+    }
+  });
+  return operations.slice(0, 50);
+}
+
+function normalizeOperationResult(
+  raw: Record<string, unknown>,
+  input: BulkAiSceneInput,
+  allowedImages: Set<string>
+): BulkAiSceneResult | null {
+  if (!Array.isArray(raw.operations)) return null;
+
+  let canvas = { ...input.scene.canvas };
+  let background = { ...input.scene.background };
+  let layers = input.scene.layers.map((layer) => ({ ...layer }));
+  const values = { ...input.values };
+  const applied: AppliedOperation[] = [];
+
+  raw.operations.slice(0, 50).forEach((item, operationIndex) => {
+    if (!item || typeof item !== "object") return;
+    const operation = item as Record<string, unknown>;
+    const op = stringValue(operation.op, "", 40);
+    const layerId = stringValue(operation.layerId, "", 100);
+
+    if (op === "replace-background") {
+      const candidate = operation.value || operation.background;
+      const nextBackground = normalizeBackground(candidate, background, allowedImages);
+      if (JSON.stringify(nextBackground) === JSON.stringify(background)) return;
+      background = nextBackground;
+      applied.push({ op, label: "Thay đổi nền trang" });
+      return;
+    }
+
+    if (op === "resize-canvas") {
+      const candidate = operation.value && typeof operation.value === "object"
+        ? operation.value as Record<string, unknown>
+        : operation;
+      const nextCanvas = {
+        width: Math.round(clamp(candidate.width, 320, 4096, canvas.width)),
+        height: Math.round(clamp(candidate.height, 320, 4096, canvas.height)),
+      };
+      if (nextCanvas.width === canvas.width && nextCanvas.height === canvas.height) return;
+      canvas = nextCanvas;
+      applied.push({
+        op,
+        label: `Đổi kích thước canvas thành ${canvas.width}×${canvas.height}`,
+        width: canvas.width,
+        height: canvas.height,
+      });
+      return;
+    }
+
+    if (op === "add") {
+      if (layers.length >= 20) return;
+      const rawLayer = operation.layer && typeof operation.layer === "object"
+        ? operation.layer as Record<string, unknown>
+        : operation.value && typeof operation.value === "object"
+          ? operation.value as Record<string, unknown>
+          : {};
+      const requestedId = stringValue(rawLayer.id, "", 100);
+      const uniqueId = requestedId && !layers.some((layer) => layer.id === requestedId)
+        ? requestedId
+        : `ai-layer-${Date.now()}-${operationIndex}`;
+      const layer = normalizeLayer(
+        { ...rawLayer, id: uniqueId },
+        undefined,
+        layers.length,
+        allowedImages
+      );
+      if (!layer) return;
+      layers.push(layer);
+      const proposedValue = stringValue(
+        operation.valueText ?? operation.content ?? operation.layerValue,
+        layer.defaultValue || ""
+      );
+      values[layer.id] = layer.type === "image" && proposedValue && !allowedImages.has(proposedValue)
+        ? layer.defaultValue || ""
+        : proposedValue;
+      applied.push({ op, layerId: layer.id, label: `Thêm ${layer.fieldName}` });
+      return;
+    }
+
+    const layerIndex = layers.findIndex((layer) => layer.id === layerId);
+    if (layerIndex < 0) return;
+    const current = layers[layerIndex];
+
+    if (op === "remove") {
+      layers.splice(layerIndex, 1);
+      delete values[layerId];
+      applied.push({ op, layerId, label: `Xóa ${current.fieldName}` });
+      return;
+    }
+
+    if (op === "reorder") {
+      const zIndex = Math.round(clamp(operation.zIndex, 0, 1000, current.zIndex));
+      if (zIndex === current.zIndex) return;
+      layers[layerIndex] = { ...current, zIndex };
+      applied.push({ op, layerId, label: `Đổi thứ tự ${current.fieldName}`, zIndex });
+      return;
+    }
+
+    if (op === "update") {
+      const changes = operation.changes && typeof operation.changes === "object"
+        ? operation.changes as Record<string, unknown>
+        : {};
+      const normalized = normalizeLayer(
+        { ...current, ...changes, id: current.id, type: current.type },
+        current,
+        layerIndex,
+        allowedImages
+      );
+      if (!normalized) return;
+      const changedFields = Object.keys(changes).filter((field) =>
+        JSON.stringify(normalized[field as keyof IBulkLayer])
+        !== JSON.stringify(current[field as keyof IBulkLayer])
+      );
+      if (operation.value !== undefined) {
+        const proposedValue = stringValue(operation.value, values[layerId] || normalized.defaultValue || "");
+        const safeValue = normalized.type === "image" && proposedValue && !allowedImages.has(proposedValue)
+          ? values[layerId] || normalized.defaultValue || ""
+          : proposedValue;
+        if (safeValue !== values[layerId]) {
+          values[layerId] = safeValue;
+          changedFields.push("value");
+        }
+      }
+      if (changedFields.length === 0) return;
+      layers[layerIndex] = normalized;
+      applied.push({
+        op,
+        layerId,
+        label: `Chỉnh ${normalized.fieldName}`,
+        fields: [...new Set(changedFields)],
+      });
+    }
+  });
+
+  layers = layers.slice(0, 20)
+    .sort((left, right) => left.zIndex - right.zIndex)
+    .map((layer, index) => ({ ...layer, zIndex: index }));
+  const normalizedValues = Object.fromEntries(layers.map((layer) => [
+    layer.id,
+    values[layer.id] || layer.defaultValue || "",
+  ]));
+  return {
+    reply: stringValue(raw.reply, "Đã cập nhật trang theo yêu cầu.", 1_000).trim()
+      || "Đã cập nhật trang theo yêu cầu.",
+    scene: {
+      sceneVersion: 2,
+      canvas,
+      background,
+      layers,
+    },
+    values: normalizedValues,
+    operations: applied,
   };
 }
 
@@ -276,16 +530,18 @@ function normalizeResult(
       : proposed;
   });
 
+  const scene: BulkAiSceneResult["scene"] = {
+    sceneVersion: 2,
+    canvas,
+    background: normalizeBackground(rawScene.background, input.scene.background, allowedImages),
+    layers,
+  };
   return {
     reply: stringValue(raw.reply, "Đã cập nhật bố cục trên trang hiện tại.", 1_000).trim()
       || "Đã cập nhật bố cục trên trang hiện tại.",
-    scene: {
-      sceneVersion: 2,
-      canvas,
-      background: normalizeBackground(rawScene.background, input.scene.background, allowedImages),
-      layers,
-    },
+    scene,
     values,
+    operations: describeSceneDiff(input, scene, values),
   };
 }
 
@@ -346,34 +602,35 @@ export const bulkCreateAiService = {
       timeoutMs: 45_000,
       responseSchema: {
         reply: "string",
-        scene: {
-          canvas: { width: "number", height: "number" },
-          background: {
-            type: "color | gradient | image",
-            color: "optional #RRGGBB",
-            colors: "optional [#RRGGBB, #RRGGBB]",
-            imageUrl: "optional exact supplied image URL",
-          },
-          layers: "complete array of editable text/image layers",
-        },
-        values: "object keyed by layer id",
-        deletedLayerIds: "array of existing layer ids intentionally removed",
+        operations: [{
+          op: "add | update | remove | reorder | replace-background | resize-canvas",
+          layerId: "existing layer id for update/remove/reorder",
+          changes: "only changed layer fields for update",
+          value: "new row value for update, or background/canvas object",
+          layer: "complete new layer for add",
+          layerValue: "content of a newly added layer",
+          zIndex: "target order for reorder",
+        }],
       },
       messages: [
         {
           role: "system",
-          content: `Bạn là art director điều khiển trình biên tập thiết kế có cấu trúc. Không trả HTML/CSS và không trả ảnh phẳng. Đầu ra phải là scene gồm canvas, background và tối đa 20 layer text/image để người dùng tiếp tục kéo, thả, đổi kích thước và sửa chữ.
+          content: `Bạn là art director điều khiển trình biên tập thiết kế có cấu trúc. Không trả HTML/CSS, không trả ảnh phẳng và không dựng lại toàn bộ scene. Đầu ra chỉ gồm reply và danh sách operations tối thiểu để người dùng tiếp tục kéo, thả, đổi kích thước và sửa chữ.
 
 FORM HIỆN TẠI LÀ NGUỒN SỰ THẬT:
 - Mọi lần chỉnh sửa phải bắt đầu từ scene/form hiện tại được gửi trong tin nhắn cuối.
 - Giữ nguyên id, type, nội dung, ảnh, vị trí và style của mọi layer không liên quan đến yêu cầu mới nhất.
-- Chỉ thêm layer khi thực sự cần. Chỉ xóa layer khi người dùng yêu cầu và phải ghi id vào deletedLayerIds.
-- Luôn trả lại toàn bộ layer đã thêm hoặc chỉnh sửa; server sẽ tự giữ các layer không được nhắc tới.
-- values chứa nội dung thật theo id layer. Không tự bịa giá, ưu đãi, số liệu hoặc tuyên bố.
+- Chỉ trả operations cần thiết, không trả lại toàn bộ scene.
+- update phải dùng đúng layerId hiện tại và changes chỉ chứa trường thực sự cần đổi. Nội dung mới đặt trong value.
+- add phải có layer hoàn chỉnh và nội dung đặt trong layerValue. remove/reorder chỉ dùng layerId đang tồn tại.
+- Không có operation nào đồng nghĩa giữ nguyên phần đó. Không tự bịa giá, ưu đãi, số liệu hoặc tuyên bố.
 
 QUY TẮC BỐ CỤC:
 - x, y, width, height đều là phần trăm 0-100 và layer phải nằm trọn trong canvas.
 - Headline rõ, tối đa 2-3 dòng; lề an toàn 6-8%; phân cấp thị giác và tương phản tốt.
+- Layer chữ nên bật autoFit:true, minFontSize hợp lý và đặt maxLines 2-3 cho headline, 3-6 cho nội dung phụ.
+- Có thể dùng layerKind text, shape, badge, cta hoặc icon. Shape dùng type:text, layerKind:shape và layerValue rỗng; badge/cta/icon vẫn là layer chữ chỉnh sửa được.
+- fillColor, borderColor là màu hex; borderWidth 0-30; borderRadius 0-100; opacity 0.05-1; padding 0-80.
 - Font chỉ dùng một trong: ${BULK_FONT_FAMILIES.join(", ")}.
 - Background gradient chỉ được dùng đúng một trong các cặp: ${ALLOWED_GRADIENTS.map((item) => item.join(" + ")).join("; ")}.
 - Chỉ được dùng URL ảnh có sẵn trong form hoặc ảnh đính kèm. Khi người dùng yêu cầu dùng ảnh làm nền, đặt đúng URL đó vào background.imageUrl, không tạo nền khác.
@@ -388,7 +645,9 @@ QUY TẮC BỐ CỤC:
       ],
     });
 
-    const result = normalizeResult(parseJsonObject(response.text), input, allowedImages);
+    const parsed = parseJsonObject(response.text);
+    const result = normalizeOperationResult(parsed, input, allowedImages)
+      || normalizeResult(parsed, input, allowedImages);
     await walletService.deductBalance(
       actor.id,
       API_COSTS.AI_HTML_CHAT,

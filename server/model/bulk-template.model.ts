@@ -5,6 +5,12 @@ const BulkLayerSchema = new Schema(
   {
     id: { type: String, required: true },
     type: { type: String, enum: ["text", "image"], required: true },
+    layerKind: {
+      type: String,
+      enum: ["text", "shape", "badge", "cta", "icon"],
+      default: undefined,
+    },
+    groupId: { type: String, maxlength: 100 },
     fieldName: { type: String, required: true },
     x: { type: Number, required: true, min: 0, max: 100 },
     y: { type: Number, required: true, min: 0, max: 100 },
@@ -24,6 +30,15 @@ const BulkLayerSchema = new Schema(
     textTransform: { type: String, enum: ["none", "uppercase", "lowercase", "capitalize"], default: "none" },
     letterSpacing: { type: Number, min: -5, max: 30, default: 0 },
     lineHeight: { type: Number, min: 0.8, max: 3, default: 1.22 },
+    autoFit: { type: Boolean, default: true },
+    minFontSize: { type: Number, min: 8, max: 300, default: 12 },
+    maxLines: { type: Number, min: 1, max: 20 },
+    fillColor: { type: String },
+    borderColor: { type: String },
+    borderWidth: { type: Number, min: 0, max: 30, default: 0 },
+    borderRadius: { type: Number, min: 0, max: 100, default: 0 },
+    opacity: { type: Number, min: 0.05, max: 1, default: 1 },
+    padding: { type: Number, min: 0, max: 80, default: 0 },
     defaultValue: { type: String, default: "" },
     dataBinding: {
       type: new Schema(

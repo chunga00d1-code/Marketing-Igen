@@ -4,6 +4,7 @@ import {
   ImagePlus,
   Loader2,
   Paperclip,
+  RotateCcw,
   Send,
   WandSparkles,
   X,
@@ -12,6 +13,7 @@ import {
   bulkCreateService,
   type BulkAiAttachment,
   type BulkAiHistoryMessage,
+  type BulkAiOperation,
   type BulkAiScene,
   type BulkAiSceneResult,
 } from '../../../services/bulkCreateService';
@@ -23,6 +25,7 @@ type BulkAiPanelProps = {
   history: BulkAiHistoryMessage[];
   onHistoryChange: (history: BulkAiHistoryMessage[]) => void;
   onApply: (result: BulkAiSceneResult) => void;
+  onUndo: () => void;
   onClose: () => void;
 };
 
@@ -42,12 +45,14 @@ export function BulkAiPanel({
   history,
   onHistoryChange,
   onApply,
+  onUndo,
   onClose,
 }: BulkAiPanelProps) {
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<BulkAiAttachment[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [lastOperations, setLastOperations] = useState<BulkAiOperation[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,11 +137,12 @@ export function BulkAiPanel({
         history,
       });
       onApply(result);
+      setLastOperations(result.operations || []);
       onHistoryChange([
         ...history,
         { role: 'user', content: normalizedPrompt },
         { role: 'assistant', content: result.reply },
-      ].slice(-10) as BulkAiHistoryMessage[]);
+      ].slice(-20) as BulkAiHistoryMessage[]);
       setPrompt('');
       setAttachments([]);
       toast.success(result.reply);
@@ -190,6 +196,43 @@ export function BulkAiPanel({
                 {message.content}
               </div>
             ))}
+          </div>
+        )}
+
+        {lastOperations.length > 0 && (
+          <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-extrabold text-emerald-800">
+                AI vừa thay đổi {lastOperations.length} mục
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  onUndo();
+                  setLastOperations([]);
+                  toast.success('Đã hoàn tác lần chỉnh sửa AI gần nhất.');
+                }}
+                className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1 text-[10px] font-extrabold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:text-indigo-700"
+              >
+                <RotateCcw className="h-3 w-3" />
+                Hoàn tác
+              </button>
+            </div>
+            <div className="space-y-1">
+              {lastOperations.slice(0, 8).map((operation, index) => (
+                <div
+                  key={`${operation.op}-${'layerId' in operation ? operation.layerId : index}`}
+                  className="rounded-lg bg-white/80 px-2 py-1.5 text-[10px] font-semibold text-emerald-900"
+                >
+                  {operation.label}
+                </div>
+              ))}
+              {lastOperations.length > 8 && (
+                <div className="text-[10px] font-semibold text-emerald-700">
+                  Và {lastOperations.length - 8} thay đổi khác
+                </div>
+              )}
+            </div>
           </div>
         )}
 
