@@ -1,6 +1,7 @@
 export type VideoStudioTool =
   | "home"
   | "templates"
+  | "html-video"
   | "ai-video"
   | "human-video"
   | "motion"
@@ -12,6 +13,7 @@ export type VideoStudioTool =
 export const VIDEO_STUDIO_ROUTES: Record<VideoStudioTool, string> = {
   home: "/video-studio",
   templates: "/video-studio/templates",
+  "html-video": "/video-studio/html-to-video",
   "ai-video": "/video-studio/tao-video-ai",
   "human-video": "/video-studio/video-nguoi-dan",
   motion: "/video-studio/tao-chuyen-dong",
