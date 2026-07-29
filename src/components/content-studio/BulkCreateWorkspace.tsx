@@ -17,10 +17,13 @@ import {
   CloudCheck,
   CloudOff,
   LoaderCircle,
+  WandSparkles,
 } from 'lucide-react';
 import {
   bulkCreateService,
   type BulkAsset,
+  type BulkAiHistoryMessage,
+  type BulkAiSceneResult,
   type BulkDataColumn,
   type BulkImportedRow,
   type BulkRenderItem,
@@ -63,6 +66,7 @@ import {
   BULK_SCENE_VERSION,
   type BulkSceneDocument,
 } from './bulk-create/SceneCanvas';
+import { BulkAiPanel } from './bulk-create/BulkAiPanel';
 
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -293,6 +297,8 @@ async function mapWithConcurrency<T, R>(
 
 interface BulkCreateWorkspaceProps {
   onClose?: () => void;
+  cardId?: string;
+  onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
 }
 
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -307,6 +313,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const undoRef = useRef<EditorSnapshot[]>([]);
   const redoRef = useRef<EditorSnapshot[]>([]);
   const [activeTool, setActiveTool] = useState<EditorTool>('background');
+  const [aiHtmlMode, setAiHtmlMode] = useState(false);
+  const [aiHistory, setAiHistory] = useState<BulkAiHistoryMessage[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [backgroundId, setBackgroundId] = useState('blank');
   const [backgroundImage, setBackgroundImage] = useState('');
@@ -611,6 +619,57 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     }];
     redoRef.current = [];
   }, [layers, rows]);
+
+  const applyAiScene = useCallback((result: BulkAiSceneResult) => {
+    recordLayerHistory();
+    const nextLayers = result.scene.layers;
+    setCanvasSize(result.scene.canvas);
+    setLayers(nextLayers);
+    setRows((currentRows) => {
+      if (currentRows.length === 0) return [createRow(nextLayers, result.values)];
+      return currentRows.map((row) => ({
+        ...row,
+        values: Object.fromEntries(nextLayers.map((layer) => {
+          const generatedValue = row.id === activeRowId ? result.values[layer.id] : undefined;
+          return [
+            layer.id,
+            generatedValue
+              ?? row.values[layer.id]
+              ?? layer.defaultValue
+              ?? (layer.type === 'text' ? layer.fieldName : ''),
+          ];
+        })),
+      }));
+    });
+
+    if (result.scene.background.type === 'image') {
+      setBackgroundImage(result.scene.background.imageUrl || '');
+      setBackgroundId('');
+    } else if (result.scene.background.type === 'gradient') {
+      setBackgroundImage('');
+      const colors = result.scene.background.colors || [];
+      const match = BACKGROUNDS.find((item) => item.colors.join(',') === colors.join(','));
+      if (match) {
+        setBackgroundId(match.id);
+      } else {
+        setBackgroundId('blank');
+        setBackgroundColor(colors[0] || '#ffffff');
+      }
+    } else {
+      setBackgroundImage('');
+      setBackgroundId('blank');
+      setBackgroundColor(result.scene.background.color || '#ffffff');
+    }
+
+    setBackgroundSelected(false);
+    setSelectedLayerId('');
+    setSelectedLayerIds([]);
+    setEditingLayerId('');
+    setPageResults({});
+    setActiveJobPageIds([]);
+    setActiveJob(null);
+    setJobItems([]);
+  }, [activeRowId, recordLayerHistory]);
 
   const changeLayer = useCallback((layerId: string, updates: Partial<TemplateLayer>) => {
     recordLayerHistory();
@@ -1460,6 +1519,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setActiveJobPageIds([]);
     setActiveJob(null);
     setJobItems([]);
+    setAiHistory([]);
   };
 
   const loadCampaignsForImport = useCallback(async () => {
@@ -1528,6 +1588,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setActiveJobPageIds([]);
     setActiveJob(null);
     setJobItems([]);
+    setAiHistory([]);
     undoRef.current = [];
     redoRef.current = [];
     toast.success(`Đã mở mẫu “${template.name}”. Bạn có thể chỉnh sửa hoặc map dữ liệu ngay.`);
@@ -1558,6 +1619,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setActiveJobPageIds([]);
     setActiveJob(null);
     setJobItems([]);
+    setAiHistory([]);
     undoRef.current = [];
     redoRef.current = [];
   };
@@ -1942,17 +2004,30 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           const Icon = tool.icon;
           const active = activeTool === tool.id;
           return (
-            <button key={tool.id} type="button" onClick={() => { if (active && sidebarOpen) setSidebarOpen(false); else { setActiveTool(tool.id); setSidebarOpen(true); } }} className={`mx-2 mb-1 flex min-h-[68px] flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-xs font-bold transition ${active && sidebarOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+            <button key={tool.id} type="button" onClick={() => { setAiHtmlMode(false); if (active && sidebarOpen) setSidebarOpen(false); else { setActiveTool(tool.id); setSidebarOpen(true); } }} className={`mx-2 mb-1 flex min-h-[68px] flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-xs font-bold transition ${active && sidebarOpen && !aiHtmlMode ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`}>
               <Icon className="h-5 w-5" />{tool.label}
               {tool.id === 'data' && layers.length > 0 && <span className="absolute hidden" />}
             </button>
           );
         })}
+        <button type="button" onClick={() => { if (aiHtmlMode && sidebarOpen) setSidebarOpen(false); else { setAiHtmlMode(true); setSidebarOpen(true); } }} className={`mx-2 mb-1 flex min-h-[68px] flex-col items-center justify-center gap-1.5 rounded-xl px-1 text-xs font-bold transition ${aiHtmlMode && sidebarOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`} title="Thiết kế và chỉnh sửa trang bằng AI">
+          <WandSparkles className="h-5 w-5" />Thiết kế AI
+        </button>
       </nav>
 
       <aside className={`flex min-h-0 shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white transition-[width] duration-200 ${sidebarOpen ? 'w-[320px]' : 'w-0 border-r-0'}`}>
         <div className="flex min-h-0 w-[320px] flex-1">
-          <EditorPanel
+          {aiHtmlMode ? (
+            <BulkAiPanel
+              scene={editorScene}
+              values={activeRow?.values || {}}
+              history={aiHistory}
+              onHistoryChange={setAiHistory}
+              onApply={applyAiScene}
+              onClose={() => setSidebarOpen(false)}
+            />
+          ) : (
+            <EditorPanel
           activeTool={activeTool}
           backgroundImage={backgroundImage}
           backgroundColor={backgroundColor}
@@ -2023,6 +2098,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           uploadingAsset={uploadingAsset}
           onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
           />
+          )}
         </div>
       </aside>
 
@@ -2032,7 +2108,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         </button>
       </div>
 
-      <main className="flex min-w-0 flex-1 flex-col bg-[#f4f5f7]">
+      <main className="relative flex min-w-0 flex-1 flex-col bg-[#f4f5f7]">
         <div className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 px-4 text-white shadow-sm">
           <div className="flex shrink-0 items-center gap-2">
             {onClose && (

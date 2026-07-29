@@ -118,6 +118,31 @@ export interface BulkAsset {
   createdAt: string;
 }
 
+export interface BulkAiAttachment {
+  type: 'image' | 'document';
+  name: string;
+  url?: string;
+  text?: string;
+}
+
+export interface BulkAiHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface BulkAiScene {
+  sceneVersion?: number;
+  canvas: BulkTemplatePayload['canvas'];
+  background: BulkTemplatePayload['background'];
+  layers: BulkLayer[];
+}
+
+export interface BulkAiSceneResult {
+  reply: string;
+  scene: BulkAiScene;
+  values: Record<string, string>;
+}
+
 function headers(json = true): HeadersInit {
   const token = getAccessToken();
   return {
@@ -135,6 +160,24 @@ async function parse<T>(response: Response, fallback: string): Promise<T> {
 }
 
 export const bulkCreateService = {
+  async updateSceneWithAi(input: {
+    prompt: string;
+    scene: BulkAiScene;
+    values: Record<string, string>;
+    attachments?: BulkAiAttachment[];
+    history?: BulkAiHistoryMessage[];
+  }) {
+    const response = await fetch('/api/v1/bulk-create/ai/scene', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(input),
+    });
+    return (await parse<{ data: BulkAiSceneResult }>(
+      response,
+      'Không thể cập nhật thiết kế bằng AI.'
+    )).data;
+  },
+
   async uploadLibraryAsset(dataUrl: string, originalName: string) {
     const response = await fetch('/api/v1/bulk-create/assets', {
       method: 'POST',

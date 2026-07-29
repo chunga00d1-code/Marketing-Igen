@@ -26,8 +26,23 @@ export const creativeImageController = {
     try { return res.status(201).json({ status: "success", data: await creativeImageService.createProject(actorFrom(req), req.body) }); }
     catch (error) { return respondError(res, error); }
   },
+  async createAiHtmlProject(req: AuthenticatedRequest, res: Response) {
+    try { return res.status(201).json({ status: "success", data: await creativeImageService.createAiHtmlProject(actorFrom(req), req.body) }); }
+    catch (error) { return respondError(res, error); }
+  },
+  async sendAiHtmlMessage(req: AuthenticatedRequest, res: Response) {
+    try { return res.json({ status: "success", data: await creativeImageService.sendAiHtmlMessage(actorFrom(req), req.params.id, req.body.message, req.body.attachments) }); }
+    catch (error) { return respondError(res, error); }
+  },
   async getProject(req: AuthenticatedRequest, res: Response) {
     try { return res.json({ status: "success", data: await creativeImageService.getProject(actorFrom(req), req.params.id) }); }
+    catch (error) { return respondError(res, error); }
+  },
+  async listAiHtmlProjects(req: AuthenticatedRequest, res: Response) {
+    try {
+      res.set("Cache-Control", "private, max-age=30");
+      return res.json({ status: "success", data: await creativeImageService.listAiHtmlProjects(actorFrom(req), Number(req.query.limit || 20)) });
+    }
     catch (error) { return respondError(res, error); }
   },
   async updateProject(req: AuthenticatedRequest, res: Response) {

@@ -40,6 +40,8 @@ export interface OpenRouterChatParams {
   model: string;
   messages: OpenRouterMessage[];
   temperature?: number;
+  maxTokens?: number;
+  timeoutMs?: number;
   /** Return JSON object (response_format: json_object) */
   jsonMode?: boolean;
   /** Optional JSON schema � injected into system prompt as instruction */
@@ -51,7 +53,7 @@ export interface OpenRouterChatParams {
  * Chat completions � text và/hoặc vision (base64 images).
  */
 export async function openrouterChat(params: OpenRouterChatParams): Promise<{ text: string }> {
-  const { model, temperature = 0.7, jsonMode, responseSchema, maxRetries = 4 } = params;
+  const { model, temperature = 0.7, jsonMode, responseSchema, maxRetries = 4, maxTokens, timeoutMs } = params;
   const apiKey = getApiKey();
 
   if (!apiKey) {
@@ -80,6 +82,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
     messages,
     temperature,
   };
+  if (maxTokens) body.max_tokens = maxTokens;
 
   if (jsonMode || responseSchema) {
     if (!mappedModel.includes("perplexity")) {
@@ -97,6 +100,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
 
       const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
         method: "POST",
+        signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
@@ -125,7 +129,8 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
       const isRetryable =
         status === 429 || status === 503 || status === 502 ||
         msg.includes("RESOURCE_EXHAUSTED") || msg.includes("fetch failed") ||
-        msg.includes("ECONNRESET") || msg.includes("ETIMEDOUT");
+        msg.includes("ECONNRESET") || msg.includes("ETIMEDOUT") ||
+        msg.includes("aborted") || msg.includes("timed out");
 
       if (isRetryable && attempt < maxRetries) {
         console.warn(`[OpenRouter] Attempt ${attempt} failed, retrying in ${delay}ms... Error: ${msg}`);

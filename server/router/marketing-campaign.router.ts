@@ -28,7 +28,7 @@ const createSchema = {
       .default("none"),
     qualityMode: Joi.string().valid("premium", "budget").default("premium"),
     publishMode: Joi.string().valid("auto", "manual").default("manual"),
-    imageMode: Joi.string().valid("ai", "real").default("ai"),
+    imageMode: Joi.string().valid("ai", "real", "order").default("ai"),
     publishNow: Joi.boolean().default(false),
     googleDriveFolderUrl: Joi.string().allow("").optional(),
     customSchedule: Joi.object().optional(),
@@ -234,6 +234,18 @@ marketingCampaignRouter.post("/", validateRequest(createSchema), marketingCampai
 marketingCampaignRouter.get("/", marketingCampaignController.list as never);
 marketingCampaignRouter.get("/:id/sheet", marketingCampaignController.getSheet as never);
 marketingCampaignRouter.get("/:id/asset-orders", validateRequest({ params: Joi.object({ id: objectId } ) }), marketingCampaignController.listAssetOrders as never);
+marketingCampaignRouter.post("/:id/asset-orders/drive-import/preview", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    googleDriveFolderUrl: Joi.string().trim().uri().max(2000).required(),
+  }),
+}), marketingCampaignController.previewAssetOrderDriveImport as never);
+marketingCampaignRouter.post("/:id/asset-orders/drive-import/apply", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    googleDriveFolderUrl: Joi.string().trim().uri().max(2000).required(),
+  }),
+}), marketingCampaignController.applyAssetOrderDriveImport as never);
 marketingCampaignRouter.post("/:id/asset-orders/custom-fields", validateRequest({
   params: Joi.object({ id: objectId }),
   body: Joi.object({ label: Joi.string().trim().min(1).max(120).required() }),

@@ -28,6 +28,9 @@ export interface IMarketingCampaign extends Document {
   integrationIds: Partial<Record<MarketingCampaignPlatform, Types.ObjectId | string>>;
   candidateCount: number;
   generationLeadMinutes: number;
+  preparationMode: "monthly";
+  monthlyPreparationLeadDays: number;
+  preparationScheduleVersion: number;
   verificationLeadMinutes: number;
   latePublishWindowMinutes: number;
   minimumScore: number;
@@ -42,7 +45,7 @@ export interface IMarketingCampaign extends Document {
   };
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
-  imageMode?: "ai" | "real";
+  imageMode?: "ai" | "real" | "order";
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   researchReport?: string;
