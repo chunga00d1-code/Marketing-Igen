@@ -65,6 +65,38 @@ const ACTIVE_SLOT_STATUSES: MarketingCampaignSlotStatus[] = [
   "needs_attention",
 ];
 
+type TikTokCampaignPublishOptions = {
+  caption: string;
+  privacyLevel: "PUBLIC_TO_EVERYONE" | "MUTUAL_FOLLOW_FRIENDS" | "FOLLOWER_OF_CREATOR" | "SELF_ONLY";
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  brandContentToggle: boolean;
+  brandContent: boolean;
+  brandOrganic: boolean;
+  isAigc: boolean;
+  videoDurationSeconds: number;
+  consentAccepted: boolean;
+};
+
+function validateTikTokCampaignPublishOptions(options?: TikTokCampaignPublishOptions) {
+  if (typeof options?.caption !== "string" || options.caption.length > 2200) {
+    throw new Error("Caption TikTok không hợp lệ.");
+  }
+  if (!options?.consentAccepted) {
+    throw new Error("Bạn phải xác nhận điều khoản TikTok trước khi duyệt đăng.");
+  }
+  if (!Number.isFinite(options.videoDurationSeconds) || options.videoDurationSeconds <= 0) {
+    throw new Error("Không đọc được thời lượng video TikTok. Vui lòng tải lại video trước khi đăng.");
+  }
+  if (options.brandContentToggle && !options.brandContent && !options.brandOrganic) {
+    throw new Error("Vui lòng chọn nội dung quảng bá cho thương hiệu của bạn, đối tác hoặc cả hai.");
+  }
+  if (options.brandContent && options.privacyLevel === "SELF_ONLY") {
+    throw new Error("Branded Content không thể đăng ở chế độ Chỉ mình tôi.");
+  }
+}
+
 async function validateIntegrations(companyCode: string, platforms: MarketingCampaignPlatform[], integrationIds: CreateCampaignInput["integrationIds"]) {
   for (const platform of platforms) {
     const integrationId = integrationIds?.[platform];
@@ -595,7 +627,7 @@ export const marketingCampaignService = {
     return { retriedCount: result.modifiedCount };
   },
 
-  async approveSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string) {
+  async approveSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
     if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
       throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
     }
@@ -604,6 +636,10 @@ export const marketingCampaignService = {
     const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
     if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể được duyệt ở trạng thái này: ${slot.status}`);
+    }
+    if (slot.platform === "TikTok") {
+      validateTikTokCampaignPublishOptions(tiktokPublishOptions);
+      slot.tiktokPublishOptions = tiktokPublishOptions;
     }
 
     const previousStatus = slot.status;
@@ -621,7 +657,7 @@ export const marketingCampaignService = {
     return slot;
   },
 
-  async publishNowSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string) {
+  async publishNowSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
     if (!mongoose.Types.ObjectId.isValid(campaignId) || !mongoose.Types.ObjectId.isValid(slotId)) {
       throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
     }
@@ -630,6 +666,10 @@ export const marketingCampaignService = {
     const allowedStatuses = ["pending_approval", "ready_to_publish", "needs_attention", "failed", "planned"];
     if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể đăng ngay ở trạng thái này: ${slot.status}`);
+    }
+    if (slot.platform === "TikTok") {
+      validateTikTokCampaignPublishOptions(tiktokPublishOptions);
+      slot.tiktokPublishOptions = tiktokPublishOptions;
     }
 
     const previousStatus = slot.status;

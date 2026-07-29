@@ -461,7 +461,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         candidateCount: 1, // Single-Render Flow
         qualityMode,
         publishMode: isTikTokCampaign ? 'manual' : (isSinglePost ? 'auto' : publishMode),
-        publishNow: isSinglePost && !isTikTokCampaign,
+        publishNow: isSinglePost,
         imageMode,
         mediaPolicy: isTikTokCampaign ? 'video' : 'auto',
         images: imagesParam,
@@ -725,7 +725,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               {/* Nguồn tư liệu & Hình ảnh */}
               <div>
                 <label className="mb-2 block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Chọn nguồn ảnh cho bài viết
+                  {isTikTokCampaign ? 'Chọn nguồn video cho bài viết' : 'Chọn nguồn ảnh cho bài viết'}
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -741,7 +741,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       <Sparkles size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">AI tự vẽ ảnh</span>
+                      <span className="block text-xs font-bold text-slate-800">{isTikTokCampaign ? 'TikTok không nhận ảnh' : 'AI tự vẽ ảnh'}</span>
                     </div>
                   </button>
 
@@ -757,8 +757,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       <FolderOpen size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">Order ảnh sau content</span>
-                      <span className="mt-0.5 block text-[10px] text-slate-500">Nhập Drive trong chi tiết chiến dịch</span>
+                      <span className="block text-xs font-bold text-slate-800">{isTikTokCampaign ? 'Nhập video sau content' : 'Order ảnh sau content'}</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">{isTikTokCampaign ? 'Chỉ nhận video từ Google Drive trong chi tiết chiến dịch' : 'Nhập Drive trong chi tiết chiến dịch'}</span>
                     </div>
                   </button>
                 </div>
@@ -823,7 +823,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     </div>
                     <p className="font-bold text-indigo-950 text-xs">
                       {isTikTokCampaign
-                        ? 'Hệ thống sẽ tạo video TikTok. Video chỉ sẵn sàng đăng sau khi render hoàn tất và có xác nhận xuất bản.'
+                        ? 'Hệ thống sẽ tạo nội dung TikTok và chờ video từ Google Drive. Video chỉ sẵn sàng đăng sau khi được nhập, kiểm tra và xác nhận xuất bản.'
                         : 'Hệ thống sẽ tạo bài viết và tự động đăng ngay lên Facebook Page.'}
                     </p>
                   </div>
@@ -1177,8 +1177,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             >
               {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Sparkles size={16} />}
               <span>{loading
-                ? (isSinglePost ? 'AI đang tạo bài viết...' : 'AI đang lập chiến lược và xếp lô render tháng đầu...')
-                : (isSinglePost ? '⚡ Tạo và đăng ngay 1 bài' : `🚀 Khởi chạy chiến dịch ${totalPosts || 0} bài`)}</span>
+                ? (isSinglePost ? (isTikTokCampaign ? 'AI đang tạo nội dung TikTok...' : 'AI đang tạo bài viết...') : 'AI đang lập chiến lược và xếp lô render tháng đầu...')
+                : (isSinglePost ? (isTikTokCampaign ? '⚡ Tạo nội dung & yêu cầu video' : '⚡ Tạo và đăng ngay 1 bài') : `🚀 Khởi chạy chiến dịch ${totalPosts || 0} bài`)}</span>
             </button>
           )}
         </div>
@@ -1188,7 +1188,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         <div className="flex items-center gap-2 text-indigo-700"><CalendarClock size={19} /><h3 className="text-sm font-extrabold">Tóm tắt thiết lập</h3></div>
         <div className="mt-5 space-y-3 text-xs text-slate-600">
           <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Hình thức</b><span>{creationMode === 'single' ? 'Một bài đăng' : creationMode === 'campaign' ? 'Chiến dịch nhiều bài' : 'Chưa chọn'}</span></div>
-          <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Thời gian</b><span>{isSinglePost ? 'Đăng ngay sau khi tạo' : `${dayCount || 0} ngày · ${startDate} → ${endDate}`}</span></div>
+          <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Thời gian</b><span>{isSinglePost ? (isTikTokCampaign ? 'Tạo nội dung ngay · nhập video rồi duyệt đăng' : 'Đăng ngay sau khi tạo') : `${dayCount || 0} ngày · ${startDate} → ${endDate}`}</span></div>
           <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Sản lượng</b><span>{isSinglePost ? '1 bài' : `${postsPerDay} bài/ngày · tổng ${totalPosts || 0} bài`}</span></div>
           {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Chu kỳ render</b><span>Render trọn tháng đầu; mỗi tháng tiếp theo bắt đầu trước 10 ngày</span></div>}
           {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Clock3 size={13} /> Khung giờ</b><span>{postingTimes.join(', ')}</span></div>}
@@ -1335,8 +1335,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           researching: 'Đang nghiên cứu...',
           writing: 'Đang viết bài viết...',
           scoring: 'Đang chấm điểm AI...',
-          awaiting_assets: 'Chờ ảnh thiết kế',
-          generating_media: 'Đang thiết kế ảnh...',
+          awaiting_assets: 'Chờ media từ Drive',
+          generating_media: 'Đang kiểm tra media...',
           verifying: 'Đang duyệt chất lượng...',
           pending_approval: 'Chờ duyệt',
           ready_to_publish: 'Sẵn sàng đăng',
