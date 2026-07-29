@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { BulkLayer, BulkTemplatePayload } from '../../../services/bulkCreateService';
-import { resolveTextFontSize } from './utils';
+import { fitTextElement, getLayerFrameStyle, resolveTextFontSize } from './utils';
 
 export const BULK_SCENE_VERSION = 2;
 
@@ -18,6 +18,124 @@ function resolveTextTransform(value: string, transform: BulkLayer['textTransform
     return value.replace(/(^|\s)(\S)/gu, (match) => match.toLocaleUpperCase('vi-VN'));
   }
   return value;
+}
+
+function AutoFitText({
+  layer,
+  value,
+  scale,
+  canvas,
+  showOverflowWarning,
+}: {
+  layer: BulkLayer;
+  value: string;
+  scale: number;
+  canvas?: { width: number; height: number };
+  showOverflowWarning: boolean;
+}) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  const preferredFontSize = (layer.fontSize || 60) * scale;
+  const minimumFontSize = Math.min(
+    preferredFontSize,
+    (layer.minFontSize || 12) * scale
+  );
+
+  useEffect(() => {
+    const element = textRef.current;
+    if (!element) return;
+    let disposed = false;
+    const fit = () => {
+      if (disposed || !element.clientWidth || !element.clientHeight) return;
+      if (layer.autoFit === false) {
+        element.style.fontSize = `${preferredFontSize}px`;
+        element.dataset.textOverflow = 'false';
+        setOverflow(false);
+        return;
+      }
+      const result = fitTextElement(element, {
+        preferredFontSize,
+        minimumFontSize,
+        maximumLines: layer.maxLines,
+      });
+      setOverflow(result.overflow);
+    };
+    const resizeObserver = new ResizeObserver(fit);
+    resizeObserver.observe(element);
+    void document.fonts?.ready.then(fit);
+    fit();
+    return () => {
+      disposed = true;
+      resizeObserver.disconnect();
+    };
+  }, [
+    layer.autoFit,
+    layer.fontFamily,
+    layer.fontStyle,
+    layer.fontWeight,
+    layer.letterSpacing,
+    layer.lineHeight,
+    layer.maxLines,
+    minimumFontSize,
+    preferredFontSize,
+    value,
+  ]);
+
+  return (
+    <>
+      <span
+        ref={textRef}
+        data-autofit-text={layer.autoFit === false ? 'false' : 'true'}
+        data-preferred-font-size={preferredFontSize}
+        data-min-font-size={minimumFontSize}
+        data-max-lines={layer.maxLines || ''}
+        style={{
+          display: layer.layerKind === 'badge' || layer.layerKind === 'cta' || layer.layerKind === 'icon'
+            ? 'flex'
+            : 'block',
+          alignItems: 'center',
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+          whiteSpace: 'pre-wrap',
+          overflowWrap: 'break-word',
+          color: layer.color || '#000000',
+          fontFamily: layer.fontFamily || 'DejaVu Sans',
+          fontSize: `${resolveTextFontSize(layer, value, canvas) * scale}px`,
+          fontWeight: layer.fontWeight || 700,
+          fontStyle: layer.fontStyle || 'normal',
+          textDecoration: layer.textDecoration || 'none',
+          letterSpacing: `${(layer.letterSpacing || 0) * scale}px`,
+          lineHeight: layer.lineHeight || 1.22,
+          textAlign: layer.textAlign || 'left',
+          textShadow: '0 2px 7px rgba(15,23,42,0.5)',
+        }}
+      >
+        {value}
+      </span>
+      {showOverflowWarning && overflow && (
+        <span
+          title="Nội dung vẫn vượt khung ở cỡ chữ nhỏ nhất. Hãy mở rộng khung hoặc rút gọn nội dung."
+          style={{
+            position: 'absolute',
+            right: 0,
+            bottom: 0,
+            zIndex: 1003,
+            borderRadius: 999,
+            background: '#e11d48',
+            padding: '2px 6px',
+            color: '#ffffff',
+            fontSize: 9,
+            fontWeight: 800,
+            lineHeight: 1.2,
+            boxShadow: '0 2px 6px rgba(15,23,42,0.2)',
+          }}
+        >
+          Chữ quá dài
+        </span>
+      )}
+    </>
+  );
 }
 
 export function SceneLayerContent({
@@ -71,29 +189,20 @@ export function SceneLayerContent({
     );
   }
 
+  if (layer.layerKind === 'shape') return null;
+
+  const text = resolveTextTransform(
+    value || layer.defaultValue || layer.fieldName,
+    layer.textTransform
+  );
   return (
-    <span
-      style={{
-        display: 'block',
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-        whiteSpace: 'pre-wrap',
-        overflowWrap: 'break-word',
-        color: layer.color || '#000000',
-        fontFamily: layer.fontFamily || 'DejaVu Sans',
-        fontSize: `${resolveTextFontSize(layer, value || layer.defaultValue || layer.fieldName, canvas) * scale}px`,
-        fontWeight: layer.fontWeight || 700,
-        fontStyle: layer.fontStyle || 'normal',
-        textDecoration: layer.textDecoration || 'none',
-        letterSpacing: `${(layer.letterSpacing || 0) * scale}px`,
-        lineHeight: layer.lineHeight || 1.22,
-        textAlign: layer.textAlign || 'left',
-        textShadow: '0 2px 7px rgba(15,23,42,0.5)',
-      }}
-    >
-      {resolveTextTransform(value || layer.defaultValue || layer.fieldName, layer.textTransform)}
-    </span>
+    <AutoFitText
+      layer={layer}
+      value={text}
+      scale={scale}
+      canvas={canvas}
+      showOverflowWarning={showPlaceholder}
+    />
   );
 }
 
@@ -152,6 +261,7 @@ export function SceneCanvas({
               transform: `rotate(${layer.rotation || 0}deg)`,
               transformOrigin: 'center center',
               zIndex: layer.zIndex,
+              ...getLayerFrameStyle(layer, scale),
             }}
           >
             <SceneLayerContent

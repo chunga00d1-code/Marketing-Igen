@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   Trash2,
   Upload,
@@ -7,8 +7,20 @@ import {
   Type,
   ImagePlus,
   Image as ImageIcon,
+  Square,
+  Tag,
+  Megaphone,
+  Star,
+  Layers3,
+  LoaderCircle,
 } from 'lucide-react';
-import type { EditorTool, LayerType, TemplateLayer, DataRow } from './types';
+import type {
+  EditorTool,
+  LayerPresetDragPayload,
+  LayerType,
+  TemplateLayer,
+  DataRow,
+} from './types';
 import type {
   BulkTemplate,
   BulkRenderJob,
@@ -45,6 +57,8 @@ export interface EditorPanelProps {
   canvasSize: { width: number; height: number };
   systemTemplates: BulkMarketingPreset[];
   templates: BulkTemplate[];
+  loadingTemplates: boolean;
+  templatesHasMore: boolean;
   communityTemplates: BulkTemplate[];
   jobs: BulkRenderJob[];
   activeJob: BulkRenderJob | null;
@@ -77,6 +91,7 @@ export interface EditorPanelProps {
   onDuplicateRow: (row: DataRow) => void;
   onRemoveRow: (id: string) => void;
   onLoadTemplate: (template: BulkTemplate) => void;
+  onLoadMoreTemplates: () => void;
   onArchiveTemplate: (templateId: string) => void;
   onPublishTemplate: (templateId: string) => void;
   onUnpublishTemplate: (templateId: string) => void;
@@ -92,10 +107,39 @@ export interface EditorPanelProps {
 }
 
 export function EditorPanel(props: EditorPanelProps) {
-  const { activeTool, backgroundImage, backgroundColor, layers, uploadedImages, onDeleteUploadedImage } = props;
+  const {
+    activeTool,
+    backgroundImage,
+    backgroundColor,
+    layers,
+    uploadedImages,
+    onDeleteUploadedImage,
+    loadingTemplates,
+    templatesHasMore,
+    onLoadMoreTemplates,
+  } = props;
+  const templateLoadMoreRef = useRef<HTMLDivElement>(null);
+  const startLayerPresetDrag = (
+    event: React.DragEvent<HTMLElement>,
+    payload: LayerPresetDragPayload,
+  ) => {
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData('application/x-igen-bulk-layer-preset', JSON.stringify(payload));
+  };
+
+  useEffect(() => {
+    const target = templateLoadMoreRef.current;
+    if (!target || !templatesHasMore || loadingTemplates) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) onLoadMoreTemplates();
+    }, { rootMargin: '160px' });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [loadingTemplates, onLoadMoreTemplates, templatesHasMore]);
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden">
       <div className="border-b border-slate-100 px-5 py-5">
         <h3 className="text-lg font-extrabold text-slate-900">
           {TOOLS.find((tool) => tool.id === activeTool)?.label}
@@ -107,7 +151,7 @@ export function EditorPanel(props: EditorPanelProps) {
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
+      <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
         {activeTool === 'background' && (
           <div className="space-y-4">
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
@@ -242,7 +286,7 @@ export function EditorPanel(props: EditorPanelProps) {
               </div>
             )}
 
-            {props.templates.length > 0 && (
+            {(props.templates.length > 0 || props.loadingTemplates) && (
               <div>
                 <p className="mb-2 text-sm font-extrabold text-slate-700">Mẫu thiết kế của tôi</p>
                 <div className="space-y-2">
@@ -300,6 +344,35 @@ export function EditorPanel(props: EditorPanelProps) {
                       </button>
                     </div>
                   ))}
+                  {props.templates.length === 0 && props.loadingTemplates && (
+                    <>
+                      {[0, 1, 2].map((item) => (
+                        <div
+                          key={item}
+                          className="h-[74px] animate-pulse rounded-xl border border-slate-200 bg-slate-100"
+                        />
+                      ))}
+                    </>
+                  )}
+                  {props.templates.length > 0 && (
+                    <div ref={templateLoadMoreRef} className="pt-1">
+                      {props.templatesHasMore ? (
+                        <button
+                          type="button"
+                          onClick={props.onLoadMoreTemplates}
+                          disabled={props.loadingTemplates}
+                          className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-wait disabled:opacity-70"
+                        >
+                          {props.loadingTemplates && <LoaderCircle className="h-4 w-4 animate-spin" />}
+                          {props.loadingTemplates ? 'Đang tải thêm...' : 'Tải thêm mẫu'}
+                        </button>
+                      ) : (
+                        <p className="py-1 text-center text-[11px] text-slate-400">
+                          Đã hiển thị toàn bộ mẫu
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -352,8 +425,13 @@ export function EditorPanel(props: EditorPanelProps) {
               <div className="space-y-2">
                 <button
                   type="button"
+                  draggable
+                  onDragStart={(event) => startLayerPresetDrag(event, {
+                    type: 'text',
+                    overrides: { fontSize: 80, fontWeight: 800, fieldName: 'Thêm tiêu đề' },
+                  })}
                   onClick={() => props.onAddLayer('text', '', { fontSize: 80, fontWeight: 800, fieldName: 'Thêm tiêu đề' })}
-                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-indigo-50/80 to-white p-4 text-left transition-all duration-200 hover:border-indigo-400 hover:shadow-md active:scale-[0.98]"
+                  className="group flex w-full cursor-grab items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-indigo-50/80 to-white p-4 text-left transition-all duration-200 hover:border-indigo-400 hover:shadow-md active:cursor-grabbing active:scale-[0.98]"
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-xl font-black text-indigo-600 shadow-sm transition-colors duration-200 group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-indigo-200">
                     H₁
@@ -365,8 +443,13 @@ export function EditorPanel(props: EditorPanelProps) {
                 </button>
                 <button
                   type="button"
+                  draggable
+                  onDragStart={(event) => startLayerPresetDrag(event, {
+                    type: 'text',
+                    overrides: { fontSize: 48, fontWeight: 600, fieldName: 'Thêm tiêu đề phụ' },
+                  })}
                   onClick={() => props.onAddLayer('text', '', { fontSize: 48, fontWeight: 600, fieldName: 'Thêm tiêu đề phụ' })}
-                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-violet-50/80 to-white p-4 text-left transition-all duration-200 hover:border-violet-400 hover:shadow-md active:scale-[0.98]"
+                  className="group flex w-full cursor-grab items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-violet-50/80 to-white p-4 text-left transition-all duration-200 hover:border-violet-400 hover:shadow-md active:cursor-grabbing active:scale-[0.98]"
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-lg font-bold text-violet-600 shadow-sm transition-colors duration-200 group-hover:bg-violet-600 group-hover:text-white group-hover:shadow-violet-200">
                     H₂
@@ -378,8 +461,13 @@ export function EditorPanel(props: EditorPanelProps) {
                 </button>
                 <button
                   type="button"
+                  draggable
+                  onDragStart={(event) => startLayerPresetDrag(event, {
+                    type: 'text',
+                    overrides: { fontSize: 32, fontWeight: 400, fieldName: 'Thêm nội dung văn bản' },
+                  })}
                   onClick={() => props.onAddLayer('text', '', { fontSize: 32, fontWeight: 400, fieldName: 'Thêm nội dung văn bản' })}
-                  className="group flex w-full items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50/80 to-white p-4 text-left transition-all duration-200 hover:border-slate-400 hover:shadow-md active:scale-[0.98]"
+                  className="group flex w-full cursor-grab items-center gap-3.5 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50/80 to-white p-4 text-left transition-all duration-200 hover:border-slate-400 hover:shadow-md active:cursor-grabbing active:scale-[0.98]"
                 >
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-medium text-slate-500 shadow-sm transition-colors duration-200 group-hover:bg-slate-600 group-hover:text-white group-hover:shadow-slate-200">
                     Aa
@@ -389,6 +477,34 @@ export function EditorPanel(props: EditorPanelProps) {
                     <span className="mt-0.5 block text-[11px] text-slate-400">Cỡ 32px · Bình thường</span>
                   </span>
                 </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3">
+              <p className="mb-2 px-1 text-xs font-extrabold uppercase tracking-wider text-indigo-500">Thành phần thiết kế</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { kind: 'shape' as const, label: 'Hình khối', icon: Square, value: '' },
+                  { kind: 'badge' as const, label: 'Nhãn / badge', icon: Tag, value: 'MỚI' },
+                  { kind: 'cta' as const, label: 'Nút CTA', icon: Megaphone, value: 'Mua ngay' },
+                  { kind: 'icon' as const, label: 'Biểu tượng', icon: Star, value: '★' },
+                ].map(({ kind, label, icon: Icon, value }) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    draggable
+                    onDragStart={(event) => startLayerPresetDrag(event, {
+                      type: 'text',
+                      initialValue: value,
+                      overrides: { layerKind: kind },
+                    })}
+                    onClick={() => props.onAddLayer('text', value, { layerKind: kind })}
+                    className="flex cursor-grab items-center gap-2 rounded-xl border border-white bg-white px-2.5 py-2.5 text-left text-xs font-bold text-slate-700 shadow-sm hover:border-indigo-300 hover:text-indigo-700 active:cursor-grabbing"
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-indigo-500" />
+                    <span>{label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -567,6 +683,34 @@ export function EditorPanel(props: EditorPanelProps) {
 
         {activeTool === 'data' && <DataPanel {...props} />}
         {activeTool === 'history' && <JobPanel {...props} />}
+
+        {layers.length > 0 && (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-slate-400">Tất cả layer</p>
+              <span className="text-[10px] font-bold text-slate-400">{layers.length}</span>
+            </div>
+            <div className="space-y-1">
+              {layers
+                .slice()
+                .sort((left, right) => right.zIndex - left.zIndex)
+                .map((layer) => (
+                  <button
+                    key={layer.id}
+                    type="button"
+                    onClick={() => props.onSelectLayer(layer.id)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-indigo-50"
+                  >
+                    <Layers3 className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-700">{layer.fieldName}</span>
+                    <span className="text-[9px] font-semibold text-slate-400">
+                      {layer.layerKind || layer.type}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

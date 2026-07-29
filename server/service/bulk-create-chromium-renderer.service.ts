@@ -144,6 +144,55 @@ function buildHtml(
 </html>`;
 }
 
+const FIT_TEXT_LAYERS_SCRIPT = `(() => {
+  document.querySelectorAll('[data-autofit-text="true"]').forEach((element) => {
+    const preferredFontSize = Math.max(1, Number(element.dataset.preferredFontSize || 60));
+    const minimumFontSize = Math.min(
+      preferredFontSize,
+      Math.max(1, Number(element.dataset.minFontSize || 12))
+    );
+    const maximumLinesValue = Number(element.dataset.maxLines || 0);
+    const maximumLines = Number.isFinite(maximumLinesValue) && maximumLinesValue > 0
+      ? Math.min(20, Math.max(1, Math.round(maximumLinesValue)))
+      : undefined;
+    const measure = (fontSize) => {
+      element.style.fontSize = fontSize + "px";
+      const parsedLineHeight = Number.parseFloat(window.getComputedStyle(element).lineHeight);
+      const lineHeight = Number.isFinite(parsedLineHeight) ? parsedLineHeight : fontSize * 1.22;
+      const lineCount = Math.max(1, Math.ceil((element.scrollHeight - 0.5) / lineHeight));
+      return {
+        fits: element.scrollWidth <= element.clientWidth + 0.5
+          && element.scrollHeight <= element.clientHeight + 0.5
+          && (maximumLines === undefined || lineCount <= maximumLines),
+        lineCount,
+      };
+    };
+    let low = minimumFontSize;
+    let high = preferredFontSize;
+    let best = minimumFontSize;
+    for (let iteration = 0; iteration < 12; iteration += 1) {
+      const middle = Math.round(((low + high) / 2) * 4) / 4;
+      if (measure(middle).fits) {
+        best = middle;
+        low = middle + 0.25;
+      } else {
+        high = middle - 0.25;
+      }
+      if (low > high) break;
+    }
+    const finalMeasurement = measure(best);
+    const minimumMeasurement = finalMeasurement.fits
+      ? finalMeasurement
+      : measure(minimumFontSize);
+    const overflow = !minimumMeasurement.fits;
+    const fontSize = overflow ? minimumFontSize : best;
+    element.style.fontSize = fontSize + "px";
+    element.dataset.textOverflow = String(overflow);
+    element.dataset.fittedFontSize = String(fontSize);
+    element.dataset.fittedLineCount = String(minimumMeasurement.lineCount);
+  });
+})()`;
+
 export async function renderBulkImageInChromium(
   snapshot: IBulkRenderJob["templateSnapshot"],
   values: Record<string, string>
@@ -203,6 +252,7 @@ export async function renderBulkImageInChromium(
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       );
     });
+    await page.evaluate(FIT_TEXT_LAYERS_SCRIPT);
     const screenshot = await page._client().send("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,

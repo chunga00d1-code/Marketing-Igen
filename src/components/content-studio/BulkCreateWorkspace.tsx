@@ -43,6 +43,7 @@ import { BRAND_LOGO_PATH, BRAND_NAME } from '../../config/brand';
 
 import type {
   EditorTool,
+  LayerPresetDragPayload,
   LayerType,
   TemplateLayer,
   DataRow,
@@ -98,7 +99,9 @@ function createRow(layers: TemplateLayer[], values: Record<string, string> = {})
     id: makeId('row'),
     values: Object.fromEntries(layers.map((layer) => [
       layer.id,
-      values[layer.id] || layer.defaultValue || (layer.type === 'text' ? layer.fieldName : ''),
+      values[layer.id] || layer.defaultValue || (
+        layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''
+      ),
     ])),
     selected: true,
   };
@@ -334,7 +337,7 @@ type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const editorViewportRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ layerId: string; offsetX: number; offsetY: number } | null>(null);
+  const dragRef = useRef<{ layerId: string; layerIds: string[]; offsetX: number; offsetY: number } | null>(null);
   const resizeRef = useRef<{ layerId: string; corner: ResizeCorner; pointerX: number; startX: number; startY: number; startWidth: number; startHeight: number } | null>(null);
   const selectionRef = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
   const selectionBoxRef = useRef<SelectionBox | null>(null);
@@ -371,12 +374,43 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [templateName, setTemplateName] = useState('Thiết kế chưa đặt tên');
   const [savedTemplateId, setSavedTemplateId] = useState('');
   const savedTemplateIdRef = useRef('');
+  const aiHistoryStorageReadyRef = useRef(false);
+  const aiHistoryStorageKey = `igen-bulk-ai-history:${savedTemplateId || templateName}`;
+
+  useEffect(() => {
+    aiHistoryStorageReadyRef.current = false;
+    try {
+      const stored = window.localStorage.getItem(aiHistoryStorageKey);
+      const parsed = stored ? JSON.parse(stored) as BulkAiHistoryMessage[] : [];
+      setAiHistory(Array.isArray(parsed) ? parsed.slice(-20) : []);
+    } catch {
+      setAiHistory([]);
+    } finally {
+      aiHistoryStorageReadyRef.current = true;
+    }
+  }, [aiHistoryStorageKey]);
+
+  useEffect(() => {
+    if (!aiHistoryStorageReadyRef.current) return;
+    try {
+      window.localStorage.setItem(
+        aiHistoryStorageKey,
+        JSON.stringify(aiHistory.slice(-20)),
+      );
+    } catch {
+      // Local history is an enhancement; private browsing/storage limits must not block editing.
+    }
+  }, [aiHistory, aiHistoryStorageKey]);
   const persistRequestRef = useRef<Promise<BulkTemplate> | null>(null);
   const generationInFlightRef = useRef(false);
   const autoSaveVersionRef = useRef(0);
   const designSessionRef = useRef(0);
   const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle');
   const [templates, setTemplates] = useState<BulkTemplate[]>([]);
+  const [templatePage, setTemplatePage] = useState(1);
+  const [templatesHasMore, setTemplatesHasMore] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const loadingTemplatesRef = useRef(false);
   const [communityTemplates, setCommunityTemplates] = useState<BulkTemplate[]>([]);
   const [jobs, setJobs] = useState<BulkRenderJob[]>([]);
   const [activeJob, setActiveJob] = useState<BulkRenderJob | null>(null);
@@ -428,7 +462,9 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     (row: DataRow) => {
       if (row.selected === false) return 'Trang này đang bị bỏ chọn.';
       if (layers.length === 0) return 'Thiết kế chưa có trường nội dung.';
-      const missingLayers = layers.filter((layer) => !row.values[layer.id]?.trim());
+      const missingLayers = layers.filter((layer) => (
+        layer.layerKind !== 'shape' && !row.values[layer.id]?.trim()
+      ));
       if (missingLayers.length === 0) return null;
       return `Thiếu dữ liệu: ${missingLayers.map((layer) => layer.fieldName).join(', ')}`;
     },
@@ -488,23 +524,53 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   }, []);
 
   const refreshLibrary = useCallback(async () => {
+    loadingTemplatesRef.current = true;
+    setLoadingTemplates(true);
     try {
-      const [templateList, communityList, jobList, assetList] = await Promise.all([
-        bulkCreateService.listTemplates(),
+      const [templateResult, communityList, jobList, assetList] = await Promise.all([
+        bulkCreateService.listTemplatesPage(1, 6),
         bulkCreateService.listCommunityTemplates(),
         bulkCreateService.listJobs(),
         bulkCreateService.listAssets(),
       ]);
-      setTemplates(templateList);
+      setTemplates(templateResult.items);
+      setTemplatePage(templateResult.page);
+      setTemplatesHasMore(templateResult.hasMore);
       setCommunityTemplates(communityList);
       setJobs(jobList);
       setUploadedImages(assetList);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      loadingTemplatesRef.current = false;
+      setLoadingTemplates(false);
     }
   }, []);
 
   useEffect(() => { void refreshLibrary(); }, [refreshLibrary]);
+
+  const loadMoreTemplates = useCallback(async () => {
+    if (loadingTemplatesRef.current || !templatesHasMore) return;
+    loadingTemplatesRef.current = true;
+    setLoadingTemplates(true);
+    try {
+      const result = await bulkCreateService.listTemplatesPage(templatePage + 1, 6);
+      setTemplates((current) => {
+        const existingIds = new Set(current.map((template) => template._id));
+        return [
+          ...current,
+          ...result.items.filter((template) => !existingIds.has(template._id)),
+        ];
+      });
+      setTemplatePage(result.page);
+      setTemplatesHasMore(result.hasMore);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      loadingTemplatesRef.current = false;
+      setLoadingTemplates(false);
+    }
+  }, [templatePage, templatesHasMore]);
 
   const syncPageResults = useCallback((
     items: BulkRenderItem[],
@@ -681,7 +747,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
             generatedValue
               ?? row.values[layer.id]
               ?? layer.defaultValue
-              ?? (layer.type === 'text' ? layer.fieldName : ''),
+              ?? (layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''),
           ];
         })),
       }));
@@ -741,47 +807,100 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
 
 
 
-  const addLayer = (type: LayerType, initialValue = '', overrides?: Partial<TemplateLayer>) => {
+  const addLayer = (
+    type: LayerType,
+    initialValue = '',
+    overrides?: Partial<TemplateLayer>,
+    placement?: { centerX: number; centerY: number },
+  ) => {
     recordLayerHistory();
-    const number = layers.filter((layer) => layer.type === type).length + 1;
+    const layerKind = overrides?.layerKind || 'text';
+    const isShape = layerKind === 'shape';
+    const isIcon = layerKind === 'icon';
+    const number = layers.filter((layer) => (
+      layer.type === type
+      && (type !== 'text' || (layer.layerKind || 'text') === layerKind)
+    )).length + 1;
 
-    const baseFieldName = overrides?.fieldName || (type === 'text' ? `Nội dung chữ ${number}` : `Hình ảnh ${number}`);
+    const baseFieldName = (
+      type === 'image'
+        ? 'Hình ảnh'
+        : isShape
+          ? 'Hình khối'
+          : layerKind === 'badge'
+            ? 'Nhãn'
+            : layerKind === 'cta'
+              ? 'Nút kêu gọi'
+              : layerKind === 'icon'
+                ? 'Biểu tượng'
+                : overrides?.fieldName || 'Nội dung chữ'
+    );
     let finalFieldName = baseFieldName;
     let nameNumber = 2;
     while (layers.some((l) => l.fieldName.toLowerCase() === finalFieldName.toLowerCase())) {
       finalFieldName = `${baseFieldName} ${nameNumber++}`;
     }
     const initialFontSize = overrides?.fontSize || 60;
-    const initialText = initialValue || finalFieldName;
+    const initialText = initialValue || (isShape ? '' : isIcon ? '★' : finalFieldName);
+    const layerWidth = type === 'text'
+      ? isShape || isIcon
+        ? 18
+        : layerKind === 'badge' || layerKind === 'cta'
+          ? 42
+          : estimateTextLayerWidth(initialText, initialFontSize, canvasSize.width)
+      : 40;
+    const layerHeight = type === 'text'
+      ? isShape || isIcon
+        ? 18
+        : layerKind === 'badge' || layerKind === 'cta'
+          ? 12
+          : Math.max(4, Math.round(initialFontSize * 0.125))
+      : 40;
+    const defaultX = type === 'text' ? (isShape ? 18 : isIcon ? 42 : 10) : 30;
+    const defaultY = type === 'text' ? (isShape || isIcon ? 36 : 12 + (number - 1) * 12) : 38;
 
     const layer: TemplateLayer = {
       id: makeId('field'),
       type,
-      fieldName: finalFieldName,
-      x: type === 'text' ? 10 : 30,
-      y: type === 'text' ? 12 + (number - 1) * 12 : 38,
-      width: type === 'text'
-        ? estimateTextLayerWidth(initialText, initialFontSize, canvasSize.width)
-        : 40,
-      height: type === 'text' ? Math.max(4, Math.round(initialFontSize * 0.125)) : 40,
+      layerKind: type === 'text' ? layerKind : undefined,
       rotation: 0,
       zIndex: layers.length,
       locked: false,
       fit: 'contain',
-      fontSize: type === 'text' ? 60 : 24,
+      fontSize: type === 'text'
+        ? isIcon
+          ? 72
+          : layerKind === 'badge' || layerKind === 'cta'
+            ? 28
+            : 60
+        : 24,
       fontFamily: 'DejaVu Sans',
       fontWeight: 700,
-      color: '#000000',
+      color: isIcon ? '#f59e0b' : '#000000',
       textAlign: 'left',
-      defaultValue: initialValue || (type === 'text' ? finalFieldName : ''),
+      autoFit: true,
+      minFontSize: 12,
+      fillColor: isShape ? '#e2e8f0' : layerKind === 'badge' ? '#fef3c7' : layerKind === 'cta' ? '#2563eb' : undefined,
+      borderRadius: isShape ? 12 : layerKind === 'badge' || layerKind === 'cta' ? 999 : 0,
+      padding: layerKind === 'badge' || layerKind === 'cta' ? 12 : 0,
       ...overrides,
+      fieldName: finalFieldName,
+      x: placement
+        ? clamp(placement.centerX - layerWidth / 2, 0, 100 - layerWidth)
+        : overrides?.x ?? defaultX,
+      y: placement
+        ? clamp(placement.centerY - layerHeight / 2, 0, 100 - layerHeight)
+        : overrides?.y ?? defaultY,
+      width: overrides?.width ?? layerWidth,
+      height: overrides?.height ?? layerHeight,
+      defaultValue: overrides?.defaultValue ?? (initialText || (type === 'text' && !isShape ? finalFieldName : '')),
     };
     setLayers((current) => [...current, layer]);
     setRows((current) => current.map((row) => ({
       ...row,
       values: {
         ...row.values,
-        [layer.id]: layer.defaultValue || (type === 'text' ? layer.fieldName : ''),
+        [layer.id]: layer.defaultValue || (type === 'text' && !isShape ? layer.fieldName : ''),
       },
     })));
     setSelectedLayerId(layer.id);
@@ -1010,6 +1129,67 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     changeLayer(selectedLayer.id, updates);
   }, [changeLayer, selectedLayer]);
 
+  const alignSelectedLayers = useCallback((
+    alignment: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom' | 'distribute-x' | 'distribute-y',
+  ) => {
+    if (selectedLayers.length < 2) return;
+    recordLayerHistory();
+    const left = Math.min(...selectedLayers.map((layer) => layer.x));
+    const top = Math.min(...selectedLayers.map((layer) => layer.y));
+    const right = Math.max(...selectedLayers.map((layer) => layer.x + layer.width));
+    const bottom = Math.max(...selectedLayers.map((layer) => layer.y + layer.height));
+    const next = new Map<string, Partial<TemplateLayer>>();
+
+    if (alignment === 'distribute-x' || alignment === 'distribute-y') {
+      const horizontal = alignment === 'distribute-x';
+      const sorted = [...selectedLayers].sort((a, b) => (
+        horizontal ? a.x - b.x : a.y - b.y
+      ));
+      const span = horizontal ? right - left : bottom - top;
+      const occupied = sorted.reduce((sum, layer) => sum + (horizontal ? layer.width : layer.height), 0);
+      const gap = Math.max(0, (span - occupied) / (sorted.length - 1));
+      let cursor = horizontal ? left : top;
+      sorted.forEach((layer) => {
+        next.set(layer.id, horizontal ? { x: cursor } : { y: cursor });
+        cursor += (horizontal ? layer.width : layer.height) + gap;
+      });
+    } else {
+      selectedLayers.forEach((layer) => {
+        const updates: Partial<TemplateLayer> =
+          alignment === 'left'
+            ? { x: left }
+            : alignment === 'center-x'
+              ? { x: (left + right - layer.width) / 2 }
+              : alignment === 'right'
+                ? { x: right - layer.width }
+                : alignment === 'top'
+                  ? { y: top }
+                  : alignment === 'center-y'
+                    ? { y: (top + bottom - layer.height) / 2 }
+                    : { y: bottom - layer.height };
+        next.set(layer.id, updates);
+      });
+    }
+    setLayers((current) => current.map((layer) => {
+      const updates = next.get(layer.id);
+      return updates ? { ...layer, ...updates } : layer;
+    }));
+  }, [recordLayerHistory, selectedLayers]);
+
+  const toggleGroupSelectedLayers = useCallback(() => {
+    if (selectedLayers.length < 2) return;
+    recordLayerHistory();
+    const existingGroupIds = new Set(selectedLayers.map((layer) => layer.groupId).filter(Boolean));
+    const sharedGroupId = existingGroupIds.size === 1
+      && selectedLayers.every((layer) => layer.groupId === [...existingGroupIds][0])
+      ? undefined
+      : makeId('group');
+    const selectedIds = new Set(selectedLayers.map((layer) => layer.id));
+    setLayers((current) => current.map((layer) => (
+      selectedIds.has(layer.id) ? { ...layer, groupId: sharedGroupId } : layer
+    )));
+  }, [recordLayerHistory, selectedLayers]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const activeElement = document.activeElement;
@@ -1203,7 +1383,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         layer.id,
         layer.dataBinding
           ? row.cells[layer.dataBinding.columnKey] || ''
-          : layer.defaultValue || (layer.type === 'text' ? layer.fieldName : ''),
+          : layer.defaultValue || (layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''),
       ])),
     }));
     setLayers(nextLayers);
@@ -1257,7 +1437,9 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         layer.id,
         layer.dataBinding
           ? row.sourceCells?.[layer.dataBinding.columnKey] || ''
-          : layer.defaultValue || row.values[layer.id] || (layer.type === 'text' ? layer.fieldName : ''),
+          : layer.defaultValue || row.values[layer.id] || (
+            layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''
+          ),
       ])),
     })));
   };
@@ -1903,8 +2085,14 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setBackgroundSelected(false);
     if (event.shiftKey || layer.locked || editingLayerId === layer.id) return;
     recordLayerHistory();
+    const dragLayerIds = layer.groupId
+      ? layers.filter((item) => item.groupId === layer.groupId && !item.locked).map((item) => item.id)
+      : selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)
+        ? layers.filter((item) => selectedLayerIds.includes(item.id) && !item.locked).map((item) => item.id)
+        : [layer.id];
     dragRef.current = {
       layerId: layer.id,
+      layerIds: dragLayerIds,
       offsetX: event.clientX - (rect.left + rect.width * layer.x / 100),
       offsetY: event.clientY - (rect.top + rect.height * layer.y / 100),
     };
@@ -1919,7 +2107,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     if (!layer) return;
     const rawX = (event.clientX - rect.left - drag.offsetX) / rect.width * 100;
     const rawY = (event.clientY - rect.top - drag.offsetY) / rect.height * 100;
-    const otherLayers = layers.filter((item) => item.id !== layer.id);
+    const otherLayers = layers.filter((item) => !drag.layerIds.includes(item.id));
     const x = snapToClosest(rawX, [
       0,
       6,
@@ -1944,10 +2132,21 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         item.y + item.height / 2 - layer.height / 2,
       ]),
     ]);
-    updateLayer(layer.id, {
-      x: clamp(x, 0, Math.max(0, 100 - layer.width)),
-      y: clamp(y, 0, Math.max(0, 100 - layer.height)),
-    });
+    const nextX = clamp(x, 0, Math.max(0, 100 - layer.width));
+    const nextY = clamp(y, 0, Math.max(0, 100 - layer.height));
+    if (drag.layerIds.length > 1) {
+      const deltaX = nextX - layer.x;
+      const deltaY = nextY - layer.y;
+      setLayers((current) => current.map((item) => drag.layerIds.includes(item.id)
+        ? {
+            ...item,
+            x: clamp(item.x + deltaX, 0, Math.max(0, 100 - item.width)),
+            y: clamp(item.y + deltaY, 0, Math.max(0, 100 - item.height)),
+          }
+        : item));
+    } else {
+      updateLayer(layer.id, { x: nextX, y: nextY });
+    }
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLElement>) => {
@@ -2116,6 +2315,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
               history={aiHistory}
               onHistoryChange={setAiHistory}
               onApply={applyAiScene}
+              onUndo={undoLayers}
               onClose={() => setSidebarOpen(false)}
             />
           ) : (
@@ -2140,6 +2340,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           canvasSize={canvasSize}
           systemTemplates={BULK_MARKETING_PRESETS}
           templates={templates}
+          loadingTemplates={loadingTemplates}
+          templatesHasMore={templatesHasMore}
           communityTemplates={communityTemplates}
           jobs={jobs}
           activeJob={activeJob}
@@ -2178,6 +2380,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onDuplicateRow={duplicateRow}
           onRemoveRow={removeRow}
           onLoadTemplate={loadTemplate}
+          onLoadMoreTemplates={loadMoreTemplates}
           onArchiveTemplate={(templateId) => void archiveTemplate(templateId)}
           onPublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'public')}
           onUnpublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'private')}
@@ -2462,6 +2665,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           removeSelectedLayers={removeSelectedLayers}
           duplicateSelectedLayers={duplicateSelectedLayers}
           toggleLockSelectedLayers={toggleLockSelectedLayers}
+          alignSelectedLayers={alignSelectedLayers}
+          toggleGroupSelectedLayers={toggleGroupSelectedLayers}
           handlePointerDown={handlePointerDown}
           handlePointerMove={handlePointerMove}
           handlePointerUp={handlePointerUp}
@@ -2495,6 +2700,22 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
             const x = clamp(((clientX - bounds.left) / bounds.width) * 100 - width / 2, 0, 100 - width);
             const y = clamp(((clientY - bounds.top) / bounds.height) * 100 - height / 2, 0, 100 - height);
             addLayer('image', url, { x, y, width, height });
+          }}
+          onDropLayerPreset={(payload: LayerPresetDragPayload, clientX, clientY) => {
+            const bounds = canvasRef.current?.getBoundingClientRect();
+            if (!bounds) {
+              addLayer(payload.type, payload.initialValue, payload.overrides);
+              return;
+            }
+            addLayer(
+              payload.type,
+              payload.initialValue,
+              payload.overrides,
+              {
+                centerX: ((clientX - bounds.left) / bounds.width) * 100,
+                centerY: ((clientY - bounds.top) / bounds.height) * 100,
+              },
+            );
           }}
         />
 

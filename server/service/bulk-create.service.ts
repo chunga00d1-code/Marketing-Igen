@@ -242,6 +242,27 @@ export const bulkCreateService = {
     return BulkTemplateModel.find({ ...scope(actor), status: "active" }).sort({ updatedAt: -1 }).lean();
   },
 
+  async listTemplatesPage(actor: Actor, page: number, pageSize: number) {
+    const normalizedPage = Math.max(1, Math.floor(page));
+    const normalizedPageSize = Math.min(24, Math.max(1, Math.floor(pageSize)));
+    const filter = { ...scope(actor), status: "active" as const };
+    const [items, total] = await Promise.all([
+      BulkTemplateModel.find(filter)
+        .sort({ updatedAt: -1, _id: -1 })
+        .skip((normalizedPage - 1) * normalizedPageSize)
+        .limit(normalizedPageSize)
+        .lean(),
+      BulkTemplateModel.countDocuments(filter),
+    ]);
+    return {
+      items,
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total,
+      hasMore: normalizedPage * normalizedPageSize < total,
+    };
+  },
+
   async listCommunityTemplates() {
     return BulkTemplateModel.find({ visibility: "public", status: "active" })
       .select("sceneVersion name canvas background layers thumbnailUrl visibility version publishedAt useCount")

@@ -9,8 +9,14 @@ import {
   Move,
   RotateCw,
 } from 'lucide-react';
-import type { TemplateLayer, DataRow, ResizeCorner, SelectionBox } from './types';
-import { clamp, resolveTextFontSize } from './utils';
+import type {
+  TemplateLayer,
+  DataRow,
+  LayerPresetDragPayload,
+  ResizeCorner,
+  SelectionBox,
+} from './types';
+import { clamp, getLayerFrameStyle, resolveTextFontSize } from './utils';
 import { SceneLayerContent } from './SceneCanvas';
 
 interface EditorCanvasProps {
@@ -38,6 +44,10 @@ interface EditorCanvasProps {
   removeSelectedLayers: () => void;
   duplicateSelectedLayers: () => void;
   toggleLockSelectedLayers: () => void;
+  alignSelectedLayers: (
+    alignment: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom' | 'distribute-x' | 'distribute-y',
+  ) => void;
+  toggleGroupSelectedLayers: () => void;
   handlePointerDown: (event: React.PointerEvent<HTMLElement>, layer: TemplateLayer) => void;
   handlePointerMove: (event: React.PointerEvent<HTMLElement>) => void;
   handlePointerUp: (event: React.PointerEvent<HTMLElement>) => void;
@@ -58,6 +68,7 @@ interface EditorCanvasProps {
   recordLayerHistory: () => void;
   onOpenContextMenu: (clientX: number, clientY: number, targetLayerId: string) => void;
   onDropAsset: (url: string, clientX: number, clientY: number) => void;
+  onDropLayerPreset: (payload: LayerPresetDragPayload, clientX: number, clientY: number) => void;
 }
 
 export function EditorCanvas({
@@ -85,6 +96,8 @@ export function EditorCanvas({
   removeSelectedLayers,
   duplicateSelectedLayers,
   toggleLockSelectedLayers,
+  alignSelectedLayers,
+  toggleGroupSelectedLayers,
   handlePointerDown,
   handlePointerMove,
   handlePointerUp,
@@ -101,6 +114,7 @@ export function EditorCanvas({
   recordLayerHistory,
   onOpenContextMenu,
   onDropAsset,
+  onDropLayerPreset,
 }: EditorCanvasProps) {
   const selectedLayer = layers.find((l) => l.id === selectedLayerId);
   const selectedLayers = layers.filter((layer) => selectedLayerIds.includes(layer.id));
@@ -160,17 +174,33 @@ export function EditorCanvas({
             onPointerUp={handleSelectionEnd}
             onPointerCancel={handleSelectionEnd}
             onDragOver={(event) => {
-              if (event.dataTransfer.types.includes('application/x-igen-bulk-asset')) {
+              if (
+                event.dataTransfer.types.includes('application/x-igen-bulk-asset')
+                || event.dataTransfer.types.includes('application/x-igen-bulk-layer-preset')
+              ) {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = 'copy';
               }
             }}
             onDrop={(event) => {
               const url = event.dataTransfer.getData('application/x-igen-bulk-asset');
-              if (!url) return;
-              event.preventDefault();
-              event.stopPropagation();
-              onDropAsset(url, event.clientX, event.clientY);
+              if (url) {
+                event.preventDefault();
+                event.stopPropagation();
+                onDropAsset(url, event.clientX, event.clientY);
+                return;
+              }
+              const rawPreset = event.dataTransfer.getData('application/x-igen-bulk-layer-preset');
+              if (!rawPreset) return;
+              try {
+                const payload = JSON.parse(rawPreset) as LayerPresetDragPayload;
+                if (payload.type !== 'text' && payload.type !== 'image') return;
+                event.preventDefault();
+                event.stopPropagation();
+                onDropLayerPreset(payload, event.clientX, event.clientY);
+              } catch {
+                // Ignore malformed drag data from outside the editor.
+              }
             }}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -217,7 +247,7 @@ export function EditorCanvas({
                   onPointerUp={handlePointerUp}
                   onPointerCancel={handlePointerUp}
                   onDoubleClick={(event) => {
-                    if (layer.type === 'text' && !layer.locked) {
+                    if (layer.type === 'text' && layer.layerKind !== 'shape' && !layer.locked) {
                       event.stopPropagation();
                       setEditingLayerId(layer.id);
                     }
@@ -229,11 +259,11 @@ export function EditorCanvas({
                     onOpenContextMenu(event.clientX, event.clientY, layer.id);
                   }}
                   className={`group absolute touch-none text-left transition-[outline-color,background-color] ${
-                    editing || (singleSelected && layer.type === 'text') ? 'select-text' : 'select-none'
+                    editing || (singleSelected && layer.type === 'text' && layer.layerKind !== 'shape') ? 'select-text' : 'select-none'
                   } ${
                     layer.locked
                       ? 'cursor-default'
-                      : singleSelected && layer.type === 'text'
+                      : singleSelected && layer.type === 'text' && layer.layerKind !== 'shape'
                         ? 'cursor-text'
                         : 'cursor-move'
                   } ${
@@ -248,6 +278,7 @@ export function EditorCanvas({
                     height: `${layer.height}%`,
                     transform: `rotate(${layer.rotation}deg)`,
                     zIndex: layer.zIndex,
+                    ...getLayerFrameStyle(layer, canvasDisplayWidth / canvasSize.width),
                   }}
                 >
                   {layer.dataBinding && (
@@ -260,7 +291,7 @@ export function EditorCanvas({
                       {layer.dataBinding.columnLabel}
                     </span>
                   )}
-                  {layer.type === 'text' && editing && !layer.locked && activeRow ? (
+                  {layer.type === 'text' && layer.layerKind !== 'shape' && editing && !layer.locked && activeRow ? (
                       <textarea
                         autoFocus
                         value={value}
@@ -423,6 +454,34 @@ export function EditorCanvas({
                 title="Nhân bản hàng loạt"
               >
                 <Copy className="h-4 w-4" />
+              </button>
+              {([
+                ['left', '←'],
+                ['center-x', '↔'],
+                ['right', '→'],
+                ['top', '↑'],
+                ['center-y', '↕'],
+                ['bottom', '↓'],
+                ['distribute-x', '⋯'],
+                ['distribute-y', '⋮'],
+              ] as const).map(([alignment, label]) => (
+                <button
+                  key={alignment}
+                  type="button"
+                  onClick={() => alignSelectedLayers(alignment)}
+                  className="rounded-lg px-1.5 py-2 text-sm font-black text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                  title={`Căn ${alignment}`}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={toggleGroupSelectedLayers}
+                className="rounded-lg px-2 py-2 text-[10px] font-extrabold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700"
+                title={selectedLayers.every((layer) => layer.groupId) ? 'Bỏ nhóm' : 'Nhóm các layer'}
+              >
+                {selectedLayers.every((layer) => layer.groupId) ? 'Bỏ nhóm' : 'Nhóm'}
               </button>
               <button
                 type="button"

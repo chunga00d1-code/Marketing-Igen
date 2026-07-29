@@ -42,6 +42,116 @@ export function PropertiesToolbar({
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-2 [scrollbar-width:thin]">
         {selectedLayer ? (
           <>
+            {selectedLayer.type === 'text' && (
+              <>
+                <label
+                  className="relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white"
+                  title="Màu nền thành phần"
+                >
+                  <span
+                    className="h-6 w-6 rounded-md border border-slate-200"
+                    style={{ backgroundColor: selectedLayer.fillColor || 'transparent' }}
+                  />
+                  <input
+                    type="color"
+                    value={selectedLayer.fillColor || '#ffffff'}
+                    onFocus={recordLayerHistory}
+                    onChange={(event) => updateLayer(selectedLayer.id, { fillColor: event.target.value })}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    aria-label="Màu nền thành phần"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => changeLayer(selectedLayer.id, { fillColor: undefined })}
+                  className="h-10 shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-bold text-slate-500 hover:bg-slate-50"
+                  title="Bỏ màu nền"
+                >
+                  Nền trong
+                </button>
+                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
+                  Bo góc
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={selectedLayer.borderRadius || 0}
+                    onChange={(event) =>
+                      changeLayer(selectedLayer.id, {
+                        borderRadius: clamp(Number(event.target.value), 0, 100),
+                      })
+                    }
+                    className="w-10 text-center text-sm font-bold text-slate-800 outline-none"
+                    aria-label="Độ bo góc"
+                  />
+                </label>
+                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
+                  Viền
+                  <input
+                    type="number"
+                    min="0"
+                    max="30"
+                    value={selectedLayer.borderWidth || 0}
+                    onChange={(event) =>
+                      changeLayer(selectedLayer.id, {
+                        borderWidth: clamp(Number(event.target.value), 0, 30),
+                      })
+                    }
+                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none"
+                    aria-label="Độ dày viền"
+                  />
+                </label>
+                <label
+                  className="relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white"
+                  title="Màu viền"
+                >
+                  <span
+                    className="h-6 w-6 rounded-md border-2"
+                    style={{ borderColor: selectedLayer.borderColor || selectedLayer.color || '#000000' }}
+                  />
+                  <input
+                    type="color"
+                    value={selectedLayer.borderColor || selectedLayer.color || '#000000'}
+                    onFocus={recordLayerHistory}
+                    onChange={(event) => updateLayer(selectedLayer.id, { borderColor: event.target.value })}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                    aria-label="Màu viền"
+                  />
+                </label>
+                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
+                  Đệm
+                  <input
+                    type="number"
+                    min="0"
+                    max="80"
+                    value={selectedLayer.padding || 0}
+                    onChange={(event) =>
+                      changeLayer(selectedLayer.id, {
+                        padding: clamp(Number(event.target.value), 0, 80),
+                      })
+                    }
+                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none"
+                    aria-label="Khoảng đệm"
+                  />
+                </label>
+                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
+                  Mờ
+                  <input
+                    type="number"
+                    min="5"
+                    max="100"
+                    value={Math.round((selectedLayer.opacity ?? 1) * 100)}
+                    onChange={(event) =>
+                      changeLayer(selectedLayer.id, {
+                        opacity: clamp(Number(event.target.value), 5, 100) / 100,
+                      })
+                    }
+                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none"
+                    aria-label="Độ trong suốt"
+                  />
+                </label>
+              </>
+            )}
             <input
               value={selectedLayer.fieldName}
               onFocus={recordLayerHistory}
@@ -49,7 +159,7 @@ export function PropertiesToolbar({
               className="h-10 w-40 shrink-0 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-indigo-500"
               aria-label="Tên trường"
             />
-            {selectedLayer.type === 'text' && (
+            {selectedLayer.type === 'text' && selectedLayer.layerKind !== 'shape' && (
               <>
                 <select
                   value={selectedLayer.fontFamily || 'DejaVu Sans'}
@@ -314,6 +424,66 @@ export function PropertiesToolbar({
                     }
                     className="w-10 text-center text-sm font-bold text-slate-800 outline-none"
                     aria-label="Khoảng cách dòng"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeLayer(selectedLayer.id, {
+                      autoFit: selectedLayer.autoFit === false,
+                    })
+                  }
+                  className={`h-10 shrink-0 rounded-lg border px-2.5 text-xs font-extrabold ${
+                    selectedLayer.autoFit !== false
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                      : 'border-slate-200 bg-white text-slate-500'
+                  }`}
+                  title="Tự giảm cỡ chữ để nội dung vừa khung"
+                >
+                  Tự co chữ
+                </button>
+
+                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
+                  Cỡ tối thiểu
+                  <input
+                    type="number"
+                    min="8"
+                    max={selectedLayer.fontSize || 60}
+                    value={selectedLayer.minFontSize || 12}
+                    disabled={selectedLayer.autoFit === false}
+                    onChange={(event) =>
+                      changeLayer(selectedLayer.id, {
+                        minFontSize: clamp(
+                          Number(event.target.value),
+                          8,
+                          selectedLayer.fontSize || 60
+                        ),
+                      })
+                    }
+                    className="w-10 text-center text-sm font-bold text-slate-800 outline-none disabled:opacity-40"
+                    aria-label="Cỡ chữ tối thiểu khi tự co"
+                  />
+                </label>
+
+                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
+                  Tối đa dòng
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    placeholder="∞"
+                    value={selectedLayer.maxLines || ''}
+                    disabled={selectedLayer.autoFit === false}
+                    onChange={(event) =>
+                      changeLayer(selectedLayer.id, {
+                        maxLines: event.target.value
+                          ? clamp(Number(event.target.value), 1, 20)
+                          : undefined,
+                      })
+                    }
+                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none disabled:opacity-40"
+                    aria-label="Số dòng tối đa"
                   />
                 </label>
               </>

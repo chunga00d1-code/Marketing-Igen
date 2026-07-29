@@ -4,6 +4,12 @@ export type EditorTool = 'background' | 'text' | 'image' | 'data' | 'history';
 export type LayerType = 'text' | 'image';
 export type TemplateLayer = BulkLayer;
 
+export interface LayerPresetDragPayload {
+  type: LayerType;
+  initialValue?: string;
+  overrides?: Partial<TemplateLayer>;
+}
+
 export interface DataRow {
   id: string;
   name?: string;

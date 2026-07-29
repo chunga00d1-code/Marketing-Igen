@@ -1,6 +1,7 @@
 import { Document, Types } from "mongoose";
 
 export type BulkLayerType = "text" | "image";
+export type BulkLayerKind = "text" | "shape" | "badge" | "cta" | "icon";
 export type BulkImageFit = "cover" | "contain";
 export const BULK_FONT_FAMILIES = [
   "DejaVu Sans",
@@ -52,6 +53,8 @@ export interface IBulkBackground {
 export interface IBulkLayer {
   id: string;
   type: BulkLayerType;
+  layerKind?: BulkLayerKind;
+  groupId?: string;
   fieldName: string;
   x: number;
   y: number;
@@ -71,6 +74,15 @@ export interface IBulkLayer {
   textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
   letterSpacing?: number;
   lineHeight?: number;
+  autoFit?: boolean;
+  minFontSize?: number;
+  maxLines?: number;
+  fillColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  borderRadius?: number;
+  opacity?: number;
+  padding?: number;
   defaultValue?: string;
   dataBinding?: {
     columnKey: string;
