@@ -20,6 +20,7 @@ interface CampaignSlot {
   integrationId?: string;
   errorMessage?: string;
   publishedPostUrl?: string;
+  realImageDirectUrls?: string[];
   ingestedMedia?: Array<{ sourceUrl: string; url: string; uploadedAt: string }>;
   researchAnalysis?: {
     context: string;

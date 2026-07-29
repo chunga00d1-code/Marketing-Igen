@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, Zap } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, Upload, Zap } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -92,6 +92,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [uploadedImageBase64, setUploadedImageBase64] = useState('');
   const [loadingDoc, setLoadingDoc] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [uploadedTikTokVideo, setUploadedTikTokVideo] = useState<{ name: string; url: string } | null>(null);
+  const [uploadingTikTokVideo, setUploadingTikTokVideo] = useState(false);
+  const tiktokVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -347,6 +350,49 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     toast.success('Đã gỡ tập tin đính kèm.');
   };
 
+  const handleTikTokVideoUpload = async (file: File) => {
+    const supportedTypes = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
+    const supportedExtensions = /\.(mp4|mov|webm)$/i;
+    if (!supportedTypes.has(file.type) && !supportedExtensions.test(file.name)) {
+      toast.warning('TikTok chỉ nhận video MP4, MOV hoặc WebM.');
+      return;
+    }
+    if (file.size > 100 * 1024 * 1024) {
+      toast.warning('Video tải trực tiếp tối đa 100MB. Video lớn hơn hãy nhập từ Google Drive.');
+      return;
+    }
+
+    setUploadingTikTokVideo(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Không thể đọc video đã chọn.'));
+        reader.readAsDataURL(file);
+      });
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch('/api/v1/media/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ file: dataUrl, folder: 'igen_erp/marketing/campaign-tiktok' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || typeof payload.url !== 'string') {
+        throw new Error(payload.message || 'Không thể tải video lên hệ thống.');
+      }
+      setUploadedTikTokVideo({ name: file.name, url: payload.url });
+      setImageMode('order');
+      toast.success('Đã tải video TikTok lên. Video sẽ được gắn vào bài này sau khi nội dung hoàn tất.');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể tải video TikTok lên.');
+    } finally {
+      setUploadingTikTokVideo(false);
+    }
+  };
+
   const buildSourceBriefContext = (baseText?: string) => {
     const primaryText = String(baseText || prompt || '').trim();
     const parts = [primaryText];
@@ -432,6 +478,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     if (!creationMode) return toast.warning('Vui lòng chọn tạo một bài đăng hoặc chiến dịch nhiều bài.');
     if (!prompt.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
     if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
+    if (uploadingTikTokVideo) return toast.warning('Vui lòng chờ video TikTok tải lên hoàn tất.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
     const canUsePersonalFacebook = selectedPlatform === 'Facebook' && hasPersonalFacebook;
     const canUseLocalMock = selectedPlatform === 'Facebook' && canUseLocalMockFacebookPage;
@@ -464,6 +511,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         publishNow: isSinglePost,
         imageMode,
         mediaPolicy: isTikTokCampaign ? 'video' : 'auto',
+        initialVideoUrl: isTikTokCampaign && isSinglePost ? uploadedTikTokVideo?.url : undefined,
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
         apifySources: apifySources.length > 0 ? apifySources : undefined,
@@ -473,14 +521,20 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setUploadedDocName('');
       setUploadedDocText('');
       setUploadedImageBase64('');
+      setUploadedTikTokVideo(null);
       setImageMode('order');
       setApifySources(['google', 'facebook', 'tiktok']);
       setCustomSchedule({});
       setShowCustomSchedule(false);
+      const immediatePreparationMessage = result.preparation.enqueued > 0
+        ? 'Đã đưa tác vụ vào worker để chuẩn bị ngay.'
+        : result.preparation.deferred > 0
+          ? 'Tác vụ đang chờ worker trống để bắt đầu chuẩn bị.'
+          : 'Tác vụ sẽ được worker tự nhận để chuẩn bị.';
       toast.success(isSinglePost
         ? (isTikTokCampaign
-          ? 'Đã tạo video TikTok. Hệ thống sẽ chỉ cho đăng sau khi video hoàn tất và được xác nhận.'
-          : 'Đã tạo bài và chuyển sang xử lý đăng ngay.')
+          ? `Đã tạo yêu cầu nội dung TikTok. ${immediatePreparationMessage} ${uploadedTikTokVideo ? 'Video đã tải sẽ được gắn vào bài trước khi duyệt đăng.' : 'Sau đó nhập video Drive và duyệt trước khi đăng.'}`
+          : `Đã tạo bài và chuyển sang xử lý đăng ngay. ${immediatePreparationMessage}`)
         : `Đã khởi chạy “${result.campaign.title}”. Toàn bộ tháng đầu đang được render nền theo lô an toàn.`);
       void loadCampaigns(1);
     } catch (error: unknown) {
@@ -727,7 +781,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 <label className="mb-2 block text-xs font-bold text-slate-700 uppercase tracking-wide">
                   {isTikTokCampaign ? 'Chọn nguồn video cho bài viết' : 'Chọn nguồn ảnh cho bài viết'}
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className={`grid gap-3 ${isTikTokCampaign && isSinglePost ? 'grid-cols-1' : 'grid-cols-2'}`}>
                   <button
                     type="button"
                     disabled={isTikTokCampaign}
@@ -747,7 +801,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
                   <button
                     type="button"
-                    onClick={() => setImageMode('order')}
+                    onClick={() => {
+                      setImageMode('order');
+                      setUploadedTikTokVideo(null);
+                    }}
                     className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${imageMode === 'order'
                       ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
@@ -758,9 +815,57 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     </div>
                     <div>
                       <span className="block text-xs font-bold text-slate-800">{isTikTokCampaign ? 'Nhập video sau content' : 'Order ảnh sau content'}</span>
-                      <span className="mt-0.5 block text-[10px] text-slate-500">{isTikTokCampaign ? 'Chỉ nhận video từ Google Drive trong chi tiết chiến dịch' : 'Nhập Drive trong chi tiết chiến dịch'}</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">{isTikTokCampaign ? 'Nhập video từ Google Drive trong chi tiết chiến dịch' : 'Nhập Drive trong chi tiết chiến dịch'}</span>
                     </div>
                   </button>
+
+                  {isTikTokCampaign && isSinglePost && (
+                    <div className={`rounded-xl border p-3.5 ${uploadedTikTokVideo ? 'border-emerald-400 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
+                      <input
+                        ref={tiktokVideoInputRef}
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.target.value = '';
+                          if (file) void handleTikTokVideoUpload(file);
+                        }}
+                      />
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className={`rounded-lg p-2 ${uploadedTikTokVideo ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                            {uploadingTikTokVideo ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="block text-xs font-bold text-slate-800">Tải video trực tiếp cho bài này</span>
+                            <span className="mt-0.5 block text-[10px] text-slate-500">MP4, MOV hoặc WebM · tối đa 100MB</span>
+                            {uploadedTikTokVideo && <span className="mt-1 block truncate text-[10px] font-bold text-emerald-700">Đã chọn: {uploadedTikTokVideo.name}</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {uploadedTikTokVideo && (
+                            <button
+                              type="button"
+                              disabled={uploadingTikTokVideo}
+                              onClick={() => setUploadedTikTokVideo(null)}
+                              className="text-[10px] font-bold text-slate-500 hover:text-red-600 disabled:opacity-50"
+                            >
+                              Bỏ video
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            disabled={uploadingTikTokVideo}
+                            onClick={() => tiktokVideoInputRef.current?.click()}
+                            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {uploadingTikTokVideo ? 'Đang tải...' : uploadedTikTokVideo ? 'Thay video' : 'Chọn video'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -823,7 +928,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     </div>
                     <p className="font-bold text-indigo-950 text-xs">
                       {isTikTokCampaign
-                        ? 'Hệ thống sẽ tạo nội dung TikTok và chờ video từ Google Drive. Video chỉ sẵn sàng đăng sau khi được nhập, kiểm tra và xác nhận xuất bản.'
+                        ? (uploadedTikTokVideo
+                          ? 'Video đã tải sẽ được gắn vào bài này. Hệ thống tạo nội dung, kiểm tra video, sau đó chờ bạn xác nhận xuất bản TikTok.'
+                          : 'Hệ thống sẽ tạo nội dung TikTok và chờ video từ Google Drive. Video chỉ sẵn sàng đăng sau khi được nhập, kiểm tra và xác nhận xuất bản.')
                         : 'Hệ thống sẽ tạo bài viết và tự động đăng ngay lên Facebook Page.'}
                     </p>
                   </div>
@@ -1172,7 +1279,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             <button
               type="button"
               onClick={handleCreateCampaign}
-              disabled={loading || !creationMode || !prompt.trim() || !dayCount || (!isSinglePost && totalPosts > 450)}
+              disabled={loading || !creationMode || !prompt.trim() || !dayCount || (!isSinglePost && totalPosts > 450) || (isTikTokCampaign && !integrationId)}
               className="rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 transition cursor-pointer flex items-center gap-2 ml-auto"
             >
               {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Sparkles size={16} />}

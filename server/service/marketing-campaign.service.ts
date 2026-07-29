@@ -37,6 +37,7 @@ interface CreateCampaignInput {
   publishMode?: "auto" | "manual";
   imageMode?: "ai" | "real" | "order";
   publishNow?: boolean;
+  initialVideoUrl?: string;
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
   apifySources?: string[];
@@ -97,9 +98,18 @@ function validateTikTokCampaignPublishOptions(options?: TikTokCampaignPublishOpt
   }
 }
 
+function assertTikTokPublicApprovalDisabled(platform: MarketingCampaignPlatform) {
+  if (platform === "TikTok") {
+    throw new Error("TikTok cần được duyệt trong màn hình TikTok để chọn quyền riêng tư, thời lượng và điều khoản đăng.");
+  }
+}
+
 async function validateIntegrations(companyCode: string, platforms: MarketingCampaignPlatform[], integrationIds: CreateCampaignInput["integrationIds"]) {
   for (const platform of platforms) {
     const integrationId = integrationIds?.[platform];
+    if (platform === "TikTok" && !integrationId) {
+      throw new Error("Vui lòng chọn tài khoản TikTok doanh nghiệp đang hoạt động trước khi tạo chiến dịch.");
+    }
     if (!integrationId) continue;
     if (!mongoose.Types.ObjectId.isValid(integrationId)) {
       throw new Error(`Liên kết ${platform} không hợp lệ.`);
@@ -147,12 +157,25 @@ async function ensureLocalMockFacebookPage(companyCode: string, createdBy: strin
 export const marketingCampaignService = {
   async create(companyCode: string, createdBy: string, input: CreateCampaignInput) {
     const requiresTikTokVideo = input.platforms.includes("TikTok");
+    const initialVideoUrl = input.initialVideoUrl?.trim() || "";
     if (requiresTikTokVideo && (
       input.mediaPolicy !== "video"
       || input.imageMode === "ai"
       || (input.images && input.images.length > 0)
     )) {
-      throw new Error("Chiến dịch TikTok chỉ nhận video. Vui lòng chọn nguồn video từ Google Drive và không đính kèm ảnh.");
+      throw new Error("Chiến dịch TikTok chỉ nhận video. Vui lòng tải video trực tiếp cho một bài hoặc nhập video từ Google Drive và không đính kèm ảnh.");
+    }
+    if (requiresTikTokVideo && input.publishMode === "auto") {
+      throw new Error("TikTok cần duyệt thủ công để chọn quyền riêng tư, thời lượng video và xác nhận điều khoản trước khi đăng.");
+    }
+    if (initialVideoUrl) {
+      const isSingleTikTokPost = input.campaignType === "single"
+        && input.platforms.length === 1
+        && input.platforms[0] === "TikTok";
+      const isCloudinaryVideo = /^https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\//i.test(initialVideoUrl);
+      if (!isSingleTikTokPost || !isCloudinaryVideo) {
+        throw new Error("Video tải trực tiếp chỉ áp dụng cho một bài TikTok và phải được tải lên hệ thống.");
+      }
     }
     const timezone = input.timezone || "Asia/Ho_Chi_Minh";
     const generationLeadMinutes = input.generationLeadMinutes ?? 60;
@@ -354,6 +377,7 @@ export const marketingCampaignService = {
           topicBrief: matchingAngle ? `${matchingAngle.title} — ${brief.topicBrief}` : brief.topicBrief,
           funnelStage,
           mediaType: brief.mediaType,
+          realImageDirectUrls: initialVideoUrl && scheduledSlot.platform === "TikTok" ? [initialVideoUrl] : [],
           status: "planned",
           attemptCount: 0,
           publishIdempotencyKey: `${campaign._id}:${index}:${scheduledSlot.platform}`,
@@ -532,6 +556,7 @@ export const marketingCampaignService = {
             bodyText: contentDoc.bodyText,
             outline: contentDoc.outline,
             mediaPrompt: contentDoc.mediaPrompt,
+            videoUrl: contentDoc.videoUrl,
             mediaUrls: contentDoc.mediaUrls?.length
               ? contentDoc.mediaUrls
               : (contentDoc.imageUrl ? [contentDoc.imageUrl] : (contentDoc.videoUrl ? [contentDoc.videoUrl] : [])),
@@ -663,7 +688,7 @@ export const marketingCampaignService = {
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-    const allowedStatuses = ["pending_approval", "ready_to_publish", "needs_attention", "failed", "planned"];
+    const allowedStatuses = ["pending_approval", "ready_to_publish", "needs_attention", "failed"];
     if (!allowedStatuses.includes(slot.status)) {
       throw new Error(`Slot không thể đăng ngay ở trạng thái này: ${slot.status}`);
     }
@@ -721,6 +746,9 @@ export const marketingCampaignService = {
     }
     if (!slot.marketingContentId) {
       throw new Error("Không tìm thấy nội dung bài viết liên kết với slot này.");
+    }
+    if (slot.platform === "TikTok" && updates.bodyText !== undefined && updates.bodyText.length > 2200) {
+      throw new Error("Caption TikTok không được vượt quá 2.200 ký tự.");
     }
 
     const content = await MarketingContentModel.findOneAndUpdate(
@@ -787,6 +815,7 @@ export const marketingCampaignService = {
     }
     const slot = await MarketingCampaignSlotModel.findOne({ _id: slotId, campaignId, companyCode });
     if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+    assertTikTokPublicApprovalDisabled(slot.platform);
     
     // Sign token valid for 30 days
     const token = jwt.sign(
@@ -863,6 +892,7 @@ export const marketingCampaignService = {
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
@@ -1112,6 +1142,7 @@ export const marketingCampaignService = {
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
@@ -1172,6 +1203,7 @@ export const marketingCampaignService = {
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (!["pending_approval", "needs_attention", "failed"].includes(slot.status)) {
         throw new Error(`Không thể chỉnh sửa nội dung ở trạng thái hiện tại (${slot.status}).`);
@@ -1307,6 +1339,7 @@ export const marketingCampaignService = {
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
+      assertTikTokPublicApprovalDisabled(slot.platform);
 
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
@@ -1378,6 +1411,10 @@ export const marketingCampaignService = {
       let skipped = 0;
 
       for (const slot of slots) {
+        if (slot.platform === "TikTok") {
+          skipped++;
+          continue;
+        }
         if (slot.status !== "pending_approval") {
           skipped++;
           continue;

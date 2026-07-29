@@ -235,7 +235,7 @@ export function buildCampaignSchedule(input: {
           campaignCreatedAt,
           leadDays: input.monthlyPreparationLeadDays,
         }),
-        verifyAt: zonedLocalTimeToUtc(date, '00:30', input.timezone),
+        verifyAt: new Date(scheduledAt.getTime() - input.verificationLeadMinutes * 60_000),
         platform: input.platforms[currentSlotIndex % input.platforms.length],
         slotIndex: currentSlotIndex,
         totalSlots,

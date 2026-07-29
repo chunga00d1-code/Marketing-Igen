@@ -12,6 +12,8 @@ import { enqueueCampaignSheetAIJob } from "../queue/campaign-content-sheet-queue
 import { campaignAssetOrderService } from "../service/campaign-asset-order.service";
 import { enqueueCampaignAssetOrderAIJob } from "../queue/campaign-asset-order-ai-queue";
 import { enqueueBulkCreateJob } from "../queue/bulk-create-queue";
+import type { MarketingCampaignPlatform } from "../interface/marketing-campaign.interface";
+import { tiktokService } from "../service/tiktok.service";
 
 function getIdentity(req: AuthenticatedRequest) {
   const userId = req.user?.id;
@@ -28,11 +30,18 @@ function assertWorkerSecret(req: AuthenticatedRequest) {
   if (!expectedSecret || req.headers["x-webhook-token"] !== expectedSecret) throw new Error("Worker token không hợp lệ.");
 }
 
+function getWorkerPlatform(req: AuthenticatedRequest): MarketingCampaignPlatform | undefined {
+  const platform = req.body?.platform;
+  if (platform === undefined) return undefined;
+  if (platform === "Facebook" || platform === "TikTok") return platform;
+  throw new Error("Nền tảng worker không hợp lệ.");
+}
+
 export const marketingCampaignController = {
   async prepareWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignWorkerService.prepareDueSlots(Number(req.body?.limit || 3));
+      const result = await marketingCampaignWorkerService.prepareDueSlots(Number(req.body?.limit || 3), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Prepare worker thất bại.";
@@ -43,7 +52,7 @@ export const marketingCampaignController = {
   async mediaWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignFacebookWorkerService.generateDueMedia(Number(req.body?.limit || 2));
+      const result = await marketingCampaignFacebookWorkerService.generateDueMedia(Number(req.body?.limit || 2), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Media worker thất bại.";
@@ -54,7 +63,7 @@ export const marketingCampaignController = {
   async verifyWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignFacebookWorkerService.verifyDueSlots(Number(req.body?.limit || 5));
+      const result = await marketingCampaignFacebookWorkerService.verifyDueSlots(Number(req.body?.limit || 5), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Verify worker thất bại.";
@@ -65,7 +74,7 @@ export const marketingCampaignController = {
   async publishWorker(req: AuthenticatedRequest, res: Response) {
     try {
       assertWorkerSecret(req);
-      const result = await marketingCampaignFacebookWorkerService.publishDueSlots(Number(req.body?.limit || 3));
+      const result = await marketingCampaignFacebookWorkerService.publishDueSlots(Number(req.body?.limit || 3), getWorkerPlatform(req));
       return res.status(200).json({ status: "success", data: result });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Publish worker thất bại.";
@@ -141,6 +150,17 @@ export const marketingCampaignController = {
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
       return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải Order ảnh, video." });
+    }
+  },
+
+  async tiktokStatusWorker(req: AuthenticatedRequest, res: Response) {
+    try {
+      assertWorkerSecret(req);
+      const result = await tiktokService.reconcilePendingPublishes({ limit: Number(req.body?.limit || 10) });
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "TikTok status worker thất bại.";
+      return res.status(message.includes("token") ? 401 : 500).json({ status: "error", message });
     }
   },
 

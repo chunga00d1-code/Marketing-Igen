@@ -84,3 +84,20 @@ test("assigns one prepare instant to every slot in the same monthly batch", () =
   assert.equal(schedule[61].prepareAt.toISOString(), "2026-08-04T17:00:00.000Z");
   assert.equal(schedule[62].prepareAt.toISOString(), "2026-09-04T17:00:00.000Z");
 });
+
+test("schedules verification using the configured lead time", () => {
+  const schedule = buildCampaignSchedule({
+    startDate: "2026-07-15",
+    endDate: "2026-07-15",
+    postsPerDay: 1,
+    postingTimes: ["09:00"],
+    timezone: "Asia/Bangkok",
+    platforms: ["TikTok"],
+    generationLeadMinutes: 60,
+    verificationLeadMinutes: 15,
+    campaignCreatedAt: new Date("2026-07-01T03:00:00.000Z"),
+  });
+
+  assert.equal(schedule[0].scheduledAt.toISOString(), "2026-07-15T02:00:00.000Z");
+  assert.equal(schedule[0].verifyAt.toISOString(), "2026-07-15T01:45:00.000Z");
+});

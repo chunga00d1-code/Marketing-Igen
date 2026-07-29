@@ -30,6 +30,7 @@ const createSchema = {
     publishMode: Joi.string().valid("auto", "manual").default("manual"),
     imageMode: Joi.string().valid("ai", "real", "order").default("ai"),
     publishNow: Joi.boolean().default(false),
+    initialVideoUrl: Joi.string().uri({ scheme: ["https"] }).max(2048).optional(),
     googleDriveFolderUrl: Joi.string().allow("").optional(),
     customSchedule: Joi.object().optional(),
     images: Joi.array().items(Joi.string()).optional(),
@@ -236,6 +237,7 @@ marketingCampaignRouter.post("/internal/prepare", marketingCampaignController.pr
 marketingCampaignRouter.post("/internal/media", marketingCampaignController.mediaWorker as never);
 marketingCampaignRouter.post("/internal/verify", marketingCampaignController.verifyWorker as never);
 marketingCampaignRouter.post("/internal/publish", marketingCampaignController.publishWorker as never);
+marketingCampaignRouter.post("/internal/tiktok-status", marketingCampaignController.tiktokStatusWorker as never);
 marketingCampaignRouter.post("/internal/sync-metrics", marketingCampaignController.syncMetricsWorker as never);
 
 // Public endpoints (no auth required)

@@ -29,6 +29,10 @@ export class PublisherAgentService {
         postUrl: slot.publishedUrl || content.postUrl || content.tiktokShareUrl,
       };
     }
+    if (slot.platform === "TikTok" && content.status === "processing" && content.tiktokPublishId) {
+      console.log(`[PublisherAgent] TikTok slot ${slot._id} already has publish_id ${content.tiktokPublishId}. Awaiting provider completion.`);
+      return { status: "publishing" };
+    }
 
     // 2. Late Publish Check
     const lateDeadline = new Date(slot.scheduledAt.getTime() + campaign.latePublishWindowMinutes * 60000);

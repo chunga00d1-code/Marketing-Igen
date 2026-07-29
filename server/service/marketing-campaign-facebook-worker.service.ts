@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { Types } from "mongoose";
 import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
+import type { MarketingCampaignPlatform } from "../interface/marketing-campaign.interface";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
 import { CampaignOrchestratorService } from "./agents/campaign-orchestrator.service";
 
@@ -44,10 +45,15 @@ async function claimSlots(input: {
   dueField?: "verifyAt" | "scheduledAt";
   limit: number;
   nextStatus?: MarketingCampaignSlotStatus;
+  platform?: MarketingCampaignPlatform;
 }) {
   const now = new Date();
   const leaseFilter = [{ lockExpiresAt: { $exists: false } }, { lockExpiresAt: null }, { lockExpiresAt: { $lte: now } }];
-  const baseFilter = { status: { $in: input.statuses }, $or: leaseFilter };
+  const baseFilter = {
+    status: { $in: input.statuses },
+    $or: leaseFilter,
+    ...(input.platform ? { platform: input.platform } : {}),
+  };
   
   const candidates = input.dueField === "verifyAt"
     ? await MarketingCampaignSlotModel.find({ ...baseFilter, verifyAt: { $lte: now } }).sort({ verifyAt: 1 }).limit(input.limit).select("_id status").lean()
@@ -59,7 +65,12 @@ async function claimSlots(input: {
   for (const candidate of candidates) {
     const lockId = randomUUID();
     const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
-      { _id: candidate._id, status: { $in: input.statuses }, $or: [{ lockExpiresAt: { $exists: false } }, { lockExpiresAt: null }, { lockExpiresAt: { $lte: now } }] },
+      {
+        _id: candidate._id,
+        status: { $in: input.statuses },
+        ...(input.platform ? { platform: input.platform } : {}),
+        $or: [{ lockExpiresAt: { $exists: false } }, { lockExpiresAt: null }, { lockExpiresAt: { $lte: now } }],
+      },
       { $set: { status: input.nextStatus || candidate.status, lockId, lockedAt: now, lockExpiresAt: new Date(now.getTime() + LEASE_MS) } },
       { new: true }
     );
@@ -69,18 +80,18 @@ async function claimSlots(input: {
 }
 
 export const marketingCampaignFacebookWorkerService = {
-  async generateDueMedia(limit = 2) {
-    const claims = await claimSlots({ statuses: ["generating_media"], limit: Math.max(1, Math.min(limit, 5)) });
+  async generateDueMedia(limit = 2, platform?: MarketingCampaignPlatform) {
+    const claims = await claimSlots({ statuses: ["generating_media"], limit: Math.max(1, Math.min(limit, 5)), platform });
     return { claimed: claims.length, results: await Promise.all(claims.map((claim) => processImageSlot(claim.slotId, claim.lockId))) };
   },
 
-  async verifyDueSlots(limit = 5) {
-    const claims = await claimSlots({ statuses: ["verifying"], dueField: "verifyAt", limit: Math.max(1, Math.min(limit, 10)) });
+  async verifyDueSlots(limit = 5, platform?: MarketingCampaignPlatform) {
+    const claims = await claimSlots({ statuses: ["verifying"], dueField: "verifyAt", limit: Math.max(1, Math.min(limit, 10)), platform });
     return { claimed: claims.length, results: await Promise.all(claims.map((claim) => processVerifySlot(claim.slotId, claim.lockId))) };
   },
 
-  async publishDueSlots(limit = 3) {
-    const claims = await claimSlots({ statuses: ["ready_to_publish", "publishing"], dueField: "scheduledAt", limit: Math.max(1, Math.min(limit, 10)), nextStatus: "publishing" });
+  async publishDueSlots(limit = 3, platform?: MarketingCampaignPlatform) {
+    const claims = await claimSlots({ statuses: ["ready_to_publish"], dueField: "scheduledAt", limit: Math.max(1, Math.min(limit, 10)), nextStatus: "publishing", platform });
     return { claimed: claims.length, results: await Promise.all(claims.map((claim) => processPublishSlot(claim.slotId, claim.lockId))) };
   },
 };

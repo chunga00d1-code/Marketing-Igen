@@ -1,0 +1,3 @@
+display_name: TikTok Content Publishing
+short_description: TikTok video content and Direct Post workflow rules
+default_prompt: Use $tiktok-content-publishing to design, validate, or implement a TikTok video publishing workflow.

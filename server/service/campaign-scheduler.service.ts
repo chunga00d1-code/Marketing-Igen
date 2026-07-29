@@ -2,6 +2,7 @@ import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.mod
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { campaignQueueService } from "../queue/campaign-queue";
 import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
+import type { MarketingCampaignPlatform } from "../interface/marketing-campaign.interface";
 import {
   formatDateInTimezone,
   resolveMonthlyPrepareAt,
@@ -9,6 +10,7 @@ import {
 
 const COMPANY_CONCURRENCY_LIMIT = 3;
 const SCHEDULER_BATCH_LIMIT = 100;
+const PUBLISH_SCHEDULER_BATCH_LIMIT = 100;
 const STALE_QUEUE_RESERVATION_MS = 15 * 60 * 1000;
 const PREPARATION_WORKLOAD_STATUSES: MarketingCampaignSlotStatus[] = [
   "queued",
@@ -124,11 +126,13 @@ export async function canCompanyProcessSlot(companyCode: string): Promise<boolea
 export async function scanAndEnqueueDueSlots(options?: {
   campaignId?: string;
   limit?: number;
+  platform?: MarketingCampaignPlatform;
 }): Promise<{ enqueued: number; deferred: number; slotIds: string[] }> {
   const now = new Date();
   await migrateLegacyMonthlyPreparationSchedules(options?.campaignId);
   const campaignFilter: Record<string, unknown> = { status: "active" };
   if (options?.campaignId) campaignFilter._id = options.campaignId;
+  if (options?.platform) campaignFilter.platforms = options.platform;
 
   const activeCampaigns = await MarketingCampaignModel.find(campaignFilter).select("_id companyCode");
   if (activeCampaigns.length === 0) return { enqueued: 0, deferred: 0, slotIds: [] };
@@ -141,6 +145,7 @@ export async function scanAndEnqueueDueSlots(options?: {
     {
       campaignId: { $in: activeCampaignIds },
       status: "queued",
+      ...(options?.platform ? { platform: options.platform } : {}),
       updatedAt: { $lte: new Date(now.getTime() - STALE_QUEUE_RESERVATION_MS) },
       $or: [
         { lockExpiresAt: { $exists: false } },
@@ -165,6 +170,7 @@ export async function scanAndEnqueueDueSlots(options?: {
     campaignId: { $in: activeCampaignIds },
     status: { $in: ["planned", "retrying"] },
     prepareAt: { $lte: now },
+    ...(options?.platform ? { platform: options.platform } : {}),
   })
     .sort({ prepareAt: 1, scheduledAt: 1 })
     .limit(Math.max(1, Math.min(options?.limit || SCHEDULER_BATCH_LIMIT, SCHEDULER_BATCH_LIMIT)));
@@ -189,6 +195,7 @@ export async function scanAndEnqueueDueSlots(options?: {
         _id: slot._id,
         status: previousStatus,
         prepareAt: { $lte: now },
+        ...(options?.platform ? { platform: options.platform } : {}),
         $or: [
           { lockExpiresAt: { $exists: false } },
           { lockExpiresAt: null },
@@ -242,6 +249,128 @@ export async function scanAndEnqueueDueSlots(options?: {
 
 export const scanAndEnqueueUpcomingSlots = scanAndEnqueueDueSlots;
 
+/**
+ * Enqueue approved slots when their scheduled instant is due.
+ * The status reservation happens before BullMQ so a recurring scan cannot
+ * enqueue the same slot twice. The publish worker claims the reserved
+ * `publishing` slot with its normal lease/idempotency guard.
+ */
+export async function scanAndEnqueueDuePublishSlots(options?: {
+  campaignId?: string;
+  limit?: number;
+  platform?: MarketingCampaignPlatform;
+}): Promise<{ enqueued: number; slotIds: string[] }> {
+  const now = new Date();
+  const campaignFilter: Record<string, unknown> = { status: "active" };
+  if (options?.campaignId) campaignFilter._id = options.campaignId;
+  if (options?.platform) campaignFilter.platforms = options.platform;
+
+  const activeCampaigns = await MarketingCampaignModel.find(campaignFilter)
+    .select("_id companyCode")
+    .lean();
+  if (activeCampaigns.length === 0) return { enqueued: 0, slotIds: [] };
+
+  const activeCampaignIds = activeCampaigns.map((campaign) => campaign._id);
+  await MarketingCampaignSlotModel.updateMany(
+    {
+      campaignId: { $in: activeCampaignIds },
+      status: "publishing",
+      publishRequestedAt: { $exists: false },
+      ...(options?.platform ? { platform: options.platform } : {}),
+      updatedAt: { $lte: new Date(now.getTime() - STALE_QUEUE_RESERVATION_MS) },
+      $or: [
+        { lockExpiresAt: { $exists: false } },
+        { lockExpiresAt: null },
+        { lockExpiresAt: { $lte: now } },
+      ],
+    },
+    {
+      $set: { status: "ready_to_publish" },
+      $push: {
+        transitions: {
+          from: "publishing",
+          to: "ready_to_publish",
+          reason: "Recovered stale publish queue reservation before provider request",
+          at: now,
+        },
+      },
+    }
+  );
+
+  const dueSlots = await MarketingCampaignSlotModel.find({
+    campaignId: { $in: activeCampaignIds },
+    status: "ready_to_publish",
+    scheduledAt: { $lte: now },
+    ...(options?.platform ? { platform: options.platform } : {}),
+    $or: [
+      { lockExpiresAt: { $exists: false } },
+      { lockExpiresAt: null },
+      { lockExpiresAt: { $lte: now } },
+    ],
+  })
+    .sort({ scheduledAt: 1 })
+    .limit(Math.max(1, Math.min(options?.limit || PUBLISH_SCHEDULER_BATCH_LIMIT, PUBLISH_SCHEDULER_BATCH_LIMIT)));
+
+  let enqueued = 0;
+  const slotIds: string[] = [];
+
+  for (const slot of dueSlots) {
+    const reserved = await MarketingCampaignSlotModel.findOneAndUpdate(
+      {
+        _id: slot._id,
+        status: "ready_to_publish",
+        scheduledAt: { $lte: now },
+        ...(options?.platform ? { platform: options.platform } : {}),
+        $or: [
+          { lockExpiresAt: { $exists: false } },
+          { lockExpiresAt: null },
+          { lockExpiresAt: { $lte: now } },
+        ],
+      },
+      {
+        $set: { status: "publishing" },
+        $push: {
+          transitions: {
+            from: "ready_to_publish",
+            to: "publishing",
+            reason: "Scheduled publish window is due",
+            at: now,
+          },
+        },
+      },
+      { new: true }
+    );
+    if (!reserved) continue;
+
+    try {
+      await campaignQueueService.addPublishJob(String(slot._id));
+      enqueued++;
+      slotIds.push(String(slot._id));
+    } catch (err) {
+      await MarketingCampaignSlotModel.updateOne(
+        { _id: slot._id, status: "publishing", lockId: { $exists: false } },
+        {
+          $set: { status: "ready_to_publish" },
+          $push: {
+            transitions: {
+              from: "publishing",
+              to: "ready_to_publish",
+              reason: "Unable to enqueue scheduled publish job",
+              at: new Date(),
+            },
+          },
+        }
+      );
+      console.error(`[Campaign Scheduler] Error enqueuing publish slot ${slot._id}:`, err);
+    }
+  }
+
+  if (enqueued > 0) {
+    console.log(`[Campaign Scheduler] Publish scan: ${enqueued} slots enqueued.`);
+  }
+  return { enqueued, slotIds };
+}
+
 let schedulerInterval: NodeJS.Timeout | null = null;
 
 export function initCampaignScheduler(intervalMs = 60 * 1000) {
@@ -251,12 +380,18 @@ export function initCampaignScheduler(intervalMs = 60 * 1000) {
   scanAndEnqueueDueSlots().catch((err) => {
     console.error("[Campaign Scheduler] Initial scan error:", err);
   });
+  scanAndEnqueueDuePublishSlots().catch((err) => {
+    console.error("[Campaign Scheduler] Initial publish scan error:", err);
+  });
 
   schedulerInterval = setInterval(() => {
     scanAndEnqueueDueSlots().catch((err) => {
       console.error("[Campaign Scheduler] Recurring scan error:", err);
     });
+    scanAndEnqueueDuePublishSlots().catch((err) => {
+      console.error("[Campaign Scheduler] Recurring publish scan error:", err);
+    });
   }, intervalMs);
 
-  console.log(`[Campaign Scheduler] Initialized auto-prepare scheduler (Interval: ${intervalMs / 1000}s).`);
+  console.log(`[Campaign Scheduler] Initialized auto-prepare and scheduled-publish scheduler (Interval: ${intervalMs / 1000}s).`);
 }

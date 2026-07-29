@@ -1,0 +1,186 @@
+{
+  "name": "iGen Campaign - TikTok Direct Post Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "tiktok-campaign-cron",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 260]
+    },
+    {
+      "parameters": {},
+      "id": "tiktok-campaign-manual",
+      "name": "Run TikTok workflow manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [220, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL + '/api/v1/marketing-campaigns/internal/prepare' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ platform: 'TikTok', limit: Number($env.TIKTOK_PREPARE_LIMIT || 3) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 300000
+        }
+      },
+      "id": "tiktok-campaign-prepare",
+      "name": "TikTok - Prepare",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 330]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL + '/api/v1/marketing-campaigns/internal/media' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ platform: 'TikTok', limit: Number($env.TIKTOK_MEDIA_LIMIT || 2) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 300000
+        }
+      },
+      "id": "tiktok-campaign-media",
+      "name": "TikTok - Media",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 330]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL + '/api/v1/marketing-campaigns/internal/verify' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ platform: 'TikTok', limit: Number($env.TIKTOK_VERIFY_LIMIT || 5) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 90000
+        }
+      },
+      "id": "tiktok-campaign-verify",
+      "name": "TikTok - Verify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1020, 330]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL + '/api/v1/marketing-campaigns/internal/publish' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ platform: 'TikTok', limit: Number($env.TIKTOK_PUBLISH_LIMIT || 3) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 120000
+        }
+      },
+      "id": "tiktok-campaign-publish",
+      "name": "TikTok - Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1280, 330]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ERP_API_BASE_URL + '/api/v1/marketing-campaigns/internal/tiktok-status' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Token", "value": "={{ $env.CAMPAIGN_WORKER_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ limit: Number($env.TIKTOK_STATUS_LIMIT || 10) }) }}",
+        "options": {
+          "response": { "response": { "neverThrow": true, "responseFormat": "json" } },
+          "timeout": 90000
+        }
+      },
+      "id": "tiktok-campaign-status",
+      "name": "TikTok - Reconcile publish status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 330]
+    },
+    {
+      "parameters": {
+        "jsCode": "const names = ['TikTok - Prepare', 'TikTok - Media', 'TikTok - Verify', 'TikTok - Publish', 'TikTok - Reconcile publish status'];\nconst readStep = (name) => {\n  try {\n    return $items(name, 0, 0)[0]?.json || {};\n  } catch {\n    return { status: 'not_run' };\n  }\n};\nconst steps = names.map((name) => {\n  const response = readStep(name);\n  return {\n    name,\n    ok: response.status === 'success',\n    claimed: Number(response.data?.claimed || 0),\n    checked: Number(response.data?.checked || 0),\n    responseStatus: response.status || 'unknown',\n  };\n});\nconst failedSteps = steps.filter((step) => !step.ok).map((step) => step.name);\nreturn [{ json: {\n  status: failedSteps.length ? 'warning' : 'success',\n  platform: 'TikTok',\n  claimed: steps.reduce((sum, step) => sum + step.claimed, 0),\n  checkedPublishStatuses: steps.reduce((sum, step) => sum + step.checked, 0),\n  failedSteps,\n  steps,\n  executedAt: new Date().toISOString(),\n} }];"
+      },
+      "id": "tiktok-campaign-summary",
+      "name": "TikTok - Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 330]
+    }
+  ],
+  "connections": {
+    "Every Minute": { "main": [[{ "node": "TikTok - Prepare", "type": "main", "index": 0 }]] },
+    "Run TikTok workflow manually": { "main": [[{ "node": "TikTok - Prepare", "type": "main", "index": 0 }]] },
+    "TikTok - Prepare": { "main": [[{ "node": "TikTok - Media", "type": "main", "index": 0 }]] },
+    "TikTok - Media": { "main": [[{ "node": "TikTok - Verify", "type": "main", "index": 0 }]] },
+    "TikTok - Verify": { "main": [[{ "node": "TikTok - Publish", "type": "main", "index": 0 }]] },
+    "TikTok - Publish": { "main": [[{ "node": "TikTok - Reconcile publish status", "type": "main", "index": 0 }]] },
+    "TikTok - Reconcile publish status": { "main": [[{ "node": "TikTok - Summary", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Bangkok",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "executionTimeout": 600
+  },
+  "versionId": "7d8c5da5-7e0c-4db5-b1d1-9d0e6c4e03ee",
+  "id": "igen-campaign-tiktok-direct-post-orchestrator",
+  "tags": []
+}
