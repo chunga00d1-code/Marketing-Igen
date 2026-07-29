@@ -20,6 +20,7 @@ import { initBulkCreateWorker } from "./server/queue/bulk-create-queue";
   import { initCampaignContentSheetAIWorker } from "./server/queue/campaign-content-sheet-queue";
 import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
 import { initCreativeImageWorker } from "./server/queue/creative-image-queue";
+import { initHtmlVideoRenderWorker } from "./server/queue/html-video-render-queue";
 import { videoProjectRenderQueue } from "./server/queue/video-project-render-queue";
 
 dotenv.config();
@@ -214,6 +215,7 @@ async function startServer() {
     initVideoCaptionWorker();
   initCampaignContentSheetAIWorker();
   initCreativeImageWorker();
+  initHtmlVideoRenderWorker();
 
 
 
