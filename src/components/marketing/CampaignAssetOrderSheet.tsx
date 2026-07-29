@@ -84,6 +84,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
   const [driveImportLoading, setDriveImportLoading] = useState(false);
   const [driveImportApplying, setDriveImportApplying] = useState(false);
   const handledFillAllJobRef = useRef('');
+  const isTikTokCampaign = data?.campaign.platforms.includes('TikTok') === true;
 
   const isSaving = (orderId: string) => savingIds.includes(orderId);
   const isGenerating = (orderId: string) => aiIds.includes(orderId);
@@ -349,15 +350,15 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-extrabold text-slate-900">Nhập ảnh thiết kế từ Google Drive</h3>
+                <h3 className="text-base font-extrabold text-slate-900">{isTikTokCampaign ? 'Nhập video TikTok từ Google Drive' : 'Nhập ảnh thiết kế từ Google Drive'}</h3>
                 {awaitingAssetCount > 0 && (
                   <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-extrabold text-amber-800">
-                    {awaitingAssetCount} bài đang chờ ảnh
+                    {awaitingAssetCount} bài đang chờ {isTikTokCampaign ? 'video' : 'ảnh'}
                   </span>
                 )}
               </div>
               <p className="mt-1 text-xs leading-5 text-slate-600">
-                Dán link thư mục để hệ thống tự ghép ảnh vào từng bài theo số thứ tự, sau đó xem trước trước khi xác nhận.
+                Dán link thư mục để hệ thống tự ghép {isTikTokCampaign ? 'video' : 'ảnh'} vào từng bài theo số thứ tự, sau đó xem trước trước khi xác nhận.
               </p>
             </div>
           </div>
@@ -385,7 +386,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
             </button>
           </div>
           <p className="rounded-lg bg-white/80 px-3 py-2 text-[11px] leading-5 text-blue-900">
-            <strong>Quy tắc tên file:</strong> <code>1.jpg</code>, <code>2.png</code>; album dùng <code>3_1.jpg</code>, <code>3_2.jpg</code>. Hệ thống không tự dồn file khi thiếu số.
+            <strong>Quy tắc tên file:</strong> {isTikTokCampaign ? <><code>1.mp4</code> hoặc <code>1</code> nếu Drive nhận diện MIME video; video phải là MP4, MOV hoặc WebM.</> : <><code>1.jpg</code>, <code>2.png</code>; album dùng <code>3_1.jpg</code>, <code>3_2.jpg</code>.</>} Hệ thống không tự dồn file khi thiếu số.
           </p>
           {driveImportPreview && (
             <div className="rounded-xl border border-blue-200 bg-white p-3 shadow-sm">
@@ -399,7 +400,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                   disabled={driveImportApplying || !driveImportPreview.mappedOrders}
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                 >
-                  {driveImportApplying && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Xác nhận nhập ảnh
+                  {driveImportApplying && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Xác nhận nhập {isTikTokCampaign ? 'video' : 'ảnh'}
                 </button>
               </div>
               <div className="mt-2 grid gap-1 text-[11px] text-slate-600 sm:grid-cols-2">

@@ -59,7 +59,7 @@ export default function TikTokPublishModal({
   const [videoDurationSeconds, setVideoDurationSeconds] = useState<number | null>(null);
   const [videoMetadataError, setVideoMetadataError] = useState("");
   const activeCardId = card?.id || "";
-  const initialCaption = card ? extractDraftContent(card.bodyText || card.title || "").slice(0, 2200) : "";
+  const initialCaption = card ? extractDraftContent(card.bodyText || card.title || "") : "";
 
   useEffect(() => {
     if (!isOpen || !activeCardId) return;
@@ -102,6 +102,7 @@ export default function TikTokPublishModal({
   if (!isOpen || !card) return null;
 
   const maxDuration = creatorInfo?.maxVideoPostDurationSec || 0;
+  const captionTooLong = caption.length > 2200;
   const durationTooLong = videoDurationSeconds !== null && maxDuration > 0 && videoDurationSeconds > maxDuration;
   const commercialSelectionMissing = brandContentToggle && !brandContent && !brandOrganic;
   const brandedPrivate = brandContent && privacyLevel === "SELF_ONLY";
@@ -112,7 +113,7 @@ export default function TikTokPublishModal({
       : "";
   const canPublish = Boolean(
     creatorInfo && privacyLevel && consentAccepted && videoDurationSeconds && !videoMetadataError &&
-    !durationTooLong && !commercialSelectionMissing && !brandedPrivate && !isPublishing
+    !captionTooLong && !durationTooLong && !commercialSelectionMissing && !brandedPrivate && !isPublishing
   );
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -187,8 +188,9 @@ export default function TikTokPublishModal({
 
             <div className="space-y-5">
               <div className="space-y-2">
-                <div className="flex items-center justify-between"><label htmlFor="tiktok-post-title" className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider"><Tag className="h-4 w-4 text-cyan-300" />Tiêu đề / Caption và hashtag</label><span className="text-[10px] text-slate-400">{caption.length}/2200</span></div>
+                <div className="flex items-center justify-between"><label htmlFor="tiktok-post-title" className="flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider"><Tag className="h-4 w-4 text-cyan-300" />Tiêu đề / Caption và hashtag</label><span className={`text-[10px] ${captionTooLong ? "font-bold text-red-300" : "text-slate-400"}`}>{caption.length}/2200</span></div>
                 <textarea id="tiktok-post-title" value={caption} onChange={(event) => setCaption(event.target.value)} maxLength={2200} rows={5} className="w-full resize-none rounded-2xl border border-slate-700 bg-[#18181c] p-3.5 text-xs outline-none focus:border-cyan-400" />
+                {captionTooLong && <p className="text-[11px] text-red-300">Caption đang vượt 2.200 ký tự. Hãy rút gọn trước khi đăng; hệ thống không tự cắt nội dung.</p>}
               </div>
 
               <div className="space-y-2">

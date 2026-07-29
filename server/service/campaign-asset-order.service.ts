@@ -16,7 +16,7 @@ import { openrouterChat } from "./openrouter.service";
 import { walletService } from "./wallet.service";
 import { campaignQueueService } from "../queue/campaign-queue";
 import { broadcastEvent } from "../socket";
-import { getGoogleDriveDirectLink, listGoogleDriveFolderFiles } from "./marketing-campaign-helper";
+import { getGoogleDriveDirectLink, getGoogleDriveFileMimeType, listGoogleDriveFolderFiles } from "./marketing-campaign-helper";
 import {
   buildCampaignDriveImportPreview,
   CampaignDriveImportOrder,
@@ -52,6 +52,41 @@ const aiWritableFieldKeys = [
 type AiWritableFieldKey = (typeof aiWritableFieldKeys)[number];
 const supportedDriveMediaPattern = /\.(jpg|jpeg|png|webp|gif|heic|mp4|mov|avi|webm)$/i;
 const supportedDriveVideoPattern = /\.(mp4|mov|avi|webm)$/i;
+const supportedDriveVideoMimeTypes = new Set(["video/mp4", "video/quicktime", "video/x-msvideo", "video/webm"]);
+const supportedTikTokDriveVideoPattern = /\.(mp4|mov|webm)$/i;
+const supportedTikTokDriveVideoMimeTypes = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+const supportedDriveImageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"]);
+
+type DriveFileWithMimeType = {
+  id: string;
+  name: string;
+  mimeType?: string;
+};
+
+function getDriveMediaType(file: DriveFileWithMimeType): "image" | "video" | undefined {
+  if (supportedDriveVideoPattern.test(file.name) || supportedDriveVideoMimeTypes.has(file.mimeType || "")) return "video";
+  if (supportedDriveMediaPattern.test(file.name) || supportedDriveImageMimeTypes.has(file.mimeType || "")) return "image";
+  return undefined;
+}
+
+function isSupportedTikTokDriveVideo(file: DriveFileWithMimeType) {
+  return supportedTikTokDriveVideoPattern.test(file.name)
+    || supportedTikTokDriveVideoMimeTypes.has(file.mimeType || "");
+}
+
+async function resolveDriveMediaMimeTypes(files: Array<{ id: string; name: string }>): Promise<DriveFileWithMimeType[]> {
+  const resolved: DriveFileWithMimeType[] = [];
+  const batchSize = 10;
+  for (let index = 0; index < files.length; index += batchSize) {
+    const batch = files.slice(index, index + batchSize);
+    const next = await Promise.all(batch.map(async (file) => {
+      if (supportedDriveMediaPattern.test(file.name)) return file;
+      return { ...file, mimeType: await getGoogleDriveFileMimeType(file.id) };
+    }));
+    resolved.push(...next);
+  }
+  return resolved;
+}
 
 interface AssetOrderInput {
   slotId?: string;
@@ -361,25 +396,26 @@ async function getDriveImportContext(companyCode: string, campaignId: string, go
       return Number(new Date(leftDate)) - Number(new Date(rightDate));
     });
 
-  const driveFiles = await listGoogleDriveFolderFiles(folderUrl);
+  const driveFiles = await resolveDriveMediaMimeTypes(await listGoogleDriveFolderFiles(folderUrl));
   const isTikTokCampaign = campaign.platforms.includes("TikTok");
-  const supportedMediaFiles = driveFiles.filter((file) => supportedDriveMediaPattern.test(file.name));
-  if (isTikTokCampaign && supportedMediaFiles.some((file) => !supportedDriveVideoPattern.test(file.name))) {
+  const supportedMediaFiles = driveFiles.filter((file) => getDriveMediaType(file));
+  if (isTikTokCampaign && supportedMediaFiles.some((file) => !isSupportedTikTokDriveVideo(file))) {
     throw httpError(
-      "Chiến dịch TikTok chỉ nhận video từ Google Drive. Hãy bỏ các tệp ảnh và chỉ giữ video MP4, MOV, AVI hoặc WebM.",
+      "Chiến dịch TikTok chỉ nhận video từ Google Drive. Hãy bỏ ảnh, AVI và chỉ giữ video MP4, MOV hoặc WebM.",
       400,
       "TIKTOK_VIDEO_ONLY"
     );
   }
   const files = (isTikTokCampaign
-    ? supportedMediaFiles.filter((file) => supportedDriveVideoPattern.test(file.name))
+    ? supportedMediaFiles.filter(isSupportedTikTokDriveVideo)
     : supportedMediaFiles
   ).map((file) => {
-    const isVideo = supportedDriveVideoPattern.test(file.name);
+    const isVideo = getDriveMediaType(file) === "video";
     return {
       id: file.id,
       name: file.name,
       isVideo,
+      isMedia: true,
       directUrl: getGoogleDriveDirectLink(file.id, isVideo ? "video" : "image"),
     };
   });
@@ -853,7 +889,7 @@ export const campaignAssetOrderService = {
         return Number(new Date(leftScheduledAt || 0)) - Number(new Date(rightScheduledAt || 0));
       });
     return {
-      campaign: { id: String(campaign._id), title: campaign.title, timezone: campaign.timezone },
+      campaign: { id: String(campaign._id), title: campaign.title, timezone: campaign.timezone, platforms: campaign.platforms },
       customFieldColumns: activeCustomFields(campaign).map((field) => ({ key: field.key, label: field.label })),
       slots: slots.map((slot) => ({
         _id: String(slot._id),
@@ -877,7 +913,7 @@ export const campaignAssetOrderService = {
     if (!preview.totalFiles) {
       throw httpError(
         campaign.platforms.includes("TikTok")
-          ? "Không tìm thấy video hợp lệ trong thư mục Drive. TikTok chỉ nhận video MP4, MOV, AVI hoặc WebM."
+          ? "Không tìm thấy video hợp lệ trong thư mục Drive. TikTok chỉ nhận video MP4, MOV hoặc WebM."
           : "Không tìm thấy ảnh hoặc video hợp lệ trong thư mục Drive. Hãy kiểm tra quyền chia sẻ công khai.",
         400,
         "DRIVE_MEDIA_NOT_FOUND"

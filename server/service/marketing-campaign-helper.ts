@@ -29,6 +29,44 @@ export function getGoogleDriveDirectLink(urlOrId: string, mediaType: "image" | "
 }
 
 /**
+ * Google Drive lets owners remove a file extension from its display name.
+ * Probe the public file headers so callers can still distinguish supported media.
+ */
+export async function getGoogleDriveFileMimeType(fileId: string): Promise<string | undefined> {
+  const directUrl = getGoogleDriveDirectLink(fileId, "video");
+  const getMimeType = (response: Response) => String(response.headers.get("content-type") || "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  try {
+    const headResponse = await fetch(directUrl, {
+      method: "HEAD",
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      },
+    });
+    const headMimeType = headResponse.ok ? getMimeType(headResponse) : "";
+    if (headMimeType && headMimeType !== "text/html") return headMimeType;
+
+    // Some Google Drive files do not expose a useful MIME type to HEAD. Request
+    // one byte instead; headers arrive before the body and the stream is cancelled.
+    const rangeResponse = await fetch(directUrl, {
+      headers: {
+        Range: "bytes=0-0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      },
+      redirect: "follow",
+    });
+    void rangeResponse.body?.cancel();
+    const mimeType = rangeResponse.ok ? getMimeType(rangeResponse) : "";
+    return mimeType || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Chuyển đổi đường dẫn Google Sheet thông thường sang đường dẫn xuất dữ liệu CSV trực tiếp
  */
 export function getGoogleSheetCsvUrl(sheetUrl: string): string {

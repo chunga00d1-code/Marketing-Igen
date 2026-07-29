@@ -7,7 +7,7 @@ import {
   getRenderDimensions,
   nextRenderProgress,
 } from "../video-project-render-policy";
-import { getVideoCompositionMetadata } from "../../remotion/entry";
+import { getVideoCompositionMetadata } from "../../remotion/video-composition-metadata";
 
 test("returns the requested dimensions for every supported aspect ratio", () => {
   assert.deepEqual(getRenderDimensions("9:16", "720p"), { width: 720, height: 1280 });
