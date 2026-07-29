@@ -3,6 +3,7 @@ export interface CampaignDriveImportFile {
   name: string;
   directUrl: string;
   isVideo: boolean;
+  isMedia?: boolean;
 }
 
 export interface CampaignDriveImportOrder {
@@ -48,7 +49,7 @@ export function buildCampaignDriveImportPreview(
   orders: CampaignDriveImportOrder[],
   files: CampaignDriveImportFile[]
 ): CampaignDriveImportPreview {
-  const validFiles = files.filter((file) => MEDIA_FILE_PATTERN.test(file.name));
+  const validFiles = files.filter((file) => file.isMedia || file.isVideo || MEDIA_FILE_PATTERN.test(file.name));
   const filesByPosition = new Map<number, CampaignDriveImportFile[]>();
   const unmatchedFiles: CampaignDriveImportFile[] = [];
 

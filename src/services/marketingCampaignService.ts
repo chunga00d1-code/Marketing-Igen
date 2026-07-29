@@ -391,7 +391,7 @@ export interface CampaignAssetOrderBulkImport {
 }
 
 export interface CampaignAssetOrderData {
-  campaign: { id: string; title: string; timezone: string };
+  campaign: { id: string; title: string; timezone: string; platforms: Array<'Facebook' | 'TikTok'> };
   slots: Array<{
     _id: string;
     topicBrief: string;
@@ -494,6 +494,7 @@ export const marketingCampaignService = {
     publishMode?: 'auto' | 'manual';
     imageMode?: 'ai' | 'real' | 'order';
     publishNow?: boolean;
+    initialVideoUrl?: string;
     googleDriveFolderUrl?: string;
     mediaPolicy: 'text' | 'image' | 'video' | 'auto';
     captionMode?: 'none' | 'speech' | 'context' | 'combined';
@@ -1000,4 +1001,5 @@ export interface DriveFileItem {
   name: string;
   directUrl: string;
   isVideo: boolean;
+  isMedia?: boolean;
 }

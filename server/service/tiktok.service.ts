@@ -1,10 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
 import { broadcastEvent } from "../socket";
 import { MarketingContentModel } from "../model/marketing-content.model";
+import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { UserModel } from "../model/user.model";
 import { telegramService } from "./telegram.service";
+import { cloudinaryService } from "./cloudinary.service";
 import jwt from "jsonwebtoken";
+import { createHmac, timingSafeEqual } from "crypto";
 
 const TIKTOK_API_BASE = "https://open.tiktokapis.com";
 const TIKTOK_OAUTH_AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/";
@@ -49,20 +52,87 @@ function encodeHtml(value: string) {
     .replace(/'/g, "&#39;");
 }
 
-function verifyWebhookToken(token?: string) {
-  // TikTok webhooks must not inherit the n8n secret. TikTok's own
-  // signature header is handled by the platform; this optional token is
-  // only for an explicitly configured private relay.
-  const expectedToken = String(process.env.TIKTOK_WEBHOOK_SECRET || "").trim();
-  if (!expectedToken) {
-    return true;
-  }
-  return String(token || "").trim() === expectedToken;
+function safeStringEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function extractWebhookIdentifiers(payload: any) {
+function verifyWebhookRequest(input: {
+  signature?: string;
+  rawBody?: string;
+  relayToken?: string;
+}) {
+  const signature = String(input.signature || "").trim();
+  const clientSecrets = [
+    String(process.env.TIKTOK_BUSINESS_CLIENT_SECRET || "").trim(),
+    String(process.env.TIKTOK_CLIENT_SECRET || "").trim(),
+  ].filter((secret, index, all) => Boolean(secret) && all.indexOf(secret) === index);
+  if (signature && clientSecrets.length > 0 && input.rawBody) {
+    const parts = new Map(
+      signature.split(",").map((part) => {
+        const separatorIndex = part.indexOf("=");
+        return separatorIndex > 0
+          ? [part.slice(0, separatorIndex).trim(), part.slice(separatorIndex + 1).trim()]
+          : ["", ""];
+      })
+    );
+    const timestamp = parts.get("t") || "";
+    const receivedSignature = parts.get("s") || "";
+    const timestampSeconds = Number(timestamp);
+    if (
+      timestamp
+      && receivedSignature
+      && Number.isFinite(timestampSeconds)
+      && Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds) <= 5 * 60
+    ) {
+      return clientSecrets.some((clientSecret) => {
+        const expectedSignature = createHmac("sha256", clientSecret)
+          .update(`${timestamp}.${input.rawBody}`)
+          .digest("hex");
+        return safeStringEqual(receivedSignature, expectedSignature);
+      });
+    }
+    return false;
+  }
+
+  const expectedRelayToken = String(process.env.TIKTOK_WEBHOOK_SECRET || "").trim();
+  if (expectedRelayToken) {
+    return safeStringEqual(String(input.relayToken || "").trim(), expectedRelayToken);
+  }
+  return process.env.NODE_ENV !== "production";
+}
+
+export function getTikTokSourceVideoUrl(videoUrl: string, appBaseUrl: string) {
+  const normalizedAppBaseUrl = String(appBaseUrl || "").replace(/\/$/, "");
+  if (!normalizedAppBaseUrl) {
+    throw new Error("APP_URL is required for TikTok Direct Post.");
+  }
+
+  const appOrigin = new URL(normalizedAppBaseUrl).origin;
+  const videoOrigin = new URL(videoUrl).origin;
+  return videoOrigin === appOrigin
+    ? videoUrl
+    : `${normalizedAppBaseUrl}/api/v1/media/video-proxy?url=${encodeURIComponent(videoUrl)}`;
+}
+
+export function extractTikTokWebhookIdentifiers(payload: any) {
   const event = payload?.event || payload?.data?.event || payload?.type || payload?.event_type || "unknown";
-  const data = payload?.data || payload;
+  let serializedContent: Record<string, any> = {};
+  if (typeof payload?.content === "string" && payload.content.trim()) {
+    try {
+      const parsedContent = JSON.parse(payload.content);
+      if (parsedContent && typeof parsedContent === "object" && !Array.isArray(parsedContent)) {
+        serializedContent = parsedContent;
+      }
+    } catch {
+      serializedContent = {};
+    }
+  } else if (payload?.content && typeof payload.content === "object" && !Array.isArray(payload.content)) {
+    serializedContent = payload.content;
+  }
+  const data = payload?.data
+    || (Object.keys(serializedContent).length > 0 ? serializedContent : payload);
 
   return {
     eventType: String(event || "unknown"),
@@ -98,7 +168,7 @@ function extractWebhookIdentifiers(payload: any) {
       payload?.publish_status ||
       ""
     ).trim(),
-    messageText: String(data?.message?.text || data?.text || payload?.text || "").trim(),
+    messageText: String(data?.reason || data?.fail_reason || data?.message?.text || data?.text || payload?.text || "").trim(),
     conversationId: String(data?.conversationId || data?.conversation_id || payload?.conversationId || "").trim(),
     senderId: String(data?.senderId || data?.sender_id || payload?.senderId || "").trim(),
     raw: payload,
@@ -111,7 +181,7 @@ function mapWebhookStatusToCardStatus(status: string) {
   if (normalized === "post.publish.complete" || normalized === "post.publish.publicly_available") {
     return "published";
   }
-  if (normalized === "post.publish.failed" || normalized === "post.publish.no_longer_publicaly_available") {
+  if (normalized === "post.publish.failed") {
     return "failed";
   }
   if (["publish_complete", "completed", "success", "published", "posted"].includes(normalized)) {
@@ -677,7 +747,7 @@ async function saveCompanyTikTokOAuthIntegration(params: {
 }
 
 export const tiktokService = {
-  verifyWebhookToken,
+  verifyWebhookRequest,
 
   async createOAuthSession(params: {
     userId: string;
@@ -855,7 +925,7 @@ export const tiktokService = {
       "FOLLOWER_OF_CREATOR",
       "SELF_ONLY",
     ]);
-    const videoDuration = Number(postOptions.videoDurationSeconds || 0);
+    const previewVideoDuration = Number(postOptions.videoDurationSeconds || 0);
     const hasCommercialDisclosure = Boolean(postOptions.brandContentToggle);
     const brandContent = hasCommercialDisclosure && Boolean(postOptions.brandContent);
     const brandOrganic = hasCommercialDisclosure && Boolean(postOptions.brandOrganic);
@@ -866,7 +936,7 @@ export const tiktokService = {
     if (!supportedPrivacyLevels.has(privacyLevel)) {
       throw new Error("Quyền riêng tư TikTok không hợp lệ.");
     }
-    if (!Number.isFinite(videoDuration) || videoDuration <= 0) {
+    if (!Number.isFinite(previewVideoDuration) || previewVideoDuration <= 0) {
       throw new Error("Không đọc được thời lượng video để kiểm tra giới hạn TikTok.");
     }
     if (hasCommercialDisclosure && !brandContent && !brandOrganic) {
@@ -909,8 +979,9 @@ export const tiktokService = {
       throw new Error("Quyền riêng tư đã chọn không còn khả dụng. Vui lòng mở lại màn đăng TikTok và chọn lại.");
     }
 
-    if (videoDuration > maxDuration) {
-      throw new Error(`Video dài ${Math.ceil(videoDuration)} giây, vượt giới hạn ${maxDuration} giây của tài khoản TikTok này.`);
+    const verifiedVideoDuration = await cloudinaryService.getVideoDurationSeconds(videoUrl);
+    if (verifiedVideoDuration > maxDuration) {
+      throw new Error(`Video dài ${Math.ceil(verifiedVideoDuration)} giây, vượt giới hạn ${maxDuration} giây của tài khoản TikTok này.`);
     }
 
     const resolveDisableFlag = (allowed: boolean | undefined, disabledByCreator: boolean) =>
@@ -929,9 +1000,7 @@ export const tiktokService = {
     if (!appBaseUrl) {
       throw new Error("APP_URL chưa được cấu hình để TikTok tải video từ domain đã xác minh.");
     }
-    const sourceVideoUrl = videoUrl.startsWith(appBaseUrl)
-      ? videoUrl
-      : `${appBaseUrl}/api/v1/media/video-proxy?url=${encodeURIComponent(videoUrl)}`;
+    const sourceVideoUrl = getTikTokSourceVideoUrl(videoUrl, appBaseUrl);
     const parsedSourceUrl = new URL(sourceVideoUrl);
     if (process.env.NODE_ENV === "production" && parsedSourceUrl.protocol !== "https:") {
       throw new Error("TikTok Direct Post yêu cầu URL video HTTPS trên domain đã xác minh.");
@@ -1134,8 +1203,117 @@ export const tiktokService = {
     });
   },
 
+  /**
+   * Reconciles Direct Post requests that are still being processed by TikTok.
+   * Webhooks remain the primary source of truth; this is only a bounded
+   * fallback for late or missed provider callbacks. Final states deliberately
+   * flow through processWebhook so cards, campaign slots and statistics stay
+   * in one idempotent state transition path.
+   */
+  async reconcilePendingPublishes(options?: { limit?: number }) {
+    const limit = Math.max(1, Math.min(Number(options?.limit || 10), 25));
+    const pendingContents = await MarketingContentModel.find({
+      channel: "TikTok",
+      status: "processing",
+      tiktokPublishId: { $exists: true, $ne: "" },
+    })
+      .select("_id companyCode authorUid integrationId tiktokPublishId tiktokWebhookUpdatedAt")
+      .sort({ tiktokWebhookUpdatedAt: 1, _id: 1 })
+      .limit(limit)
+      .lean();
+
+    const results: Array<Record<string, unknown>> = [];
+    for (const content of pendingContents) {
+      const cardId = String(content._id);
+      const publishId = String(content.tiktokPublishId || "").trim();
+
+      try {
+        const credentials = await resolveDirectCredentials(
+          content.integrationId ? String(content.integrationId) : undefined,
+          content.companyCode,
+          undefined,
+          undefined,
+          content.authorUid
+        );
+        const response = await (globalThis as any).fetch(`${TIKTOK_API_BASE}/v2/post/publish/status/fetch/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=UTF-8",
+            Authorization: `Bearer ${credentials.accessToken}`,
+          },
+          body: JSON.stringify({ publish_id: publishId }),
+        });
+        const responseText = await response.text();
+        let data: any = {};
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error("TikTok status response is not JSON.");
+        }
+
+        if (!response.ok || data.error?.code !== "ok") {
+          const code = String(data.error?.code || response.status);
+          const message = String(data.error?.message || "Unknown TikTok API error");
+          throw new Error(`TikTok status fetch failed [${code}]: ${translateTikTokError(message, code)}`);
+        }
+
+        const providerStatus = String(data.data?.status || "PROCESSING").trim().toUpperCase();
+        const postId = String(data.data?.publicaly_available_post_id?.[0] || "").trim();
+        const shareUrl = postId && credentials.username
+          ? `https://www.tiktok.com/@${credentials.username}/video/${postId}`
+          : "";
+
+        if (providerStatus === "PUBLISH_COMPLETE") {
+          await this.processWebhook({
+            event: "post.publish.complete",
+            content: JSON.stringify({
+              publish_id: publishId,
+              publicaly_available_post_id: postId ? [postId] : [],
+              share_url: shareUrl,
+              status: providerStatus,
+            }),
+          });
+          results.push({ cardId, publishId, status: "published", providerStatus, postId, shareUrl });
+          continue;
+        }
+
+        if (providerStatus === "FAILED") {
+          const failReason = String(data.data?.fail_reason || "TikTok rejected the video.");
+          await this.processWebhook({
+            event: "post.publish.failed",
+            content: JSON.stringify({
+              publish_id: publishId,
+              fail_reason: failReason,
+              status: providerStatus,
+            }),
+          });
+          results.push({ cardId, publishId, status: "failed", providerStatus, error: failReason });
+          continue;
+        }
+
+        results.push({ cardId, publishId, status: "processing", providerStatus });
+      } catch (error: any) {
+        results.push({
+          cardId,
+          publishId,
+          status: "error",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    return {
+      checked: pendingContents.length,
+      published: results.filter((result) => result.status === "published").length,
+      failed: results.filter((result) => result.status === "failed").length,
+      processing: results.filter((result) => result.status === "processing").length,
+      errors: results.filter((result) => result.status === "error").length,
+      results,
+    };
+  },
+
   async processWebhook(payload: any) {
-    const parsed = extractWebhookIdentifiers(payload);
+    const parsed = extractTikTokWebhookIdentifiers(payload);
     const normalizedEvent = parsed.eventType.toLowerCase();
 
     const matchedCard = parsed.cardId
@@ -1186,7 +1364,34 @@ export const tiktokService = {
     if (parsed.postId) updateData.tiktokPostId = parsed.postId;
     if (parsed.shareUrl) updateData.tiktokShareUrl = parsed.shareUrl;
     if (mappedStatus) updateData.status = mappedStatus;
+    let didTransitionCard = false;
     if (mappedStatus === "published") {
+      const transitionedCard = await MarketingContentModel.findOneAndUpdate(
+        { _id: matchedCard._id, status: { $ne: "published" } },
+        { $set: { ...updateData, publishedAt: new Date() } },
+        { new: true }
+      ).lean();
+      didTransitionCard = Boolean(transitionedCard);
+      if (didTransitionCard) {
+        updateData.publishedAt = new Date();
+      } else {
+        delete updateData.status;
+        delete updateData.publishedAt;
+      }
+    } else if (mappedStatus === "failed") {
+      const transitionedCard = await MarketingContentModel.findOneAndUpdate(
+        { _id: matchedCard._id, status: { $nin: ["published", "failed"] } },
+        { $set: updateData },
+        { new: true }
+      ).lean();
+      didTransitionCard = Boolean(transitionedCard);
+      if (!didTransitionCard) delete updateData.status;
+    } else if (mappedStatus === "processing" && ["published", "failed"].includes(matchedCard.status)) {
+      // A delayed non-final provider event must not reopen a terminal card.
+      delete updateData.status;
+    }
+
+    if (mappedStatus === "published" && didTransitionCard) {
       updateData.publishedAt = new Date();
       // Gửi thông báo tự động tới Telegram với link video TikTok từ webhook callback
       const telegramChatId = process.env.TELEGRAM_CHAT_ID;
@@ -1211,6 +1416,84 @@ export const tiktokService = {
       { $set: updateData },
       { new: true }
     ).lean();
+
+    // A provider webhook is the source of truth for an asynchronous Direct
+    // Post. Complete the campaign slot as well as the content card so the
+    // calendar, campaign stats, and retry state do not remain stuck at
+    // `publishing`.
+    const campaignSlot = await MarketingCampaignSlotModel.findOne({
+      marketingContentId: matchedCard._id,
+      companyCode: matchedCard.companyCode,
+    });
+    const terminalCardStatusMatches =
+      (mappedStatus === "published" && updatedCard?.status === "published") ||
+      (mappedStatus === "failed" && updatedCard?.status === "failed");
+    if (campaignSlot && terminalCardStatusMatches) {
+      const previousStatus = campaignSlot.status;
+      let transitionedSlot = null;
+      if (mappedStatus === "published" && previousStatus !== "published") {
+        const publishedPostId = parsed.postId || campaignSlot.publishedPostId || "";
+        const publishedUrl = parsed.shareUrl || updatedCard?.tiktokShareUrl || campaignSlot.publishedUrl || "";
+        transitionedSlot = await MarketingCampaignSlotModel.findOneAndUpdate(
+          { _id: campaignSlot._id, status: previousStatus },
+          {
+            $set: {
+              status: "published",
+              publishedPostId,
+              publishedUrl,
+              lockId: undefined,
+              lockedAt: undefined,
+              lockExpiresAt: undefined,
+              lastError: undefined,
+            },
+            $push: {
+              transitions: {
+                from: previousStatus,
+                to: "published",
+                reason: "TikTok publish completion webhook",
+                at: new Date(),
+              },
+            },
+          },
+          { new: true }
+        );
+      } else if (mappedStatus === "failed" && previousStatus !== "failed" && previousStatus !== "published") {
+        transitionedSlot = await MarketingCampaignSlotModel.findOneAndUpdate(
+          { _id: campaignSlot._id, status: previousStatus },
+          {
+            $set: {
+              status: "failed",
+              lockId: undefined,
+              lockedAt: undefined,
+              lockExpiresAt: undefined,
+              lastError: {
+                type: "provider",
+                message: parsed.messageText || "TikTok báo lỗi khi xử lý video.",
+                occurredAt: new Date(),
+              },
+            },
+            $push: {
+              transitions: {
+                from: previousStatus,
+                to: "failed",
+                reason: "TikTok publish failure webhook",
+                at: new Date(),
+              },
+            },
+          },
+          { new: true }
+        );
+      }
+
+      if (transitionedSlot && (mappedStatus === "published" || mappedStatus === "failed")) {
+        try {
+          const { marketingCampaignService } = await import("./marketing-campaign.service");
+          await marketingCampaignService.syncCampaignStatusAndStats(transitionedSlot.campaignId);
+        } catch (error) {
+          console.error("[TikTok Webhook] Campaign status sync failed:", error);
+        }
+      }
+    }
 
     broadcastEvent("tiktok_post_updated", {
       cardId: String(matchedCard._id),

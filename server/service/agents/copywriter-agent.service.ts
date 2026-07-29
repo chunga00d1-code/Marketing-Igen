@@ -20,10 +20,14 @@ export class CopywriterAgentService {
 
     const copywritingSkill = loadAgentSkill("copywriter");
     const socialSkill = loadAgentSkill("social");
+    const tiktokSkill = slot.platform === "TikTok"
+      ? loadAgentSkill("tiktok-content-publishing")
+      : "";
 
     const systemInstruction = `
 ${copywritingSkill}
 ${socialSkill}
+${tiktokSkill}
 
 You are the Copywriter Agent. Your job is to draft exactly ONE extremely compelling, high-converting social media post variant in Vietnamese for the given slot.
 Use the provided Research Context Bundle from the Researcher Agent to guide the copy's direction, key pain points, and facts.
@@ -37,6 +41,7 @@ Follow these rules:
    - Do NOT add unrelated objects/persons not in the brief.
 4. Voice script (voiceScript): If the post format involves video/audio, write a natural narration script in Vietnamese.
 5. Real-media grounding: If the Research Context contains a visual analysis, the caption MUST match the observed subjects, setting, visible text, and factual details. Never turn uncertain visual guesses or suggested marketing angles into product facts.
+6. TikTok constraint: when Platform is TikTok, write only a caption in bodyText (maximum 2,200 characters including hashtags). Put scene directions in outline/mediaPrompt and narration in voiceScript. Do not truncate the caption.
 
 JSON Output Schema:
 {
@@ -103,6 +108,9 @@ ${researchContext}
     });
 
     const data = JSON.parse(result.text);
+    if (slot.platform === "TikTok" && (!data.bodyText?.trim() || data.bodyText.length > 2200)) {
+      throw new Error("TikTok caption must be non-empty and no longer than 2,200 characters.");
+    }
 
     // Compute hash and check for duplicates
     const hash = contentHash(data.bodyText);
@@ -126,6 +134,9 @@ ${researchContext}
         responseSchema,
       });
       const retryData = JSON.parse(retryResult.text);
+      if (slot.platform === "TikTok" && (!retryData.bodyText?.trim() || retryData.bodyText.length > 2200)) {
+        throw new Error("TikTok caption must be non-empty and no longer than 2,200 characters.");
+      }
       const retryHash = contentHash(retryData.bodyText);
 
       const candidate = await MarketingCandidateModel.create({

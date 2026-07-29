@@ -5,10 +5,21 @@
 1. Import `n8n_facebook_schedule_workflow.json`.
 2. Publish it and copy its production webhook URL.
 3. Set that URL as `N8N_CAMPAIGN_FB_WEBHOOK_URL` on the ERP backend. Keep `N8N_FB_WEBHOOK_URL` pointing to the existing manual scheduling workflow.
-4. Import `n8n_scheduler_workflow.json`.
+4. Import `n8n_campaign_scheduler_workflow.json`.
 5. Run both workflows manually once, inspect the results, then publish the scheduler.
 
 Both imported workflows are inactive by default to prevent accidental production calls during setup.
+
+## TikTok Direct Post workflow
+
+Import `n8n_campaign_tiktok_workflow.json` when TikTok campaign publishing is enabled. It is intentionally separate from the Facebook publisher workflow and starts inactive.
+
+1. Configure the environment variables in `n8n_campaign.env.example`, including the five `TIKTOK_*_LIMIT` values. `ERP_API_BASE_URL` must be the public backend origin without a trailing slash.
+2. Import the workflow and run **Run TikTok workflow manually** once. A result with `claimed: 0` is valid when no TikTok slot is due.
+3. Confirm the backend response has no authentication error, then activate the workflow. It runs every minute.
+4. Keep the TikTok webhook configured on the ERP backend. The final **TikTok - Reconcile publish status** node is only a bounded fallback for delayed or missed callbacks; it does not publish a video itself.
+
+The workflow sends `{ "platform": "TikTok" }` for prepare, media, verification and publishing, so it cannot claim Facebook slots. It never contains a TikTok access token, TikTok client secret, creator credential, or webhook signing secret. The ERP backend owns the Direct Post request, token refresh, provider status polling, media validation, caption/privacy/consent checks, and the shared campaign state transition.
 
 ## Environment
 
@@ -30,6 +41,8 @@ Every minute, the orchestrator calls these endpoints sequentially:
 4. `/api/v1/marketing-campaigns/internal/publish`
 
 The backend owns slot leases, retry limits, scoring, readiness, and publish timing. n8n only orchestrates worker calls and performs the final Facebook Graph request.
+
+For TikTok, n8n only orchestrates protected backend worker endpoints. The backend sends the Direct Post request and turns `PUBLISH_COMPLETE` or `FAILED` into the same webhook-backed content and campaign-slot transition used for native TikTok callbacks.
 
 ## Facebook idempotency
 

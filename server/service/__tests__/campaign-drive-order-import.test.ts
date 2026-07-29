@@ -42,3 +42,16 @@ test("does not silently assign unnumbered or out-of-range files", () => {
   assert.deepEqual(preview.unmatchedFiles.map((item) => item.name), ["04.jpg", "cover.png"]);
   assert.equal(preview.mappings[1].files[0].name, "2.mp4");
 });
+
+test("accepts a video identified from Drive MIME type when its displayed name has no extension", () => {
+  const preview = buildCampaignDriveImportPreview(orders, [{
+    id: "video-file",
+    name: "1",
+    directUrl: "https://drive.test/video-file",
+    isVideo: true,
+    isMedia: true,
+  }]);
+
+  assert.equal(preview.totalFiles, 1);
+  assert.equal(preview.mappings[0].files[0].name, "1");
+});

@@ -8,6 +8,29 @@ import {
 import { videoCaptionService } from "../video-caption.service";
 import { VideoCaptionProjectModel } from "../../model/video-caption-project.model";
 
+const TIKTOK_SUPPORTED_VIDEO_CONTENT_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
+async function assertTikTokVideoMimeType(videoUrl: string) {
+  const response = await fetch(videoUrl, {
+    method: "HEAD",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Video TikTok không truy cập được (${response.status}).`);
+  }
+  const contentType = String(response.headers.get("content-type") || "")
+    .split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (!TIKTOK_SUPPORTED_VIDEO_CONTENT_TYPES.has(contentType)) {
+    throw new Error("Video TikTok phải là MP4, MOV hoặc WebM hợp lệ.");
+  }
+}
+
 async function processPreparedJob(job: VideoCaptionJobDto) {
   if (job.status !== "completed") {
     await videoCaptionService.processJob(job.id);
@@ -148,6 +171,9 @@ export async function assertCampaignVideoReady(input: {
     throw new Error(
       "TikTok bắt buộc phải có video HTTPS hoàn chỉnh; không chấp nhận ảnh hoặc text fallback."
     );
+  }
+  if (input.slot.platform === "TikTok") {
+    await assertTikTokVideoMimeType(input.content.videoUrl || "");
   }
   if (!["video", "human-video"].includes(input.slot.mediaType)) return;
   if ((input.campaign.captionMode || "none") === "none") return;
