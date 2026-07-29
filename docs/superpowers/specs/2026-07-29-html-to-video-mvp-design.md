@@ -51,13 +51,25 @@ navigates to a stable route and opens a two-column workspace:
 - On failure, it shows only the safe persisted error and allows a new render.
 
 The preview iframe uses `sandbox=""`; it receives no script, same-origin,
-navigation, popup, form, or top-window privileges. Preview content is derived
-from the same sanitized document submitted for rendering so preview and output
-do not intentionally diverge.
+navigation, popup, form, or top-window privileges. A debounced authenticated
+preview request runs the same server security validator and document builder as
+render creation, then returns only the safe composition document. The iframe
+never receives the raw editor document, so preview and output do not
+intentionally diverge.
 
 ## API Contract
 
 All endpoints use the existing authentication middleware.
+
+### Build safe preview
+
+`POST /api/v1/html-video-renders/preview`
+
+The request contains `html`, `css`, `durationSeconds`, `aspectRatio`, and
+`resolution` using the same validation as render creation, except that no
+idempotency key is required. The response contains the server-built
+`compositionHtml`, `width`, and `height`. It does not persist or enqueue a
+render.
 
 ### Create render
 
@@ -166,7 +178,8 @@ private and are not returned by the status API.
 
 ## Backend Components and Data Flow
 
-1. The router authenticates and validates the request shape.
+1. The router authenticates and validates the request shape. Preview requests
+   return the safe composition document immediately without persistence.
 2. `html-video-security.service` sanitizes and validates HTML/CSS, then creates
    the complete Hyperframes document using server-owned dimensions and duration.
 3. `html-video-render.service` atomically finds or creates the tenant-scoped
@@ -192,8 +205,8 @@ run the worker asynchronously in-process.
 - Extend `VideoStudioTool` and route maps with `html-video`.
 - Add one card to `VIDEO_TOOLS`.
 - Lazy-load `HtmlVideoWorkspace`.
-- Add `htmlVideoRenderService` for create and status requests plus strict public
-  response parsing.
+- Add `htmlVideoRenderService` for preview, create, and status requests plus
+  strict response parsing.
 - Keep editor, settings, preview, submission, polling, and result state inside
   the workspace. Do not add state to unrelated Video Studio tools.
 - Stop polling on terminal status, unmount, or a newer submitted render.
@@ -230,7 +243,7 @@ Frontend tests cover:
 - route/tool mapping;
 - home-card placement;
 - request and response parsing;
-- sandboxed preview;
+- debounced server-built sandboxed preview;
 - active-render submission lock;
 - polling until completed or failed;
 - result and safe error presentation.
