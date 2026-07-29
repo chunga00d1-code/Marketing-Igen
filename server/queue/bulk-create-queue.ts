@@ -29,6 +29,10 @@ const redisConfig = {
   maxRetriesPerRequest: null,
 };
 
+export function buildBulkCreateQueueJobId(jobId: string) {
+  return `bulk-${jobId}`;
+}
+
 let queue: Queue | null = null;
 let worker: Worker | null = null;
 let redisAvailable: boolean | null = null;
@@ -123,7 +127,7 @@ export async function enqueueBulkCreateJob(jobId: string, forceNewQueueEntry = f
     console.warn(`[Bulk Create Queue] Redis không khả dụng, chạy job ${jobId} bằng background fallback.`);
     return runWithDatabaseFallback(jobId);
   }
-  const queueJobId = `bulk:${jobId}`;
+  const queueJobId = buildBulkCreateQueueJobId(jobId);
   try {
     const activeQueue = queue;
     return await withTimeout((async () => {
