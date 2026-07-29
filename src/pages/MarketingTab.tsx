@@ -35,9 +35,7 @@ export default function MarketingTab() {
   const { userProfile } = useAuth();
   const isUserRole = userProfile?.role === "user" || userProfile?.role === "manager";
   const MARKETING_SUB_TAB_ROUTES = [
-    { slug: "len-y-tuong-ai", value: "LÊN Ý TƯỞNG AI" as MarketingSubTabType },
     { slug: "tao-chien-dich", value: "TẠO CHIẾN DỊCH" as MarketingSubTabType },
-    { slug: "duyet-noi-dung", value: "DUYỆT NỘI DUNG" as MarketingSubTabType },
     { slug: "lich-dang", value: "LỊCH ĐĂNG CONTENT" as MarketingSubTabType },
     { slug: "bao-cao", value: "BÁO CÁO" as MarketingSubTabType },
   ] as const;
@@ -50,8 +48,12 @@ export default function MarketingTab() {
     const legacySubTab = url.searchParams.get("sub");
     if (legacySubTab === "xuong-noi-dung") {
       openContentStudio();
-    } else if (legacySubTab === "y-tuong") {
-      url.searchParams.set("sub", "len-y-tuong-ai");
+    } else if (
+      legacySubTab === "y-tuong"
+      || legacySubTab === "len-y-tuong-ai"
+      || legacySubTab === "duyet-noi-dung"
+    ) {
+      url.searchParams.set("sub", "tao-chien-dich");
       window.history.replaceState(null, "", url.toString());
     }
   }, []);

@@ -54,7 +54,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       usernamePlaceholder: "igen_business",
       tokenLabel: "TikTok Access Token *",
       tokenPlaceholder: "Nhap TikTok Access Token",
-      tokenHelp: "Access Token TikTok Direct dung de xac thuc va dang video truc tiep.",
+      tokenHelp: "Access Token TikTok Production API dùng để xác thực và đăng video trực tiếp.",
       activeClass: "border-black bg-black text-white shadow-sm",
     },
     Facebook: {
@@ -835,11 +835,11 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                               </div>
                               <div>
                                 <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-200">TikTok OAuth</h4>
-                                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-md font-medium border border-slate-700">Official API</span>
+                                <span className="text-[9px] bg-emerald-500/15 text-emerald-300 px-1.5 py-0.5 rounded-md font-medium border border-emerald-400/25">Production API · Đã duyệt</span>
                               </div>
                             </div>
                             <p className="text-[10px] leading-relaxed text-slate-400 mt-2">
-                              Kết nối trực tiếp tài khoản TikTok Doanh nghiệp để tự động liên kết kênh và đồng bộ các bài viết.
+                              Kết nối tài khoản TikTok thật qua Production API để tự động liên kết kênh và đồng bộ trạng thái đăng bài.
                             </p>
                           </div>
 
@@ -1278,7 +1278,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                       {item.platform === "TikTok" && (
                         <div className="flex justify-between items-center gap-2">
                           <span className="text-gray-400 shrink-0">Chế độ:</span>
-                          <span className="font-semibold truncate">TikTok Direct</span>
+                          <span className="font-semibold truncate">TikTok Production API</span>
                         </div>
                       )}
                       <div className="flex justify-between items-center gap-2">
