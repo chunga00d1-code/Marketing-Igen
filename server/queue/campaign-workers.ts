@@ -15,14 +15,28 @@ const redisConfig = {
 const QUEUE_NAME = "campaign-task-queue";
 const CAMPAIGN_WORKER_CONCURRENCY = 6;
 const CAMPAIGN_WORKER_RATE_PER_MINUTE = 18;
+const CAMPAIGN_WORKER_RETRY_MS = 30_000;
 let worker: Worker | null = null;
+let workerStarting = false;
+let workerRetryTimer: NodeJS.Timeout | null = null;
+
+function scheduleWorkerRetry() {
+  if (worker || workerRetryTimer) return;
+  workerRetryTimer = setTimeout(() => {
+    workerRetryTimer = null;
+    initCampaignWorkers();
+  }, CAMPAIGN_WORKER_RETRY_MS);
+  workerRetryTimer.unref();
+}
 
 export function initCampaignWorkers() {
-  if (worker) return;
+  if (worker || workerStarting) return;
+  workerStarting = true;
 
-  campaignQueueService.checkRedis().then((hasRedis) => {
+  void campaignQueueService.checkRedis().then((hasRedis) => {
     if (!hasRedis) {
       console.log("[Campaign Worker] Chạy chế độ fallback: không khởi tạo Worker do Redis không hoạt động.");
+      scheduleWorkerRetry();
       return;
     }
 
@@ -218,5 +232,8 @@ export function initCampaignWorkers() {
     });
   }).catch((err) => {
     console.error("[Campaign Worker] Lỗi khi kiểm tra kết nối Redis trước khởi tạo:", err);
+    scheduleWorkerRetry();
+  }).finally(() => {
+    workerStarting = false;
   });
 }

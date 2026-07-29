@@ -9,6 +9,10 @@ const redisConfig = {
   password: process.env.REDIS_PASSWORD || undefined,
   maxRetriesPerRequest: null,
 };
+
+export function buildCreativeImageQueueJobId(renderId: string) {
+  return `creative-image-${renderId}`;
+}
 let queue: Queue | null = null;
 let worker: Worker | null = null;
 let redisAvailable: boolean | null = null;
@@ -61,7 +65,7 @@ export async function enqueueCreativeImageRender(renderId: string) {
   }
   try {
     return await queue.add("render", { renderId }, {
-      jobId: `creative-image:${renderId}`,
+      jobId: buildCreativeImageQueueJobId(renderId),
       attempts: 3,
       backoff: { type: "exponential", delay: 1_000 },
       removeOnComplete: true,
