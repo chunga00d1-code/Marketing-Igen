@@ -114,6 +114,14 @@ async function ensureLocalMockFacebookPage(companyCode: string, createdBy: strin
 
 export const marketingCampaignService = {
   async create(companyCode: string, createdBy: string, input: CreateCampaignInput) {
+    const requiresTikTokVideo = input.platforms.includes("TikTok");
+    if (requiresTikTokVideo && (
+      input.mediaPolicy !== "video"
+      || input.imageMode === "ai"
+      || (input.images && input.images.length > 0)
+    )) {
+      throw new Error("Chiến dịch TikTok chỉ nhận video. Vui lòng chọn nguồn video từ Google Drive và không đính kèm ảnh.");
+    }
     const timezone = input.timezone || "Asia/Ho_Chi_Minh";
     const generationLeadMinutes = input.generationLeadMinutes ?? 60;
     const verificationLeadMinutes = input.verificationLeadMinutes ?? 15;
@@ -192,7 +200,9 @@ export const marketingCampaignService = {
     const strategy = {
       campaignTitle: aiStrategy.campaignTitle,
       contentPillars: aiStrategy.contentPillars,
-      slots: imageMode === "order"
+      slots: requiresTikTokVideo
+        ? aiStrategy.slots.map((slot) => ({ ...slot, mediaType: "video" as const }))
+        : imageMode === "order"
         ? aiStrategy.slots.map((slot) => ({
           ...slot,
           mediaType: slot.mediaType === "text" ? "image" as const : slot.mediaType,
