@@ -10,19 +10,21 @@ import {
 
 export const htmlVideoRenderRouter = Router();
 
-htmlVideoRenderRouter.use(requireAuth as never);
 htmlVideoRenderRouter.post(
   "/html-video-renders/preview",
+  requireAuth as never,
   validateRequest({ body: htmlVideoPreviewBodySchema }),
   htmlVideoRenderController.preview as never
 );
 htmlVideoRenderRouter.post(
   "/html-video-renders",
+  requireAuth as never,
   validateRequest({ body: createHtmlVideoRenderBodySchema }),
   htmlVideoRenderController.create as never
 );
 htmlVideoRenderRouter.get(
   "/html-video-renders/:renderId",
+  requireAuth as never,
   validateRequest({ params: htmlVideoRenderParamsSchema }),
   htmlVideoRenderController.get as never
 );
