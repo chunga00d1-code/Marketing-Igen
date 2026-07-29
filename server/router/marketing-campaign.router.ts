@@ -58,6 +58,29 @@ const replaceImageSchema = {
   }),
 };
 
+const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required();
+
+const tiktokPublishOptionsSchema = Joi.object({
+  caption: Joi.string().allow("").max(2200).required(),
+  privacyLevel: Joi.string().valid("PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY").required(),
+  allowComment: Joi.boolean().required(),
+  allowDuet: Joi.boolean().required(),
+  allowStitch: Joi.boolean().required(),
+  brandContentToggle: Joi.boolean().required(),
+  brandContent: Joi.boolean().required(),
+  brandOrganic: Joi.boolean().required(),
+  isAigc: Joi.boolean().required(),
+  videoDurationSeconds: Joi.number().positive().required(),
+  consentAccepted: Joi.boolean().valid(true).required(),
+});
+
+const slotPublishSchema = {
+  params: Joi.object({ id: objectId, slotId: objectId }),
+  body: Joi.object({
+    tiktokPublishOptions: tiktokPublishOptionsSchema.optional(),
+  }),
+};
+
 const calendarSchema = {
   query: Joi.object({
     startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
@@ -65,7 +88,6 @@ const calendarSchema = {
   }),
 };
 
-const objectId = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).required();
 const sheetDataType = Joi.string().valid(
   "short_text", "long_text", "number", "currency", "date", "datetime",
   "select", "multi_select", "url", "media_url", "boolean"
@@ -370,8 +392,8 @@ marketingCampaignRouter.post("/:id/sheet/revisions/:revisionId/revert", validate
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
 marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
-marketingCampaignRouter.post("/:id/slots/:slotId/approve", marketingCampaignController.approveSlot as never);
-marketingCampaignRouter.post("/:id/slots/:slotId/publish-now", marketingCampaignController.publishNowSlot as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/approve", validateRequest(slotPublishSchema), marketingCampaignController.approveSlot as never);
+marketingCampaignRouter.post("/:id/slots/:slotId/publish-now", validateRequest(slotPublishSchema), marketingCampaignController.publishNowSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/reject", marketingCampaignController.rejectSlot as never);
 marketingCampaignRouter.get("/:id/slots/:slotId/share-link", marketingCampaignController.getShareLink as never);
 marketingCampaignRouter.get("/:id/dates/:date/share-link", marketingCampaignController.getDailyShareLink as never);

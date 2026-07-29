@@ -17,6 +17,7 @@ interface CampaignSlot {
   status: string;
   variant?: string;
   platform?: string;
+  integrationId?: string;
   errorMessage?: string;
   publishedPostUrl?: string;
   ingestedMedia?: Array<{ sourceUrl: string; url: string; uploadedAt: string }>;
@@ -80,6 +81,7 @@ interface CampaignSlot {
     outline?: string;
     mediaPrompt?: string;
     mediaUrls?: string[];
+    videoUrl?: string;
     mediaType?: 'text' | 'image' | 'video';
   } | null;
 }
@@ -405,7 +407,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              <FolderOpen size={14} /> Order ảnh · Nhập Drive
+              <FolderOpen size={14} /> Order media · Nhập Drive
             </button>
           </div>
         )}
