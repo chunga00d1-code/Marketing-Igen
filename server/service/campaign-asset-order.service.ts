@@ -4,6 +4,7 @@ import { CampaignAssetOrderModel } from "../model/campaign-asset-order.model";
 import { CampaignAssetOrderAIJobModel } from "../model/campaign-asset-order-ai-job.model";
 import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
+import { MarketingContentModel } from "../model/marketing-content.model";
 import { BulkTemplateModel } from "../model/bulk-template.model";
 import { BulkRenderJobModel } from "../model/bulk-render-job.model";
 import { BulkRenderItemModel } from "../model/bulk-render-item.model";
@@ -13,6 +14,13 @@ import { bulkCreateService } from "./bulk-create.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { openrouterChat } from "./openrouter.service";
 import { walletService } from "./wallet.service";
+import { campaignQueueService } from "../queue/campaign-queue";
+import { broadcastEvent } from "../socket";
+import { getGoogleDriveDirectLink, listGoogleDriveFolderFiles } from "./marketing-campaign-helper";
+import {
+  buildCampaignDriveImportPreview,
+  CampaignDriveImportOrder,
+} from "./campaign-drive-order-import.service";
 import {
   CampaignAssetOrderAIJobStatus,
   CampaignAssetOrderFormat,
@@ -322,6 +330,65 @@ async function migrateLegacySheetOrders(
   }
 }
 
+async function getDriveImportContext(companyCode: string, campaignId: string, googleDriveFolderUrl: string) {
+  const campaign = await assertCampaign(companyCode, campaignId);
+  const folderUrl = cleanText(googleDriveFolderUrl, 2000);
+  if (!folderUrl) {
+    throw httpError("Vui lòng nhập link thư mục Google Drive công khai.", 400, "DRIVE_URL_REQUIRED");
+  }
+
+  const slots = await MarketingCampaignSlotModel.find({
+    companyCode,
+    campaignId,
+    status: { $nin: [...terminalSlotStatuses] },
+  }).sort({ scheduledAt: 1 }).lean();
+  await migrateLegacySheetOrders(companyCode, campaignId, campaign.createdBy, slots);
+
+  const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
+  const storedOrders = await CampaignAssetOrderModel.find({
+    companyCode,
+    campaignId,
+    slotId: { $exists: true },
+    status: { $nin: ["completed", "cancelled"] },
+  }).lean();
+  const orders = storedOrders
+    .filter((order) => slotMap.has(String(order.slotId)))
+    .sort((left, right) => {
+      const leftDate = slotMap.get(String(left.slotId))?.scheduledAt || 0;
+      const rightDate = slotMap.get(String(right.slotId))?.scheduledAt || 0;
+      return Number(new Date(leftDate)) - Number(new Date(rightDate));
+    });
+
+  const driveFiles = await listGoogleDriveFolderFiles(folderUrl);
+  const files = driveFiles.map((file) => {
+    const isVideo = /\.(mp4|mov|avi|webm)$/i.test(file.name);
+    return {
+      id: file.id,
+      name: file.name,
+      isVideo,
+      directUrl: getGoogleDriveDirectLink(file.id, isVideo ? "video" : "image"),
+    };
+  });
+  const importOrders: CampaignDriveImportOrder[] = orders.map((order) => {
+    const slot = slotMap.get(String(order.slotId));
+    return {
+      orderId: String(order._id),
+      slotId: String(order.slotId),
+      title: order.title,
+      scheduledAt: slot?.scheduledAt || new Date(0),
+    };
+  });
+
+  return {
+    campaign,
+    folderUrl,
+    slots,
+    slotMap,
+    orders,
+    preview: buildCampaignDriveImportPreview(importOrders, files),
+  };
+}
+
 export const campaignAssetOrderService = {
   async getAiCost(companyCode: string, campaignId: string) {
     const campaign = await assertCampaign(companyCode, campaignId);
@@ -442,11 +509,20 @@ export const campaignAssetOrderService = {
       _id: { $in: orders.map((order) => order.slotId).filter(Boolean) },
     }).select("_id pillar objective topicBrief mediaType").lean();
     const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
+    const contents = await MarketingContentModel.find({
+      companyCode: job.companyCode,
+      campaignId: String(job.campaignId),
+      campaignSlotId: { $in: slots.map((slot) => String(slot._id)) },
+    }).select("campaignSlotId title bodyText outline mediaPrompt voiceScript mediaType").lean();
+    const contentMap = new Map(contents.map((content) => [String(content.campaignSlotId), content]));
     const query = [
       campaign.sourceBrief,
       ...orders.map((order) => {
         const slot = order.slotId ? slotMap.get(String(order.slotId)) : undefined;
-        return [slot?.pillar, slot?.objective, slot?.topicBrief, order.title].filter(Boolean).join(" ");
+        const content = order.slotId ? contentMap.get(String(order.slotId)) : undefined;
+        return [slot?.pillar, slot?.objective, slot?.topicBrief, order.title, content?.title, content?.bodyText, content?.mediaPrompt]
+          .filter(Boolean)
+          .join(" ");
       }),
     ].join("\n").slice(0, 20_000);
     const knowledge = await aiKnowledgeService.searchRelevantContext({
@@ -528,12 +604,23 @@ export const campaignAssetOrderService = {
               role: "user",
               content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${knowledge.contextText || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
                 const slot = order.slotId ? slotMap.get(String(order.slotId)) : undefined;
+                const content = order.slotId ? contentMap.get(String(order.slotId)) : undefined;
                 return {
                   orderId: String(order._id),
                   post: slot?.topicBrief || order.title,
                   pillar: slot?.pillar || order.contentGroup,
                   objective: slot?.objective || "",
                   suggestedMedia: slot?.mediaType || order.format,
+                  finalContent: content
+                    ? {
+                      title: content.title,
+                      bodyText: content.bodyText,
+                      outline: content.outline,
+                      mediaPrompt: content.mediaPrompt,
+                      voiceScript: content.voiceScript,
+                      mediaType: content.mediaType,
+                    }
+                    : undefined,
                 };
               }))}\n\nYÊU CẦU THÊM:\n${job.instruction || "Không có"}`,
             },
@@ -768,6 +855,154 @@ export const campaignAssetOrderService = {
         ...serializeOrder(order as unknown as Record<string, unknown>),
         slot: order.slotId ? slotMap.get(String(order.slotId)) : undefined,
       })),
+    };
+  },
+
+  async previewDriveImport(companyCode: string, campaignId: string, googleDriveFolderUrl: string) {
+    const { preview } = await getDriveImportContext(companyCode, campaignId, googleDriveFolderUrl);
+    if (!preview.totalFiles) {
+      throw httpError(
+        "Không tìm thấy ảnh hoặc video hợp lệ trong thư mục Drive. Hãy kiểm tra quyền chia sẻ công khai.",
+        400,
+        "DRIVE_MEDIA_NOT_FOUND"
+      );
+    }
+    return preview;
+  },
+
+  async applyDriveImport(companyCode: string, campaignId: string, googleDriveFolderUrl: string) {
+    const { campaign, folderUrl, slotMap, orders, preview } = await getDriveImportContext(
+      companyCode,
+      campaignId,
+      googleDriveFolderUrl
+    );
+    const mappedFiles = preview.mappings.filter((mapping) => mapping.files.length > 0);
+    if (!mappedFiles.length) {
+      throw httpError(
+        "Không có file nào ghép được với bài viết. Tên file cần chứa số thứ tự bài, ví dụ 1.jpg hoặc 3_2.png.",
+        400,
+        "DRIVE_FILES_UNMATCHED"
+      );
+    }
+    const importableSlotStatuses = new Set([
+      "planned",
+      "queued",
+      "generating",
+      "researching",
+      "writing",
+      "awaiting_assets",
+      "retrying",
+      "needs_attention",
+      "failed",
+    ]);
+    const mappings = mappedFiles.filter((mapping) => {
+      const slot = slotMap.get(mapping.slotId);
+      return mapping.files.length > 0 && slot && importableSlotStatuses.has(slot.status);
+    });
+    if (!mappings.length) {
+      throw httpError(
+        "Không có bài nào đang ở trạng thái có thể nhận file Drive. Hãy chờ bài hoàn tất bước đang xử lý rồi thử lại.",
+        409,
+        "DRIVE_IMPORT_NOT_AVAILABLE"
+      );
+    }
+
+    const orderMap = new Map(orders.map((order) => [String(order._id), order]));
+    const readySlotIds: string[] = [];
+    const orderOperations = mappings.flatMap((mapping) => {
+      const order = orderMap.get(mapping.orderId);
+      if (!order) return [];
+      const preservedAssets = (order.assets || []).filter((asset) => asset.source !== "drive");
+      const driveAssets = mapping.files.map((file, index) => ({
+        role: file.isVideo ? "video" as const : index === 0 ? "primary" as const : "secondary" as const,
+        sourceUrl: file.directUrl,
+        originalName: file.name,
+        source: "drive" as const,
+        order: preservedAssets.length + index,
+      }));
+      const assets = [...preservedAssets, ...driveAssets].slice(0, MAX_ASSETS_PER_ORDER);
+      const format: CampaignAssetOrderFormat = mapping.files.some((file) => file.isVideo) ? "video" : "image";
+      return [{
+        updateOne: {
+          filter: { _id: order._id, companyCode, campaignId },
+          update: {
+            $set: {
+              assets,
+              format,
+              source: "drive" as CampaignAssetSource,
+              status: resolveStatus({ format, headline: order.headline, assets }),
+            },
+            $inc: { revision: 1 },
+          },
+        },
+      }];
+    });
+    if (orderOperations.length) {
+      await CampaignAssetOrderModel.bulkWrite(orderOperations, { ordered: false });
+    }
+
+    for (const mapping of mappings) {
+      const slot = slotMap.get(mapping.slotId);
+      if (!slot) continue;
+      const hasVideo = mapping.files.some((file) => file.isVideo);
+      const driveUrls = mapping.files.map((file) => `https://drive.google.com/file/d/${file.id}/view`);
+      const directUrls = mapping.files.map((file) => file.directUrl);
+      const canStartMedia = slot.status === "awaiting_assets" && Boolean(slot.marketingContentId);
+      const updated = await MarketingCampaignSlotModel.findOneAndUpdate(
+        {
+          _id: slot._id,
+          companyCode,
+          campaignId,
+          status: canStartMedia ? "awaiting_assets" : slot.status,
+        },
+        {
+          $set: {
+            realImageDriveUrls: driveUrls,
+            realImageDirectUrls: directUrls,
+            mediaType: hasVideo ? "video" : "image",
+            ...(canStartMedia ? { status: "generating_media" } : {}),
+          },
+          $unset: {
+            mediaIngestionFingerprint: 1,
+            ingestedMedia: 1,
+            visualAnalysis: 1,
+          },
+          ...(canStartMedia ? {
+            $push: {
+              transitions: {
+                from: "awaiting_assets",
+                to: "generating_media",
+                reason: `Đã nhận ${mapping.files.length} file từ Google Drive theo Order #${mapping.position}; bắt đầu gắn media, không phân tích Vision.`,
+                at: new Date(),
+              },
+            },
+          } : {}),
+        },
+        { returnDocument: "after" }
+      ).lean();
+      if (updated && canStartMedia) readySlotIds.push(String(slot._id));
+    }
+
+    await MarketingCampaignModel.updateOne(
+      { _id: campaign._id, companyCode },
+      { $set: { imageMode: "order", googleDriveFolderUrl: folderUrl } }
+    );
+
+    for (const slotId of readySlotIds) {
+      broadcastEvent("campaign:slot-update", {
+        slotId,
+        campaignId,
+        companyCode,
+        status: "generating_media",
+        updatedAt: new Date().toISOString(),
+      });
+      await campaignQueueService.addMediaJob(slotId);
+    }
+
+    return {
+      ...preview,
+      appliedOrders: mappings.length,
+      queuedSlots: readySlotIds.length,
     };
   },
 
@@ -1071,6 +1306,13 @@ export const campaignAssetOrderService = {
         .populate("integrationId", "username displayName")
         .lean()
       : null;
+    const finalContent = slot
+      ? await MarketingContentModel.findOne({
+        companyCode,
+        campaignId,
+        campaignSlotId: slot._id,
+      }).select("title bodyText outline mediaPrompt voiceScript mediaType").lean()
+      : null;
     const query = [
       campaign.sourceBrief,
       slot?.pillar,
@@ -1080,6 +1322,9 @@ export const campaignAssetOrderService = {
       order.headline,
       order.subheadline,
       order.visualBrief,
+      finalContent?.title,
+      finalContent?.bodyText,
+      finalContent?.mediaPrompt,
     ].filter(Boolean).join("\n");
     const knowledge = await aiKnowledgeService.searchRelevantContext({
       companyCode,
@@ -1136,7 +1381,7 @@ export const campaignAssetOrderService = {
         },
         {
           role: "user",
-          content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nSLOT:\n${JSON.stringify(slot ? { pillar: slot.pillar, objective: slot.objective, topicBrief: slot.topicBrief, platform: slot.platform } : {})}\n\nORDER HIỆN TẠI:\n${JSON.stringify({ title: order.title, contentGroup: order.contentGroup, shootingContent: order.shootingContent, productionRequirements: order.productionRequirements, quantitySuggestion: order.quantitySuggestion, usageChannels: "Facebook", format: order.format, aspectRatio: order.aspectRatio, headline: order.headline, subheadline: order.subheadline, cta: order.cta, visualBrief: order.visualBrief, assetRoles: order.assets.map((asset) => asset.role) })}\n\nKHO TRI THỨC ĐÚNG PAGE:\n${knowledge.contextText || "Không có"}\n\nYÊU CẦU THÊM:\n${input.instruction || "Không có"}`,
+          content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nSLOT:\n${JSON.stringify(slot ? { pillar: slot.pillar, objective: slot.objective, topicBrief: slot.topicBrief, platform: slot.platform } : {})}\n\nCONTENT CUỐI CÙNG CỦA BÀI:\n${JSON.stringify(finalContent || {})}\n\nORDER HIỆN TẠI:\n${JSON.stringify({ title: order.title, contentGroup: order.contentGroup, shootingContent: order.shootingContent, productionRequirements: order.productionRequirements, quantitySuggestion: order.quantitySuggestion, usageChannels: "Facebook", format: order.format, aspectRatio: order.aspectRatio, headline: order.headline, subheadline: order.subheadline, cta: order.cta, visualBrief: order.visualBrief, assetRoles: order.assets.map((asset) => asset.role) })}\n\nKHO TRI THỨC ĐÚNG PAGE:\n${knowledge.contextText || "Không có"}\n\nYÊU CẦU THÊM:\n${input.instruction || "Không có"}`,
         },
       ],
     });

@@ -4,6 +4,12 @@ export type EditorTool = 'background' | 'text' | 'image' | 'data' | 'history';
 export type LayerType = 'text' | 'image';
 export type TemplateLayer = BulkLayer;
 
+export interface LayerPresetDragPayload {
+  type: LayerType;
+  initialValue?: string;
+  overrides?: Partial<TemplateLayer>;
+}
+
 export interface DataRow {
   id: string;
   name?: string;
@@ -32,6 +38,10 @@ export type DataColumn = BulkDataColumn;
 export interface EditorSnapshot {
   layers: TemplateLayer[];
   rows: DataRow[];
+  canvasSize: { width: number; height: number };
+  backgroundId: string;
+  backgroundImage: string;
+  backgroundColor: string;
 }
 
 export type ResizeCorner = 'nw' | 'ne' | 'sw' | 'se' | 'w' | 'e';

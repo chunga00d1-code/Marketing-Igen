@@ -3,6 +3,7 @@ import { Queue } from "bullmq";
 import net from "net";
 import { randomUUID } from "crypto";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
+import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { CampaignOrchestratorService } from "../service/agents/campaign-orchestrator.service";
 
 const redisConfig = {
@@ -13,9 +14,15 @@ const redisConfig = {
 };
 
 const QUEUE_NAME = "campaign-task-queue";
+const DIRECT_FALLBACK_CONCURRENCY = 2;
 
 let campaignQueue: Queue | null = null;
 let isRedisAvailable: boolean | null = null;
+const directFallbackPending: Array<{
+  slotId: string;
+  type: "prepare" | "media" | "verify" | "publish";
+}> = [];
+let directFallbackActive = 0;
 
 function checkRedisConnection(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -63,7 +70,7 @@ async function runDirectFallback(slotId: string, type: 'prepare' | 'media' | 've
 
   if (type === "prepare") {
     nextStatus = "generating";
-    fromStatuses = ["planned", "retrying"];
+    fromStatuses = ["queued", "planned", "retrying"];
     orchestratorFn = CampaignOrchestratorService.orchestratePrepare;
   } else if (type === "media") {
     nextStatus = "generating_media";
@@ -80,6 +87,18 @@ async function runDirectFallback(slotId: string, type: 'prepare' | 'media' | 've
   }
 
   try {
+    if (type === "prepare") {
+      const slotScope = await MarketingCampaignSlotModel.findById(slotId)
+        .select("campaignId companyCode")
+        .lean();
+      const campaignIsActive = slotScope && await MarketingCampaignModel.exists({
+        _id: slotScope.campaignId,
+        companyCode: slotScope.companyCode,
+        status: "active",
+      });
+      if (!campaignIsActive) return;
+    }
+
     const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
       {
         _id: slotId,
@@ -114,14 +133,45 @@ async function runDirectFallback(slotId: string, type: 'prepare' | 'media' | 've
       return;
     }
 
-    // Trigger orchestrator in background (non-blocking)
     console.log(`[Campaign Queue Direct Fallback] Starting direct ${type} task for slot ${slotId}`);
-    orchestratorFn(slotId, lockId).catch((err: any) => {
-      console.error(`[Campaign Queue Direct Fallback Error] Error orchestrating ${type} for slot ${slotId}:`, err);
-    });
+    await orchestratorFn(slotId, lockId);
+
+    if (type === "prepare" || type === "media") {
+      const updatedSlot = await MarketingCampaignSlotModel.findById(slotId)
+        .select("status")
+        .lean();
+      if (updatedSlot?.status === "generating_media") {
+        await campaignQueueService.addMediaJob(slotId);
+      } else if (updatedSlot?.status === "verifying") {
+        await campaignQueueService.addVerifyJob(slotId);
+      }
+    }
   } catch (error) {
-    console.error(`[Campaign Queue Direct Fallback Lock Error] Failed to acquire lock for direct ${type} on slot ${slotId}:`, error);
+    console.error(`[Campaign Queue Direct Fallback Error] Failed to execute direct ${type} on slot ${slotId}:`, error);
   }
+}
+
+function drainDirectFallbackQueue() {
+  while (
+    directFallbackActive < DIRECT_FALLBACK_CONCURRENCY
+    && directFallbackPending.length > 0
+  ) {
+    const task = directFallbackPending.shift();
+    if (!task) return;
+    directFallbackActive += 1;
+    void runDirectFallback(task.slotId, task.type).finally(() => {
+      directFallbackActive -= 1;
+      drainDirectFallbackQueue();
+    });
+  }
+}
+
+function scheduleDirectFallback(
+  slotId: string,
+  type: "prepare" | "media" | "verify" | "publish"
+) {
+  directFallbackPending.push({ slotId, type });
+  drainDirectFallbackQueue();
 }
 
 export const campaignQueueService = {
@@ -132,7 +182,7 @@ export const campaignQueueService = {
   async addPrepareJob(slotId: string) {
     const hasRedis = await ensureRedisConnection();
     if (!hasRedis || !campaignQueue) {
-      void runDirectFallback(slotId, "prepare");
+      scheduleDirectFallback(slotId, "prepare");
       return { id: "direct-prepare" };
     }
     return await campaignQueue.add("prepare", { slotId }, {
@@ -145,7 +195,7 @@ export const campaignQueueService = {
   async addMediaJob(slotId: string) {
     const hasRedis = await ensureRedisConnection();
     if (!hasRedis || !campaignQueue) {
-      void runDirectFallback(slotId, "media");
+      scheduleDirectFallback(slotId, "media");
       return { id: "direct-media" };
     }
     return await campaignQueue.add("media", { slotId }, {
@@ -158,7 +208,7 @@ export const campaignQueueService = {
   async addVerifyJob(slotId: string) {
     const hasRedis = await ensureRedisConnection();
     if (!hasRedis || !campaignQueue) {
-      void runDirectFallback(slotId, "verify");
+      scheduleDirectFallback(slotId, "verify");
       return { id: "direct-verify" };
     }
     return await campaignQueue.add("verify", { slotId }, {
@@ -171,7 +221,7 @@ export const campaignQueueService = {
   async addPublishJob(slotId: string) {
     const hasRedis = await ensureRedisConnection();
     if (!hasRedis || !campaignQueue) {
-      void runDirectFallback(slotId, "publish");
+      scheduleDirectFallback(slotId, "publish");
       return { id: "direct-publish" };
     }
     return await campaignQueue.add("publish", { slotId }, {

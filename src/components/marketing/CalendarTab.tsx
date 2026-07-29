@@ -19,6 +19,7 @@ const campaignStatusLabel: Record<string, string> = {
   researching: "Đang nghiên cứu",
   writing: "Đang viết",
   scoring: "Đang chấm điểm",
+  awaiting_assets: "Chờ ảnh thiết kế",
   generating_media: "Đang tạo media",
   verifying: "Đang kiểm tra",
   pending_approval: "Chờ duyệt",

@@ -8,6 +8,7 @@ export type MarketingCampaignSlotStatus =
   | "researching"
   | "writing"
   | "scoring"
+  | "awaiting_assets"
   | "generating_media"
   | "verifying"
   | "pending_approval"

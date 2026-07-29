@@ -11,9 +11,9 @@ import { buildCampaignSchedule, zonedLocalTimeToUtc } from "./marketing-campaign
 import { geminiService } from "./gemini.service";
 import { CampaignMatrixGeneratorService } from "./agents/campaign-matrix-generator.service";
 import { CampaignOrchestratorService } from "./agents/campaign-orchestrator.service";
-import { marketingCampaignWorkerService } from "./marketing-campaign-worker.service";
+import { scanAndEnqueueDueSlots } from "./campaign-scheduler.service";
 import { API_COSTS } from "./wallet.service";
-import { listGoogleDriveFolderFiles, groupDriveFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
+import { listGoogleDriveFolderFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
 
 interface CreateCampaignInput {
   sourceBrief: string;
@@ -35,7 +35,7 @@ interface CreateCampaignInput {
   images?: string[];
   qualityMode?: "premium" | "budget";
   publishMode?: "auto" | "manual";
-  imageMode?: "ai" | "real";
+  imageMode?: "ai" | "real" | "order";
   publishNow?: boolean;
   googleDriveFolderUrl?: string;
   customSchedule?: Record<string, string[]>;
@@ -48,7 +48,22 @@ interface CreateCampaignInput {
   };
 }
 
-const ACTIVE_SLOT_STATUSES: MarketingCampaignSlotStatus[] = ["planned", "queued", "generating", "scoring", "generating_media", "pending_approval", "ready_to_publish", "retrying"];
+const ACTIVE_SLOT_STATUSES: MarketingCampaignSlotStatus[] = [
+  "planned",
+  "queued",
+  "generating",
+  "researching",
+  "writing",
+  "scoring",
+  "awaiting_assets",
+  "generating_media",
+  "verifying",
+  "pending_approval",
+  "ready_to_publish",
+  "publishing",
+  "retrying",
+  "needs_attention",
+];
 
 async function validateIntegrations(companyCode: string, platforms: MarketingCampaignPlatform[], integrationIds: CreateCampaignInput["integrationIds"]) {
   for (const platform of platforms) {
@@ -102,6 +117,8 @@ export const marketingCampaignService = {
     const timezone = input.timezone || "Asia/Ho_Chi_Minh";
     const generationLeadMinutes = input.generationLeadMinutes ?? 60;
     const verificationLeadMinutes = input.verificationLeadMinutes ?? 15;
+    const monthlyPreparationLeadDays = 10;
+    const now = new Date();
     const schedule = buildCampaignSchedule({
       startDate: input.startDate,
       endDate: input.endDate,
@@ -112,9 +129,10 @@ export const marketingCampaignService = {
       generationLeadMinutes,
       verificationLeadMinutes,
       customSchedule: input.customSchedule,
+      campaignCreatedAt: now,
+      monthlyPreparationLeadDays,
     });
 
-    const now = new Date();
     const minLeadTimeMs = 15 * 60 * 1000;
     if (!input.publishNow) {
       const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
@@ -150,121 +168,37 @@ export const marketingCampaignService = {
     }
     await validateIntegrations(companyCode, input.platforms, integrationIds);
 
-    const imageMode = input.imageMode || "ai";
-    const googleDriveFolderUrl = input.googleDriveFolderUrl || "";
+    // New campaigns never bind Drive media before their content exists. Legacy
+    // callers that still send "real" are migrated into the content-first order flow.
+    const imageMode: "ai" | "order" = input.imageMode === "ai" ? "ai" : "order";
+    const researchReport = await geminiService.conductWebResearch(input.sourceBrief);
+    const aiStrategy = await geminiService.generateScheduledCampaign({
+      prompt: input.sourceBrief,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      postsPerDay: input.postsPerDay,
+      postingTimes: input.postingTimes,
+      channels: input.platforms,
+      images: imageMode === "ai" ? input.images : undefined,
+      customSchedule: input.customSchedule,
+      researchReport,
+      rules: input.rules,
+    });
 
-    let researchReport = "";
-    let strategy: {
-      campaignTitle: string;
-      contentPillars: string[];
-      slots: Array<{
-        pillar: string;
-        objective: string;
-        topicBrief: string;
-        mediaType: "text" | "image" | "video" | "human-video";
-        customBodyText?: string;
-        realImageDriveUrls?: string[];
-        realImageDirectUrls?: string[];
-      }>;
-    };
-
-    if (imageMode === "real") {
-      if (!googleDriveFolderUrl) {
-        throw new Error("Vui lòng điền đường dẫn thư mục Google Drive khi chọn chế độ ảnh thật.");
-      }
-      
-      const files = await listGoogleDriveFolderFiles(googleDriveFolderUrl);
-      if (files.length === 0) {
-        throw new Error("Không tìm thấy tệp tin hình ảnh hoặc video nào trong thư mục Google Drive. Vui lòng kiểm tra lại quyền truy cập hoặc định dạng file.");
-      }
-      
-      const grouped = groupDriveFiles(files);
-      const realMediaBySlot = schedule.map((_, index) => {
-        const postIndex = index + 1;
-        const postFiles = grouped[postIndex] || [];
-
-        if (postFiles.length === 0) {
-          throw new Error(
-            `Thư mục Google Drive thiếu ảnh/video cho Bài đăng số ${postIndex}. Vui lòng tải lên tệp tin có tên chứa số ${postIndex} (Ví dụ: 'post_${postIndex}.jpg' hoặc '${postIndex}.png').`
-          );
-        }
-
-        const hasVideo = postFiles.some((file) => file.isVideo);
-        return {
-          mediaType: hasVideo ? "video" as const : "image" as const,
-          fileNames: postFiles.map((file) => file.name),
-          realImageDriveUrls: postFiles.map((file) => `https://drive.google.com/file/d/${file.id}/view`),
-          realImageDirectUrls: postFiles.map((file) => file.directUrl),
-        };
-      });
-
-      const planningPrompt = `${input.sourceBrief.trim()}
-
-YÊU CẦU LẬP BẢN PHÁC THẢO CHO CHIẾN DỊCH DÙNG ẢNH THẬT:
-- Mỗi topicBrief là bản phác thảo ý tưởng để người dùng xem trước: nêu thông điệp chính, góc khai thác và giá trị mang lại cho người xem.
-- Không viết caption/bài đăng hoàn chỉnh ở bước này.
-- Không dùng cách ghi chung chung như "Bài đăng thứ N sử dụng ảnh từ Google Drive".
-- Không khẳng định chi tiết sản phẩm chưa có trong brief; nội dung sẽ được Vision Agent đối chiếu với ảnh thật gần giờ đăng.
-- Các tệp media đã được gán sẵn theo từng slot như sau:
-${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.join(", ")}`).join("\n")}`;
-
-      const aiStrategy = await geminiService.generateScheduledCampaign({
-        prompt: planningPrompt,
-        startDate: input.startDate,
-        endDate: input.endDate,
-        postsPerDay: input.postsPerDay,
-        postingTimes: input.postingTimes,
-        channels: input.platforms,
-        customSchedule: input.customSchedule,
-        rules: input.rules,
-      });
-
-      if (aiStrategy.slots.length !== schedule.length) {
-        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
-      }
-
-      researchReport = "Chiến dịch sử dụng ảnh thật; nghiên cứu và phân tích hình ảnh sẽ chạy theo từng slot gần giờ đăng.";
-      strategy = {
-        campaignTitle: aiStrategy.campaignTitle,
-        contentPillars: aiStrategy.contentPillars,
-        slots: aiStrategy.slots.map((brief, index) => {
-          const media = realMediaBySlot[index];
-          return {
-            pillar: brief.pillar,
-            objective: brief.objective,
-            topicBrief: brief.topicBrief,
-            mediaType: media.mediaType,
-            customBodyText: "",
-            realImageDriveUrls: media.realImageDriveUrls,
-            realImageDirectUrls: media.realImageDirectUrls,
-          };
-        }),
-      };
-    } else {
-      researchReport = await geminiService.conductWebResearch(input.sourceBrief);
-      const aiStrategy = await geminiService.generateScheduledCampaign({
-        prompt: input.sourceBrief,
-        startDate: input.startDate,
-        endDate: input.endDate,
-        postsPerDay: input.postsPerDay,
-        postingTimes: input.postingTimes,
-        channels: input.platforms,
-        images: input.images,
-        customSchedule: input.customSchedule,
-        researchReport,
-        rules: input.rules,
-      });
-
-      if (aiStrategy.slots.length !== schedule.length) {
-        throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
-      }
-
-      strategy = {
-        campaignTitle: aiStrategy.campaignTitle,
-        contentPillars: aiStrategy.contentPillars,
-        slots: aiStrategy.slots,
-      };
+    if (aiStrategy.slots.length !== schedule.length) {
+      throw new Error(`AI trả về ${aiStrategy.slots.length}/${schedule.length} slot chiến dịch.`);
     }
+
+    const strategy = {
+      campaignTitle: aiStrategy.campaignTitle,
+      contentPillars: aiStrategy.contentPillars,
+      slots: imageMode === "order"
+        ? aiStrategy.slots.map((slot) => ({
+          ...slot,
+          mediaType: slot.mediaType === "text" ? "image" as const : slot.mediaType,
+        }))
+        : aiStrategy.slots,
+    };
 
     const isBudget = input.qualityMode === "budget";
     const pPlan = API_COSTS.CAMPAIGN_STRATEGY;
@@ -280,35 +214,22 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     const allAngles = contentMatrix.flatMap((p) => p.angles);
 
     let totalResearchCost = 0;
-    let totalVisionCost = 0;
+    const totalVisionCost = 0;
     let totalContentCost = 0;
     let totalMediaCost = 0;
 
     strategy.slots.forEach((brief) => {
       const type = brief.mediaType;
-      const requiresAiCopy = imageMode === "ai" || !brief.customBodyText;
+      const requiresAiCopy = true;
 
       if (requiresAiCopy) {
         totalResearchCost += pResearch;
       }
-      if (imageMode === "real" && requiresAiCopy) {
-        const imageCount = Math.max(
-          brief.realImageDriveUrls?.length || 0,
-          brief.realImageDirectUrls?.length || 0
-        );
-        totalVisionCost += Math.ceil(imageCount / 8) * API_COSTS.CAMPAIGN_VISION;
-      }
-      
-      // Calculate content write cost (only charge if AI Copywriter needs to generate copy)
-      if (imageMode === "real") {
-        if (!brief.customBodyText) {
-          totalContentCost += isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
-        }
-      } else {
+      if (requiresAiCopy) {
         totalContentCost += isBudget ? API_COSTS.CAMPAIGN_CONTENT_BUDGET : API_COSTS.CAMPAIGN_CONTENT_PREMIUM;
       }
 
-      // Calculate media cost (always 0 for real image mode)
+      // Order mode receives media later, so it has no AI media or Vision estimate.
       if (imageMode === "ai") {
         if (type === "image") {
           totalMediaCost += isBudget ? API_COSTS.CAMPAIGN_IMAGE_BUDGET : API_COSTS.CAMPAIGN_IMAGE_PREMIUM;
@@ -337,6 +258,9 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       integrationIds,
       candidateCount: input.candidateCount ?? 1,
       generationLeadMinutes,
+      preparationMode: "monthly",
+      monthlyPreparationLeadDays,
+      preparationScheduleVersion: 2,
       verificationLeadMinutes,
       latePublishWindowMinutes: input.latePublishWindowMinutes ?? 30,
       minimumScore: input.minimumScore ?? 80,
@@ -346,7 +270,6 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       qualityMode: input.qualityMode || "premium",
       publishMode: input.publishMode || "manual",
       imageMode,
-      googleDriveFolderUrl,
       customSchedule: input.customSchedule,
       apifySources: input.apifySources || ["google", "facebook", "tiktok"],
       contentMatrix,
@@ -389,9 +312,6 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
           topicBrief: matchingAngle ? `${matchingAngle.title} — ${brief.topicBrief}` : brief.topicBrief,
           funnelStage,
           mediaType: brief.mediaType,
-          realImageDriveUrls: brief.realImageDriveUrls || [],
-          realImageDirectUrls: brief.realImageDirectUrls || [],
-          customBodyText: brief.customBodyText,
           status: "planned",
           attemptCount: 0,
           publishIdempotencyKey: `${campaign._id}:${index}:${scheduledSlot.platform}`,
@@ -399,13 +319,21 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
         };
       }));
 
-      if (input.publishNow) {
-        marketingCampaignWorkerService.prepareDueSlots(schedule.length).catch((err) => {
-          console.error("[PublishNow] Error triggering prepare worker:", err);
+      let preparation = { enqueued: 0, deferred: 0 };
+      try {
+        const initialBatch = await scanAndEnqueueDueSlots({
+          campaignId: String(campaign._id),
+          limit: Math.min(schedule.length, 100),
         });
+        preparation = {
+          enqueued: initialBatch.enqueued,
+          deferred: initialBatch.deferred,
+        };
+      } catch (error) {
+        console.error("[Marketing Campaign] Unable to enqueue the initial monthly batch:", error);
       }
 
-      return { campaign, slots };
+      return { campaign, slots, preparation };
     } catch (error) {
       await MarketingCampaignModel.deleteOne({ _id: campaign._id, companyCode });
       throw error;
@@ -595,6 +523,23 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
       { new: true }
     );
     if (!campaign) throw new Error("Trạng thái hiện tại không cho phép thao tác này.");
+
+    if (action === "pause") {
+      await MarketingCampaignSlotModel.updateMany(
+        { campaignId, companyCode, status: "queued" },
+        {
+          $set: { status: "planned" },
+          $push: {
+            transitions: {
+              from: "queued",
+              to: "planned",
+              reason: "Campaign paused before monthly preparation started",
+              at: new Date(),
+            },
+          },
+        }
+      );
+    }
 
     if (action === "cancel") {
       await MarketingCampaignSlotModel.updateMany(
@@ -1462,16 +1407,12 @@ ${realMediaBySlot.map((media, index) => `  Slot ${index + 1}: ${media.fileNames.
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { campaignQueueService } = require("../queue/campaign-queue");
-      const hasRedis = await campaignQueueService.checkRedis();
-      if (hasRedis) {
-        for (const slot of slots) {
-          await campaignQueueService.addPrepareJob(String(slot._id));
-        }
-      }
-    } catch (e) {
-      console.warn("[Batch Prepare] BullMQ not initialized or failed, slots will be picked up by legacy worker polling.", e);
+      await scanAndEnqueueDueSlots({
+        campaignId,
+        limit: Math.min(slots.length, 100),
+      });
+    } catch (error) {
+      console.warn("[Batch Prepare] Unable to enqueue the first bounded batch; scheduler will retry.", error);
     }
 
     return { enqueued, skipped: 0 };

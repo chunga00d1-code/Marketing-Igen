@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, X, Loader2, RotateCcw } from 'lucide-react';
+import { CalendarClock, FolderOpen, X, Loader2, RotateCcw } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
@@ -242,7 +242,7 @@ export default function CampaignDetailModal({
   const publishedSlots = sortedSlots.filter((s) => s.status === 'published').length;
 
   const inProgressSlots = sortedSlots.filter((s) =>
-    ['queued', 'generating', 'researching', 'writing', 'scoring', 'generating_media', 'verifying', 'pending_approval', 'ready_to_publish', 'publishing', 'retrying'].includes(s.status)
+    ['queued', 'generating', 'researching', 'writing', 'scoring', 'awaiting_assets', 'generating_media', 'verifying', 'pending_approval', 'ready_to_publish', 'publishing', 'retrying'].includes(s.status)
   ).length;
 
   return (
@@ -336,12 +336,12 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('asset_orders')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
+              className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
                 ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              Order ảnh, video
+              <FolderOpen size={14} /> Order ảnh · Nhập Drive
             </button>
           </div>
         )}

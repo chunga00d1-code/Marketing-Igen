@@ -1,6 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { randomUUID } from "crypto";
 import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
+import { MarketingCampaignModel } from "../model/marketing-campaign.model";
 import { CampaignOrchestratorService } from "../service/agents/campaign-orchestrator.service";
 import { campaignQueueService } from "./campaign-queue";
 
@@ -12,6 +13,8 @@ const redisConfig = {
 };
 
 const QUEUE_NAME = "campaign-task-queue";
+const CAMPAIGN_WORKER_CONCURRENCY = 6;
+const CAMPAIGN_WORKER_RATE_PER_MINUTE = 18;
 let worker: Worker | null = null;
 
 export function initCampaignWorkers() {
@@ -23,7 +26,7 @@ export function initCampaignWorkers() {
       return;
     }
 
-    console.log(`[Campaign Worker] Khởi tạo worker xử lý chiến dịch marketing (Concurrency: 20, Rate limit: 60 jobs/min)...`);
+    console.log(`[Campaign Worker] Khởi tạo worker xử lý chiến dịch marketing (Concurrency: ${CAMPAIGN_WORKER_CONCURRENCY}, Rate limit: ${CAMPAIGN_WORKER_RATE_PER_MINUTE} jobs/min)...`);
     
     worker = new Worker(
       QUEUE_NAME,
@@ -38,10 +41,20 @@ export function initCampaignWorkers() {
         const leaseExpires = new Date(now.getTime() + 20 * 60000);
 
         if (jobName === "prepare") {
+          const slotScope = await MarketingCampaignSlotModel.findById(slotId)
+            .select("campaignId companyCode")
+            .lean();
+          const campaignIsActive = slotScope && await MarketingCampaignModel.exists({
+            _id: slotScope.campaignId,
+            companyCode: slotScope.companyCode,
+            status: "active",
+          });
+          if (!campaignIsActive) return { status: "skipped_inactive_campaign" };
+
           const claimed = await MarketingCampaignSlotModel.findOneAndUpdate(
             { 
               _id: slotId, 
-              status: { $in: ["planned", "retrying"] }, 
+              status: { $in: ["queued", "planned", "retrying"] },
               $or: [
                 { lockExpiresAt: { $exists: false } }, 
                 { lockExpiresAt: null }, 
@@ -184,9 +197,9 @@ export function initCampaignWorkers() {
       },
       {
         connection: redisConfig,
-        concurrency: 20,
+        concurrency: CAMPAIGN_WORKER_CONCURRENCY,
         limiter: {
-          max: 60,
+          max: CAMPAIGN_WORKER_RATE_PER_MINUTE,
           duration: 60000,
         },
       }

@@ -144,6 +144,42 @@ export const marketingCampaignController = {
     }
   },
 
+  async previewAssetOrderDriveImport(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.previewDriveImport(
+        companyCode,
+        req.params.id,
+        req.body.googleDriveFolderUrl
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể quét ảnh Drive cho các Order.",
+      });
+    }
+  },
+
+  async applyAssetOrderDriveImport(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.applyDriveImport(
+        companyCode,
+        req.params.id,
+        req.body.googleDriveFolderUrl
+      );
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể nhập ảnh Drive vào các Order.",
+      });
+    }
+  },
+
   async addAssetOrderCustomField(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);

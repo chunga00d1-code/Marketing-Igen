@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { MarketingCampaignModel } from "../../model/marketing-campaign.model";
 import { MarketingCampaignSlotModel } from "../../model/marketing-campaign-slot.model";
 import { MarketingContentModel } from "../../model/marketing-content.model";
+import { CampaignAssetOrderModel } from "../../model/campaign-asset-order.model";
 import { ResearcherAgentService } from "./researcher-agent.service";
 import { CopywriterAgentService } from "./copywriter-agent.service";
 import { MediaCreatorAgentService } from "./media-creator-agent.service";
@@ -346,10 +347,62 @@ export class CampaignOrchestratorService {
         { upsert: true, new: true }
       );
 
+      if (campaign.imageMode === "order" && slot.mediaType !== "text") {
+        const isVideo = slot.mediaType === "video" || slot.mediaType === "human-video";
+        const productionBrief = String(candidate.mediaPrompt || slot.topicBrief || "").trim();
+        const generatedOrderFields = {
+          title: String(candidate.title || slot.topicBrief || "Order bài viết").slice(0, 240),
+          contentGroup: String(slot.pillar || "").slice(0, 240),
+          shootingContent: productionBrief.slice(0, 1000),
+          productionRequirements: productionBrief.slice(0, 2000),
+          quantitySuggestion: isVideo ? "1 video" : "1 ảnh",
+          usageChannels: slot.platform,
+          format: isVideo ? "video" as const : "image" as const,
+          aspectRatio: isVideo ? "9:16" as const : "4:5" as const,
+          headline: String(candidate.title || slot.topicBrief || "").slice(0, 120),
+          subheadline: String(candidate.bodyText || "").slice(0, 220),
+          visualBrief: productionBrief.slice(0, 1000),
+          videoScript: isVideo ? String(candidate.voiceScript || candidate.bodyText || "").slice(0, 4000) : "",
+        };
+        await CampaignAssetOrderModel.updateOne(
+          {
+            companyCode: slot.companyCode,
+            campaignId: slot.campaignId,
+            slotId: slot._id,
+            manualFieldKeys: { $size: 0 },
+          },
+          { $set: generatedOrderFields }
+        );
+        await CampaignAssetOrderModel.updateOne(
+          {
+            companyCode: slot.companyCode,
+            campaignId: slot.campaignId,
+            slotId: slot._id,
+          },
+          {
+            $setOnInsert: {
+              companyCode: slot.companyCode,
+              campaignId: slot.campaignId,
+              slotId: slot._id,
+              createdBy: campaign.createdBy,
+              ...generatedOrderFields,
+              source: "manual",
+              assets: [],
+              manualFieldKeys: [],
+              status: "needs_assets",
+              revision: 0,
+            },
+          },
+          { upsert: true }
+        );
+      }
+
       // Calculate next status
       const nextStatus = slot.mediaType === "text"
         ? (campaign.publishMode === "auto" ? "verifying" : "pending_approval")
-        : "generating_media";
+        : campaign.imageMode === "order" && !(slot.realImageDirectUrls || []).some(Boolean)
+          ? "awaiting_assets"
+          : "generating_media";
 
       await MarketingCampaignSlotModel.updateOne(
         { _id: slot._id, lockId },
@@ -466,7 +519,8 @@ export class CampaignOrchestratorService {
     try {
       const nextStatus = campaign.publishMode === "auto" ? "verifying" : "pending_approval";
 
-      if (campaign.imageMode === "real") {
+      if (campaign.imageMode === "real" || campaign.imageMode === "order") {
+        await ingestRealMedia(slot, campaign);
         const content = await MarketingContentModel.findOne({
           _id: slot.marketingContentId,
           companyCode: slot.companyCode,

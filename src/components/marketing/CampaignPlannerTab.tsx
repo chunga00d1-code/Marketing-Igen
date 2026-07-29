@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, Zap } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
-import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary, DriveFileItem } from '../../services/marketingCampaignService';
+import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
 import CustomTimePicker from '../common/CustomTimePicker';
 import CampaignPromptBox from './CampaignPromptBox';
@@ -45,11 +45,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const qualityMode = 'premium';
   const [publishMode, setPublishMode] = useState<'auto' | 'manual'>('manual');
   const [creationMode, setCreationMode] = useState<'single' | 'campaign' | null>(null);
-  const [imageMode, setImageMode] = useState<'ai' | 'real'>('ai');
+  const [imageMode, setImageMode] = useState<'ai' | 'order'>('order');
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
-  const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState('');
-  const [drivePreviews, setDrivePreviews] = useState<DriveFileItem[]>([]);
-  const [loadingPreviews, setLoadingPreviews] = useState(false);
   const [apifySources, setApifySources] = useState<string[]>(['google', 'facebook', 'tiktok']);
   const isSinglePost = creationMode === 'single';
   const canUseLocalMockFacebookPage = typeof window !== 'undefined'
@@ -413,31 +410,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setPostingTimes((current) => Array.from({ length: value }, (_, index) => current[index] || `${String(9 + index * 3).padStart(2, '0')}:00`));
   };
 
-  const handlePreviewDrive = async () => {
-    if (!googleDriveFolderUrl.trim()) {
-      toast.warning('Vui lòng điền link thư mục Google Drive công khai trước.');
-      return;
-    }
-    setLoadingPreviews(true);
-    try {
-      const files = await marketingCampaignService.previewDrive(googleDriveFolderUrl.trim());
-      setDrivePreviews(files);
-      if (files.length === 0) {
-        toast.error('Không tìm thấy ảnh hoặc video nào trong thư mục Google Drive. Vui lòng kiểm tra quyền chia sẻ công khai.');
-      } else {
-        toast.success(`Đã quét thấy và kết nối thành công ${files.length} ảnh/video.`);
-      }
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : 'Không thể quét thư mục Google Drive. Vui lòng kiểm tra lại đường dẫn.');
-    } finally {
-      setLoadingPreviews(false);
-    }
-  };
-
   const handleCreateCampaign = async () => {
     if (!creationMode) return toast.warning('Vui lòng chọn tạo một bài đăng hoặc chiến dịch nhiều bài.');
     if (!prompt.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
-    if (imageMode === 'real' && !googleDriveFolderUrl.trim()) return toast.warning('Vui lòng điền link thư mục Google Drive công khai.');
     if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
     if (!integrationId && !hasPersonalFacebook && !canUseLocalMockFacebookPage) {
@@ -447,7 +422,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setLoading(true);
     try {
       const brief = buildSourceBriefContext();
-      const imagesParam = imageMode === 'real' ? undefined : (uploadedImageBase64 ? [uploadedImageBase64] : undefined);
+      const imagesParam = imageMode === 'order' ? undefined : (uploadedImageBase64 ? [uploadedImageBase64] : undefined);
 
       const result = await marketingCampaignService.create({
         sourceBrief: brief,
@@ -464,7 +439,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         publishMode: isSinglePost ? 'auto' : publishMode,
         publishNow: isSinglePost,
         imageMode,
-        googleDriveFolderUrl: imageMode === 'real' ? googleDriveFolderUrl.trim() : undefined,
         mediaPolicy: 'auto',
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
@@ -475,15 +449,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setUploadedDocName('');
       setUploadedDocText('');
       setUploadedImageBase64('');
-      setGoogleDriveFolderUrl('');
-      setDrivePreviews([]);
-      setImageMode('ai');
+      setImageMode('order');
       setApifySources(['google', 'facebook', 'tiktok']);
       setCustomSchedule({});
       setShowCustomSchedule(false);
       toast.success(isSinglePost
         ? 'Đã tạo bài và chuyển sang xử lý đăng ngay.'
-        : `Đã khởi chạy chiến dịch “${result.campaign.title}” với ${result.campaign.statistics.totalSlots} slot.`);
+        : `Đã khởi chạy “${result.campaign.title}”. Toàn bộ tháng đầu đang được render nền theo lô an toàn.`);
       void loadCampaigns(1);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể tạo chiến dịch.');
@@ -659,6 +631,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     type="button"
                     onClick={() => {
                       setCreationMode('single');
+                      setImageMode('ai');
                       setStartDate(today);
                       setEndDate(today);
                       changePostsPerDay(1);
@@ -683,6 +656,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     type="button"
                     onClick={() => {
                       setCreationMode('campaign');
+                      setImageMode('order');
                       if (startDate === endDate) setEndDate(nextWeek);
                     }}
                     className={`group relative flex items-center gap-3.5 rounded-2xl border-2 p-3.5 text-left transition-all duration-300 cursor-pointer ${creationMode === 'campaign'
@@ -732,110 +706,22 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
                   <button
                     type="button"
-                    onClick={() => setImageMode('real')}
-                    className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${imageMode === 'real'
+                    onClick={() => setImageMode('order')}
+                    className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${imageMode === 'order'
                       ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                       }`}
                   >
-                    <div className={`rounded-lg p-2 ${imageMode === 'real' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    <div className={`rounded-lg p-2 ${imageMode === 'order' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                       <FolderOpen size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">Dùng ảnh Google Drive</span>
+                      <span className="block text-xs font-bold text-slate-800">Order ảnh sau content</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">Nhập Drive trong chi tiết chiến dịch</span>
                     </div>
                   </button>
                 </div>
               </div>
-
-              {imageMode === 'real' && (
-                <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                  <div>
-                    <label className="mb-1 block text-xs font-bold text-slate-700">Link thư mục Google Drive</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="https://drive.google.com/drive/folders/..."
-                        value={googleDriveFolderUrl}
-                        onChange={(e) => setGoogleDriveFolderUrl(e.target.value)}
-                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-850 placeholder:text-slate-450 focus:border-indigo-600 focus:outline-hidden bg-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={handlePreviewDrive}
-                        disabled={loadingPreviews || !googleDriveFolderUrl}
-                        className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1.5 transition-all shrink-0"
-                      >
-                        {loadingPreviews ? (
-                          <Loader2 size={14} className="animate-spin text-white" />
-                        ) : (
-                          <FolderOpen size={14} />
-                        )}
-                        <span>Quét ảnh</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg bg-amber-50/60 border border-amber-200/40 p-2.5 text-[10px] leading-relaxed text-amber-850 font-medium">
-                    <p className="font-bold mb-0.5">💡 Quy tắc đặt tên file trong thư mục Drive:</p>
-                    <ul className="list-disc pl-4 space-y-0.5">
-                      <li>Đặt link Drive ở chế độ <strong className="text-amber-900 font-bold">"Bất kỳ ai có liên kết đều có thể xem"</strong>.</li>
-                      <li>Bài viết đơn: chứa số thứ tự bài (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">2.mp4</code>).</li>
-                      <li>Bài viết nhiều hình (Album): chứa số thứ tự và gạch dưới (Ví dụ: <code className="bg-amber-100/50 px-1 rounded font-bold">3_1.jpg</code>, <code className="bg-amber-100/50 px-1 rounded font-bold">3_2.png</code>).</li>
-                    </ul>
-                  </div>
-
-                  {drivePreviews.length > 0 && (
-                    <div className="rounded-xl border border-slate-100 bg-white p-2.5 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Tư liệu đã quét ({drivePreviews.length} tệp)</span>
-                        <button
-                          type="button"
-                          onClick={() => setDrivePreviews([])}
-                          className="text-[10px] font-bold text-red-500 hover:text-red-700 cursor-pointer"
-                        >
-                          Xóa xem trước
-                        </button>
-                      </div>
-
-                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-slate-200">
-                        {drivePreviews.map((file) => {
-                          const hasNumber = /\d+/.test(file.name);
-                          return (
-                            <div
-                              key={file.id}
-                              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white group shadow-xs ${hasNumber ? 'border-slate-200' : 'border-red-300 ring-1 ring-red-300'
-                                }`}
-                            >
-                              {file.isVideo ? (
-                                <div className="flex h-full w-full flex-col items-center justify-center bg-slate-900 text-white select-none">
-                                  <span className="text-[9px] font-bold uppercase text-red-500 font-mono">Video</span>
-                                  <span className="mt-0.5 max-w-full truncate px-1 text-[7px] text-slate-400">{file.name}</span>
-                                </div>
-                              ) : (
-                                <img
-                                  src={file.directUrl}
-                                  alt={file.name}
-                                  className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                                  loading="lazy"
-                                />
-                              )}
-                              {!hasNumber && (
-                                <div
-                                  className="absolute top-0.5 right-0.5 h-4.5 w-4.5 rounded-full bg-red-600 text-white flex items-center justify-center text-[10px] font-bold shadow-sm select-none"
-                                  title="Tên file thiếu số thứ tự"
-                                >
-                                  ⚠️
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Nguồn nghiên cứu thị trường */}
               <div>
@@ -1231,10 +1117,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.');
                   return;
                 }
-                if (wizardStep === 3 && imageMode === 'real' && !googleDriveFolderUrl.trim()) {
-                  toast.warning('Vui lòng điền link thư mục Google Drive công khai.');
-                  return;
-                }
                 setWizardStep((prev) => (prev + 1) as 1 | 2 | 3 | 4);
               }}
               className="rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer flex items-center gap-1.5 ml-auto"
@@ -1250,7 +1132,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             >
               {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Sparkles size={16} />}
               <span>{loading
-                ? (isSinglePost ? 'AI đang tạo bài viết...' : 'AI đang lập chiến lược và tạo lịch...')
+                ? (isSinglePost ? 'AI đang tạo bài viết...' : 'AI đang lập chiến lược và xếp lô render tháng đầu...')
                 : (isSinglePost ? '⚡ Tạo và đăng ngay 1 bài' : `🚀 Khởi chạy chiến dịch ${totalPosts || 0} bài`)}</span>
             </button>
           )}
@@ -1263,6 +1145,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Hình thức</b><span>{creationMode === 'single' ? 'Một bài đăng' : creationMode === 'campaign' ? 'Chiến dịch nhiều bài' : 'Chưa chọn'}</span></div>
           <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Thời gian</b><span>{isSinglePost ? 'Đăng ngay sau khi tạo' : `${dayCount || 0} ngày · ${startDate} → ${endDate}`}</span></div>
           <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Sản lượng</b><span>{isSinglePost ? '1 bài' : `${postsPerDay} bài/ngày · tổng ${totalPosts || 0} bài`}</span></div>
+          {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Chu kỳ render</b><span>Render trọn tháng đầu; mỗi tháng tiếp theo bắt đầu trước 10 ngày</span></div>}
           {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Clock3 size={13} /> Khung giờ</b><span>{postingTimes.join(', ')}</span></div>}
           <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Facebook size={13} /> Nền tảng</b><span>Facebook</span></div>
         </div>
@@ -1382,6 +1265,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           researching: 'bg-teal-50 text-teal-700 border-teal-200 animate-pulse',
           writing: 'bg-violet-50 text-violet-750 border-violet-200 animate-pulse',
           scoring: 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse',
+          awaiting_assets: 'bg-amber-50 text-amber-700 border-amber-200',
           generating_media: 'bg-pink-50 text-pink-700 border-pink-200 animate-pulse',
           verifying: 'bg-cyan-50 text-cyan-700 border-cyan-200 animate-pulse',
           pending_approval: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
@@ -1401,6 +1285,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           researching: 'Đang nghiên cứu...',
           writing: 'Đang viết bài viết...',
           scoring: 'Đang chấm điểm AI...',
+          awaiting_assets: 'Chờ ảnh thiết kế',
           generating_media: 'Đang thiết kế ảnh...',
           verifying: 'Đang duyệt chất lượng...',
           pending_approval: 'Chờ duyệt',

@@ -17,7 +17,7 @@ const MarketingCampaignSlotSchema = new Schema<IMarketingCampaignSlot>(
     mediaType: { type: String, enum: ["text", "image", "video", "human-video"], required: true },
     status: {
       type: String,
-      enum: ["planned", "queued", "generating", "researching", "writing", "scoring", "generating_media", "verifying", "pending_approval", "ready_to_publish", "publishing", "published", "retrying", "needs_attention", "failed", "skipped", "cancelled"],
+      enum: ["planned", "queued", "generating", "researching", "writing", "scoring", "awaiting_assets", "generating_media", "verifying", "pending_approval", "ready_to_publish", "publishing", "published", "retrying", "needs_attention", "failed", "skipped", "cancelled"],
       default: "planned",
       index: true,
     },

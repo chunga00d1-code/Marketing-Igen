@@ -144,6 +144,55 @@ function buildHtml(
 </html>`;
 }
 
+const FIT_TEXT_LAYERS_SCRIPT = `(() => {
+  document.querySelectorAll('[data-autofit-text="true"]').forEach((element) => {
+    const preferredFontSize = Math.max(1, Number(element.dataset.preferredFontSize || 60));
+    const minimumFontSize = Math.min(
+      preferredFontSize,
+      Math.max(1, Number(element.dataset.minFontSize || 12))
+    );
+    const maximumLinesValue = Number(element.dataset.maxLines || 0);
+    const maximumLines = Number.isFinite(maximumLinesValue) && maximumLinesValue > 0
+      ? Math.min(20, Math.max(1, Math.round(maximumLinesValue)))
+      : undefined;
+    const measure = (fontSize) => {
+      element.style.fontSize = fontSize + "px";
+      const parsedLineHeight = Number.parseFloat(window.getComputedStyle(element).lineHeight);
+      const lineHeight = Number.isFinite(parsedLineHeight) ? parsedLineHeight : fontSize * 1.22;
+      const lineCount = Math.max(1, Math.ceil((element.scrollHeight - 0.5) / lineHeight));
+      return {
+        fits: element.scrollWidth <= element.clientWidth + 0.5
+          && element.scrollHeight <= element.clientHeight + 0.5
+          && (maximumLines === undefined || lineCount <= maximumLines),
+        lineCount,
+      };
+    };
+    let low = minimumFontSize;
+    let high = preferredFontSize;
+    let best = minimumFontSize;
+    for (let iteration = 0; iteration < 12; iteration += 1) {
+      const middle = Math.round(((low + high) / 2) * 4) / 4;
+      if (measure(middle).fits) {
+        best = middle;
+        low = middle + 0.25;
+      } else {
+        high = middle - 0.25;
+      }
+      if (low > high) break;
+    }
+    const finalMeasurement = measure(best);
+    const minimumMeasurement = finalMeasurement.fits
+      ? finalMeasurement
+      : measure(minimumFontSize);
+    const overflow = !minimumMeasurement.fits;
+    const fontSize = overflow ? minimumFontSize : best;
+    element.style.fontSize = fontSize + "px";
+    element.dataset.textOverflow = String(overflow);
+    element.dataset.fittedFontSize = String(fontSize);
+    element.dataset.fittedLineCount = String(minimumMeasurement.lineCount);
+  });
+})()`;
+
 export async function renderBulkImageInChromium(
   snapshot: IBulkRenderJob["templateSnapshot"],
   values: Record<string, string>
@@ -203,6 +252,82 @@ export async function renderBulkImageInChromium(
         requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
       );
     });
+    await page.evaluate(FIT_TEXT_LAYERS_SCRIPT);
+    const screenshot = await page._client().send("Page.captureScreenshot", {
+      format: "png",
+      fromSurface: true,
+      captureBeyondViewport: false,
+    });
+    return Buffer.from(screenshot.value.data, "base64");
+  } finally {
+    await page?.close().catch(() => undefined);
+    releaseRenderSlot();
+  }
+}
+
+const MAX_AI_HTML_LENGTH = 120_000;
+
+function validateAiHtml(html: string) {
+  if (!html.trim() || html.length > MAX_AI_HTML_LENGTH) {
+    throw new Error("HTML do AI tạo không hợp lệ hoặc vượt quá giới hạn.");
+  }
+  if (/<\s*(script|iframe|object|embed|form|base)\b/i.test(html) || /\bon[a-z]+\s*=/i.test(html)) {
+    throw new Error("HTML AI chứa thành phần không được phép render.");
+  }
+  if (/<\s*(link|meta)\b/i.test(html) || /\burl\s*\(/i.test(html)) {
+    throw new Error("HTML AI không được nạp tài nguyên hoặc CSS bên ngoài.");
+  }
+  for (const source of html.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/gi)) {
+    const value = source[1].trim();
+    if (value && !value.startsWith("#")) assertSafeImageSource(value);
+  }
+}
+
+export async function renderHtmlImageInChromium(
+  html: string,
+  canvas: { width: number; height: number }
+) {
+  validateAiHtml(html);
+  await acquireRenderSlot();
+  let page: Awaited<ReturnType<HeadlessBrowser["newPage"]>> | null = null;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage({
+      context: () => null,
+      logLevel: "error",
+      indent: false,
+      pageIndex: pageIndex++,
+      onBrowserLog: null,
+      onLog: () => undefined,
+    });
+    page.setDefaultTimeout(RENDER_TIMEOUT_MS);
+    page.setDefaultNavigationTimeout(RENDER_TIMEOUT_MS);
+    await page.setViewport({ width: canvas.width, height: canvas.height, deviceScaleFactor: 1 });
+    await page.goto({ url: "about:blank", timeout: RENDER_TIMEOUT_MS });
+    const documentHtml = `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}</style></head><body>${html}</body></html>`;
+    await page.evaluate((value) => {
+      document.open();
+      document.write(value);
+      document.close();
+    }, documentHtml);
+    await page.evaluate(async () => {
+      await Promise.race([
+        (async () => {
+          await document.fonts.ready;
+          const images = Array.from(document.images);
+          await Promise.all(images.map((image) => {
+            if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+            if (image.complete) return Promise.reject(new Error("Không thể tải ảnh trong HTML AI."));
+            return new Promise<void>((resolve, reject) => {
+              image.addEventListener("load", () => resolve(), { once: true });
+              image.addEventListener("error", () => reject(new Error("Không thể tải ảnh trong HTML AI.")), { once: true });
+            });
+          }));
+        })(),
+        new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("Hết thời gian chờ HTML AI.")), 20_000)),
+      ]);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
     const screenshot = await page._client().send("Page.captureScreenshot", {
       format: "png",
       fromSurface: true,
@@ -217,4 +342,5 @@ export async function renderBulkImageInChromium(
 
 export const bulkCreateChromiumRendererService = {
   renderBulkImageInChromium,
+  renderHtmlImageInChromium,
 };

@@ -17,6 +17,7 @@ const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
   researching: 'bg-teal-50 text-teal-700 border-teal-200 animate-pulse',
   writing: 'bg-violet-50 text-violet-750 border-violet-200 animate-pulse',
   scoring: 'bg-purple-50 text-purple-700 border-purple-200 animate-pulse',
+  awaiting_assets: 'bg-amber-50 text-amber-700 border-amber-200',
   generating_media: 'bg-pink-50 text-pink-700 border-pink-200 animate-pulse',
   verifying: 'bg-cyan-50 text-cyan-700 border-cyan-200 animate-pulse',
   pending_approval: 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse',
@@ -37,6 +38,7 @@ const DEFAULT_SLOT_STATUS_LABEL: Record<string, string> = {
   researching: 'Đang nghiên cứu web',
   writing: 'Đang viết bài',
   scoring: 'Đang chấm điểm AI',
+  awaiting_assets: 'Chờ ảnh thiết kế',
   generating_media: 'Đang thiết kế ảnh',
   verifying: 'Đang kiểm duyệt',
   pending_approval: 'Chờ duyệt',
@@ -821,6 +823,13 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                                   Chia sẻ slot
                                 </button>
                               </div>
+                            );
+                          }
+                          if (slot.status === 'awaiting_assets') {
+                            return (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700">
+                                Chờ nhập Drive
+                              </span>
                             );
                           }
                           if ([

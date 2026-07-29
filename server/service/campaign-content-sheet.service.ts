@@ -22,7 +22,10 @@ import { aiKnowledgeService } from "./ai-knowledge.service";
 import type { KnowledgeDocumentType } from "./ai-knowledge.service";
 import { openrouterChat } from "./openrouter.service";
 import { walletService } from "./wallet.service";
-import { zonedLocalTimeToUtc } from "./marketing-campaign-schedule.service";
+import {
+  resolveMonthlyPrepareAt,
+  zonedLocalTimeToUtc,
+} from "./marketing-campaign-schedule.service";
 
 const MAX_CUSTOM_COLUMNS = 30;
 const MAX_ROWS = 500;
@@ -429,7 +432,13 @@ export const campaignContentSheetService = {
       companyCode,
       campaignId,
       scheduledAt,
-      prepareAt: new Date(scheduledAt.getTime() - campaign.generationLeadMinutes * 60_000),
+      prepareAt: resolveMonthlyPrepareAt({
+        campaignStartDate: campaign.startDate,
+        slotDate: input.date,
+        timezone: campaign.timezone,
+        campaignCreatedAt: campaign.createdAt,
+        leadDays: campaign.monthlyPreparationLeadDays || 10,
+      }),
       verifyAt: new Date(scheduledAt.getTime() - campaign.verificationLeadMinutes * 60_000),
       platform: input.platform,
       integrationId: campaign.integrationIds?.[input.platform],

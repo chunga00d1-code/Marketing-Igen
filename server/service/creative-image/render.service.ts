@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { cloudinaryService } from "../cloudinary.service";
+import { renderHtmlImageInChromium } from "../bulk-create-chromium-renderer.service";
 
 type RendererModule = typeof import("@remotion/renderer");
 type BundlerModule = typeof import("@remotion/bundler");
@@ -57,4 +58,18 @@ export async function renderCreativeImage(input: {
   } finally {
     await fs.promises.unlink(output).catch(() => undefined);
   }
+}
+
+export async function renderAiHtmlImage(input: {
+  renderId: string;
+  companyCode: string;
+  canvas: { width: number; height: number };
+  html: string;
+}) {
+  const buffer = await renderHtmlImageInChromium(input.html, input.canvas);
+  return cloudinaryService.uploadMediaBuffer(
+    buffer,
+    `igen_erp/creative-image/${input.companyCode}/${input.renderId}`,
+    "output"
+  );
 }
