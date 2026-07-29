@@ -21,6 +21,7 @@ interface CampaignPlannerTabProps {
 }
 
 const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
+const CAMPAIGNS_PER_PAGE = 8;
 
 export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabProps) {
   const today = useMemo(() => toDateInput(new Date()), []);
@@ -39,6 +40,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [customSchedulePage, setCustomSchedulePage] = useState(1);
   const [integrations, setIntegrations] = useState<SocialIntegration[]>([]);
   const [integrationId, setIntegrationId] = useState('');
+  const [selectedPlatform, setSelectedPlatform] = useState<'Facebook' | 'TikTok'>('Facebook');
   const [loading, setLoading] = useState(false);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
   const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
@@ -49,8 +51,16 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
   const [apifySources, setApifySources] = useState<string[]>(['google', 'facebook', 'tiktok']);
   const isSinglePost = creationMode === 'single';
+  const isTikTokCampaign = selectedPlatform === 'TikTok';
   const canUseLocalMockFacebookPage = typeof window !== 'undefined'
     && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  const selectedPlatformLabel = isTikTokCampaign ? 'TikTok' : 'Facebook';
+  const selectedAccountLabel = isTikTokCampaign
+    ? 'Tài khoản TikTok nhận nội dung'
+    : 'Facebook Page nhận bài đăng ngay';
+  const missingIntegrationLabel = isTikTokCampaign
+    ? 'Chưa có tài khoản TikTok doanh nghiệp được kết nối'
+    : (canUseLocalMockFacebookPage ? 'Fanpage Facebook giả lập (local)' : 'Chưa có Facebook Page được kết nối');
 
   // Cleanup customSchedule when date range changes
   useEffect(() => {
@@ -86,6 +96,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCampaigns, setTotalCampaigns] = useState(0);
   const [filterStatus, setFilterStatus] = useState<'all' | CampaignStatus>('all');
 
   // Detail Modal states
@@ -148,9 +159,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const loadCampaigns = async (page = 1) => {
     setLoadingCampaigns(true);
     try {
-      const result = await marketingCampaignService.list(page, 10);
+      const result = await marketingCampaignService.list(page, CAMPAIGNS_PER_PAGE);
       setCampaigns(result.campaigns);
       setTotalPages(result.pagination.totalPages);
+      setTotalCampaigns(result.pagination.total);
       setCurrentPage(result.pagination.page);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể tải danh sách chiến dịch.');
@@ -160,12 +172,18 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   };
 
   useEffect(() => {
-    void socialIntegrationService.getIntegrations('Facebook').then((items) => {
+    let active = true;
+    setIntegrationId('');
+    void socialIntegrationService.getIntegrations(selectedPlatform).then((items) => {
+      if (!active) return;
       const connected = items.filter((item) => item.isConnected);
       setIntegrations(connected);
       setIntegrationId(connected[0]?._id || '');
-    }).catch(() => setIntegrations([]));
-  }, []);
+    }).catch(() => {
+      if (active) setIntegrations([]);
+    });
+    return () => { active = false; };
+  }, [selectedPlatform]);
 
   useEffect(() => {
     void loadCampaigns(1);
@@ -415,8 +433,14 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     if (!prompt.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
     if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
-    if (!integrationId && !hasPersonalFacebook && !canUseLocalMockFacebookPage) {
-      return toast.warning('Vui lòng kết nối một Facebook Page trước khi tạo lịch tự động.');
+    const canUsePersonalFacebook = selectedPlatform === 'Facebook' && hasPersonalFacebook;
+    const canUseLocalMock = selectedPlatform === 'Facebook' && canUseLocalMockFacebookPage;
+    if (!integrationId && !canUsePersonalFacebook && !canUseLocalMock) {
+      return toast.warning(
+        selectedPlatform === 'TikTok'
+          ? 'Vui lòng kết nối tài khoản TikTok doanh nghiệp trước khi tạo chiến dịch video.'
+          : 'Vui lòng kết nối một Facebook Page trước khi tạo lịch tự động.'
+      );
     }
 
     setLoading(true);
@@ -432,14 +456,14 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         postsPerDay,
         postingTimes,
         timezone: 'Asia/Bangkok',
-        platforms: ['Facebook'],
-        integrationIds: integrationId ? { Facebook: integrationId } : {},
+        platforms: [selectedPlatform],
+        integrationIds: integrationId ? { [selectedPlatform]: integrationId } : {},
         candidateCount: 1, // Single-Render Flow
         qualityMode,
-        publishMode: isSinglePost ? 'auto' : publishMode,
-        publishNow: isSinglePost,
+        publishMode: isTikTokCampaign ? 'manual' : (isSinglePost ? 'auto' : publishMode),
+        publishNow: isSinglePost && !isTikTokCampaign,
         imageMode,
-        mediaPolicy: 'auto',
+        mediaPolicy: isTikTokCampaign ? 'video' : 'auto',
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
         apifySources: apifySources.length > 0 ? apifySources : undefined,
@@ -454,7 +478,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setCustomSchedule({});
       setShowCustomSchedule(false);
       toast.success(isSinglePost
-        ? 'Đã tạo bài và chuyển sang xử lý đăng ngay.'
+        ? (isTikTokCampaign
+          ? 'Đã tạo video TikTok. Hệ thống sẽ chỉ cho đăng sau khi video hoàn tất và được xác nhận.'
+          : 'Đã tạo bài và chuyển sang xử lý đăng ngay.')
         : `Đã khởi chạy “${result.campaign.title}”. Toàn bộ tháng đầu đang được render nền theo lô an toàn.`);
       void loadCampaigns(1);
     } catch (error: unknown) {
@@ -588,10 +614,17 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   CHỌN NỀN TẢNG TRUYỀN THÔNG:
                 </h3>
                 <div className="flex flex-wrap items-center gap-2.5">
-                  {/* Facebook - Selected */}
+                  {/* Facebook */}
                   <button
                     type="button"
-                    className="flex items-center gap-2 rounded-full border-2 border-slate-900 bg-blue-50/90 px-4 py-1.5 text-xs font-extrabold text-slate-900 shadow-2xs cursor-pointer transition-all"
+                    onClick={() => {
+                      setSelectedPlatform('Facebook');
+                      setIntegrationId('');
+                    }}
+                    className={`flex items-center gap-2 rounded-full border-2 px-4 py-1.5 text-xs font-extrabold shadow-2xs cursor-pointer transition-all ${selectedPlatform === 'Facebook'
+                      ? 'border-slate-900 bg-blue-50/90 text-slate-900'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-blue-300 hover:text-blue-700'
+                      }`}
                   >
                     <Facebook size={16} className="text-blue-600 fill-blue-600/10" />
                     <span>Facebook</span>
@@ -607,13 +640,20 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     <span>Zalo</span>
                   </button>
 
-                  {/* TikTok - Disabled */}
+                  {/* TikTok */}
                   <button
                     type="button"
-                    disabled
-                    className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-1.5 text-xs font-semibold text-slate-400 opacity-60 cursor-not-allowed"
+                    onClick={() => {
+                      setSelectedPlatform('TikTok');
+                      setIntegrationId('');
+                      setImageMode('order');
+                    }}
+                    className={`flex items-center gap-2 rounded-full border-2 px-4 py-1.5 text-xs font-extrabold shadow-2xs cursor-pointer transition-all ${selectedPlatform === 'TikTok'
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-500 hover:text-slate-900'
+                      }`}
                   >
-                    <span className="text-[10px] font-extrabold tracking-tight text-slate-400">TT</span>
+                    <span className={`text-[10px] font-extrabold tracking-tight ${selectedPlatform === 'TikTok' ? 'text-cyan-300' : 'text-slate-500'}`}>TT</span>
                     <span>TikTok</span>
                   </button>
                 </div>
@@ -631,7 +671,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     type="button"
                     onClick={() => {
                       setCreationMode('single');
-                      setImageMode('ai');
+                      setImageMode(isTikTokCampaign ? 'order' : 'ai');
                       setStartDate(today);
                       setEndDate(today);
                       changePostsPerDay(1);
@@ -690,8 +730,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
+                    disabled={isTikTokCampaign}
                     onClick={() => setImageMode('ai')}
-                    className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer ${imageMode === 'ai'
+                    className={`flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-45 ${imageMode === 'ai'
                       ? 'border-indigo-400 bg-indigo-50/50 shadow-2xs'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
                       }`}
@@ -770,7 +811,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                   {isSinglePost ? <Zap size={16} /> : <CalendarClock size={16} />}
                 </div>
                 <div>
-                  <p className="text-xs font-bold">{isSinglePost ? 'Một bài đăng Facebook' : 'Chiến dịch Facebook nhiều bài'}</p>
+                  <p className="text-xs font-bold">{isSinglePost ? `Một bài đăng ${selectedPlatformLabel}` : `Chiến dịch ${selectedPlatformLabel} nhiều bài`}</p>
                 </div>
               </div>
 
@@ -780,22 +821,26 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     <div className="rounded-lg bg-indigo-600 text-white p-1.5 shrink-0 shadow-2xs">
                       <Zap size={14} />
                     </div>
-                    <p className="font-bold text-indigo-950 text-xs">Hệ thống sẽ tạo bài viết và tự động đăng ngay lên Facebook Page.</p>
+                    <p className="font-bold text-indigo-950 text-xs">
+                      {isTikTokCampaign
+                        ? 'Hệ thống sẽ tạo video TikTok. Video chỉ sẵn sàng đăng sau khi render hoàn tất và có xác nhận xuất bản.'
+                        : 'Hệ thống sẽ tạo bài viết và tự động đăng ngay lên Facebook Page.'}
+                    </p>
                   </div>
 
                   <div>
                     <label className="mb-1.5 block text-[11px] font-bold text-slate-700 uppercase tracking-wide">
-                      Facebook Page nhận bài đăng ngay
+                      {selectedAccountLabel}
                     </label>
                     <select
                       value={integrationId}
                       onChange={(event) => setIntegrationId(event.target.value)}
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden shadow-2xs"
                     >
-                      {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
+                      {!isTikTokCampaign && userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
                       {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
-                      {!integrations.length && !userProfile?.facebookIntegration?.isConnected && (
-                        <option value="">{canUseLocalMockFacebookPage ? 'Fanpage Facebook giả lập (local)' : 'Chưa có Facebook Page được kết nối'}</option>
+                      {!integrations.length && (isTikTokCampaign || !userProfile?.facebookIntegration?.isConnected) && (
+                        <option value="">{missingIntegrationLabel}</option>
                       )}
                     </select>
                   </div>
@@ -848,16 +893,16 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       </div>
 
                       <div>
-                        <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">Facebook Page nhận lịch đăng</label>
+                        <label className="mb-1.5 block text-[11px] font-bold text-slate-500 uppercase tracking-wide">{isTikTokCampaign ? 'Tài khoản TikTok nhận lịch đăng' : 'Facebook Page nhận lịch đăng'}</label>
                         <select
                           value={integrationId}
                           onChange={(event) => setIntegrationId(event.target.value)}
                           className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs bg-white text-slate-800 focus:border-indigo-600 focus:outline-hidden"
                         >
-                          {userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
+                          {!isTikTokCampaign && userProfile?.facebookIntegration?.isConnected && <option value="">{userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân đã kết nối'}</option>}
                           {integrations.map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
-                          {!integrations.length && !userProfile?.facebookIntegration?.isConnected && (
-                            <option value="">{canUseLocalMockFacebookPage ? 'Fanpage Facebook giả lập (local)' : 'Chưa có Facebook Page được kết nối'}</option>
+                          {!integrations.length && (isTikTokCampaign || !userProfile?.facebookIntegration?.isConnected) && (
+                            <option value="">{missingIntegrationLabel}</option>
                           )}
                         </select>
                       </div>
@@ -1147,7 +1192,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Sản lượng</b><span>{isSinglePost ? '1 bài' : `${postsPerDay} bài/ngày · tổng ${totalPosts || 0} bài`}</span></div>
           {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Chu kỳ render</b><span>Render trọn tháng đầu; mỗi tháng tiếp theo bắt đầu trước 10 ngày</span></div>}
           {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Clock3 size={13} /> Khung giờ</b><span>{postingTimes.join(', ')}</span></div>}
-          <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Facebook size={13} /> Nền tảng</b><span>Facebook</span></div>
+          <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Facebook size={13} /> Nền tảng</b><span>{selectedPlatformLabel}</span></div>
         </div>
         {!isSinglePost && totalPosts > 450 && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600">Tối đa 450 bài mỗi chiến dịch. Hãy giảm số ngày hoặc số bài/ngày.</p>}
       </aside>
@@ -1156,6 +1201,11 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
           <div>
             <h3 className="text-sm font-extrabold text-slate-850">Lịch sử nội dung & chiến dịch</h3>
+            {!loadingCampaigns && totalCampaigns > 0 && (
+              <p className="mt-1 text-xs text-slate-500">
+                Hiển thị {Math.min((currentPage - 1) * CAMPAIGNS_PER_PAGE + 1, totalCampaigns)}–{Math.min(currentPage * CAMPAIGNS_PER_PAGE, totalCampaigns)} / {totalCampaigns} chiến dịch
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {loadingCampaigns && <Loader2 size={17} className="animate-spin text-indigo-600" />}

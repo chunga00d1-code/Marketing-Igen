@@ -50,6 +50,8 @@ const aiWritableFieldKeys = [
   "videoScript",
 ] as const;
 type AiWritableFieldKey = (typeof aiWritableFieldKeys)[number];
+const supportedDriveMediaPattern = /\.(jpg|jpeg|png|webp|gif|heic|mp4|mov|avi|webm)$/i;
+const supportedDriveVideoPattern = /\.(mp4|mov|avi|webm)$/i;
 
 interface AssetOrderInput {
   slotId?: string;
@@ -360,8 +362,20 @@ async function getDriveImportContext(companyCode: string, campaignId: string, go
     });
 
   const driveFiles = await listGoogleDriveFolderFiles(folderUrl);
-  const files = driveFiles.map((file) => {
-    const isVideo = /\.(mp4|mov|avi|webm)$/i.test(file.name);
+  const isTikTokCampaign = campaign.platforms.includes("TikTok");
+  const supportedMediaFiles = driveFiles.filter((file) => supportedDriveMediaPattern.test(file.name));
+  if (isTikTokCampaign && supportedMediaFiles.some((file) => !supportedDriveVideoPattern.test(file.name))) {
+    throw httpError(
+      "Chiến dịch TikTok chỉ nhận video từ Google Drive. Hãy bỏ các tệp ảnh và chỉ giữ video MP4, MOV, AVI hoặc WebM.",
+      400,
+      "TIKTOK_VIDEO_ONLY"
+    );
+  }
+  const files = (isTikTokCampaign
+    ? supportedMediaFiles.filter((file) => supportedDriveVideoPattern.test(file.name))
+    : supportedMediaFiles
+  ).map((file) => {
+    const isVideo = supportedDriveVideoPattern.test(file.name);
     return {
       id: file.id,
       name: file.name,
@@ -859,10 +873,12 @@ export const campaignAssetOrderService = {
   },
 
   async previewDriveImport(companyCode: string, campaignId: string, googleDriveFolderUrl: string) {
-    const { preview } = await getDriveImportContext(companyCode, campaignId, googleDriveFolderUrl);
+    const { campaign, preview } = await getDriveImportContext(companyCode, campaignId, googleDriveFolderUrl);
     if (!preview.totalFiles) {
       throw httpError(
-        "Không tìm thấy ảnh hoặc video hợp lệ trong thư mục Drive. Hãy kiểm tra quyền chia sẻ công khai.",
+        campaign.platforms.includes("TikTok")
+          ? "Không tìm thấy video hợp lệ trong thư mục Drive. TikTok chỉ nhận video MP4, MOV, AVI hoặc WebM."
+          : "Không tìm thấy ảnh hoặc video hợp lệ trong thư mục Drive. Hãy kiểm tra quyền chia sẻ công khai.",
         400,
         "DRIVE_MEDIA_NOT_FOUND"
       );

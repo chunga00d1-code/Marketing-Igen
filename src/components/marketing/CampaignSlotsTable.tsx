@@ -885,12 +885,13 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
       </div>
 
       {/* Pagination Controls */}
-      {totalSlotPages > 1 && (
+      {totalSlots > 0 && (
         <div className="flex items-center justify-between pt-3 border-t border-slate-100 select-none">
           <span className="text-[11px] font-semibold text-slate-500">
             Hiển thị {(slotPage - 1) * SLOTS_PER_PAGE + 1} - {Math.min(slotPage * SLOTS_PER_PAGE, sortedSlots.length)} trong tổng số {sortedSlots.length} bài viết
           </span>
-          <div className="flex items-center gap-1.5">
+          {totalSlotPages > 1 && (
+            <div className="flex items-center gap-1.5">
             <button
               type="button"
               disabled={slotPage === 1}
@@ -936,7 +937,8 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
             >
               Sau
             </button>
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
