@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import mongoose from "mongoose";
 import {
   HtmlVideoRenderModel,
@@ -8,6 +11,8 @@ import {
   buildSafeHtmlVideoComposition,
   type HtmlVideoSource,
 } from "./html-video-security.service";
+import { VideoRenderAdapterError } from "../video-edit/render-adapter";
+import { defaultVideoRenderAdapterRegistry } from "../video-edit/video-render-adapters";
 
 export type HtmlVideoActor = {
   id: string;
@@ -85,6 +90,21 @@ function scopedIdempotencyFilter(
   };
 }
 
+const htmlVideoRenderTimeoutMs = 15 * 60 * 1000;
+
+function safeRenderFailure(error: unknown) {
+  if (error instanceof VideoRenderAdapterError) {
+    return {
+      code: error.code,
+      message: error.message,
+    };
+  }
+  return {
+    code: "RENDER_PROCESS_FAILED",
+    message: "Không thể kết xuất video HTML.",
+  };
+}
+
 export const htmlVideoRenderService = {
   async createRender(
     actor: HtmlVideoActor,
@@ -142,5 +162,131 @@ export const htmlVideoRenderService = {
       );
     }
     return serializeRender(render);
+  },
+
+  async recoverPendingRenders(): Promise<string[]> {
+    const staleBefore = new Date(Date.now() - htmlVideoRenderTimeoutMs);
+    await HtmlVideoRenderModel.updateMany(
+      {
+        status: { $in: ["rendering", "uploading"] },
+        updatedAt: { $lte: staleBefore },
+      },
+      {
+        $set: {
+          status: "queued",
+          progress: 0,
+          stageMessage: "Khôi phục tác vụ kết xuất bị gián đoạn.",
+          errorCode: "",
+          error: "",
+        },
+      }
+    );
+    const pending = await HtmlVideoRenderModel.find({ status: "queued" })
+      .sort({ createdAt: 1 })
+      .limit(200)
+      .select("_id")
+      .lean();
+    return pending.map((render) => String(render._id));
+  },
+
+  async processRender(renderId: string): Promise<void> {
+    const render = await HtmlVideoRenderModel.findOneAndUpdate(
+      { _id: renderId, status: "queued" },
+      {
+        $set: {
+          status: "rendering",
+          progress: 1,
+          stageMessage: "Bắt đầu kết xuất video HTML.",
+          startedAt: new Date(),
+          errorCode: "",
+          error: "",
+        },
+        $inc: { attempts: 1 },
+      },
+      { new: true }
+    )
+      .select("+compositionHtml")
+      .lean();
+    if (!render) return;
+
+    const adapter = defaultVideoRenderAdapterRegistry.get("hyperframes");
+    try {
+      const result = await adapter.render(
+        {
+          jobId: renderId,
+          compositionHtml: render.compositionHtml,
+          aspectRatio: render.aspectRatio,
+          resolution: render.resolution,
+        },
+        {
+          signal: new AbortController().signal,
+          timeoutMs: htmlVideoRenderTimeoutMs,
+          temporaryDirectory: join(
+            tmpdir(),
+            `igen-html-video-${renderId}-${randomUUID()}`
+          ),
+          onProgress: async ({ stage, progress, message }) => {
+            const status = stage === "uploading" ? "uploading" : "rendering";
+            await HtmlVideoRenderModel.updateOne(
+              { _id: renderId, status: { $in: ["rendering", "uploading"] } },
+              {
+                $set: {
+                  status,
+                  progress: Math.min(99, Math.max(1, Math.round(progress))),
+                  stageMessage: message,
+                },
+              }
+            );
+          },
+        }
+      );
+      await HtmlVideoRenderModel.updateOne(
+        { _id: renderId, status: { $in: ["rendering", "uploading"] } },
+        {
+          $set: {
+            status: "completed",
+            progress: 100,
+            stageMessage: "Kết xuất video HTML hoàn tất.",
+            outputUrl: result.outputUrl,
+            errorCode: "",
+            error: "",
+            completedAt: new Date(),
+          },
+        }
+      );
+    } catch (error) {
+      const safeFailure = safeRenderFailure(error);
+      await HtmlVideoRenderModel.updateOne(
+        { _id: renderId, status: { $in: ["rendering", "uploading"] } },
+        {
+          $set: {
+            status: "queued",
+            progress: 0,
+            stageMessage: "Tác vụ sẽ được thử lại.",
+            errorCode: safeFailure.code,
+            error: safeFailure.message,
+          },
+        }
+      );
+      throw error;
+    }
+  },
+
+  async failRender(renderId: string, error: unknown): Promise<void> {
+    const safeFailure = safeRenderFailure(error);
+    await HtmlVideoRenderModel.findOneAndUpdate(
+      { _id: renderId, status: { $in: ["queued", "rendering", "uploading"] } },
+      {
+        $set: {
+          status: "failed",
+          progress: 0,
+          stageMessage: "Kết xuất video HTML thất bại.",
+          errorCode: safeFailure.code,
+          error: safeFailure.message,
+          completedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
   },
 };
