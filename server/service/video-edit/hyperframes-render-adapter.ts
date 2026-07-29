@@ -74,10 +74,17 @@ export function sanitizeRenderDiagnostic(
 }
 
 function assertValidInput(input: VideoRenderInput) {
+  const hasBlueprint =
+    "blueprint" in input &&
+    Boolean(input.blueprint) &&
+    Array.isArray(input.blueprint?.timeline);
+  const hasCompositionHtml =
+    "compositionHtml" in input &&
+    typeof input.compositionHtml === "string" &&
+    input.compositionHtml.trim().length > 0;
   if (
     !input.jobId.trim() ||
-    !input.blueprint ||
-    !Array.isArray(input.blueprint.timeline) ||
+    hasBlueprint === hasCompositionHtml ||
     !supportedAspectRatios.has(input.aspectRatio) ||
     !supportedResolutions.has(input.resolution)
   ) {
@@ -215,10 +222,13 @@ export function createHyperframesRenderAdapter(
           progress: 20,
           message: "Preparing HTML composition.",
         });
-        const html = dependencies.compileBlueprintToHtml({
-          ...input.blueprint,
-          resolution: input.resolution,
-        });
+        const html =
+          "compositionHtml" in input
+            ? input.compositionHtml
+            : dependencies.compileBlueprintToHtml({
+                ...input.blueprint,
+                resolution: input.resolution,
+              });
         await dependencies.fileSystem.writeFile(htmlPath, html);
 
         await context.onProgress({

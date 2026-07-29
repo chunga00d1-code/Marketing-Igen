@@ -16,16 +16,25 @@ export type VideoRenderDiagnostics = Record<
   string | number | boolean | null
 >;
 
-export interface VideoRenderInput {
-  jobId: string;
+export type VideoRenderBlueprintSource = {
   blueprint: {
     timeline: Array<Record<string, unknown>>;
     [key: string]: unknown;
   };
+  compositionHtml?: never;
+};
+
+export type VideoRenderHtmlSource = {
+  compositionHtml: string;
+  blueprint?: never;
+};
+
+export type VideoRenderInput = {
+  jobId: string;
   aspectRatio: VideoRenderAspectRatio;
   resolution: VideoRenderResolution;
   sourceVideoUrl?: string;
-}
+} & (VideoRenderBlueprintSource | VideoRenderHtmlSource);
 
 export interface VideoRenderCapability {
   available: boolean;

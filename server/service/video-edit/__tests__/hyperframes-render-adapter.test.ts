@@ -56,6 +56,52 @@ test("accepts normalized Hyperframes render input", () => {
   assert.doesNotThrow(() => adapter.validateInput(validInput));
 });
 
+test("accepts a sanitized HTML composition without compiling a blueprint", async () => {
+  let writtenHtml = "";
+  let compileCalls = 0;
+  const child = new FakeRenderProcess();
+  const adapter = createHyperframesRenderAdapter(
+    createDependencies({
+      compileBlueprintToHtml: () => {
+        compileCalls += 1;
+        return "<html>compiled blueprint</html>";
+      },
+      spawnProcess: () => {
+        queueMicrotask(() => child.emit("close", 0));
+        return child;
+      },
+      fileSystem: {
+        access: async () => undefined,
+        mkdir: async () => undefined,
+        writeFile: async (_path, content) => {
+          writtenHtml = content;
+        },
+        readFile: async () => Buffer.from("video"),
+        rm: async () => undefined,
+      },
+    })
+  );
+  const compositionHtml =
+    '<!doctype html><html data-composition-id="html-video"></html>';
+  const htmlInput: VideoRenderInput = {
+    jobId: "render-html-1",
+    compositionHtml,
+    aspectRatio: "16:9",
+    resolution: "720p",
+  };
+
+  assert.doesNotThrow(() => adapter.validateInput(htmlInput));
+  await adapter.render(htmlInput, {
+    signal: new AbortController().signal,
+    timeoutMs: 5_000,
+    temporaryDirectory: "C:/tmp/render-html-1",
+    onProgress: () => undefined,
+  });
+
+  assert.equal(writtenHtml, compositionHtml);
+  assert.equal(compileCalls, 0);
+});
+
 test("rejects malformed Hyperframes render input before rendering", () => {
   const adapter = createHyperframesRenderAdapter(createDependencies());
   const invalidInputs: VideoRenderInput[] = [
@@ -64,6 +110,15 @@ test("rejects malformed Hyperframes render input before rendering", () => {
       ...validInput,
       blueprint: { timeline: null as unknown as Array<Record<string, unknown>> },
     },
+    {
+      ...validInput,
+      compositionHtml: "<html></html>",
+    } as unknown as VideoRenderInput,
+    {
+      jobId: validInput.jobId,
+      aspectRatio: validInput.aspectRatio,
+      resolution: validInput.resolution,
+    } as VideoRenderInput,
     { ...validInput, aspectRatio: "3:4" as VideoRenderInput["aspectRatio"] },
     { ...validInput, resolution: "4k" as VideoRenderInput["resolution"] },
   ];

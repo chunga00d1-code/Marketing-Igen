@@ -14,6 +14,14 @@ const input: VideoRenderInput = {
   resolution: "1080p",
 };
 
+const htmlInput: VideoRenderInput = {
+  jobId: "render-html-1",
+  compositionHtml:
+    '<!doctype html><html data-composition-id="html-video"></html>',
+  aspectRatio: "16:9",
+  resolution: "720p",
+};
+
 const context: VideoRenderExecutionContext = {
   signal: new AbortController().signal,
   timeoutMs: 120_000,
@@ -40,6 +48,12 @@ test("supports an adapter with normalized input and context", async () => {
     outputUrl: "https://cdn.example/render-1.mp4",
     diagnostics: { timeoutMs: 120_000 },
   });
+});
+
+test("supports a sanitized HTML composition source without a blueprint", () => {
+  assert.equal(htmlInput.jobId, "render-html-1");
+  assert.match(htmlInput.compositionHtml, /data-composition-id="html-video"/);
+  assert.equal("blueprint" in htmlInput, false);
 });
 
 test("exposes a safe coded adapter error without diagnostics in its message", () => {
