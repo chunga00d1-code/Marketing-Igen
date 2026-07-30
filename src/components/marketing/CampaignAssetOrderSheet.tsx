@@ -374,7 +374,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                 <th className="min-w-44 px-3 py-3 font-extrabold">Nhóm nội dung</th>
                 <th className="min-w-60 px-3 py-3 font-extrabold">Nội dung cần quay/chụp</th>
                 <th className="min-w-80 px-3 py-3 font-extrabold">Chi tiết yêu cầu</th>
-                <th className="w-32 px-3 py-3 font-extrabold">Định dạng</th>
+                <th className="min-w-40 px-3 py-3 font-extrabold whitespace-nowrap">Định dạng</th>
                 <th className="min-w-32 px-3 py-3 font-extrabold">SL đề xuất</th>
                 <th className="min-w-80 px-3 py-3 font-extrabold">Nội dung AI tạo</th>
                 {customFieldColumns.map((field) => (
@@ -438,14 +438,14 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                           className="w-full resize-none rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-slate-700 outline-none transition hover:border-slate-200 focus:border-teal-400 focus:bg-white disabled:cursor-not-allowed"
                         />
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="min-w-40 px-2 py-2">
                         <div className="relative">
                           <select
                             value={order.format}
                             onChange={(event) => changeLocal(order._id, 'format', event.target.value as CampaignAssetOrderFormat)}
                             onBlur={() => void saveCell(order, 'format')}
                             disabled={readOnly || isSaving(order._id)}
-                            className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2 pr-7 font-semibold text-slate-700 outline-none focus:border-teal-400 disabled:cursor-not-allowed"
+                            className="h-9 min-w-36 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2 pr-7 font-semibold text-slate-700 outline-none focus:border-teal-400 disabled:cursor-not-allowed"
                           >
                             {Object.entries(FORMAT_LABEL)
                               .filter(([value]) => value !== 'image_video')

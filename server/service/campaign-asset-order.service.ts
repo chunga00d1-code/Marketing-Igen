@@ -38,6 +38,7 @@ const MAX_CUSTOM_FIELDS_PER_CAMPAIGN = 15;
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 500;
 const MAX_BULK_IMAGES_PER_ORDER = 10;
 const AI_FILL_ALL_BATCH_SIZE = 20;
+const ASSET_ORDER_AI_MODEL = process.env.ASSET_ORDER_AI_MODEL || "deepseek/deepseek-v4-flash";
 const terminalSlotStatuses = ["published", "cancelled"] as const;
 const aiWritableFieldKeys = [
   "contentGroup",
@@ -570,9 +571,7 @@ export const campaignAssetOrderService = {
         overwritePolicy: input.overwritePolicy || "empty_only",
         targetOrderIds: orders.map((order) => order._id),
         totalItems: orders.length,
-        modelName: campaign.qualityMode === "budget"
-          ? (process.env.CAMPAIGN_BUDGET_MODEL || "qwen/qwen-3.6-flash")
-          : (process.env.CAMPAIGN_PREMIUM_MODEL || "google/gemini-3.5-flash"),
+        modelName: ASSET_ORDER_AI_MODEL,
         estimatedCost: Math.ceil(orders.length / AI_FILL_ALL_BATCH_SIZE) * unitCost,
         idempotencyKey: input.idempotencyKey,
       });
@@ -925,7 +924,7 @@ export const campaignAssetOrderService = {
           completedAt: { $cond: [{ $eq: ["$status", "queued"] }, "$$NOW", "$completedAt"] },
         },
       }],
-      { returnDocument: "after" }
+      { returnDocument: "after", updatePipeline: true }
     ).lean();
     if (!job) throw httpError("AI job Order không còn ở trạng thái có thể hủy.", 409);
     return job;
@@ -1671,9 +1670,7 @@ export const campaignAssetOrderService = {
       pageId: integrationPageId(slot?.integrationId),
       topK: 5,
     });
-    const model = campaign.qualityMode === "budget"
-      ? (process.env.CAMPAIGN_BUDGET_MODEL || "qwen/qwen-3.6-flash")
-      : (process.env.CAMPAIGN_PREMIUM_MODEL || "google/gemini-3.5-flash");
+    const model = ASSET_ORDER_AI_MODEL;
     const response = await openrouterChat({
       model,
       temperature: 0.55,
