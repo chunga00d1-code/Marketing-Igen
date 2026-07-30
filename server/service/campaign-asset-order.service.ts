@@ -37,7 +37,13 @@ const MAX_ASSETS_PER_ORDER = 20;
 const MAX_CUSTOM_FIELDS_PER_CAMPAIGN = 15;
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 500;
 const MAX_BULK_IMAGES_PER_ORDER = 10;
-const AI_FILL_ALL_BATCH_SIZE = 20;
+// Keep each provider request compact so a full campaign does not time out while
+// producing one large JSON response. Billing remains based on the former
+// 20-row logical batch, not the smaller transport batch.
+const AI_FILL_ALL_BATCH_SIZE = 4;
+const AI_FILL_ALL_BILLING_BATCH_SIZE = 20;
+const AI_FILL_ALL_TIMEOUT_MS = 60_000;
+const AI_FILL_ALL_MAX_TOKENS = 3_000;
 const ASSET_ORDER_AI_MODEL = process.env.ASSET_ORDER_AI_MODEL || "deepseek/deepseek-v4-flash";
 const terminalSlotStatuses = ["published", "cancelled"] as const;
 const aiWritableFieldKeys = [
@@ -526,7 +532,7 @@ export const campaignAssetOrderService = {
         status: { $nin: [...terminalSlotStatuses] },
       }),
     ]);
-    const batches = Math.ceil(orderCount / AI_FILL_ALL_BATCH_SIZE);
+    const batches = Math.ceil(orderCount / AI_FILL_ALL_BILLING_BATCH_SIZE);
     const unitCost = campaign.qualityMode === "budget" ? 0.5 : 2.5;
     return { orderCount, batches, cost: batches * unitCost };
   },
@@ -572,7 +578,7 @@ export const campaignAssetOrderService = {
         targetOrderIds: orders.map((order) => order._id),
         totalItems: orders.length,
         modelName: ASSET_ORDER_AI_MODEL,
-        estimatedCost: Math.ceil(orders.length / AI_FILL_ALL_BATCH_SIZE) * unitCost,
+        estimatedCost: Math.ceil(orders.length / AI_FILL_ALL_BILLING_BATCH_SIZE) * unitCost,
         idempotencyKey: input.idempotencyKey,
       });
       return job.toObject();
@@ -661,7 +667,9 @@ export const campaignAssetOrderService = {
         { kind: "knowledge_chunk" as const, id: String(value.chunkId || ""), title, excerpt },
       ].filter((reference) => reference.id);
     });
-    const unitCost = campaign.qualityMode === "budget" ? 0.5 : 2.5;
+    const remainingRequestCount = Math.ceil(orders.length / AI_FILL_ALL_BATCH_SIZE);
+    const remainingBudget = Math.max(Number(job.estimatedCost || 0) - Number(job.actualCost || 0), 0);
+    const requestCost = remainingRequestCount > 0 ? remainingBudget / remainingRequestCount : 0;
 
     for (let start = 0; start < orders.length; start += AI_FILL_ALL_BATCH_SIZE) {
       const latest = await CampaignAssetOrderAIJobModel.findById(job._id).select("cancelRequestedAt status completedItems failedItems skippedItems conflictedItems actualCost").lean();
@@ -683,11 +691,14 @@ export const campaignAssetOrderService = {
       }> = [];
       let providerCharged = false;
       try {
-        await walletService.checkBalance(job.createdBy, unitCost);
+        if (requestCost > 0) await walletService.checkBalance(job.createdBy, requestCost);
         const response = await openrouterChat({
           model: job.modelName,
           temperature: 0.35,
           jsonMode: true,
+          maxTokens: AI_FILL_ALL_MAX_TOKENS,
+          timeoutMs: AI_FILL_ALL_TIMEOUT_MS,
+          maxRetries: 2,
           responseSchema: {
             type: "object",
             properties: {
@@ -722,7 +733,7 @@ export const campaignAssetOrderService = {
             },
             {
               role: "user",
-              content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${knowledge.contextText || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
+              content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${cleanText(knowledge.contextText, 6000) || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
                 const slot = order.slotId ? slotMap.get(String(order.slotId)) : undefined;
                 const content = order.slotId ? contentMap.get(String(order.slotId)) : undefined;
                 return {
@@ -733,11 +744,11 @@ export const campaignAssetOrderService = {
                   suggestedMedia: slot?.mediaType || order.format,
                   finalContent: content
                     ? {
-                      title: content.title,
-                      bodyText: content.bodyText,
-                      outline: content.outline,
-                      mediaPrompt: content.mediaPrompt,
-                      voiceScript: content.voiceScript,
+                      title: cleanText(content.title, 160),
+                      bodyText: cleanText(content.bodyText, 900),
+                      outline: cleanText(content.outline, 700),
+                      mediaPrompt: cleanText(content.mediaPrompt, 500),
+                      voiceScript: cleanText(content.voiceScript, 700),
                       mediaType: content.mediaType,
                     }
                     : undefined,
@@ -746,13 +757,15 @@ export const campaignAssetOrderService = {
             },
           ],
         });
-        await walletService.deductBalance(
-          job.createdBy,
-          unitCost,
-          "Chi phí AI điền Order ảnh, video",
-          `asset-order-ai-job:${job.companyCode}:${job._id}:${start / AI_FILL_ALL_BATCH_SIZE}`
-        );
-        providerCharged = true;
+        if (requestCost > 0) {
+          await walletService.deductBalance(
+            job.createdBy,
+            requestCost,
+            "Chi phí AI điền Order ảnh, video",
+            `asset-order-ai-job:${job.companyCode}:${job._id}:${start / AI_FILL_ALL_BATCH_SIZE}`
+          );
+          providerCharged = true;
+        }
 
         const parsed = JSON.parse(response.text) as { rows?: unknown };
         if (!Array.isArray(parsed.rows)) throw httpError("AI không trả về danh sách dòng Order.", 502, "INVALID_AI_RESPONSE");
@@ -875,7 +888,7 @@ export const campaignAssetOrderService = {
             failedItems: failed,
             skippedItems: skipped,
             conflictedItems: conflicted,
-            actualCost: providerCharged ? unitCost : 0,
+            actualCost: providerCharged ? requestCost : 0,
           },
         }
       );
