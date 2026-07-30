@@ -37,6 +37,11 @@ export function resolveMediaBinary(
     return ffmpegStaticPath;
   }
 
+  // Alpine images provide a musl-compatible ffprobe via apk. Prefer the
+  // system binary instead of a glibc-linked Remotion helper from node_modules.
+  // The latter can exist on disk but fail to spawn with ENOENT on Alpine.
+  if (binaryName === "ffprobe") return binaryName;
+
   const bundled = remotionBinaryCandidates(binaryName).find((candidate) =>
     existsSync(candidate)
   );
