@@ -1246,7 +1246,6 @@ export const campaignAssetOrderService = {
         .lean(),
       BulkRenderJobModel.find({
         companyCode,
-        status: { $in: ["completed", "partial"] },
       })
         .sort({ createdAt: -1 })
         .limit(50)
@@ -1258,21 +1257,24 @@ export const campaignAssetOrderService = {
     const items = await BulkRenderItemModel.find({
       companyCode,
       jobId: { $in: jobs.map((job) => job._id) },
-      status: "completed",
-      outputUrl: { $exists: true, $ne: "" },
       "values.__campaign_asset_order_id": { $in: orderIds },
-    }).select("jobId").lean();
+    }).select("jobId status outputUrl").lean();
+    const linkedItemCountByJobId = new Map<string, number>();
     const linkedCountByJobId = new Map<string, number>();
     for (const item of items) {
       const key = String(item.jobId);
-      linkedCountByJobId.set(key, (linkedCountByJobId.get(key) || 0) + 1);
+      linkedItemCountByJobId.set(key, (linkedItemCountByJobId.get(key) || 0) + 1);
+      if (item.status === "completed" && item.outputUrl) {
+        linkedCountByJobId.set(key, (linkedCountByJobId.get(key) || 0) + 1);
+      }
     }
     return jobs
-      .filter((job) => linkedCountByJobId.has(String(job._id)))
+      .filter((job) => linkedItemCountByJobId.has(String(job._id)))
       .map((job) => ({
         ...job,
         _id: String(job._id),
         linkedOutputCount: linkedCountByJobId.get(String(job._id)) || 0,
+        linkedItemCount: linkedItemCountByJobId.get(String(job._id)) || 0,
       }));
   },
 

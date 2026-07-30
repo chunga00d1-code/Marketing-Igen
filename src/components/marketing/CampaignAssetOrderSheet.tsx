@@ -257,7 +257,13 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
     try {
       setFillAllJob(await marketingCampaignService.cancelFillAllAssetOrdersAIJob(campaignId, fillAllJob._id));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể hủy AI điền Order.');
+      try {
+        // The worker can finish or fail between the last poll and this click.
+        // Refresh its authoritative state instead of showing a stale cancel error.
+        setFillAllJob(await marketingCampaignService.getFillAllAssetOrdersAIJob(campaignId, fillAllJob._id));
+      } catch {
+        toast.error(error instanceof Error ? error.message : 'Không thể hủy AI điền Order.');
+      }
     }
   };
 
