@@ -648,7 +648,7 @@ export const campaignAssetOrderService = {
           messages: [
             {
               role: "system",
-              content: "Bạn là planner sản xuất media Facebook. Trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn gọn để dùng cho Bulk Create: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
+              content: "Bạn là người lập brief sản xuất media cho người dùng Việt Nam, không chuyên kỹ thuật. Chỉ trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn, rõ, dễ đọc; không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model. Giới hạn: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
             },
             {
               role: "user",
@@ -1429,7 +1429,7 @@ export const campaignAssetOrderService = {
         },
         {
           role: "system",
-          content: "Also return the production-table fields: contentGroup (maximum 50 characters), shootingContent (maximum 100 characters), productionRequirements (maximum 140 characters), quantitySuggestion (maximum 30 characters), format (image or video), and videoScript (maximum 350 characters). Choose video only when motion, a process, demonstration, story, or spoken delivery helps; otherwise choose image. For image, write headline as the title, subheadline as the Facebook caption, visualBrief as the image description, and leave videoScript empty. Use Vietnamese. The usage channel is always Facebook; never suggest another channel.",
+          content: "Bắt buộc trả thêm các trường trong bảng sản xuất và viết TOÀN BỘ bằng tiếng Việt dễ hiểu, không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model: contentGroup tối đa 50 ký tự; shootingContent tối đa 100 ký tự; productionRequirements tối đa 140 ký tự; quantitySuggestion tối đa 30 ký tự; format chỉ được là image hoặc video; videoScript tối đa 350 ký tự. Chọn video khi cần chuyển động, quy trình, thao tác, trình diễn, câu chuyện hoặc lời thoại; nếu không thì chọn image. Với image, headline là tiêu đề, subheadline là caption Facebook, visualBrief là mô tả ảnh và videoScript để trống. Không viết các cụm mô tả kiểu tiếng Anh như 'split screen video', 'fast-paced', 'screen recording'; hãy chuyển thành tiếng Việt như 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Kênh sử dụng phải bám theo nền tảng của slot, không tự đổi sang nền tảng khác.",
         },
         {
           role: "user",

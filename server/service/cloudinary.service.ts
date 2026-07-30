@@ -113,6 +113,7 @@ function probeVideoDurationWithFfmpeg(videoUrl: string): Promise<number> {
       { shell: false, windowsHide: true }
     );
     let stderr = "";
+    let stdout = "";
     let settled = false;
     const finishWithError = (error: Error) => {
       if (settled) return;
@@ -129,6 +130,9 @@ function probeVideoDurationWithFfmpeg(videoUrl: string): Promise<number> {
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
     });
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
     child.on("error", (error: NodeJS.ErrnoException) => {
       finishWithError(
         new Error(
@@ -140,7 +144,11 @@ function probeVideoDurationWithFfmpeg(videoUrl: string): Promise<number> {
     });
     child.on("close", () => {
       if (settled) return;
-      const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i);
+      const output = `${stderr}\n${stdout}`;
+      const match = output.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i)
+        // Some ffmpeg builds omit the input Duration line but print the
+        // processed timestamp in their progress output instead.
+        || output.match(/\btime[=:]\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i);
       if (!match) {
         finishWithError(new Error("ffmpeg không trả về thời lượng video hợp lệ."));
         return;
@@ -242,12 +250,17 @@ export const cloudinaryService = {
 
     try {
       const publicId = getCloudinaryVideoPublicId(videoUrl);
-      const resource = await cloudinary.api.resource(publicId, {
-        resource_type: "video",
-        type: "upload",
-      });
-      const duration = Number(resource.duration || 0);
-      if (Number.isFinite(duration) && duration > 0) return duration;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const resource = await cloudinary.api.resource(publicId, {
+          resource_type: "video",
+          type: "upload",
+        });
+        const duration = Number(resource.duration || 0);
+        if (Number.isFinite(duration) && duration > 0) return duration;
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
       throw new Error("Cloudinary chưa có metadata thời lượng cho video này.");
     } catch (error: any) {
       console.warn(

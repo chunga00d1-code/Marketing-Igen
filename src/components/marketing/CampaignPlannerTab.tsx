@@ -3,6 +3,7 @@ import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, 
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
+import { uploadEditorMedia } from '../../services/videoProjectMediaService';
 import CustomTimePicker from '../common/CustomTimePicker';
 import CampaignPromptBox from './CampaignPromptBox';
 import CampaignDetailModal, { CampaignSlot } from './CampaignDetailModal';
@@ -94,6 +95,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedTikTokVideo, setUploadedTikTokVideo] = useState<{ name: string; url: string } | null>(null);
   const [uploadingTikTokVideo, setUploadingTikTokVideo] = useState(false);
+  const [tiktokUploadProgress, setTiktokUploadProgress] = useState(0);
   const tiktokVideoInputRef = useRef<HTMLInputElement>(null);
 
   // Pagination states
@@ -363,33 +365,17 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     }
 
     setUploadingTikTokVideo(true);
+    setTiktokUploadProgress(0);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(new Error('Không thể đọc video đã chọn.'));
-        reader.readAsDataURL(file);
-      });
-      const token = localStorage.getItem('accessToken');
-      const response = await fetch('/api/v1/media/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ file: dataUrl, folder: 'igen_erp/marketing/campaign-tiktok' }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || typeof payload.url !== 'string') {
-        throw new Error(payload.message || 'Không thể tải video lên hệ thống.');
-      }
-      setUploadedTikTokVideo({ name: file.name, url: payload.url });
+      const uploaded = await uploadEditorMedia(file, setTiktokUploadProgress);
+      setUploadedTikTokVideo({ name: file.name, url: uploaded.url });
       setImageMode('order');
       toast.success('Đã tải video TikTok lên. Video sẽ được gắn vào bài này sau khi nội dung hoàn tất.');
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể tải video TikTok lên.');
     } finally {
       setUploadingTikTokVideo(false);
+      setTiktokUploadProgress(0);
     }
   };
 
@@ -864,6 +850,20 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                           </button>
                         </div>
                       </div>
+                      {uploadingTikTokVideo && (
+                        <div className="mt-3">
+                          <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-500">
+                            <span>Đang tải trực tiếp lên bộ nhớ video...</span>
+                            <span>{tiktokUploadProgress}%</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+                            <div
+                              className="h-full rounded-full bg-emerald-500 transition-[width] duration-150"
+                              style={{ width: `${tiktokUploadProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
