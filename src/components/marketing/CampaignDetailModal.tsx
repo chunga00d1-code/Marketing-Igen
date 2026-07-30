@@ -389,7 +389,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              Content Pillar ({campaignDetail.campaign.contentMatrix?.length || campaignDetail.campaign.contentPillars?.length || 0})
+              Nhóm chủ đề ({campaignDetail.campaign.contentMatrix?.length || campaignDetail.campaign.contentPillars?.length || 0})
             </button>
             <button
               type="button"
@@ -399,7 +399,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              Content Calendar ({totalSlots} bài)
+              Lịch nội dung ({totalSlots} bài)
             </button>
             <button
               type="button"
@@ -409,7 +409,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              <FolderOpen size={14} /> Order media
+              <FolderOpen size={14} /> Yêu cầu ảnh/video
             </button>
           </div>
         )}
