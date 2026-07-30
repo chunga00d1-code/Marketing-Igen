@@ -1,5 +1,5 @@
 import React from "react";
-import MarketingUserGuide from "../components/marketing/MarketingUserGuide";
+import MarketingUserGuide from "../components/marketing/MarketingUserGuideV2";
 
 export default function UserGuidePage() {
   return (
