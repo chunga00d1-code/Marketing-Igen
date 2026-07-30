@@ -55,7 +55,7 @@ export function SimpleVideoWorkspace({ initialPrompt, cardId, onMediaSaved, onEd
   }, [initialImage]);
 
   // Video Settings
-  const [videoModel, setVideoModel] = useState('piapi-veo31-video-fast-audio');
+  const [videoModel, setVideoModel] = useState('google/veo-3.1-fast');
   const [videoAspectRatio, setVideoAspectRatio] = useState('16:9');
   const [videoDuration, setVideoDuration] = useState('8');
   const [videoQuality, setVideoQuality] = useState('720p'); // 1080p requires duration >= 6s
@@ -162,12 +162,12 @@ export function SimpleVideoWorkspace({ initialPrompt, cardId, onMediaSaved, onEd
   }, [history]);
 
   useEffect(() => {
-    if (!generatedVideoUrl || !generatedVideoUrl.startsWith('pending://piapi/')) {
+    if (!generatedVideoUrl || !generatedVideoUrl.startsWith('pending://openrouter/')) {
       return;
     }
 
-    const pendingTaskId = generatedVideoUrl.replace('pending://piapi/', '');
-    const matchedRecord = history.find((item) => item?.metadata?.piapiTaskId === pendingTaskId);
+    const pendingJobId = generatedVideoUrl.replace('pending://openrouter/', '');
+    const matchedRecord = history.find((item) => item?.metadata?.openrouterVideoJobId === pendingJobId);
 
     if (!matchedRecord) {
       return;

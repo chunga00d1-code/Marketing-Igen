@@ -1,14 +1,12 @@
 export const VIDEO_MODEL_OPTIONS = [
-  { value: 'piapi-veo31-video-fast-audio', label: 'iGen video 3.1 Fast', desc: 'Toi uu toc do, co audio' },
-  { value: 'piapi-veo31-video-audio', label: 'iGen video 3.1', desc: 'Chat luong cao, co audio' },
-  { value: 'piapi-veo31-video-fast-no-audio', label: 'iGen video 3.1 Fast Silent', desc: 'Nhanh hon, khong tao audio' },
+  { value: 'google/veo-3.1-fast', label: 'iGen video 3.1 Fast', desc: 'Tối ưu tốc độ, có audio · OpenRouter' },
+  { value: 'bytedance/seedance-2.0', label: 'Seedance 2.0', desc: 'Giữ nhân vật và chuyển động tốt · OpenRouter' },
 ] as const;
 
 export const VIDEO_DURATION_OPTIONS = [
+  { value: '4', label: '4 giây' },
+  { value: '6', label: '6 giây' },
   { value: '8', label: '8 giây' },
-  { value: '16', label: '16 giây' },
-  { value: '24', label: '24 giây' },
-  { value: '32', label: '32 giây' },
 ] as const;
 
 export const VIDEO_QUALITY_OPTIONS = [

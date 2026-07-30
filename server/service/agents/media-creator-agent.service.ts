@@ -3,7 +3,8 @@ import { IMarketingCampaign } from "../../interface/marketing-campaign.interface
 import { MarketingContentModel } from "../../model/marketing-content.model";
 import { MarketingCampaignModel } from "../../model/marketing-campaign.model";
 import { geminiService } from "../gemini.service";
-import { piapiService } from "../piapi.service";
+import { cloudinaryService } from "../cloudinary.service";
+import { openrouterVideoService } from "../openrouter-video.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { applyCampaignVideoCaption } from "./campaign-caption.service";
 
@@ -50,17 +51,22 @@ export class MediaCreatorAgentService {
         // Check balance first
         await walletService.checkBalance(campaign.createdBy, videoCost);
 
-        const model = process.env.GEMINI_VIDEO_MODEL || "veo31-video-fast-audio";
+        const model = "google/veo-3.1-fast";
         console.log(`[MediaCreatorAgent] Generating video for slot ${slot._id} (Prompt: "${content.mediaPrompt}", Model: ${model})...`);
 
-        const videoResult = await piapiService.generateVideo(
+        const videoResult = await openrouterVideoService.generateVideo(
           content.mediaPrompt,
           model,
-          5, // 5 seconds duration
-          { aspectRatio: "16:9" }
+          6,
+          { aspectRatio: "16:9", resolution: "720p", generateAudio: true }
+        );
+        const videoUrl = await cloudinaryService.uploadMediaBuffer(
+          videoResult.buffer,
+          "igen_erp/marketing/campaign-video",
+          `openrouter_${videoResult.jobId}`
         );
 
-        if (!/^https:\/\//i.test(videoResult.url)) {
+        if (!/^https:\/\//i.test(videoUrl)) {
           throw new Error("AI không trả về URL video HTTPS hợp lệ.");
         }
 
@@ -78,14 +84,14 @@ export class MediaCreatorAgentService {
           );
         }
 
-        content.videoUrl = videoResult.url;
+        content.videoUrl = videoUrl;
         await content.save();
 
         const finalVideoUrl = await applyCampaignVideoCaption({
           campaign,
           slot,
           content,
-          videoUrl: videoResult.url,
+          videoUrl,
         });
 
         console.log(`[MediaCreatorAgent] Generated video successfully: ${finalVideoUrl}`);
