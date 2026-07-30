@@ -85,6 +85,13 @@ const baseMenuItems: MenuItem[] = [
     tone: "purple",
   },
   {
+    label: "SALES CRM",
+    title: "Sales CRM Omni-Inbox",
+    desc: "Chăm sóc và phễu khách hàng",
+    icon: MessageSquareShare,
+    tone: "rose",
+  },
+  {
     label: "XUONG NOI DUNG",
     title: "Xưởng nội dung",
     desc: "Tạo ảnh và thiết kế hàng loạt",
@@ -105,13 +112,7 @@ const baseMenuItems: MenuItem[] = [
     icon: LibraryBig,
     tone: "indigo",
   },
-  {
-    label: "SALES CRM",
-    title: "Sales CRM Omni-Inbox",
-    desc: "Chăm sóc và phễu khách hàng",
-    icon: MessageSquareShare,
-    tone: "rose",
-  },
+
 ];
 
 export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {

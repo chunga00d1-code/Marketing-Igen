@@ -995,7 +995,7 @@ export default function CRMTab() {
       }
     };
 
-    loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: !socketConnectedRef.current }).catch((err) => {
+    loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true }).catch((err) => {
       console.error("[FE CRMTab] Lỗi khi tải lịch sử tin nhắn ban đầu:", err);
     });
     const interval = setInterval(fetchMessages, 60000);

@@ -16,6 +16,13 @@ import { approvalNotifierService } from "../approval-notifier.service";
 import { applyCampaignVideoCaption } from "./campaign-caption.service";
 import { broadcastEvent } from "../../socket";
 import { campaignContentSheetService } from "../campaign-content-sheet.service";
+import { aiKnowledgeService } from "../ai-knowledge.service";
+import { SocialIntegrationModel } from "../../model/social-integration.model";
+import {
+  extractKnowledgeContactDetails,
+  formatKnowledgeContactContext,
+  mergePageContactDetails,
+} from "./campaign-contact-footer";
 
 function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: string; status: string }, extra?: Record<string, unknown>) {
   try {
@@ -139,7 +146,64 @@ async function getResearchContext(
     await slot.save();
   }
 
-  return analysis.context;
+  const integration = slot.integrationId
+    ? await SocialIntegrationModel.findById(slot.integrationId).select("platform username").lean()
+    : null;
+  const pageId = slot.platform === "Facebook"
+    ? String(integration?.username || "") || undefined
+    : undefined;
+  const knowledgeScope = {
+    companyCode: slot.companyCode,
+    channel: slot.platform === "TikTok" ? "tiktok" as const : "facebook" as const,
+    purpose: "marketing" as const,
+    pageId,
+  };
+  const [knowledge, contactKnowledge] = await Promise.all([
+    aiKnowledgeService.searchRelevantContext({
+      ...knowledgeScope,
+      topK: 8,
+      query: [
+        campaign.title,
+        campaign.sourceBrief,
+        slot.pillar,
+        slot.objective,
+        slot.topicBrief,
+        "thông tin doanh nghiệp thương hiệu sản phẩm dịch vụ",
+      ].filter(Boolean).join(" "),
+    }),
+    aiKnowledgeService.searchRelevantContext({
+      ...knowledgeScope,
+      topK: 12,
+      query: "hotline số điện thoại điện thoại liên hệ địa chỉ trụ sở văn phòng website trang web",
+    }),
+  ]);
+
+  const pageContactText = contactKnowledge.items
+    .filter((item) => (
+      pageId
+      && item.pageScope === "selected"
+      && item.pageIds.includes(pageId)
+    ))
+    .map((item) => item.text)
+    .join("\n");
+  const sharedContactText = contactKnowledge.items
+    .filter((item) => item.pageScope !== "selected")
+    .map((item) => item.text)
+    .join("\n");
+  const effectiveContacts = mergePageContactDetails(
+    extractKnowledgeContactDetails(pageContactText),
+    extractKnowledgeContactDetails(sharedContactText)
+  );
+  const contactContext = formatKnowledgeContactContext(effectiveContacts);
+
+  const knowledgeContext = knowledge.contextText
+    ? `\n\nKHO TRI THỨC DOANH NGHIỆP (nguồn sự thật, đúng công ty/kênh/Page):\n${knowledge.contextText}`
+    : "\n\nKHO TRI THỨC DOANH NGHIỆP: Không tìm thấy dữ liệu phù hợp. Không được tự bịa thông tin.";
+  const effectiveContactContext = contactContext
+    ? `\n\nKHO LIÊN HỆ HIỆU LỰC (bắt buộc đặt ở cuối bài):\n${contactContext}`
+    : "\n\nKHO LIÊN HỆ HIỆU LỰC: Không có hotline, địa chỉ hoặc website phù hợp; không thêm footer liên hệ.";
+
+  return `${analysis.context}${knowledgeContext}${effectiveContactContext}`;
 }
 
 async function getVisualContext(
