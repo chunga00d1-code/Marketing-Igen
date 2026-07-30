@@ -847,17 +847,21 @@ export const fbMessengerService = {
       filter.timestamp = { $lt: beforeDate };
     }
 
-    const existingMessages = await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit + 1);
+    let existingMessages = await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit + 1);
 
     if (!beforeDate && options?.sync && conversation.recipientId && this.shouldSync(`messages:${pageId}:${conversation._id}`, MESSAGE_SYNC_TTL_MS)) {
-      // Chạy đồng bộ bất đồng bộ dưới nền để không block request của Frontend
-      this.syncMessagesFromFacebook(pageId, conversation.recipientId)
-        .then((syncedMsgs) => {
-          console.log(`[FB Service getMessages] Đồng bộ ngầm thành công ${syncedMsgs.length} tin nhắn cho conversation: ${conversation._id}`);
-        })
-        .catch((err) => {
-          console.error(`[FB Service getMessages] Đồng bộ ngầm thất bại cho conversation ${conversation._id}:`, err);
-        });
+      if (existingMessages.length === 0) {
+        await this.syncMessagesFromFacebook(pageId, conversation.recipientId);
+        existingMessages = await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit + 1);
+      } else {
+        this.syncMessagesFromFacebook(pageId, conversation.recipientId)
+          .then((syncedMsgs) => {
+            console.log(`[FB Service getMessages] Đồng bộ ngầm thành công ${syncedMsgs.length} tin nhắn cho conversation: ${conversation._id}`);
+          })
+          .catch((err) => {
+            console.error(`[FB Service getMessages] Đồng bộ ngầm thất bại cho conversation ${conversation._id}:`, err);
+          });
+      }
     }
 
     const hasMore = existingMessages.length > limit;
