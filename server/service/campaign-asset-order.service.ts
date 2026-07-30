@@ -30,11 +30,13 @@ import {
   CampaignAssetSource,
   ICampaignAssetOrderAsset,
 } from "../interface/campaign-asset-order.interface";
+import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
 
 const MAX_ORDERS_PER_CAMPAIGN = 500;
 const MAX_ASSETS_PER_ORDER = 20;
 const MAX_CUSTOM_FIELDS_PER_CAMPAIGN = 15;
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 500;
+const MAX_BULK_IMAGES_PER_ORDER = 10;
 const AI_FILL_ALL_BATCH_SIZE = 20;
 const terminalSlotStatuses = ["published", "cancelled"] as const;
 const aiWritableFieldKeys = [
@@ -936,7 +938,7 @@ export const campaignAssetOrderService = {
         "DRIVE_FILES_UNMATCHED"
       );
     }
-    const importableSlotStatuses = new Set([
+    const importableSlotStatuses = new Set<MarketingCampaignSlotStatus>([
       "planned",
       "queued",
       "generating",
@@ -1154,50 +1156,263 @@ export const campaignAssetOrderService = {
     };
   },
 
-  async syncBulkCreateImport(companyCode: string, campaignId: string, jobId: string) {
+  async listBulkCreateImportJobs(companyCode: string, campaignId: string) {
+    await assertCampaign(companyCode, campaignId);
+    const [orders, jobs] = await Promise.all([
+      CampaignAssetOrderModel.find({ companyCode, campaignId, status: { $ne: "cancelled" } })
+        .select("_id")
+        .lean(),
+      BulkRenderJobModel.find({
+        companyCode,
+        status: { $in: ["completed", "partial"] },
+      })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .select("_id templateName status totalItems completedItems failedItems progress createdAt completedAt")
+        .lean(),
+    ]);
+    if (!orders.length || !jobs.length) return [];
+    const orderIds = orders.map((order) => String(order._id));
+    const items = await BulkRenderItemModel.find({
+      companyCode,
+      jobId: { $in: jobs.map((job) => job._id) },
+      status: "completed",
+      outputUrl: { $exists: true, $ne: "" },
+      "values.__campaign_asset_order_id": { $in: orderIds },
+    }).select("jobId").lean();
+    const linkedCountByJobId = new Map<string, number>();
+    for (const item of items) {
+      const key = String(item.jobId);
+      linkedCountByJobId.set(key, (linkedCountByJobId.get(key) || 0) + 1);
+    }
+    return jobs
+      .filter((job) => linkedCountByJobId.has(String(job._id)))
+      .map((job) => ({
+        ...job,
+        _id: String(job._id),
+        linkedOutputCount: linkedCountByJobId.get(String(job._id)) || 0,
+      }));
+  },
+
+  async previewBulkCreateImport(companyCode: string, campaignId: string, jobId: string) {
     if (!mongoose.isValidObjectId(jobId)) throw httpError("Bulk Create job không hợp lệ.", 400);
     await assertCampaign(companyCode, campaignId);
     const [job, items] = await Promise.all([
-      BulkRenderJobModel.findOne({ _id: jobId, companyCode }).lean(),
-      BulkRenderItemModel.find({ jobId, companyCode, status: "completed" }).select("values outputUrl").lean(),
+      BulkRenderJobModel.findOne({ _id: jobId, companyCode })
+        .select("_id templateName status totalItems completedItems failedItems createdAt completedAt")
+        .lean(),
+      BulkRenderItemModel.find({ jobId, companyCode, status: "completed" })
+        .sort({ rowIndex: 1 })
+        .select("rowIndex values outputUrl")
+        .lean(),
     ]);
     if (!job) throw httpError("Không tìm thấy Bulk Create job.", 404);
+    if (!["completed", "partial"].includes(job.status)) {
+      throw httpError(
+        "Bulk Create chưa hoàn tất nên chưa thể gắn vào chiến dịch.",
+        409,
+        "BULK_CREATE_NOT_COMPLETED"
+      );
+    }
+
     const outputUrlsByOrderId = new Map<string, string[]>();
+    let unlinkedOutputCount = 0;
     for (const item of items) {
       const orderId = String(item.values?.__campaign_asset_order_id || "");
       const outputUrl = String(item.outputUrl || "");
-      if (!mongoose.isValidObjectId(orderId) || !outputUrl) continue;
+      if (!mongoose.isValidObjectId(orderId) || !outputUrl) {
+        if (outputUrl) unlinkedOutputCount += 1;
+        continue;
+      }
       const urls = outputUrlsByOrderId.get(orderId) || [];
       if (!urls.includes(outputUrl)) urls.push(outputUrl);
       outputUrlsByOrderId.set(orderId, urls);
     }
-    if (!outputUrlsByOrderId.size) {
-      return { updatedCount: 0, unmatchedOrderIds: [], jobStatus: job.status };
-    }
-    const existingOrders = await CampaignAssetOrderModel.find({
-      _id: { $in: [...outputUrlsByOrderId.keys()] },
-      companyCode,
-      campaignId,
-      status: { $ne: "cancelled" },
-    }).select("_id").lean();
-    const matchedOrderIds = new Set(existingOrders.map((order) => String(order._id)));
-    const status: CampaignAssetOrderStatus = ["completed", "partial"].includes(job.status) ? "completed" : "bulk_queued";
-    const writes = [...outputUrlsByOrderId.entries()]
-      .filter(([orderId]) => matchedOrderIds.has(orderId))
-      .map(([orderId, outputUrls]) => ({
-        updateOne: {
-          filter: { _id: orderId, companyCode, campaignId, status: { $ne: "cancelled" as const } },
-          update: {
-            $set: { bulkJobId: job._id, outputUrls, status },
-            $inc: { revision: 1 },
-          },
-        },
-      }));
-    const result = writes.length ? await CampaignAssetOrderModel.bulkWrite(writes, { ordered: false }) : null;
+
+    const orders = outputUrlsByOrderId.size
+      ? await CampaignAssetOrderModel.find({
+        _id: { $in: [...outputUrlsByOrderId.keys()] },
+        companyCode,
+        campaignId,
+        status: { $ne: "cancelled" },
+      }).select("_id slotId title outputUrls").lean()
+      : [];
+    const slotIds = orders.map((order) => order.slotId).filter(Boolean);
+    const slots = slotIds.length
+      ? await MarketingCampaignSlotModel.find({
+        _id: { $in: slotIds },
+        companyCode,
+        campaignId,
+      }).select("_id platform status scheduledAt realImageDirectUrls").lean()
+      : [];
+    const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
+    const matchedOrderIds = new Set(orders.map((order) => String(order._id)));
+    const importableSlotStatuses = new Set<MarketingCampaignSlotStatus>([
+      "planned",
+      "queued",
+      "generating",
+      "researching",
+      "writing",
+      "awaiting_assets",
+      "retrying",
+      "needs_attention",
+      "failed",
+    ]);
+    const mappings = orders.map((order) => {
+      const orderId = String(order._id);
+      const slotId = order.slotId ? String(order.slotId) : "";
+      const slot = slotMap.get(slotId);
+      const allOutputUrls = outputUrlsByOrderId.get(orderId) || [];
+      const outputUrls = allOutputUrls.slice(0, MAX_BULK_IMAGES_PER_ORDER);
+      let blockedReason = "";
+      if (!slot) blockedReason = "Order chưa liên kết với bài viết.";
+      else if (slot.platform !== "Facebook") blockedReason = "Bulk Create chỉ được gắn vào bài Facebook.";
+      else if (!importableSlotStatuses.has(slot.status)) blockedReason = "Bài đang ở trạng thái không thể thay đổi media.";
+      return {
+        orderId,
+        slotId,
+        title: order.title,
+        platform: slot?.platform || "",
+        slotStatus: slot?.status || "",
+        scheduledAt: slot?.scheduledAt,
+        currentUrls: slot?.realImageDirectUrls || order.outputUrls || [],
+        outputUrls,
+        truncatedCount: Math.max(0, allOutputUrls.length - outputUrls.length),
+        canApply: !blockedReason && outputUrls.length > 0,
+        blockedReason: blockedReason || undefined,
+      };
+    });
+    const missingOrderIds = [...outputUrlsByOrderId.keys()].filter((orderId) => !matchedOrderIds.has(orderId));
     return {
-      updatedCount: result?.modifiedCount || 0,
-      unmatchedOrderIds: [...outputUrlsByOrderId.keys()].filter((orderId) => !matchedOrderIds.has(orderId)),
-      jobStatus: job.status,
+      job: { ...job, _id: String(job._id) },
+      mappings,
+      applicableOrders: mappings.filter((mapping) => mapping.canApply).length,
+      blockedOrders: mappings.filter((mapping) => !mapping.canApply).length,
+      linkedOutputCount: mappings.reduce((sum, mapping) => sum + mapping.outputUrls.length, 0),
+      unlinkedOutputCount,
+      missingOrderIds,
+      maxImagesPerOrder: MAX_BULK_IMAGES_PER_ORDER,
+    };
+  },
+
+  async syncBulkCreateImport(
+    companyCode: string,
+    campaignId: string,
+    jobId: string,
+    mode: "replace" | "append" = "replace"
+  ) {
+    const campaign = await assertCampaign(companyCode, campaignId);
+    const preview = await this.previewBulkCreateImport(companyCode, campaignId, jobId);
+    const applicableMappings = preview.mappings.filter((mapping) => mapping.canApply);
+    if (!applicableMappings.length) {
+      return {
+        updatedCount: 0,
+        attachedSlots: 0,
+        queuedSlots: 0,
+        skippedOrders: preview.blockedOrders,
+        truncatedImages: 0,
+        unmatchedOrderIds: preview.missingOrderIds,
+        jobStatus: preview.job.status,
+      };
+    }
+
+    const readySlotIds: string[] = [];
+    let attachedSlots = 0;
+    let updatedCount = 0;
+    let truncatedImages = 0;
+
+    for (const mapping of applicableMappings) {
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: mapping.slotId,
+        companyCode,
+        campaignId,
+        platform: "Facebook",
+        status: mapping.slotStatus,
+      }).select("_id status marketingContentId realImageDirectUrls").lean();
+      if (!slot) continue;
+      const mergedUrls = mode === "append"
+        ? [...new Set([...(slot.realImageDirectUrls || []), ...mapping.outputUrls])]
+        : mapping.outputUrls;
+      const finalUrls = mergedUrls.slice(0, MAX_BULK_IMAGES_PER_ORDER);
+      truncatedImages += mapping.truncatedCount + Math.max(0, mergedUrls.length - finalUrls.length);
+      const canStartMedia = slot.status === "awaiting_assets" && Boolean(slot.marketingContentId);
+      const updated = await MarketingCampaignSlotModel.findOneAndUpdate(
+        {
+          _id: slot._id,
+          companyCode,
+          campaignId,
+          platform: "Facebook",
+          status: canStartMedia ? "awaiting_assets" : slot.status,
+        },
+        {
+          $set: {
+            realImageDriveUrls: [],
+            realImageDirectUrls: finalUrls,
+            mediaType: "image",
+            ...(canStartMedia ? { status: "generating_media" } : {}),
+          },
+          $unset: {
+            mediaIngestionFingerprint: 1,
+            ingestedMedia: 1,
+            visualAnalysis: 1,
+          },
+          ...(canStartMedia ? {
+            $push: {
+              transitions: {
+                from: "awaiting_assets",
+                to: "generating_media",
+                reason: `Đã ${mode === "append" ? "bổ sung" : "thay thế"} ${finalUrls.length} ảnh từ Bulk Create; bắt đầu gắn media, không phân tích Vision.`,
+                at: new Date(),
+              },
+            },
+          } : {}),
+        },
+        { returnDocument: "after" }
+      ).lean();
+      if (!updated) continue;
+      attachedSlots += 1;
+      if (canStartMedia) readySlotIds.push(String(slot._id));
+      const orderUpdate = await CampaignAssetOrderModel.updateOne(
+        {
+          _id: mapping.orderId,
+          companyCode,
+          campaignId,
+          status: { $ne: "cancelled" },
+        },
+        {
+          $set: {
+            bulkJobId: preview.job._id,
+            outputUrls: finalUrls,
+            status: "completed" as CampaignAssetOrderStatus,
+          },
+          $inc: { revision: 1 },
+        }
+      );
+      updatedCount += orderUpdate.modifiedCount;
+    }
+
+    await MarketingCampaignModel.updateOne(
+      { _id: campaign._id, companyCode },
+      { $set: { imageMode: "order" } }
+    );
+    for (const slotId of readySlotIds) {
+      broadcastEvent("campaign:slot-update", {
+        slotId,
+        campaignId,
+        companyCode,
+        status: "generating_media",
+        updatedAt: new Date().toISOString(),
+      });
+      await campaignQueueService.addMediaJob(slotId);
+    }
+    return {
+      updatedCount,
+      attachedSlots,
+      queuedSlots: readySlotIds.length,
+      skippedOrders: preview.blockedOrders,
+      truncatedImages,
+      unmatchedOrderIds: preview.missingOrderIds,
+      jobStatus: preview.job.status,
     };
   },
 

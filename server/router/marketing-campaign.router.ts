@@ -75,10 +75,27 @@ const tiktokPublishOptionsSchema = Joi.object({
   consentAccepted: Joi.boolean().valid(true).required(),
 });
 
+const tiktokBatchPublishOptionsSchema = tiktokPublishOptionsSchema.keys({
+  caption: Joi.forbidden(),
+  videoDurationSeconds: Joi.forbidden(),
+});
+
 const slotPublishSchema = {
   params: Joi.object({ id: objectId, slotId: objectId }),
   body: Joi.object({
     tiktokPublishOptions: tiktokPublishOptionsSchema.optional(),
+  }),
+};
+
+const tiktokBatchApproveSchema = {
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    slotIds: Joi.array().items(objectId).min(1).max(100).unique().required(),
+    tiktokPublishOptions: tiktokBatchPublishOptionsSchema.required(),
+    videoDurations: Joi.object()
+      .pattern(/^[0-9a-fA-F]{24}$/, Joi.number().positive().required())
+      .min(1)
+      .required(),
   }),
 };
 
@@ -278,9 +295,19 @@ marketingCampaignRouter.delete("/:id/asset-orders/custom-fields/:fieldKey", vali
   params: Joi.object({ id: objectId, fieldKey: Joi.string().pattern(/^custom_[a-f\d]{12}$/i).required() }),
 }), marketingCampaignController.archiveAssetOrderCustomField as never);
 marketingCampaignRouter.get("/:id/asset-orders/bulk-import", validateRequest({ params: Joi.object({ id: objectId } ) }), marketingCampaignController.exportAssetOrdersForBulk as never);
-marketingCampaignRouter.post("/:id/asset-orders/bulk-import/sync", validateRequest({
+marketingCampaignRouter.get("/:id/asset-orders/bulk-import/jobs", validateRequest({
+  params: Joi.object({ id: objectId }),
+}), marketingCampaignController.listAssetOrderBulkJobs as never);
+marketingCampaignRouter.post("/:id/asset-orders/bulk-import/preview", validateRequest({
   params: Joi.object({ id: objectId }),
   body: Joi.object({ jobId: objectId }),
+}), marketingCampaignController.previewAssetOrdersFromBulkImport as never);
+marketingCampaignRouter.post("/:id/asset-orders/bulk-import/sync", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    jobId: objectId,
+    mode: Joi.string().valid("replace", "append").default("replace"),
+  }),
 }), marketingCampaignController.syncAssetOrdersFromBulkImport as never);
 marketingCampaignRouter.post("/:id/asset-orders", validateRequest({
   params: Joi.object({ id: objectId }),
@@ -394,6 +421,7 @@ marketingCampaignRouter.post("/:id/sheet/revisions/:revisionId/revert", validate
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
 marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
+marketingCampaignRouter.post("/:id/tiktok/batch-approve", validateRequest(tiktokBatchApproveSchema), marketingCampaignController.approveTikTokSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/approve", validateRequest(slotPublishSchema), marketingCampaignController.approveSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/publish-now", validateRequest(slotPublishSchema), marketingCampaignController.publishNowSlot as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/reject", marketingCampaignController.rejectSlot as never);

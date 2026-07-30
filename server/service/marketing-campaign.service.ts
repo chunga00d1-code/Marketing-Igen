@@ -65,6 +65,7 @@ const ACTIVE_SLOT_STATUSES: MarketingCampaignSlotStatus[] = [
   "retrying",
   "needs_attention",
 ];
+const TIKTOK_MONTHLY_EXTERNAL_REVIEWER = "External Reviewer (Monthly · TikTok content)";
 
 type TikTokCampaignPublishOptions = {
   caption: string;
@@ -79,6 +80,8 @@ type TikTokCampaignPublishOptions = {
   videoDurationSeconds: number;
   consentAccepted: boolean;
 };
+
+type TikTokBatchPublishOptions = Omit<TikTokCampaignPublishOptions, "caption" | "videoDurationSeconds">;
 
 function validateTikTokCampaignPublishOptions(options?: TikTokCampaignPublishOptions) {
   if (typeof options?.caption !== "string" || options.caption.length > 2200) {
@@ -680,6 +683,72 @@ export const marketingCampaignService = {
 
     await slot.save();
     return slot;
+  },
+
+  async approveTikTokSlots(
+    companyCode: string,
+    campaignId: string,
+    slotIds: string[],
+    approvedBy: string,
+    tiktokPublishOptions: TikTokBatchPublishOptions,
+    videoDurations: Record<string, number>,
+  ) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId) || slotIds.some((slotId) => !mongoose.Types.ObjectId.isValid(slotId))) {
+      throw new Error("ID chiến dịch hoặc slot không hợp lệ.");
+    }
+    const uniqueSlotIds = [...new Set(slotIds)];
+    if (uniqueSlotIds.length === 0 || uniqueSlotIds.length > 100) {
+      throw new Error("Chỉ có thể duyệt từ 1 đến 100 video TikTok mỗi lần.");
+    }
+    const slots = await MarketingCampaignSlotModel.find({
+      _id: { $in: uniqueSlotIds },
+      campaignId,
+      companyCode,
+      platform: "TikTok",
+    });
+    if (slots.length !== uniqueSlotIds.length) {
+      throw new Error("Một hoặc nhiều slot TikTok không tồn tại hoặc không thuộc chiến dịch này.");
+    }
+    const allowedStatuses = ["pending_approval", "needs_attention", "failed"];
+    const unavailableSlot = slots.find((slot) => !allowedStatuses.includes(slot.status));
+    if (unavailableSlot) {
+      throw new Error(`Slot ${unavailableSlot._id} không thể được duyệt ở trạng thái này: ${unavailableSlot.status}`);
+    }
+
+    const contentIds = slots.flatMap((slot) => slot.marketingContentId ? [slot.marketingContentId] : []);
+    const contents = await MarketingContentModel.find({
+      _id: { $in: contentIds },
+      companyCode,
+    }).select("_id bodyText");
+    const contentById = new Map(contents.map((content) => [String(content._id), content]));
+    const optionsBySlot = slots.map((slot) => {
+      const content = slot.marketingContentId ? contentById.get(String(slot.marketingContentId)) : undefined;
+      if (!content) throw new Error(`Slot ${slot._id} chưa có nội dung TikTok để duyệt.`);
+      const options: TikTokCampaignPublishOptions = {
+        ...tiktokPublishOptions,
+        caption: String(slot.customBodyText || content.bodyText || "").trim(),
+        videoDurationSeconds: Number(videoDurations[String(slot._id)]),
+      };
+      validateTikTokCampaignPublishOptions(options);
+      return { slot, options };
+    });
+
+    const approvedAt = new Date();
+    await Promise.all(optionsBySlot.map(async ({ slot, options }) => {
+      const previousStatus = slot.status;
+      slot.tiktokPublishOptions = options;
+      slot.status = "ready_to_publish";
+      slot.approvedBy = approvedBy;
+      slot.approvedAt = approvedAt;
+      slot.transitions.push({
+        from: previousStatus,
+        to: "ready_to_publish",
+        reason: `Batch approved manually by ${approvedBy}`,
+        at: approvedAt,
+      });
+      await slot.save();
+    }));
+    return { approvedCount: optionsBySlot.length };
   },
 
   async publishNowSlot(companyCode: string, campaignId: string, slotId: string, approvedBy: string, tiktokPublishOptions?: TikTokCampaignPublishOptions) {
@@ -1339,13 +1408,26 @@ export const marketingCampaignService = {
         companyCode: decoded.companyCode,
       });
       if (!slot) throw new Error("Không tìm thấy slot chiến dịch.");
-      assertTikTokPublicApprovalDisabled(slot.platform);
-
       if (slot.status !== "pending_approval") {
         throw new Error(`Bài đăng này đã được xử lý (Trạng thái hiện tại: ${slot.status}).`);
       }
 
       if (action === "approve") {
+        if (slot.platform === "TikTok") {
+          if (slot.approvedBy === TIKTOK_MONTHLY_EXTERNAL_REVIEWER) {
+            throw new Error("Nội dung TikTok này đã được duyệt, đang chờ chủ tài khoản xác nhận đăng.");
+          }
+          slot.approvedBy = TIKTOK_MONTHLY_EXTERNAL_REVIEWER;
+          slot.approvedAt = new Date();
+          slot.transitions.push({
+            from: "pending_approval",
+            to: "pending_approval",
+            reason: "TikTok content approved by external reviewer via monthly link; awaiting creator privacy and consent confirmation.",
+            at: new Date(),
+          });
+          await slot.save();
+          return { slot, reviewState: "awaiting_tiktok_creator_confirmation" };
+        }
         slot.status = "ready_to_publish";
         slot.approvedBy = "External Reviewer (Monthly)";
         slot.approvedAt = new Date();
@@ -1376,7 +1458,7 @@ export const marketingCampaignService = {
       }
 
       await slot.save();
-      return slot;
+      return { slot, reviewState: action === "approve" ? "approved" : "rejected" };
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Thao tác phê duyệt thất bại.");
     }
@@ -1411,16 +1493,29 @@ export const marketingCampaignService = {
       let skipped = 0;
 
       for (const slot of slots) {
-        if (slot.platform === "TikTok") {
-          skipped++;
-          continue;
-        }
         if (slot.status !== "pending_approval") {
           skipped++;
           continue;
         }
 
         if (action === "approve") {
+          if (slot.platform === "TikTok") {
+            if (slot.approvedBy === TIKTOK_MONTHLY_EXTERNAL_REVIEWER) {
+              skipped++;
+              continue;
+            }
+            slot.approvedBy = TIKTOK_MONTHLY_EXTERNAL_REVIEWER;
+            slot.approvedAt = new Date();
+            slot.transitions.push({
+              from: "pending_approval",
+              to: "pending_approval",
+              reason: "TikTok content approved by external reviewer via monthly bulk action; awaiting creator privacy and consent confirmation.",
+              at: new Date(),
+            });
+            await slot.save();
+            processed++;
+            continue;
+          }
           slot.status = "ready_to_publish";
           slot.approvedBy = "External Reviewer (Monthly Bulk)";
           slot.approvedAt = new Date();

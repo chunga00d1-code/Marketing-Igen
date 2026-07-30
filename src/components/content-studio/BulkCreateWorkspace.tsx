@@ -370,7 +370,6 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loadingCampaignOrders, setLoadingCampaignOrders] = useState(false);
   const [campaignOrderImportId, setCampaignOrderImportId] = useState('');
-  const syncedOrderBulkJobsRef = useRef(new Set<string>());
   const [templateName, setTemplateName] = useState('Thiết kế chưa đặt tên');
   const [savedTemplateId, setSavedTemplateId] = useState('');
   const savedTemplateIdRef = useRef('');
@@ -614,26 +613,18 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         syncPageResults(items, activeJobPageIds);
         setJobs((current) => [job, ...current.filter((item) => item._id !== job._id)]);
         if (!['queued', 'processing'].includes(job.status)) {
-          if (
-            campaignOrderImportId &&
-            ['completed', 'partial'].includes(job.status) &&
-            !syncedOrderBulkJobsRef.current.has(job._id)
-          ) {
-            syncedOrderBulkJobsRef.current.add(job._id);
-            void marketingCampaignService.syncAssetOrdersFromBulkImport(campaignOrderImportId, job._id)
-              .then((result) => {
-                if (result.updatedCount) toast.info(`Đã gắn ${result.updatedCount} ảnh Bulk Create về Order nguồn.`);
-              })
-              .catch((error) => {
-                toast.warning(error instanceof Error ? error.message : 'Chưa thể đồng bộ ảnh Bulk Create về Order.');
-              });
-          }
           if (job.status === 'completed') {
             toast.success(`Đã tạo xong ${job.completedItems} ảnh.`);
+            if (campaignOrderImportId) {
+              toast.info('Mở Campaign, chọn Bulk Create để xem trước và gắn ảnh vào bài viết.');
+            }
           } else if (job.status === 'partial') {
             toast.error(
               `Đã tạo ${job.completedItems} ảnh, ${job.failedItems} ảnh bị lỗi.`
             );
+            if (campaignOrderImportId) {
+              toast.info('Mở Campaign, chọn Bulk Create để xem trước các ảnh đã tạo và gắn vào bài viết.');
+            }
           } else if (job.status === 'failed') {
             toast.error(job.errorMessage || 'Không thể tạo ảnh.');
           }
@@ -1259,6 +1250,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       ...createRow(layers, row.values),
       name: row.name ? `${row.name} - bản sao` : undefined,
       sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
+      campaignAssetOrderId: row.campaignAssetOrderId,
+      campaignSlotId: row.campaignSlotId,
     };
     setRows((current) => [...current, duplicated]);
     setActiveRowId(duplicated.id);
@@ -1297,6 +1290,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       ...createRow(layers, source.values),
       name,
       sourceCells: source.sourceCells ? { ...source.sourceCells } : undefined,
+      campaignAssetOrderId: source.campaignAssetOrderId,
+      campaignSlotId: source.campaignSlotId,
       selected: true,
     };
     setRows((current) => {
