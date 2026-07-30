@@ -304,7 +304,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
           <div>
                 <h3 className="text-sm font-extrabold text-slate-800">Bảng brief sản xuất ảnh, video theo bài viết</h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-              Mỗi bài viết có một dòng Order. AI tự chọn Ảnh hoặc Video và điền thẳng nội dung; cột Phục vụ hiện cố định cho Facebook.
+              Mỗi bài viết có một dòng yêu cầu. AI tự chọn Ảnh hoặc Video và điền nội dung bằng tiếng Việt dễ hiểu.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -574,8 +574,8 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h4 className="text-sm font-extrabold text-slate-700">Nguồn ảnh, video & Bulk Create</h4>
-            <p className="mt-1 text-xs text-slate-500">Mở phần chi tiết để gắn asset nguồn; Bulk Create có thể nhập toàn bộ Order ảnh từ chiến dịch.</p>
+            <h4 className="text-sm font-extrabold text-slate-700">Nguồn ảnh, video & tạo hàng loạt</h4>
+            <p className="mt-1 text-xs text-slate-500">Mở phần chi tiết để gắn file nguồn; công cụ tạo hàng loạt có thể nhập toàn bộ yêu cầu media của chiến dịch.</p>
           </div>
           <button
             type="button"
