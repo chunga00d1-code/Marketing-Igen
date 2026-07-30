@@ -101,11 +101,16 @@ export function initCampaignWorkers() {
 
           try {
             await CampaignOrchestratorService.orchestratePrepare(slotId, lockId);
-            console.log(`[Campaign Worker] Hoàn thành prepare cho slot: ${slotId}`);
 
             // Auto-chaining next phase
             const updatedSlot = await MarketingCampaignSlotModel.findById(slotId);
             if (updatedSlot) {
+              if (updatedSlot.status === "retrying" || updatedSlot.status === "needs_attention") {
+                console.warn(
+                  `[Campaign Worker] Prepare slot ${slotId} kết thúc với trạng thái ${updatedSlot.status}; không đánh dấu pipeline thành công.`
+                );
+                return { status: updatedSlot.status };
+              }
               if (updatedSlot.status === "generating_media") {
                 await campaignQueueService.addMediaJob(slotId);
               } else if (updatedSlot.status === "verifying") {
@@ -113,6 +118,7 @@ export function initCampaignWorkers() {
               }
             }
 
+            console.log(`[Campaign Worker] Hoàn thành prepare cho slot: ${slotId}`);
             return { status: "success" };
           } catch (err: unknown) {
             console.error(`[Campaign Worker] Lỗi prepare slot ${slotId}:`, err);

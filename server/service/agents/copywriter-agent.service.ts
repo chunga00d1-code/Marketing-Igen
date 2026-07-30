@@ -4,6 +4,53 @@ import { MarketingCandidateModel } from "../../model/marketing-candidate.model";
 import { openrouterChat } from "../openrouter.service";
 import { contentHash, loadAgentSkill } from "./campaign-utils";
 
+type CopywriterDraft = {
+  title: string;
+  outline: string;
+  bodyText: string;
+  mediaPrompt: string;
+  voiceScript?: string;
+};
+
+function parseCopywriterDraft(responseText: string): CopywriterDraft {
+  let cleaned = responseText.trim();
+  const markdownMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (markdownMatch) cleaned = markdownMatch[1].trim();
+
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    parsed = JSON.parse(cleaned.replace(/,\s*([\]}])/g, "$1"));
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI không trả về đối tượng JSON hợp lệ.");
+  }
+
+  const draft = parsed as Record<string, unknown>;
+  const requiredFields = ["title", "outline", "bodyText", "mediaPrompt"] as const;
+  for (const field of requiredFields) {
+    if (typeof draft[field] !== "string" || !draft[field].trim()) {
+      throw new Error(`AI trả về thiếu trường nội dung bắt buộc: ${field}.`);
+    }
+  }
+
+  return {
+    title: String(draft.title).trim(),
+    outline: String(draft.outline).trim(),
+    bodyText: String(draft.bodyText).trim(),
+    mediaPrompt: String(draft.mediaPrompt).trim(),
+    voiceScript: typeof draft.voiceScript === "string" ? draft.voiceScript.trim() : "",
+  };
+}
+
 export class CopywriterAgentService {
   public static async write(
     slot: IMarketingCampaignSlot,
@@ -95,19 +142,39 @@ ${researchContext}
 
     const model = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
 
-    console.log(`[CopywriterAgent] Writing content for slot ${slot._id} using model ${model}...`);
-    const result = await openrouterChat({
-      model,
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      jsonMode: true,
-      responseSchema,
-    });
+    const generateDraft = async (prompt: string, temperature: number): Promise<CopywriterDraft> => {
+      let lastError: unknown;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const repairInstruction = attempt === 0
+          ? ""
+          : "\n\nPhản hồi trước sai cú pháp JSON. Hãy trả về đúng MỘT đối tượng JSON hợp lệ, không markdown, không giải thích và không xuống dòng bên trong chuỗi nếu chưa escape.";
+        const result = await openrouterChat({
+          model,
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: `${prompt}${repairInstruction}` },
+          ],
+          temperature: attempt === 0 ? temperature : 0.2,
+          jsonMode: true,
+          responseSchema,
+        });
+        try {
+          return parseCopywriterDraft(result.text);
+        } catch (error) {
+          lastError = error;
+          console.warn(
+            `[CopywriterAgent] Invalid structured response for slot ${slot._id}; retry ${attempt + 1}/2:`,
+            error instanceof Error ? error.message : error
+          );
+        }
+      }
+      throw new Error(
+        `AI trả về JSON sai định dạng sau 2 lần thử: ${lastError instanceof Error ? lastError.message : String(lastError)}`
+      );
+    };
 
-    const data = JSON.parse(result.text);
+    console.log(`[CopywriterAgent] Writing content for slot ${slot._id} using model ${model}...`);
+    const data = await generateDraft(userPrompt, 0.7);
     if (slot.platform === "TikTok" && (!data.bodyText?.trim() || data.bodyText.length > 2200)) {
       throw new Error("TikTok caption must be non-empty and no longer than 2,200 characters.");
     }
@@ -123,17 +190,7 @@ ${researchContext}
       console.warn(`[CopywriterAgent] Duplicate content detected for hash: ${hash}. Regenerating unique content...`);
       // Append warning for uniqueness
       const uniquePrompt = `${userPrompt}\n\nWARNING: The previous attempt generated a duplicate. You MUST write a completely different angle and hook. Do not reuse similar phrases.`;
-      const retryResult = await openrouterChat({
-        model,
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: uniquePrompt },
-        ],
-        temperature: 0.85, // increase temp for more novelty
-        jsonMode: true,
-        responseSchema,
-      });
-      const retryData = JSON.parse(retryResult.text);
+      const retryData = await generateDraft(uniquePrompt, 0.85);
       if (slot.platform === "TikTok" && (!retryData.bodyText?.trim() || retryData.bodyText.length > 2200)) {
         throw new Error("TikTok caption must be non-empty and no longer than 2,200 characters.");
       }
