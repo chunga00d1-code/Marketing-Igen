@@ -248,6 +248,8 @@ function buildRankedContextItems(params: {
       looseMatchScore,
       title: doc?.sourceTitle || "Tai lieu noi bo",
       sourceUrl: doc?.sourceUrl || "",
+      pageScope: doc?.pageScope || "all",
+      pageIds: Array.isArray(doc?.pageIds) ? doc.pageIds.map(String) : [],
     };
   });
 }
@@ -680,6 +682,8 @@ export const aiKnowledgeService = {
         sourceUrl: item.sourceUrl,
         text: item.text,
         score: item.score,
+        pageScope: item.pageScope,
+        pageIds: item.pageIds,
       })),
       bestScore,
       productCandidateNames,

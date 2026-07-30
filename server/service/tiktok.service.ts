@@ -254,8 +254,8 @@ async function savePublishTracking(
 }
 
 async function refreshCompanyTikTokToken(integrationId: string, integration: any): Promise<string> {
-  const clientKey = getTikTokClientKey() || integration.verifyToken || "";
-  const clientSecret = getTikTokClientSecret() || integration.appSecret || "";
+  const clientKey = integration.verifyToken || getTikTokClientKey() || "";
+  const clientSecret = integration.appSecret || getTikTokClientSecret() || "";
   const refreshToken = integration.refreshToken;
 
   if (!refreshToken) {
@@ -592,8 +592,8 @@ async function resolveOAuthClientCredentials(params: {
   integrationId?: string;
 }) {
   if (params.target === "company") {
-    let clientKey = getTikTokClientKey();
-    let clientSecret = getTikTokClientSecret();
+    let clientKey = "";
+    let clientSecret = "";
 
     if (params.integrationId) {
       const integration = await SocialIntegrationModel.findById(params.integrationId).lean();
@@ -601,10 +601,13 @@ async function resolveOAuthClientCredentials(params: {
         if (integration.companyCode !== params.companyCode) {
           throw new Error("Ban khong co quyen ket noi kenh TikTok cua doanh nghiep khac.");
         }
-        if (!clientKey) clientKey = String(integration.verifyToken || "").trim();
-        if (!clientSecret) clientSecret = String(integration.appSecret || "").trim();
+        clientKey = String(integration.verifyToken || "").trim();
+        clientSecret = String(integration.appSecret || "").trim();
       }
     }
+
+    if (!clientKey) clientKey = getTikTokClientKey();
+    if (!clientSecret) clientSecret = getTikTokClientSecret();
 
     return { clientKey, clientSecret };
   }

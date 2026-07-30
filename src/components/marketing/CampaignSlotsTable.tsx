@@ -733,17 +733,27 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                       </td>
                       <td className="px-4 py-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
-                          if (slot.status === 'published' && slot.publishedPostUrl) {
+                          if (slot.status === 'published') {
+                            if (slot.publishedPostUrl) {
+                              return (
+                                <a
+                                  href={slot.publishedPostUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-850 transition cursor-pointer"
+                                >
+                                  Xem bài viết
+                                  <ExternalLink size={10} />
+                                </a>
+                              );
+                            }
                             return (
-                              <a
-                                href={slot.publishedPostUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-850 transition cursor-pointer"
+                              <span
+                                className="text-[10px] text-emerald-600 font-semibold select-none"
+                                title="Bài đã đăng thành công nhưng nền tảng chưa cung cấp liên kết công khai"
                               >
-                                Xem bài viết
-                                <ExternalLink size={10} />
-                              </a>
+                                Đã hoàn tất
+                              </span>
                             );
                           }
                           if (slot.status === 'failed') {
