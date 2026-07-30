@@ -53,7 +53,15 @@ export interface OpenRouterChatParams {
  * Chat completions � text và/hoặc vision (base64 images).
  */
 export async function openrouterChat(params: OpenRouterChatParams): Promise<{ text: string }> {
-  const { model, temperature = 0.7, jsonMode, responseSchema, maxRetries = 4, maxTokens, timeoutMs } = params;
+  const {
+    model,
+    temperature = 0.7,
+    jsonMode,
+    responseSchema,
+    maxRetries = 4,
+    maxTokens,
+    timeoutMs = 45_000,
+  } = params;
   const apiKey = getApiKey();
 
   if (!apiKey) {

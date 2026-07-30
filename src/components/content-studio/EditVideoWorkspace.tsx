@@ -9,9 +9,8 @@ import { VideoEditScriptPanel } from './VideoEditScriptPanel';
 import { socketService } from '../../services/socketService';
 
 const MODEL_OPTIONS = [
-  { value: 'piapi-veo31-video-fast-audio', label: 'iGen video 3.1 Fast' },
-  { value: 'piapi-veo31-video-audio', label: 'iGen video 3.1' },
-  { value: 'piapi-veo31-video-fast-no-audio', label: 'iGen video 3.1 Fast Silent' },
+  { value: 'google/veo-3.1-fast', label: 'Veo 3.1 Fast · OpenRouter' },
+  { value: 'bytedance/seedance-2.0', label: 'Seedance 2.0 · OpenRouter' },
 ];
 
 type RenderEngine = 'remotion' | 'hyperframe' | 'hermes' | 'professional';

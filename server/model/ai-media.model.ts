@@ -27,6 +27,7 @@ const AIMediaSchema = new Schema<IAIMedia>({
     subtitleUrl: { type: String },
     thumbnailUrl: { type: String },
     piapiTaskId: { type: String },
+    openrouterVideoJobId: { type: String },
     activeCardId: { type: String },
     progress: { type: Number },
     error: { type: String },

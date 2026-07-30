@@ -115,8 +115,10 @@ function sanitizeCrudResult(modelName: string, item: any) {
 }
 
 async function handlePendingVideoUrl(item: any, modelName: string) {
-  if (modelName === "marketing-contents" && item && item.videoUrl && item.videoUrl.startsWith("pending://piapi/")) {
-    const taskId = item.videoUrl.replace("pending://piapi/", "");
+  const pendingPiapi = item?.videoUrl?.startsWith("pending://piapi/");
+  const pendingOpenRouter = item?.videoUrl?.startsWith("pending://openrouter/");
+  if (modelName === "marketing-contents" && item && item.videoUrl && (pendingPiapi || pendingOpenRouter)) {
+    const taskId = item.videoUrl.replace(/^pending:\/\/(?:piapi|openrouter)\//, "");
     try {
       const { AIMediaModel } = require("../model/ai-media.model");
       const { geminiService } = require("./gemini.service");
@@ -131,15 +133,24 @@ async function handlePendingVideoUrl(item: any, modelName: string) {
           metadata: {
             status: "processing",
             progress: 10,
-            provider: "piapi",
+            provider: pendingOpenRouter ? "openrouter" : "piapi",
+            ...(pendingOpenRouter
+              ? { openrouterVideoJobId: taskId }
+              : { piapiTaskId: taskId }),
             title: `Video Auto-pilot: ${item.title}`,
-            description: `Äang káº¿t xuáº¥t video tá»± Ä‘á»™ng báº±ng PiAPI.`,
+            description: pendingOpenRouter
+              ? "Đang kết xuất video tự động bằng OpenRouter."
+              : "Đang kết xuất video tự động bằng PiAPI.",
             aspectRatio: "16:9",
             activeCardId: item._id.toString(),
           },
         });
 
-        geminiService.pollPiAPIVideoStatusBackground(record._id.toString(), taskId, item.authorUid);
+        if (pendingOpenRouter) {
+          geminiService.pollOpenRouterVideoStatusBackground(record._id.toString(), taskId, item.authorUid);
+        } else {
+          geminiService.pollPiAPIVideoStatusBackground(record._id.toString(), taskId, item.authorUid);
+        }
       }
     } catch (err) {
       console.error("[crudService] Failed to register pending video poll:", err);

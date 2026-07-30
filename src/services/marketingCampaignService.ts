@@ -452,14 +452,22 @@ export interface MarketingCampaignCalendarSlot {
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getAccessToken()}`,
-      ...options?.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAccessToken()}`,
+        ...options?.headers,
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('AI xử lý quá lâu. Hãy kiểm tra lại trạng thái campaign trước khi thử lại.');
+    }
+    throw error;
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.message || 'Không thể xử lý chiến dịch.');
   return result.data as T;
@@ -508,6 +516,7 @@ export const marketingCampaignService = {
     }>('/api/v1/marketing-campaigns', {
       method: 'POST',
       body: JSON.stringify(input),
+      signal: AbortSignal.timeout(240_000),
     });
   },
 
