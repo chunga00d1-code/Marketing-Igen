@@ -5,6 +5,7 @@ import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
 import { socketService } from '../../services/socketService';
 import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
+import CampaignDriveImportPanel from './CampaignDriveImportPanel';
 
 const DETAIL_LIST_ITEMS_PER_PAGE = 8;
 
@@ -325,7 +326,7 @@ export default function CampaignDetailModal({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-extrabold text-slate-850 truncate">
-                  {loadingDetail ? 'Đang tải...' : campaignDetail?.campaign?.title || 'Chi tiết chiến dịch'}
+                  {loadingDetail ? 'AI đang tổng hợp chiến dịch...' : campaignDetail?.campaign?.title || 'Chi tiết chiến dịch'}
                 </h3>
                 {campaignDetail?.campaign?.companyCode && (
                   <span className="rounded bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 font-mono shrink-0">
@@ -408,7 +409,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              <FolderOpen size={14} /> Order media · Nhập Drive
+              <FolderOpen size={14} /> Order media
             </button>
           </div>
         )}
@@ -418,7 +419,7 @@ export default function CampaignDetailModal({
           {loadingDetail ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-              <span className="text-xs text-slate-500 font-semibold font-mono">ĐANG TẢI CHI TIẾT CHIẾN DỊCH...</span>
+              <span className="text-xs text-slate-500 font-semibold font-mono">AI ĐANG TỔNG HỢP CHI TIẾT CHIẾN DỊCH...</span>
             </div>
           ) : campaignDetail ? (
             <>
@@ -826,6 +827,13 @@ export default function CampaignDetailModal({
                 <div className="flex flex-col gap-6 lg:flex-row">
                     {/* Left Column: Slots Table */}
                     <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
+                      <CampaignDriveImportPanel
+                        campaignId={campaignDetail.campaign._id}
+                        mediaKind={campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
+                        awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
+                        onApplied={onRefresh}
+                      />
+
                       {/* Real-time Activity Banner */}
                       {campaignDetail.campaign.status === 'active' && (
                         <div className="rounded-xl border border-indigo-100 bg-indigo-50/25 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 select-none">

@@ -64,7 +64,7 @@ export default function CampaignPromptBox({
               <p className="text-[11px] font-semibold text-gray-700 truncate leading-tight">{uploadedDocName}</p>
               <p className="text-[9px] text-gray-400 font-mono leading-tight">
                 {loadingDoc
-                  ? "Đang xử lý..."
+                  ? "Đang đọc để AI hiểu brief..."
                   : uploadedImageBase64
                   ? "Hình ảnh"
                   : "Tài liệu"}
@@ -86,7 +86,7 @@ export default function CampaignPromptBox({
       {loadingDoc && (
         <div className="flex items-center gap-1.5 px-3.5 pb-1.5 text-indigo-600 text-[10px] font-bold font-mono select-none">
           <Loader2 className="h-3 w-3 animate-spin text-indigo-600" />
-          <span>Đang xử lý dữ liệu...</span>
+          <span>Đang đọc tài liệu để AI phân tích...</span>
         </div>
       )}
 
