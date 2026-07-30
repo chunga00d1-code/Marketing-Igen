@@ -319,7 +319,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
   const [imageAspectRatio, setImageAspectRatio] = useState("1:1");
 
   // Video Options
-  const [videoModel, setVideoModel] = useState("piapi-veo31-video-fast-audio");
+  const [videoModel, setVideoModel] = useState("google/veo-3.1-fast");
   const [videoQuality, setVideoQuality] = useState("720p");
   const [videoDuration, setVideoDuration] = useState("8");
   const [videoAspectRatio, setVideoAspectRatio] = useState("16:9");
@@ -687,7 +687,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     while (attempts < maxAttempts) {
-      if (!currentCard.videoUrl || !currentCard.videoUrl.startsWith("pending://piapi/")) {
+      if (!currentCard.videoUrl || !currentCard.videoUrl.startsWith("pending://")) {
         return currentCard;
       }
       await delay(10000);
@@ -700,7 +700,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
       attempts++;
     }
 
-    if (currentCard.videoUrl && currentCard.videoUrl.startsWith("pending://piapi/")) {
+    if (currentCard.videoUrl && currentCard.videoUrl.startsWith("pending://")) {
       throw new Error("Hết thời gian chờ kết xuất video AI.");
     }
     return currentCard;
@@ -738,7 +738,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
             quality: videoQuality === "1080p" ? "1080p" : "720p",
           });
         }
-        else if (card.videoUrl && card.videoUrl.startsWith("pending://piapi/")) {
+        else if (card.videoUrl && card.videoUrl.startsWith("pending://")) {
           updatedCard = await pollStandardVideoBackground(card);
         }
 
@@ -1823,7 +1823,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                     Thời lượng video (giây):
                   </span>
                   <div className="flex flex-wrap gap-2 items-center">
-                    {(mediaType === "video" ? ["8", "16", "24", "32"] : ["4", "6", "8"]).map((dur) => {
+                    {["4", "6", "8"].map((dur) => {
                       const isSelected =
                         mediaType === "video"
                           ? (videoDuration === dur)
@@ -1853,57 +1853,21 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                       );
                     })}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (mediaType === "video") {
-                          if (["8", "16", "24", "32"].includes(videoDuration)) {
-                            setVideoDuration("40"); // Default custom value for Video AI
-                          }
-                        } else {
+                    {mediaType === "human-video" && (
+                      <button
+                        type="button"
+                        onClick={() => {
                           if (["4", "6", "8"].includes(estimatedHumanVoiceDuration)) {
                             setEstimatedHumanVoiceDuration(String(DEFAULT_HUMAN_VOICE_DURATION_SECONDS)); // Default custom value for Human Video
                           }
-                        }
-                      }}
-                      className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${(mediaType === "video" ? !["8", "16", "24", "32"].includes(videoDuration) : !["4", "6", "8"].includes(estimatedHumanVoiceDuration))
-                        ? "border-indigo-500 bg-indigo-50 text-indigo-755 shadow-2xs ring-2 ring-indigo-500/10 font-extrabold"
-                        : "border-slate-200 bg-white text-gray-500 hover:bg-slate-50 hover:border-slate-350"
-                        }`}
-                    >
-                      Khác
-                    </button>
-
-                    {mediaType === "video" && !["8", "16", "24", "32"].includes(videoDuration) && (
-                      <div className="flex items-center gap-1.5 ml-2">
-                        <input
-                          type="number"
-                          min="0"
-                          step="8"
-                          value={videoDuration}
-                          onChange={(e) => {
-                            let val = e.target.value.replace(/[^0-9]/g, "");
-                            if (!val) {
-                              setVideoDuration("");
-                              return;
-                            }
-                            let num = parseInt(val, 10);
-                            if (num < 1) {
-                              num = 1;
-                            }
-                            setVideoDuration(String(num));
-                          }}
-                          onBlur={(e) => {
-                            let num = parseInt(videoDuration, 10);
-                            if (isNaN(num) || num < 1) {
-                              setVideoDuration("8");
-                            }
-                          }}
-                          placeholder="Thời lượng"
-                          className="w-24 text-xs p-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 text-center font-bold"
-                        />
-                        <span className="text-xs text-gray-500 font-bold">giây </span>
-                      </div>
+                        }}
+                        className={`px-4 py-2 text-xs font-bold rounded-xl border transition-all cursor-pointer ${!["4", "6", "8"].includes(estimatedHumanVoiceDuration)
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-755 shadow-2xs ring-2 ring-indigo-500/10 font-extrabold"
+                          : "border-slate-200 bg-white text-gray-500 hover:bg-slate-50 hover:border-slate-350"
+                          }`}
+                      >
+                        Khác
+                      </button>
                     )}
 
                     {mediaType === "human-video" && !["4", "6", "8"].includes(estimatedHumanVoiceDuration) && (
@@ -2008,9 +1972,8 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                         onChange={(e) => setVideoModel(e.target.value)}
                         className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans"
                       >
-                        <option value="piapi-veo31-video-fast-audio">iGen video 3.1 Fast</option>
-                        <option value="piapi-veo31-video-audio">iGen video 3.1</option>
-                        <option value="piapi-veo31-video-fast-no-audio">iGen video 3.1 Fast Silent</option>
+                        <option value="google/veo-3.1-fast">Veo 3.1 Fast · OpenRouter</option>
+                        <option value="bytedance/seedance-2.0">Seedance 2.0 · OpenRouter</option>
                       </select>
                     </div>
 

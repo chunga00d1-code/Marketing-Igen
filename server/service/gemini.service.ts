@@ -7,6 +7,7 @@ import { loadAgentSkill } from "./agents/campaign-utils";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 import { piapiService } from "./piapi.service";
+import { openrouterVideoService } from "./openrouter-video.service";
 import { videoBlueprintService } from "./video-blueprint.service";
 import { hermesService } from "./hermes.service";
 import { elevenlabsService } from "./elevenlabs.service";
@@ -23,7 +24,6 @@ import * as os from "os";
 
 const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
-const GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || "veo31-video-fast-audio";
 
 // Äá»‹nh nghÄ©a Type tÆ°Æ¡ng thÃ­ch Ä‘á»ƒ cÃ¡c schema hiá»‡n táº¡i khÃ´ng cáº§n sá»­a
 const Type = {
@@ -128,46 +128,6 @@ async function getVideoDuration(url: string): Promise<number> {
       resolve(5); // default fallback
     });
   });
-}
-
-function normalizePiapiVideoModel(modelName?: string): string {
-  const rawModel = (modelName || GEMINI_VIDEO_MODEL || "").trim();
-  const normalizedModel = rawModel.toLowerCase();
-
-  if (
-    normalizedModel === "veo-3.1-generate-preview" ||
-    normalizedModel === "veo31-video-audio" ||
-    normalizedModel === "piapi-veo31-video-audio" ||
-    normalizedModel === "veo"
-  ) {
-    return "veo31-video-audio";
-  }
-
-  if (
-    normalizedModel === "veo-3.1-fast-generate-preview" ||
-    normalizedModel === "veo31-video-fast-audio" ||
-    normalizedModel === "piapi-veo31-video-fast-audio"
-  ) {
-    return "veo31-video-fast-audio";
-  }
-
-  if (
-    normalizedModel === "veo-3.1-lite-generate-preview" ||
-    normalizedModel === "veo31-video-fast-no-audio" ||
-    normalizedModel === "piapi-veo31-video-fast-no-audio"
-  ) {
-    return "veo31-video-fast-no-audio";
-  }
-
-  if (normalizedModel.includes("veo-3.1") || normalizedModel.includes("veo31") || normalizedModel.startsWith("veo3")) {
-    return "veo31-video-audio";
-  }
-
-  if (normalizedModel.startsWith("piapi-")) {
-    return rawModel;
-  }
-
-  return "veo31-video-fast-audio";
 }
 
 function extractSourceBrief(rawText: string): {
@@ -473,6 +433,8 @@ async function generateText(
     responseMimeType?: string;
     responseSchema?: any;
     images?: string[];
+    maxRetries?: number;
+    timeoutMs?: number;
   }
 ): Promise<{ text: string }> {
   let modelId = model || GEMINI_TEXT_MODEL;
@@ -490,6 +452,8 @@ async function generateText(
       temperature: config?.temperature ?? 0.7,
       jsonMode: needsJson,
       responseSchema: config?.responseSchema,
+      maxRetries: config?.maxRetries,
+      timeoutMs: config?.timeoutMs,
     });
 
     if (needsJson) {
@@ -508,6 +472,8 @@ async function generateText(
         temperature: config?.temperature ?? 0.7,
         jsonMode: needsJson,
         responseSchema: config?.responseSchema,
+        maxRetries: config?.maxRetries,
+        timeoutMs: config?.timeoutMs,
       });
 
       if (needsJson) {
@@ -544,6 +510,8 @@ Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, 
       const response = await generateText("perplexity/sonar", prompt, {
         systemInstruction,
         temperature: 0.5,
+        maxRetries: 1,
+        timeoutMs: 25_000,
       });
 
       const researchText = response.text || "";
@@ -1605,6 +1573,8 @@ Trả về JSON đúng schema.`;
         required: ["campaignTitle", "contentPillars", "slots"],
       },
       images: input.images,
+      maxRetries: 1,
+      timeoutMs: 60_000,
     });
 
     const parsed = safeParseJson(response.text || "{}");
@@ -2056,7 +2026,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
             }
           } catch (err) {
             console.error(`[developMarketingIdea] Error generating video for post on ${post.channel}:`, err);
-            // Fallback to mock video in case of PiAPI credit/service failures
+            // Fallback video when the AI video provider is unavailable.
             post.videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
             console.log(`[developMarketingIdea] Fallback to mock video: ${post.videoUrl}`);
           }
@@ -2144,21 +2114,25 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
       // not JSON, use as is
     }
 
-    const modelToUse = normalizePiapiVideoModel(options?.modelName);
-
-    if (!process.env.PIAPI_API_KEY) {
-      throw new Error("ChÆ°a cáº¥u hÃ¬nh PIAPI_API_KEY. KhÃ´ng thá»ƒ sinh video.");
-    }
-
-    const { taskId } = await piapiService.createVideoTask(actualPrompt, modelToUse, durationSeconds, {
+    const { jobId } = await openrouterVideoService.createVideoTask(
+      actualPrompt,
+      options?.modelName,
+      durationSeconds,
+      {
       aspectRatio: options?.aspectRatio,
+      resolution: options?.resolution,
       referenceImageUris: options?.referenceImageUris,
+      frameMode: options?.frameMode,
     });
-    return { url: `pending://piapi/${taskId}`, isMock: false, taskId } as any;
+    return { url: `pending://openrouter/${jobId}`, isMock: false, jobId } as any;
   },
 
   async getPiapiTaskStatus(taskId: string): Promise<{ status: string; url?: string; progress?: number; error?: string }> {
     return piapiService.getTaskStatus(taskId);
+  },
+
+  async getOpenRouterVideoTaskStatus(jobId: string) {
+    return openrouterVideoService.getTaskStatus(jobId);
   },
 
   /**
@@ -2673,6 +2647,46 @@ CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdo
               } catch (err) {
                 console.error(`[getMediaHistory] Error refreshing pending task ${taskId}:`, err);
               }
+            } else if (record.url && record.url.startsWith("pending://openrouter/")) {
+              const jobId = record.url.replace("pending://openrouter/", "");
+              try {
+                const result = await openrouterVideoService.getTaskStatus(jobId);
+                if (result.status === "completed") {
+                  const videoBuffer = await openrouterVideoService.downloadVideo(jobId, result.unsignedUrl);
+                  const cloudinaryUrl = await cloudinaryService.uploadMediaBuffer(
+                    videoBuffer,
+                    "igen_erp/marketing/video",
+                    `openrouter_${jobId}`
+                  );
+                  await AIMediaModel.updateOne(
+                    { _id: record._id },
+                    { url: cloudinaryUrl, "metadata.status": "completed", "metadata.progress": 100 }
+                  );
+                  record.url = cloudinaryUrl;
+                  record.metadata = { ...record.metadata, status: "completed", progress: 100 };
+
+                  const activeCardId = record.metadata?.activeCardId;
+                  if (activeCardId) {
+                    const { MarketingContentModel } = require("../model/marketing-content.model");
+                    await MarketingContentModel.findByIdAndUpdate(activeCardId, { videoUrl: cloudinaryUrl });
+                  }
+                } else if (result.status === "failed") {
+                  await AIMediaModel.updateOne(
+                    { _id: record._id },
+                    { "metadata.status": "failed", "metadata.error": result.error || "Failed", "metadata.progress": 0 }
+                  );
+                  record.metadata = { ...record.metadata, status: "failed", error: result.error, progress: 0 };
+                } else {
+                  const currentProgress = result.progress !== undefined ? result.progress : 0;
+                  await AIMediaModel.updateOne(
+                    { _id: record._id },
+                    { "metadata.progress": currentProgress }
+                  );
+                  record.metadata = { ...record.metadata, progress: currentProgress };
+                }
+              } catch (err) {
+                console.error(`[getMediaHistory] Error refreshing OpenRouter video job ${jobId}:`, err);
+              }
             }
           })
         );
@@ -2764,6 +2778,83 @@ CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdo
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(runPoll, 10000);
+        }
+      }
+    };
+
+    setTimeout(runPoll, 10000);
+  },
+
+  /**
+   * Poll trạng thái video OpenRouter và lưu file hoàn chỉnh lên Cloudinary.
+   */
+  async pollOpenRouterVideoStatusBackground(recordId: string, jobId: string, userId: string) {
+    console.log(`[OpenRouter Video Poll] Started for record ${recordId}, job ${jobId}`);
+
+    let attempts = 0;
+    const maxAttempts = 60;
+
+    const runPoll = async () => {
+      try {
+        const result = await openrouterVideoService.getTaskStatus(jobId);
+        console.log(`[OpenRouter Video Poll] Record ${recordId} status: ${result.status}`);
+
+        if (result.status === "completed") {
+          const videoBuffer = await openrouterVideoService.downloadVideo(jobId, result.unsignedUrl);
+          const cloudinaryUrl = await cloudinaryService.uploadMediaBuffer(
+            videoBuffer,
+            "igen_erp/marketing/video",
+            `openrouter_${jobId}`
+          );
+          const record = await AIMediaModel.findByIdAndUpdate(
+            recordId,
+            { url: cloudinaryUrl, "metadata.status": "completed", "metadata.progress": 100 },
+            { new: true }
+          );
+
+          const activeCardId = record?.metadata?.activeCardId;
+          if (activeCardId) {
+            const { MarketingContentModel } = require("../model/marketing-content.model");
+            await MarketingContentModel.findByIdAndUpdate(activeCardId, { videoUrl: cloudinaryUrl });
+          }
+          return;
+        }
+
+        if (result.status === "failed") {
+          await AIMediaModel.findByIdAndUpdate(recordId, {
+            "metadata.status": "failed",
+            "metadata.error": result.error || "Lỗi tạo video từ OpenRouter",
+            "metadata.progress": 0,
+          });
+          return;
+        }
+
+        const currentProgress = typeof result.progress === "number" && result.progress > 0
+          ? result.progress
+          : Math.min(5 + attempts * 7, 95);
+        await AIMediaModel.findByIdAndUpdate(recordId, {
+          "metadata.progress": currentProgress,
+        });
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(runPoll, 10000);
+        } else {
+          await AIMediaModel.findByIdAndUpdate(recordId, {
+            "metadata.status": "timeout",
+            "metadata.error": "Quá thời gian chờ tạo video từ OpenRouter (10 phút)",
+          });
+        }
+      } catch (error) {
+        console.error(`[OpenRouter Video Poll] Error polling job ${jobId}:`, error);
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(runPoll, 10000);
+        } else {
+          await AIMediaModel.findByIdAndUpdate(recordId, {
+            "metadata.status": "timeout",
+            "metadata.error": "Không thể nhận kết quả video từ OpenRouter sau nhiều lần thử.",
+          });
         }
       }
     };
