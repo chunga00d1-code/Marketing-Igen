@@ -1535,6 +1535,7 @@ LỊCH BẮT BUỘC (giữ nguyên scheduledDate, scheduledTime và channel củ
 ${JSON.stringify(slots)}
 
 Yêu cầu:
+- Viết toàn bộ nội dung hướng tới người dùng bằng tiếng Việt tự nhiên, gồm campaignTitle, contentPillars, pillar, objective và topicBrief. Không dùng câu mô tả tiếng Anh, trừ tên riêng, tên sản phẩm hoặc thuật ngữ không có cách gọi tiếng Việt phù hợp.
 - Đề xuất 3-6 content pillars xuyên suốt chiến dịch.
 - Trả về đúng ${totalPosts} slot, theo đúng thứ tự lịch.
 - Giữ nguyên scheduledDate, scheduledTime và channel của mỗi slot.

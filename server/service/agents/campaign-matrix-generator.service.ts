@@ -37,6 +37,7 @@ Trả về JSON là mảng gồm 3 đến 5 Trụ cột (Pillars). Mỗi Pillar 
         + "BOFU" (Bottom of Funnel - Chốt đơn/Hành động): Bài test sản phẩm trước/sau, ưu đãi đại lý, chứng nhận chất lượng, báo giá.
 
 LƯU Ý QUAN TRỌNG:
+- Toàn bộ pillar, direction và title trong angles phải viết bằng tiếng Việt tự nhiên, dễ hiểu; không dùng câu mô tả tiếng Anh, trừ tên riêng hoặc tên sản phẩm.
 - Số lượng góc tiếp cận (angles) tổng cộng nên từ ${Math.min(12, totalSlotCount)} đến ${Math.min(30, Math.max(15, totalSlotCount))}.
 - Đảm bảo có đủ cả 3 tầng phễu TOFU (khoảng 20-30%), MOFU (khoảng 50-60%), BOFU (khoảng 15-25%).
 - ĐỐI TƯỢNG VÀ SẢN PHẨM PHẢI BÁM SÁT BRIEF DOANH NGHIỆP. Không viết chung chung.

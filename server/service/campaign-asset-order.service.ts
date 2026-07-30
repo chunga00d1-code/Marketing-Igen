@@ -369,6 +369,75 @@ async function migrateLegacySheetOrders(
   }
 }
 
+type LegacyGeneratedOrderBrief = {
+  _id: unknown;
+  slotId?: unknown;
+  manualFieldKeys?: string[];
+  shootingContent?: string;
+  productionRequirements?: string;
+  visualBrief?: string;
+  revision?: number;
+};
+
+async function localizeLegacyGeneratedOrderBriefs(
+  companyCode: string,
+  campaignId: string,
+  orders: LegacyGeneratedOrderBrief[],
+  slots: Array<{ _id: unknown; topicBrief?: string }>
+) {
+  const candidates = orders.filter((order) =>
+    order.slotId &&
+    (!Array.isArray(order.manualFieldKeys) || order.manualFieldKeys.length === 0) &&
+    order.shootingContent &&
+    order.shootingContent === order.productionRequirements &&
+    order.shootingContent === order.visualBrief
+  );
+  if (!candidates.length) return;
+
+  const contents = await MarketingContentModel.find({
+    companyCode,
+    campaignId,
+    campaignSlotId: { $in: candidates.map((order) => String(order.slotId)) },
+  }).select("campaignSlotId outline bodyText mediaPrompt").lean();
+  const contentMap = new Map(contents.map((content) => [String(content.campaignSlotId), content]));
+  const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
+  const updates = candidates.flatMap((order) => {
+    const content = contentMap.get(String(order.slotId));
+    const mediaPrompt = cleanText(content?.mediaPrompt, 2000);
+    if (!mediaPrompt || order.shootingContent !== mediaPrompt) return [];
+
+    const slot = slotMap.get(String(order.slotId));
+    const vietnameseBrief = cleanText(content?.outline || content?.bodyText || slot?.topicBrief, 2000);
+    if (!vietnameseBrief || vietnameseBrief === mediaPrompt) return [];
+
+    const previousRevision = Number(order.revision || 0);
+    const localized = {
+      shootingContent: vietnameseBrief.slice(0, 1000),
+      productionRequirements: vietnameseBrief,
+      visualBrief: vietnameseBrief.slice(0, 1000),
+    };
+    Object.assign(order, localized, { revision: previousRevision + 1 });
+    return [{
+      updateOne: {
+        filter: {
+          _id: order._id,
+          companyCode,
+          campaignId,
+          revision: previousRevision,
+          manualFieldKeys: { $size: 0 },
+          shootingContent: mediaPrompt,
+          productionRequirements: mediaPrompt,
+          visualBrief: mediaPrompt,
+        },
+        update: { $set: localized, $inc: { revision: 1 } },
+      },
+    }];
+  });
+  if (updates.length) {
+    await CampaignAssetOrderModel.bulkWrite(updates, { ordered: false });
+  }
+}
+
 async function getDriveImportContext(companyCode: string, campaignId: string, googleDriveFolderUrl: string) {
   const campaign = await assertCampaign(companyCode, campaignId);
   const folderUrl = cleanText(googleDriveFolderUrl, 2000);
@@ -650,7 +719,7 @@ export const campaignAssetOrderService = {
           messages: [
             {
               role: "system",
-              content: "Bạn là người lập brief sản xuất media cho người dùng Việt Nam, không chuyên kỹ thuật. Chỉ trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn, rõ, dễ đọc; không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model. Giới hạn: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
+              content: "Bạn là người lập brief sản xuất media cho người dùng Việt Nam, không chuyên kỹ thuật. Chỉ trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn, rõ, dễ đọc; không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model. Không sao chép nguyên văn mediaPrompt tiếng Anh từ dữ liệu đầu vào. Hãy diễn đạt các cụm như 'split screen video', 'fast-paced', 'screen recording' thành 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Giới hạn: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
             },
             {
               role: "user",
@@ -882,6 +951,7 @@ export const campaignAssetOrderService = {
       .lean();
     await migrateLegacySheetOrders(companyCode, campaignId, campaign.createdBy, slots);
     const storedOrders = await CampaignAssetOrderModel.find({ companyCode, campaignId }).sort({ updatedAt: -1 }).lean();
+    await localizeLegacyGeneratedOrderBriefs(companyCode, campaignId, storedOrders, slots);
     const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
     const orders = storedOrders
       .filter((order) => !order.slotId || slotMap.has(String(order.slotId)))
