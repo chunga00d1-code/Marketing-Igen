@@ -188,6 +188,17 @@ async function parse<T>(response: Response, fallback: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
 export const bulkCreateService = {
   async updateSceneWithAi(input: {
     prompt: string;
@@ -381,11 +392,15 @@ export const bulkCreateService = {
   async downloadZip(id: string, filename: string) {
     const response = await fetch(`/api/v1/bulk-create/jobs/${id}/download`, { headers: headers(false) });
     if (!response.ok) throw new Error('Không thể tải file ZIP.');
-    const url = URL.createObjectURL(await response.blob());
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${filename || 'bulk-create'}.zip`;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    downloadBlob(await response.blob(), `${filename || 'bulk-create'}.zip`);
+  },
+
+  async downloadImage(url: string, filename: string) {
+    const response = await fetch(
+      `/api/v1/media/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`,
+      { headers: headers(false) }
+    );
+    if (!response.ok) throw new Error('Không thể tải ảnh.');
+    downloadBlob(await response.blob(), filename);
   },
 };

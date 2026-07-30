@@ -1336,10 +1336,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     const result = pageResults[row.id];
     try {
       if (result?.status === 'completed' && result.outputUrl) {
-        triggerFileDownload(
-          `/api/v1/media/download?url=${encodeURIComponent(result.outputUrl)}&filename=${encodeURIComponent(filename)}`,
-          filename
-        );
+        await bulkCreateService.downloadImage(result.outputUrl, filename);
         return;
       }
       if (editorScene.layers.length === 0) {
