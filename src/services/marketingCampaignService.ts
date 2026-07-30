@@ -16,6 +16,11 @@ export type TikTokCampaignPublishOptions = {
   consentAccepted: boolean;
 };
 
+export type TikTokBatchPublishOptions = Omit<
+  TikTokCampaignPublishOptions,
+  'caption' | 'videoDurationSeconds'
+>;
+
 export interface MarketingCampaignSummary {
   _id: string;
   title: string;
@@ -430,6 +435,52 @@ export interface CampaignDriveImportPreview {
   queuedSlots?: number;
 }
 
+export interface CampaignBulkImportJob {
+  _id: string;
+  templateName: string;
+  status: 'completed' | 'partial';
+  totalItems: number;
+  completedItems: number;
+  failedItems: number;
+  progress: number;
+  linkedOutputCount: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface CampaignBulkImportPreview {
+  job: CampaignBulkImportJob;
+  mappings: Array<{
+    orderId: string;
+    slotId: string;
+    title: string;
+    platform: string;
+    slotStatus: string;
+    scheduledAt?: string;
+    currentUrls: string[];
+    outputUrls: string[];
+    truncatedCount: number;
+    canApply: boolean;
+    blockedReason?: string;
+  }>;
+  applicableOrders: number;
+  blockedOrders: number;
+  linkedOutputCount: number;
+  unlinkedOutputCount: number;
+  missingOrderIds: string[];
+  maxImagesPerOrder: number;
+}
+
+export interface CampaignBulkImportResult {
+  updatedCount: number;
+  attachedSlots: number;
+  queuedSlots: number;
+  skippedOrders: number;
+  truncatedImages: number;
+  unmatchedOrderIds: string[];
+  jobStatus: string;
+}
+
 export interface CampaignAssetOrderBulkPreview {
   orderId: string;
   template: { _id: string; name: string; canvas: { width: number; height: number } };
@@ -540,6 +591,18 @@ export const marketingCampaignService = {
     return request<unknown>(`/api/v1/marketing-campaigns/${campaignId}/slots/${slotId}/approve`, {
       method: 'POST',
       body: JSON.stringify(tiktokPublishOptions ? { tiktokPublishOptions } : {}),
+    });
+  },
+
+  approveTikTokSlots(
+    campaignId: string,
+    slotIds: string[],
+    tiktokPublishOptions: TikTokBatchPublishOptions,
+    videoDurations: Record<string, number>,
+  ) {
+    return request<{ approvedCount: number }>(`/api/v1/marketing-campaigns/${campaignId}/tiktok/batch-approve`, {
+      method: 'POST',
+      body: JSON.stringify({ slotIds, tiktokPublishOptions, videoDurations }),
     });
   },
 
@@ -806,10 +869,21 @@ export const marketingCampaignService = {
     return request<CampaignAssetOrderBulkImport>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import`);
   },
 
-  syncAssetOrdersFromBulkImport(campaignId: string, jobId: string) {
-    return request<{ updatedCount: number; unmatchedOrderIds: string[]; jobStatus: string }>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import/sync`, {
+  listBulkImportJobs(campaignId: string) {
+    return request<CampaignBulkImportJob[]>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import/jobs`);
+  },
+
+  previewAssetOrdersFromBulkImport(campaignId: string, jobId: string) {
+    return request<CampaignBulkImportPreview>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import/preview`, {
       method: 'POST',
       body: JSON.stringify({ jobId }),
+    });
+  },
+
+  syncAssetOrdersFromBulkImport(campaignId: string, jobId: string, mode: 'replace' | 'append' = 'replace') {
+    return request<CampaignBulkImportResult>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/bulk-import/sync`, {
+      method: 'POST',
+      body: JSON.stringify({ jobId, mode }),
     });
   },
 

@@ -39,6 +39,19 @@ function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: 
   }
 }
 
+function buildUserFacingProductionBrief(input: {
+  outline?: unknown;
+  bodyText?: unknown;
+  topicBrief?: unknown;
+}) {
+  const vietnameseBrief = String(input.outline || input.bodyText || input.topicBrief || "").trim();
+  return {
+    shootingContent: vietnameseBrief.slice(0, 1000),
+    productionRequirements: vietnameseBrief.slice(0, 2000),
+    visualBrief: vietnameseBrief.slice(0, 1000),
+  };
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -413,19 +426,23 @@ export class CampaignOrchestratorService {
 
       if (campaign.imageMode === "order" && slot.mediaType !== "text") {
         const isVideo = slot.mediaType === "video" || slot.mediaType === "human-video";
-        const productionBrief = String(candidate.mediaPrompt || slot.topicBrief || "").trim();
+        const productionBrief = buildUserFacingProductionBrief({
+          outline: candidate.outline,
+          bodyText: candidate.bodyText,
+          topicBrief: slot.topicBrief,
+        });
         const generatedOrderFields = {
           title: String(candidate.title || slot.topicBrief || "Order bài viết").slice(0, 240),
           contentGroup: String(slot.pillar || "").slice(0, 240),
-          shootingContent: productionBrief.slice(0, 1000),
-          productionRequirements: productionBrief.slice(0, 2000),
+          shootingContent: productionBrief.shootingContent,
+          productionRequirements: productionBrief.productionRequirements,
           quantitySuggestion: isVideo ? "1 video" : "1 ảnh",
           usageChannels: slot.platform,
           format: isVideo ? "video" as const : "image" as const,
           aspectRatio: isVideo ? "9:16" as const : "4:5" as const,
           headline: String(candidate.title || slot.topicBrief || "").slice(0, 120),
           subheadline: String(candidate.bodyText || "").slice(0, 220),
-          visualBrief: productionBrief.slice(0, 1000),
+          visualBrief: productionBrief.visualBrief,
           videoScript: isVideo ? String(candidate.voiceScript || candidate.bodyText || "").slice(0, 4000) : "",
         };
         await CampaignAssetOrderModel.updateOne(

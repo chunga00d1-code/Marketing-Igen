@@ -39,6 +39,19 @@ const PRIVACY_LABELS: Record<TikTokPrivacyLevel, string> = {
   SELF_ONLY: "Chỉ mình tôi",
 };
 
+type TikTokPublishPreset = {
+  privacyLevel?: TikTokPrivacyLevel;
+  allowComment?: boolean;
+  allowDuet?: boolean;
+  allowStitch?: boolean;
+  brandContentToggle?: boolean;
+  brandContent?: boolean;
+  brandOrganic?: boolean;
+  isAigc?: boolean;
+};
+
+const getPreferenceKey = (integrationId?: string) => `tiktok-publish-preset:${integrationId || "default"}`;
+
 export default function TikTokPublishModal({
   isOpen, onClose, card, tiktokAccount, onConfirmPublish, isPublishing,
 }: TikTokPublishModalProps) {
@@ -64,16 +77,23 @@ export default function TikTokPublishModal({
   useEffect(() => {
     if (!isOpen || !activeCardId) return;
     let cancelled = false;
+    let preset: TikTokPublishPreset = {};
+    try {
+      const saved = window.localStorage.getItem(getPreferenceKey(tiktokAccount?.integrationId));
+      preset = saved ? JSON.parse(saved) as TikTokPublishPreset : {};
+    } catch {
+      preset = {};
+    }
 
     setCaption(initialCaption);
-    setPrivacyLevel("");
-    setAllowComment(false);
-    setAllowDuet(false);
-    setAllowStitch(false);
-    setBrandContentToggle(false);
-    setBrandContent(false);
-    setBrandOrganic(false);
-    setIsAigc(false);
+    setPrivacyLevel(preset.privacyLevel || "");
+    setAllowComment(Boolean(preset.allowComment));
+    setAllowDuet(Boolean(preset.allowDuet));
+    setAllowStitch(Boolean(preset.allowStitch));
+    setBrandContentToggle(Boolean(preset.brandContentToggle));
+    setBrandContent(Boolean(preset.brandContent));
+    setBrandOrganic(Boolean(preset.brandOrganic));
+    setIsAigc(Boolean(preset.isAigc));
     setConsentAccepted(false);
     setVideoDurationSeconds(null);
     setVideoMetadataError("");
@@ -119,11 +139,22 @@ export default function TikTokPublishModal({
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!canPublish || !privacyLevel || videoDurationSeconds === null) return;
-    await onConfirmPublish({
+    const publishOptions = {
       caption, privacyLevel, allowComment, allowDuet, allowStitch, brandContentToggle,
       brandContent, brandOrganic, isAigc, videoDurationSeconds,
       consentAccepted: true,
-    });
+    };
+    window.localStorage.setItem(getPreferenceKey(tiktokAccount?.integrationId), JSON.stringify({
+      privacyLevel,
+      allowComment,
+      allowDuet,
+      allowStitch,
+      brandContentToggle,
+      brandContent,
+      brandOrganic,
+      isAigc,
+    }));
+    await onConfirmPublish(publishOptions);
   };
 
   const toggleCommercialDisclosure = (enabled: boolean) => {

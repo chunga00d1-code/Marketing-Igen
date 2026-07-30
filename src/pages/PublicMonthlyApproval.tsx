@@ -42,6 +42,26 @@ function getFunnelStage(objective: string): { label: string; color: string } {
 
 type SlotWithContent = CampaignSlot & { content: MarketingContent | null };
 
+const TIKTOK_MONTHLY_EXTERNAL_REVIEWER = 'External Reviewer (Monthly · TikTok content)';
+
+function isTikTokContentApproved(slot: SlotWithContent) {
+  return slot.platform === 'TikTok'
+    && slot.status === 'pending_approval'
+    && slot.approvedBy === TIKTOK_MONTHLY_EXTERNAL_REVIEWER;
+}
+
+function slotStatusLabel(slot: SlotWithContent) {
+  return isTikTokContentApproved(slot)
+    ? 'Đã duyệt nội dung · chờ chủ TikTok xác nhận'
+    : SLOT_STATUS_LABELS[slot.status] || slot.status;
+}
+
+function slotStatusClass(slot: SlotWithContent) {
+  return isTikTokContentApproved(slot)
+    ? 'bg-cyan-50 text-cyan-700 border-cyan-200'
+    : SLOT_STATUS_COLORS[slot.status] || 'bg-slate-50 text-slate-500 border-slate-200';
+}
+
 const SLOT_STATUS_LABELS: Record<string, string> = {
   planned: 'Lên lịch',
   queued: 'Đang xếp hàng',
@@ -112,7 +132,7 @@ export default function PublicMonthlyApproval() {
         setEndDateStr(data.endDate);
         if (data.slots.length > 0) {
           // Find first pending_approval slot to activate
-          const firstPending = data.slots.find(s => s.status === 'pending_approval');
+          const firstPending = data.slots.find(s => s.status === 'pending_approval' && !isTikTokContentApproved(s));
           setActiveSlotId(firstPending ? firstPending._id : data.slots[0]._id);
         }
       } catch (err: unknown) {
@@ -137,8 +157,8 @@ export default function PublicMonthlyApproval() {
   const filteredSlots = useMemo(() => {
     return slots.filter(slot => {
       if (statusFilter === 'all') return true;
-      if (statusFilter === 'pending_approval') return slot.status === 'pending_approval';
-      if (statusFilter === 'approved') return slot.status === 'ready_to_publish' || slot.status === 'published';
+      if (statusFilter === 'pending_approval') return slot.status === 'pending_approval' && !isTikTokContentApproved(slot);
+      if (statusFilter === 'approved') return slot.status === 'ready_to_publish' || slot.status === 'published' || isTikTokContentApproved(slot);
       if (statusFilter === 'rejected') return slot.status === 'needs_attention';
       return true;
     });
@@ -158,7 +178,7 @@ export default function PublicMonthlyApproval() {
 
   // Checkable slots (only those in pending_approval state)
   const checkableSlots = useMemo(() => {
-    return filteredSlots.filter(s => s.status === 'pending_approval');
+    return filteredSlots.filter(s => s.status === 'pending_approval' && !isTikTokContentApproved(s));
   }, [filteredSlots]);
 
   const isAllSelected = useMemo(() => {
@@ -213,8 +233,10 @@ export default function PublicMonthlyApproval() {
     if (!token || !activeSlot || isApproving || isRejecting) return;
     setIsApproving(true);
     try {
-      await marketingCampaignService.publicMonthlySlotAction(token, activeSlot._id, 'approve');
-      setSlots(prev => prev.map(s => s._id === activeSlot._id ? { ...s, status: 'ready_to_publish' } : s));
+      const result = await marketingCampaignService.publicMonthlySlotAction(token, activeSlot._id, 'approve') as { slot?: CampaignSlot };
+      if (result.slot) {
+        setSlots(prev => prev.map(s => s._id === activeSlot._id ? { ...s, ...result.slot } : s));
+      }
       setSelectedSlotIds(prev => {
         const next = new Set(prev);
         next.delete(activeSlot._id);
@@ -261,9 +283,10 @@ export default function PublicMonthlyApproval() {
     const idsToProcess = Array.from(selectedSlotIds);
     try {
       await marketingCampaignService.publicMonthlyBulkAction(token, idsToProcess, 'approve');
-      setSlots(prev => prev.map(s => idsToProcess.includes(s._id) ? { ...s, status: 'ready_to_publish' } : s));
+      const refreshed = await marketingCampaignService.getPublicMonthlySlots(token);
+      setSlots(refreshed.slots);
       setSelectedSlotIds(new Set());
-      alert('Duyệt hàng loạt thành công!');
+      alert('Đã duyệt nội dung hàng loạt. TikTok vẫn cần chủ tài khoản xác nhận trước khi đăng.');
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Duyệt hàng loạt thất bại.');
     } finally {
@@ -329,8 +352,8 @@ export default function PublicMonthlyApproval() {
   };
 
   // Stats calculation
-  const totalPending = slots.filter(s => s.status === 'pending_approval').length;
-  const totalApproved = slots.filter(s => s.status === 'ready_to_publish' || s.status === 'published').length;
+  const totalPending = slots.filter(s => s.status === 'pending_approval' && !isTikTokContentApproved(s)).length;
+  const totalApproved = slots.filter(s => s.status === 'ready_to_publish' || s.status === 'published' || isTikTokContentApproved(s)).length;
   const totalRejected = slots.filter(s => s.status === 'needs_attention').length;
 
   return (
@@ -490,7 +513,7 @@ export default function PublicMonthlyApproval() {
                             const isActive = s._id === activeSlotId;
                             const isTikTok = s.platform === 'TikTok';
                             const isChecked = selectedSlotIds.has(s._id);
-                            const isCheckable = s.status === 'pending_approval';
+                            const isCheckable = s.status === 'pending_approval' && !isTikTokContentApproved(s);
 
                             return (
                               <div
@@ -554,9 +577,9 @@ export default function PublicMonthlyApproval() {
 
                                 <div className="shrink-0 pt-0.5 select-none">
                                   <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full border text-[8px] font-bold ${
-                                    SLOT_STATUS_COLORS[s.status] || 'bg-slate-50 text-slate-500 border-slate-200'
+                                    slotStatusClass(s)
                                   }`}>
-                                    {SLOT_STATUS_LABELS[s.status] || s.status}
+                                    {slotStatusLabel(s)}
                                   </span>
                                 </div>
                               </div>
@@ -701,9 +724,9 @@ export default function PublicMonthlyApproval() {
                   <div>
                     <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-0.5">Trạng thái hiện tại</span>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[9px] font-bold ${
-                      SLOT_STATUS_COLORS[activeSlot.status] || 'bg-slate-50 text-slate-500 border-slate-200'
+                      slotStatusClass(activeSlot)
                     }`}>
-                      {SLOT_STATUS_LABELS[activeSlot.status] || activeSlot.status}
+                      {slotStatusLabel(activeSlot)}
                     </span>
                   </div>
 
@@ -759,7 +782,7 @@ export default function PublicMonthlyApproval() {
                     </div>
                   )}
 
-                  {activeSlot.status === 'pending_approval' && !showRejectForm && (
+                  {activeSlot.status === 'pending_approval' && !isTikTokContentApproved(activeSlot) && !showRejectForm && (
                     <div className="flex flex-col gap-2 pt-2">
                       <button
                         type="button"
@@ -768,7 +791,7 @@ export default function PublicMonthlyApproval() {
                         className="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-extrabold py-2.5 px-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1 shadow-md shadow-green-650/10 cursor-pointer disabled:opacity-50"
                       >
                         {isApproving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                        Duyệt bài đăng
+                        {activeSlot.platform === 'TikTok' ? 'Duyệt nội dung TikTok' : 'Duyệt bài đăng'}
                       </button>
                       <button
                         type="button"
