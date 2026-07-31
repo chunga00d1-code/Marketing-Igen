@@ -17,6 +17,13 @@ export type HtmlVideoPreviewRequest = {
   resolution: HtmlVideoResolution;
 };
 
+export type HtmlVideoDraftRequest = {
+  prompt: string;
+  durationSeconds: number;
+  aspectRatio: HtmlVideoAspectRatio;
+  resolution: HtmlVideoResolution;
+};
+
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
 };
@@ -25,6 +32,11 @@ export type HtmlVideoPreview = {
   compositionHtml: string;
   width: number;
   height: number;
+};
+
+export type HtmlVideoDraft = {
+  html: string;
+  css: string;
 };
 
 export type HtmlVideoRenderDetail = {
@@ -104,6 +116,19 @@ export function parseHtmlVideoPreviewResponse(
   };
 }
 
+export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
+  const raw = envelopeData(payload);
+  if (!isRecord(raw)) {
+    throw new Error("Dữ liệu bản nháp HTML-to-video không hợp lệ.");
+  }
+  const html = typeof raw.html === "string" ? raw.html.trim() : "";
+  const css = typeof raw.css === "string" ? raw.css.trim() : null;
+  if (!html || css === null) {
+    throw new Error("Dữ liệu bản nháp HTML-to-video không hợp lệ.");
+  }
+  return { html, css };
+}
+
 export function parseHtmlVideoRenderResponse(
   payload: unknown
 ): HtmlVideoRenderDetail {
@@ -174,6 +199,26 @@ function requestError(payload: unknown, fallback: string) {
 }
 
 export const htmlVideoRenderService = {
+  async generateDraft(
+    input: HtmlVideoDraftRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoDraft> {
+    const response = await fetch(
+      "/api/v1/html-video-renders/generate-draft",
+      {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify(input),
+        signal,
+      }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tạo HTML/CSS video bằng AI.");
+    }
+    return parseHtmlVideoDraftResponse(payload);
+  },
+
   async preview(
     input: HtmlVideoPreviewRequest,
     signal?: AbortSignal

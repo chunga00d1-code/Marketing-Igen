@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   htmlVideoRenderService,
+  parseHtmlVideoDraftResponse,
   parseHtmlVideoPreviewResponse,
   parseHtmlVideoRenderResponse,
 } from "../htmlVideoRenderService";
@@ -10,6 +11,12 @@ const originalFetch = globalThis.fetch;
 const previewInput = {
   html: '<main class="hero">Xin chào</main>',
   css: ".hero { color: white; }",
+  durationSeconds: 5,
+  aspectRatio: "16:9" as const,
+  resolution: "720p" as const,
+};
+const draftInput = {
+  prompt: "Tạo intro công nghệ với tiêu đề chuyển động.",
   durationSeconds: 5,
   aspectRatio: "16:9" as const,
   resolution: "720p" as const,
@@ -54,6 +61,43 @@ test("parses a safe preview response", () => {
   assert.equal(preview.width, 1280);
   assert.equal(preview.height, 720);
   assert.match(preview.compositionHtml, /data-composition-id="html-video"/);
+});
+
+test("parses a strict HTML video draft response with trimmed HTML and CSS", () => {
+  assert.deepEqual(
+    parseHtmlVideoDraftResponse({
+      success: true,
+      data: { html: "  <main>AI</main>  ", css: "  main{color:white}  " },
+    }),
+    { html: "<main>AI</main>", css: "main{color:white}" }
+  );
+});
+
+test("accepts an empty CSS string in an HTML video draft response", () => {
+  assert.deepEqual(
+    parseHtmlVideoDraftResponse({
+      success: true,
+      data: { html: "<main>AI</main>", css: "" },
+    }),
+    { html: "<main>AI</main>", css: "" }
+  );
+});
+
+test("rejects invalid HTML video draft response envelopes and source fields", () => {
+  for (const payload of [
+    null,
+    { success: false, data: { html: "<main>AI</main>", css: "" } },
+    { success: true, data: null },
+    { success: true, data: { html: "   ", css: "" } },
+    { success: true, data: { html: "<main>AI</main>" } },
+    { success: true, data: { html: 1, css: "" } },
+    { success: true, data: { html: "<main>AI</main>", css: 1 } },
+  ]) {
+    assert.throws(
+      () => parseHtmlVideoDraftResponse(payload),
+      /không hợp lệ/
+    );
+  }
 });
 
 test("parses a completed render and suppresses premature output URLs", () => {
@@ -118,6 +162,63 @@ test("preview sends the authenticated endpoint and source settings", async () =>
   assert.equal(headers.get("Authorization"), "Bearer html-video-test-token");
   assert.equal(headers.get("Content-Type"), "application/json");
   assert.deepEqual(JSON.parse(String(requestedInit?.body)), previewInput);
+});
+
+test("generateDraft sends the authenticated prompt and settings request", async () => {
+  let requestedUrl = "";
+  let requestedInit: RequestInit | undefined;
+  globalThis.fetch = (async (input, init) => {
+    requestedUrl = String(input);
+    requestedInit = init;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { html: "<main>AI</main>", css: "main{color:white}" },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  await htmlVideoRenderService.generateDraft(draftInput);
+
+  assert.equal(requestedUrl, "/api/v1/html-video-renders/generate-draft");
+  assert.equal(requestedInit?.method, "POST");
+  const headers = new Headers(requestedInit?.headers);
+  assert.equal(headers.get("Authorization"), "Bearer html-video-test-token");
+  assert.equal(headers.get("Content-Type"), "application/json");
+  assert.deepEqual(JSON.parse(String(requestedInit?.body)), draftInput);
+});
+
+test("generateDraft forwards an optional AbortSignal", async () => {
+  let requestedSignal: AbortSignal | null | undefined;
+  globalThis.fetch = (async (_input, init) => {
+    requestedSignal = init?.signal;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { html: "<main>AI</main>", css: "" },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+  const controller = new AbortController();
+
+  await htmlVideoRenderService.generateDraft(draftInput, controller.signal);
+
+  assert.equal(requestedSignal, controller.signal);
+});
+
+test("generateDraft surfaces a safe server error message", async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ success: false, message: "Mô tả video không hợp lệ." }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    )) as typeof fetch;
+
+  await assert.rejects(
+    htmlVideoRenderService.generateDraft(draftInput),
+    /Mô tả video không hợp lệ/
+  );
 });
 
 test("create sends one idempotent render request", async () => {
