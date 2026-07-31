@@ -41,7 +41,7 @@ h1 { margin: 0; font-size: 72px; animation: rise 1s ease-out both; }
 
 type HtmlVideoWorkspaceService = Pick<
   typeof htmlVideoRenderService,
-  "preview" | "create" | "get"
+  "preview" | "create" | "generateDraft" | "get"
 >;
 
 type PollHtmlVideoRenderOptions = {
@@ -76,6 +76,16 @@ function defaultPollWait(signal: AbortSignal) {
 
 export function isActiveHtmlVideoStatus(status?: HtmlVideoRenderStatus | null) {
   return status === "queued" || status === "rendering" || status === "uploading";
+}
+
+export function shouldConfirmHtmlVideoDraftOverwrite({
+  hasGeneratedDraft,
+  sourceDirtyAfterGeneration,
+}: {
+  hasGeneratedDraft: boolean;
+  sourceDirtyAfterGeneration: boolean;
+}): boolean {
+  return hasGeneratedDraft && sourceDirtyAfterGeneration;
 }
 
 export function createHtmlVideoIdempotencyKey() {
@@ -124,7 +134,14 @@ export function HtmlVideoWorkspace({
   const [render, setRender] = useState<HtmlVideoRenderDetail | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [generatingDraft, setGeneratingDraft] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const [hasGeneratedDraft, setHasGeneratedDraft] = useState(false);
+  const [sourceDirtyAfterGeneration, setSourceDirtyAfterGeneration] =
+    useState(false);
   const pollControllerRef = useRef<AbortController | null>(null);
+  const draftControllerRef = useRef<AbortController | null>(null);
   const submissionGenerationRef = useRef(0);
 
   useEffect(() => {
@@ -160,10 +177,56 @@ export function HtmlVideoWorkspace({
   useEffect(
     () => () => {
       pollControllerRef.current?.abort();
+      draftControllerRef.current?.abort();
       submissionGenerationRef.current += 1;
     },
     []
   );
+
+  const handleGenerateDraft = async () => {
+    const normalizedPrompt = prompt.trim();
+    if (!normalizedPrompt || generatingDraft) return;
+    if (
+      shouldConfirmHtmlVideoDraftOverwrite({
+        hasGeneratedDraft,
+        sourceDirtyAfterGeneration,
+      }) &&
+      !window.confirm(
+        "Tạo lại bằng AI sẽ thay toàn bộ HTML và CSS bạn đã chỉnh sửa. Bạn có muốn tiếp tục?"
+      )
+    ) {
+      return;
+    }
+
+    draftControllerRef.current?.abort();
+    const controller = new AbortController();
+    draftControllerRef.current = controller;
+    setGeneratingDraft(true);
+    setDraftError("");
+
+    try {
+      const draft = await service.generateDraft(
+        {
+          prompt: normalizedPrompt,
+          durationSeconds,
+          aspectRatio,
+          resolution,
+        },
+        controller.signal
+      );
+      if (controller.signal.aborted) return;
+      setHtml(draft.html);
+      setCss(draft.css);
+      setHasGeneratedDraft(true);
+      setSourceDirtyAfterGeneration(false);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setDraftError(errorMessage(error, "Không thể tạo HTML/CSS video bằng AI."));
+      }
+    } finally {
+      if (!controller.signal.aborted) setGeneratingDraft(false);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -238,12 +301,59 @@ export function HtmlVideoWorkspace({
           </div>
         </div>
 
+        <section className="space-y-3 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-extrabold text-slate-950">
+                Tạo thiết kế bằng AI
+              </h3>
+              <p className="mt-1 text-xs text-slate-600">
+                Mô tả ý tưởng; AI sẽ tạo HTML/CSS để bạn xem trước và chỉnh sửa.
+              </p>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-violet-700">
+              0,5 credit/lần tạo
+            </span>
+          </div>
+          <label className="block space-y-2 text-sm font-bold text-slate-700">
+            <span>Mô tả video</span>
+            <textarea
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              maxLength={4_000}
+              rows={4}
+              placeholder="Ví dụ: Tạo video giới thiệu khóa học AI cho người mới bắt đầu."
+              className="w-full resize-y rounded-xl border border-violet-200 bg-white p-3 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+            />
+          </label>
+          {draftError ? (
+            <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+              {draftError}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void handleGenerateDraft()}
+            disabled={generatingDraft || !prompt.trim()}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-extrabold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {generatingDraft
+              ? "AI đang tạo HTML/CSS..."
+              : hasGeneratedDraft
+                ? "Tạo lại bằng AI"
+                : "Tạo HTML/CSS bằng AI"}
+          </button>
+        </section>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <label className="space-y-2 text-sm font-bold text-slate-700">
             <span>Nội dung HTML</span>
             <textarea
               value={html}
-              onChange={(event) => setHtml(event.target.value)}
+              onChange={(event) => {
+                setHtml(event.target.value);
+                if (hasGeneratedDraft) setSourceDirtyAfterGeneration(true);
+              }}
               className="min-h-72 w-full resize-y rounded-2xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-sky-100 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
               spellCheck={false}
               maxLength={100 * 1024}
@@ -253,7 +363,10 @@ export function HtmlVideoWorkspace({
             <span>CSS &amp; animation</span>
             <textarea
               value={css}
-              onChange={(event) => setCss(event.target.value)}
+              onChange={(event) => {
+                setCss(event.target.value);
+                if (hasGeneratedDraft) setSourceDirtyAfterGeneration(true);
+              }}
               className="min-h-72 w-full resize-y rounded-2xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-emerald-100 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
               spellCheck={false}
               maxLength={100 * 1024}
