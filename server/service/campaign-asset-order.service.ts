@@ -1242,7 +1242,7 @@ export const campaignAssetOrderService = {
     await assertCampaign(companyCode, campaignId);
     const [orders, jobs] = await Promise.all([
       CampaignAssetOrderModel.find({ companyCode, campaignId, status: { $ne: "cancelled" } })
-        .select("_id")
+        .select("_id slotId")
         .lean(),
       BulkRenderJobModel.find({
         companyCode,
@@ -1254,10 +1254,14 @@ export const campaignAssetOrderService = {
     ]);
     if (!orders.length || !jobs.length) return [];
     const orderIds = orders.map((order) => String(order._id));
+    const slotIds = orders.map((order) => String(order.slotId || "")).filter(Boolean);
     const items = await BulkRenderItemModel.find({
       companyCode,
       jobId: { $in: jobs.map((job) => job._id) },
-      "values.__campaign_asset_order_id": { $in: orderIds },
+      $or: [
+        { "values.__campaign_asset_order_id": { $in: orderIds } },
+        { "values.__campaign_slot_id": { $in: slotIds } },
+      ],
     }).select("jobId status outputUrl").lean();
     const linkedItemCountByJobId = new Map<string, number>();
     const linkedCountByJobId = new Map<string, number>();
@@ -1299,28 +1303,47 @@ export const campaignAssetOrderService = {
       );
     }
 
-    const outputUrlsByOrderId = new Map<string, string[]>();
-    let unlinkedOutputCount = 0;
-    for (const item of items) {
-      const orderId = String(item.values?.__campaign_asset_order_id || "");
-      const outputUrl = String(item.outputUrl || "");
-      if (!mongoose.isValidObjectId(orderId) || !outputUrl) {
-        if (outputUrl) unlinkedOutputCount += 1;
-        continue;
-      }
-      const urls = outputUrlsByOrderId.get(orderId) || [];
-      if (!urls.includes(outputUrl)) urls.push(outputUrl);
-      outputUrlsByOrderId.set(orderId, urls);
-    }
-
-    const orders = outputUrlsByOrderId.size
+    const itemOutputs = items
+      .map((item) => ({
+        orderId: String(item.values?.__campaign_asset_order_id || ""),
+        slotId: String(item.values?.__campaign_slot_id || ""),
+        outputUrl: String(item.outputUrl || ""),
+      }))
+      .filter((item) => item.outputUrl);
+    const orderIds = itemOutputs
+      .map((item) => item.orderId)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const linkedSlotIds = itemOutputs
+      .map((item) => item.slotId)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const orders = (orderIds.length || linkedSlotIds.length)
       ? await CampaignAssetOrderModel.find({
-        _id: { $in: [...outputUrlsByOrderId.keys()] },
         companyCode,
         campaignId,
         status: { $ne: "cancelled" },
+        $or: [
+          { _id: { $in: orderIds } },
+          { slotId: { $in: linkedSlotIds } },
+        ],
       }).select("_id slotId title outputUrls").lean()
       : [];
+    const orderById = new Map(orders.map((order) => [String(order._id), order]));
+    const orderBySlotId = new Map(orders
+      .filter((order) => order.slotId)
+      .map((order) => [String(order.slotId), order]));
+    const outputUrlsByOrderId = new Map<string, string[]>();
+    let unlinkedOutputCount = 0;
+    for (const item of itemOutputs) {
+      const order = orderById.get(item.orderId) || orderBySlotId.get(item.slotId);
+      if (!order) {
+        unlinkedOutputCount += 1;
+        continue;
+      }
+      const orderId = String(order._id);
+      const urls = outputUrlsByOrderId.get(orderId) || [];
+      if (!urls.includes(item.outputUrl)) urls.push(item.outputUrl);
+      outputUrlsByOrderId.set(orderId, urls);
+    }
     const slotIds = orders.map((order) => order.slotId).filter(Boolean);
     const slots = slotIds.length
       ? await MarketingCampaignSlotModel.find({

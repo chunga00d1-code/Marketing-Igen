@@ -418,6 +418,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [pageResults, setPageResults] = useState<Record<string, PageRenderState>>({});
   const [activeJobPageIds, setActiveJobPageIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [downloadingJob, setDownloadingJob] = useState(false);
   const [assetUploadProgress, setAssetUploadProgress] = useState<{ completed: number; total: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -1355,6 +1356,21 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       window.setTimeout(() => URL.revokeObjectURL(previewUrl), 10_000);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Không thể tải trang.');
+    }
+  };
+
+  const downloadJob = async (job: BulkRenderJob) => {
+    if (downloadingJob) return;
+    setDownloadingJob(true);
+    try {
+      await bulkCreateService.downloadZip(job._id, job.templateName);
+      toast.success('Đã bắt đầu tải file ZIP.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể tải file ZIP.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setDownloadingJob(false);
     }
   };
 
@@ -2380,7 +2396,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onOpenJob={(job) => void openJob(job)}
           onRetryJob={(jobId) => void retryJob(jobId)}
           onCancelJob={(jobId) => void cancelJob(jobId)}
-          onDownloadJob={(job) => void bulkCreateService.downloadZip(job._id, job.templateName)}
+          onDownloadJob={(job) => void downloadJob(job)}
           onClose={() => setSidebarOpen(false)}
           uploadedImages={uploadedImages}
           uploadingAsset={uploadingAsset}
@@ -2587,10 +2603,12 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
                   {activeJob && ['completed', 'partial'].includes(activeJob.status) && (
                     <button
                       type="button"
-                      onClick={() => void bulkCreateService.downloadZip(activeJob._id, activeJob.templateName)}
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                      onClick={() => void downloadJob(activeJob)}
+                      disabled={downloadingJob}
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 hover:shadow-sm active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
                     >
-                      <Download className="h-4 w-4" /> Tải tất cả ảnh
+                      {downloadingJob ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      {downloadingJob ? 'Đang chuẩn bị file ZIP...' : 'Tải tất cả ảnh'}
                     </button>
                   )}
                 </div>
