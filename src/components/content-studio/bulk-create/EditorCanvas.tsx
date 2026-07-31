@@ -383,30 +383,20 @@ export function EditorCanvas({
                         );
                       })}
 
-                      {/* Floating Rotate & Move controls */}
-                      <div className="absolute left-1/2 -bottom-11 -translate-x-1/2 flex items-center gap-2 z-[1001]">
-                        <button
-                          type="button"
-                          onPointerDown={(event) => handleRotateStart(event, layer)}
-                          onPointerMove={handleRotateMove}
-                          onPointerUp={handleRotateEnd}
-                          onPointerCancel={handleRotateEnd}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-650 shadow-md hover:text-violet-600 cursor-grab active:cursor-grabbing"
-                          title="Xoay"
-                        >
-                          <RotateCw className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onPointerDown={(event) => handlePointerDown(event, layer)}
-                          onPointerMove={handlePointerMove}
-                          onPointerUp={handlePointerUp}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-650 shadow-md hover:text-violet-600 cursor-move"
-                          title="Di chuyển"
-                        >
-                          <Move className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                      {/* Canva-style rotate handle: drag it around the selected layer. */}
+                      <span className="pointer-events-none absolute left-1/2 -top-9 z-[1000] h-7 -translate-x-1/2 border-l-2 border-violet-500" />
+                      <button
+                        type="button"
+                        aria-label="Kéo để xoay"
+                        onPointerDown={(event) => handleRotateStart(event, layer)}
+                        onPointerMove={handleRotateMove}
+                        onPointerUp={handleRotateEnd}
+                        onPointerCancel={handleRotateEnd}
+                        className="absolute left-1/2 -top-12 z-[1001] flex h-8 w-8 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-violet-600 bg-white text-violet-600 shadow-[0_3px_10px_rgba(124,58,237,0.3)] transition hover:scale-110 hover:bg-violet-50 cursor-grab active:cursor-grabbing"
+                        title="Kéo để xoay"
+                      >
+                        <RotateCw className="h-4 w-4" strokeWidth={2.5} />
+                      </button>
                     </>
                   )}
                 </div>

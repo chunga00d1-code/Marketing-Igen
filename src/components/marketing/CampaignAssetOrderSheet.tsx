@@ -6,6 +6,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  RotateCcw,
   Settings2,
   X,
 } from 'lucide-react';
@@ -234,8 +235,8 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
 
   const plannedOrders = (data?.orders || []).filter((order) => Boolean(order.slotId));
 
-  const fillAllRows = async () => {
-    if (!plannedOrders.length) {
+  const fillAllRows = async (orderIds?: string[]) => {
+    if (!orderIds?.length && !plannedOrders.length) {
       toast.warning('Chưa có bài viết để AI điền Order.');
       return;
     }
@@ -243,10 +244,13 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
       const job = await marketingCampaignService.fillAllAssetOrdersAI(campaignId, {
         idempotencyKey: createIdempotencyKey(),
         overwritePolicy: 'empty_only',
+        ...(orderIds?.length ? { orderIds } : {}),
       });
       handledFillAllJobRef.current = '';
       setFillAllJob(job);
-      toast.info('AI đang điền Order ở nền. Bạn có thể tiếp tục xem bảng.');
+      toast.info(orderIds?.length
+        ? `AI đang thử lại ${orderIds.length} dòng lỗi ở nền.`
+        : 'AI đang điền Order ở nền. Bạn có thể tiếp tục xem bảng.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI chưa thể điền toàn bộ Order.');
     }
@@ -266,6 +270,10 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
       }
     }
   };
+
+  const failedOrderIds = fillAllJob?.results
+    .filter((result) => result.status === 'failed')
+    .map((result) => result.orderId) || [];
 
   const addCustomField = async () => {
     const label = customFieldLabel.trim();
@@ -331,6 +339,16 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
               {fillAllInProgress ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
               {fillAllInProgress ? `AI ${fillAllJob?.completedItems || 0}/${fillAllJob?.totalItems || plannedOrders.length}` : `AI điền toàn bộ (${plannedOrders.length})`}
             </button>
+            {!fillAllInProgress && failedOrderIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void fillAllRows(failedOrderIds)}
+                disabled={loading}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Thử lại {failedOrderIds.length} dòng lỗi
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowAddCustomField((current) => !current)}
@@ -350,6 +368,13 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
             )}
           </div>
         </div>
+
+        {fillAllInProgress && fillAllJob && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 bg-indigo-50/70 px-5 py-2.5 text-xs text-indigo-800">
+            <span className="font-semibold">Qwen đang xử lý nền: {fillAllJob.completedItems}/{fillAllJob.totalItems} dòng đã có kết quả.</span>
+            <span className="text-indigo-600">Bạn có thể rời trang; job vẫn tiếp tục chạy.</span>
+          </div>
+        )}
 
         {showAddCustomField && (
           <form

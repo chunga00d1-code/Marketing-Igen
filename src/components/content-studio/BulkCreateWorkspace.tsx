@@ -18,6 +18,7 @@ import {
   CloudOff,
   LoaderCircle,
   WandSparkles,
+  X,
 } from 'lucide-react';
 import {
   bulkCreateService,
@@ -334,6 +335,25 @@ interface BulkCreateWorkspaceProps {
   onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
 }
 
+async function waitForDerivedImage(url: string, attempts = 5): Promise<void> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error('Ảnh xóa nền chưa sẵn sàng.'));
+        image.src = url;
+      });
+      return;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Ảnh xóa nền chưa sẵn sàng.');
+      await new Promise((resolve) => window.setTimeout(resolve, 1500));
+    }
+  }
+  throw lastError || new Error('Không thể tải ảnh sau khi xóa nền.');
+}
+
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type CampaignSetupStep = 'target' | 'select_campaign' | 'confirm_campaign';
 
@@ -462,6 +482,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
 
   const [uploadedImages, setUploadedImages] = useState<BulkAsset[]>([]);
   const [uploadingAsset, setUploadingAsset] = useState(false);
+  const [removingBackground, setRemovingBackground] = useState(false);
 
   const { user } = useAuth();
   const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
@@ -968,6 +989,47 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       const message = error instanceof Error ? error.message : 'Không thể xóa ảnh khỏi lịch sử.';
       setErrorMessage(message);
       toast.error(message);
+    }
+  };
+
+  const removeSelectedImageBackground = async () => {
+    if (!selectedLayer || selectedLayer.type !== 'image') return;
+    if (selectedLayer.locked) {
+      toast.warning('Ảnh đang bị khóa, hãy mở khóa trước khi xóa nền.');
+      return;
+    }
+    const source = activeRow?.values[selectedLayer.id] || selectedLayer.defaultValue || '';
+    if (!/^https:\/\/res\.cloudinary\.com\//i.test(source)) {
+      toast.info('Hãy tải ảnh lên thư viện trước, rồi chọn lại ảnh để xóa nền AI.');
+      return;
+    }
+    setRemovingBackground(true);
+    try {
+      const removedBackgroundUrl = bulkCreateService.backgroundRemovedUrl(source);
+      if (removedBackgroundUrl === source) {
+        toast.info('Ảnh này đã được xóa nền trước đó.');
+        return;
+      }
+      await waitForDerivedImage(removedBackgroundUrl);
+      recordLayerHistory();
+      if (selectedLayer.dataBinding && activeRow) {
+        setRows((current) => current.map((row) => row.id === activeRow.id
+          ? { ...row, values: { ...row.values, [selectedLayer.id]: removedBackgroundUrl } }
+          : row));
+      } else {
+        setLayers((current) => current.map((layer) => layer.id === selectedLayer.id
+          ? { ...layer, defaultValue: removedBackgroundUrl }
+          : layer));
+        setRows((current) => current.map((row) => ({
+          ...row,
+          values: { ...row.values, [selectedLayer.id]: removedBackgroundUrl },
+        })));
+      }
+      toast.success('Đã xóa nền ảnh bằng AI.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể xóa nền ảnh bằng AI.');
+    } finally {
+      setRemovingBackground(false);
     }
   };
 
@@ -2426,7 +2488,21 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-white">
       {campaignSetupOpen && (
         <div className="absolute inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <button
+              type="button"
+              onClick={() => {
+                setBulkTarget('standalone');
+                setCampaignOrderImportId('');
+                setCampaignDataSource('manual');
+                setCampaignSetupOpen(false);
+              }}
+              className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              title="Đóng và thiết kế tự do"
+              aria-label="Đóng và thiết kế tự do"
+            >
+              <X className="h-5 w-5" />
+            </button>
             {campaignSetupStep === 'target' && (
               <>
                 <p className="text-lg font-extrabold text-slate-900">Bạn muốn thiết kế cho đâu?</p>
@@ -2885,6 +2961,8 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           duplicateLayer={duplicateLayer}
           removeLayer={removeLayer}
           alignLayer={alignLayer}
+          onRemoveImageBackground={() => void removeSelectedImageBackground()}
+          removingBackground={removingBackground}
         />
 
         {errorMessage && (
