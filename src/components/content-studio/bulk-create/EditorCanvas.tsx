@@ -12,6 +12,7 @@ import {
 import type {
   TemplateLayer,
   DataRow,
+  EditorTool,
   LayerPresetDragPayload,
   ResizeCorner,
   SelectionBox,
@@ -20,6 +21,7 @@ import { clamp, getLayerFrameStyle, resolveTextFontSize } from './utils';
 import { SceneLayerContent } from './SceneCanvas';
 
 interface EditorCanvasProps {
+  activeTool: EditorTool;
   layers: TemplateLayer[];
   activeRow: DataRow | null;
   selectedLayerId: string;
@@ -67,11 +69,13 @@ interface EditorCanvasProps {
   updateCell: (rowId: string, layerId: string, value: string) => void;
   recordLayerHistory: () => void;
   onOpenContextMenu: (clientX: number, clientY: number, targetLayerId: string) => void;
+  onSetBackgroundImage: (url: string) => void;
   onDropAsset: (url: string, clientX: number, clientY: number) => void;
   onDropLayerPreset: (payload: LayerPresetDragPayload, clientX: number, clientY: number) => void;
 }
 
 export function EditorCanvas({
+  activeTool,
   layers,
   activeRow,
   selectedLayerId,
@@ -113,6 +117,7 @@ export function EditorCanvas({
   updateCell,
   recordLayerHistory,
   onOpenContextMenu,
+  onSetBackgroundImage,
   onDropAsset,
   onDropLayerPreset,
 }: EditorCanvasProps) {
@@ -187,7 +192,11 @@ export function EditorCanvas({
               if (url) {
                 event.preventDefault();
                 event.stopPropagation();
-                onDropAsset(url, event.clientX, event.clientY);
+                if (activeTool === 'background') {
+                  onSetBackgroundImage(url);
+                } else {
+                  onDropAsset(url, event.clientX, event.clientY);
+                }
                 return;
               }
               const rawPreset = event.dataTransfer.getData('application/x-igen-bulk-layer-preset');
@@ -281,12 +290,10 @@ export function EditorCanvas({
                     ...getLayerFrameStyle(layer, canvasDisplayWidth / canvasSize.width),
                   }}
                 >
-                  {layer.dataBinding && (
+                  {layer.dataBinding && selected && (
                     <span
                       title={`Đã kết nối với cột ${layer.dataBinding.columnLabel}`}
-                      className={`pointer-events-none absolute -top-7 left-0 z-[1002] max-w-full truncate rounded-full px-2.5 py-1 text-[10px] font-extrabold text-white shadow-sm ${
-                        selected ? 'bg-violet-600' : 'bg-violet-500/90'
-                      }`}
+                      className="pointer-events-none absolute -top-7 left-0 z-[1002] max-w-full truncate rounded-full bg-violet-600 px-2.5 py-1 text-[10px] font-extrabold text-white shadow-sm"
                     >
                       {layer.dataBinding.columnLabel}
                     </span>
@@ -383,8 +390,8 @@ export function EditorCanvas({
                         );
                       })}
 
-                      {/* Canva-style rotate handle: drag it around the selected layer. */}
-                      <span className="pointer-events-none absolute left-1/2 -top-9 z-[1000] h-7 -translate-x-1/2 border-l-2 border-violet-500" />
+                      {/* Canva-style rotate handle: keep it beside the move handle so the floating toolbar never covers it. */}
+                      <span className="pointer-events-none absolute left-[calc(50%-40px)] -bottom-9 z-[1000] h-7 -translate-x-1/2 border-l-2 border-violet-500" />
                       <button
                         type="button"
                         aria-label="Kéo để xoay"
@@ -392,7 +399,7 @@ export function EditorCanvas({
                         onPointerMove={handleRotateMove}
                         onPointerUp={handleRotateEnd}
                         onPointerCancel={handleRotateEnd}
-                        className="absolute left-1/2 -top-12 z-[1001] flex h-8 w-8 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-violet-600 bg-white text-violet-600 shadow-[0_3px_10px_rgba(124,58,237,0.3)] transition hover:scale-110 hover:bg-violet-50 cursor-grab active:cursor-grabbing"
+                        className="absolute left-[calc(50%-40px)] -bottom-12 z-[1001] flex h-8 w-8 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-violet-600 bg-white text-violet-600 shadow-[0_3px_10px_rgba(124,58,237,0.3)] transition hover:scale-110 hover:bg-violet-50 cursor-grab active:cursor-grabbing"
                         title="Kéo để xoay"
                       >
                         <RotateCw className="h-4 w-4" strokeWidth={2.5} />

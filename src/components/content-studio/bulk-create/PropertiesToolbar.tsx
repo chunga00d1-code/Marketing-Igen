@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Minus,
@@ -14,6 +14,9 @@ import {
   Copy,
   Eraser,
   LoaderCircle,
+  PaintBucket,
+  SlidersHorizontal,
+  WandSparkles,
   Lock,
   Unlock,
   Trash2,
@@ -21,6 +24,15 @@ import {
 } from 'lucide-react';
 import type { TemplateLayer } from './types';
 import { clamp } from './utils';
+
+const COLOR_SWATCHES = [
+  '#111827', '#475569', '#64748b', '#94a3b8', '#e2e8f0', '#ffffff',
+  '#7f1d1d', '#dc2626', '#f97316', '#facc15', '#22c55e', '#14b8a6',
+  '#0ea5e9', '#2563eb', '#4f46e5', '#7c3aed', '#db2777', '#ec4899',
+  '#fecaca', '#fed7aa', '#fef3c7', '#dcfce7', '#ccfbf1', '#dbeafe',
+  '#ddd6fe', '#fce7f3', '#7c2d12', '#a16207', '#166534', '#0f766e',
+  '#1d4ed8', '#3730a3', '#6b21a8', '#9d174d',
+];
 
 function VerticalTextAlignIcon({
   position,
@@ -60,6 +72,7 @@ interface PropertiesToolbarProps {
   alignLayer: (alignment: 'left' | 'center-x' | 'right' | 'top' | 'center-y' | 'bottom') => void;
   onRemoveImageBackground: () => void;
   removingBackground: boolean;
+  onOptimizeReadability: () => void;
 }
 
 export function PropertiesToolbar({
@@ -72,9 +85,21 @@ export function PropertiesToolbar({
   alignLayer,
   onRemoveImageBackground,
   removingBackground,
+  onOptimizeReadability,
 }: PropertiesToolbarProps) {
   const [alignmentMenu, setAlignmentMenu] = useState<'horizontal' | 'vertical' | null>(null);
   const [alignmentMenuPosition, setAlignmentMenuPosition] = useState({ left: 0, top: 0 });
+  const [colorMenu, setColorMenu] = useState<'fill' | 'text' | null>(null);
+  const [colorMenuPosition, setColorMenuPosition] = useState({ left: 0, top: 0 });
+  const [customColor, setCustomColor] = useState('#ffffff');
+  const [styleMenuOpen, setStyleMenuOpen] = useState(false);
+  const [styleMenuPosition, setStyleMenuPosition] = useState({ left: 0, top: 0 });
+
+  useEffect(() => {
+    setAlignmentMenu(null);
+    setColorMenu(null);
+    setStyleMenuOpen(false);
+  }, [selectedLayer?.id, selectedLayer?.type]);
   const alignmentActions = alignmentMenu === 'horizontal'
     ? [
       ['left', 'Căn trái', AlignLeft],
@@ -94,121 +119,101 @@ export function PropertiesToolbar({
     const rect = event.currentTarget.getBoundingClientRect();
     setAlignmentMenuPosition({ left: rect.left, top: rect.bottom + 6 });
     setAlignmentMenu((current) => current === menu ? null : menu);
+    setColorMenu(null);
+    setStyleMenuOpen(false);
   };
+
+  const openColorMenu = (event: React.MouseEvent<HTMLButtonElement>, menu: 'fill' | 'text') => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const currentColor = menu === 'fill'
+      ? selectedLayer?.fillColor || '#ffffff'
+      : selectedLayer?.color || '#111827';
+    setColorMenuPosition({ left: rect.left, top: rect.bottom + 6 });
+    setCustomColor(/^#[0-9a-f]{6}$/i.test(currentColor) ? currentColor : '#ffffff');
+    setColorMenu((current) => current === menu ? null : menu);
+    setAlignmentMenu(null);
+    setStyleMenuOpen(false);
+  };
+
+  const openStyleMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setStyleMenuPosition({ left: rect.left, top: rect.bottom + 6 });
+    setStyleMenuOpen((current) => !current);
+    setAlignmentMenu(null);
+    setColorMenu(null);
+  };
+
+  const applyColor = (color: string) => {
+    if (!selectedLayer || !colorMenu) return;
+    recordLayerHistory();
+    updateLayer(selectedLayer.id, colorMenu === 'fill' ? { fillColor: color } : { color });
+    setColorMenu(null);
+  };
+
+  const previewCustomColor = (color: string) => {
+    if (!selectedLayer || !colorMenu) return;
+    updateLayer(selectedLayer.id, colorMenu === 'fill' ? { fillColor: color } : { color });
+  };
+
+  const selectedColor = colorMenu === 'fill'
+    ? selectedLayer?.fillColor || '#ffffff'
+    : selectedLayer?.color || '#111827';
 
   return (
     <div className="flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-2 [scrollbar-width:thin]">
+        <button
+          type="button"
+          onClick={onOptimizeReadability}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-violet-50 text-violet-700 transition hover:bg-violet-100"
+          title="Tối ưu dễ đọc cho mẫu"
+          aria-label="Tối ưu dễ đọc cho mẫu"
+        >
+          <WandSparkles className="h-4 w-4" />
+        </button>
+        <span className="h-6 shrink-0 border-l border-slate-200" />
         {selectedLayer ? (
           <>
             {selectedLayer.type === 'text' && (
               <>
-                <label
-                  className="relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white"
-                  title="Màu nền thành phần"
-                >
-                  <span
-                    className="h-6 w-6 rounded-md border border-slate-200"
-                    style={{ backgroundColor: selectedLayer.fillColor || 'transparent' }}
-                  />
-                  <input
-                    type="color"
-                    value={selectedLayer.fillColor || '#ffffff'}
-                    onFocus={recordLayerHistory}
-                    onChange={(event) => updateLayer(selectedLayer.id, { fillColor: event.target.value })}
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    aria-label="Màu nền thành phần"
-                  />
-                </label>
                 <button
                   type="button"
-                  onClick={() => changeLayer(selectedLayer.id, { fillColor: undefined })}
-                  className="h-10 shrink-0 rounded-lg border border-slate-200 px-2 text-xs font-bold text-slate-500 hover:bg-slate-50"
-                  title="Bỏ màu nền"
+                  onClick={(event) => openColorMenu(event, 'text')}
+                  className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-white transition hover:bg-indigo-50 hover:text-indigo-700 ${
+                    colorMenu === 'text' ? 'border-indigo-400 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 text-slate-700'
+                  }`}
+                  title="Màu chữ"
                 >
-                  Nền trong
-                </button>
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Bo góc
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={selectedLayer.borderRadius || 0}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        borderRadius: clamp(Number(event.target.value), 0, 100),
-                      })
-                    }
-                    className="w-10 text-center text-sm font-bold text-slate-800 outline-none"
-                    aria-label="Độ bo góc"
-                  />
-                </label>
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Viền
-                  <input
-                    type="number"
-                    min="0"
-                    max="30"
-                    value={selectedLayer.borderWidth || 0}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        borderWidth: clamp(Number(event.target.value), 0, 30),
-                      })
-                    }
-                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none"
-                    aria-label="Độ dày viền"
-                  />
-                </label>
-                <label
-                  className="relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white"
-                  title="Màu viền"
-                >
+                  <span className="text-lg font-black text-slate-800">
+                    A
+                  </span>
                   <span
-                    className="h-6 w-6 rounded-md border-2"
-                    style={{ borderColor: selectedLayer.borderColor || selectedLayer.color || '#000000' }}
+                    className="absolute bottom-1 h-1.5 w-6 rounded-full border border-slate-300"
+                    style={{ backgroundColor: selectedLayer.color || '#ffffff' }}
                   />
-                  <input
-                    type="color"
-                    value={selectedLayer.borderColor || selectedLayer.color || '#000000'}
-                    onFocus={recordLayerHistory}
-                    onChange={(event) => updateLayer(selectedLayer.id, { borderColor: event.target.value })}
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    aria-label="Màu viền"
-                  />
-                </label>
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Đệm
-                  <input
-                    type="number"
-                    min="0"
-                    max="80"
-                    value={selectedLayer.padding || 0}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        padding: clamp(Number(event.target.value), 0, 80),
-                      })
-                    }
-                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none"
-                    aria-label="Khoảng đệm"
-                  />
-                </label>
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Mờ
-                  <input
-                    type="number"
-                    min="5"
-                    max="100"
-                    value={Math.round((selectedLayer.opacity ?? 1) * 100)}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        opacity: clamp(Number(event.target.value), 5, 100) / 100,
-                      })
-                    }
-                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none"
-                    aria-label="Độ trong suốt"
-                  />
-                </label>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => openColorMenu(event, 'fill')}
+                  className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-white transition hover:bg-indigo-50 hover:text-indigo-700 ${
+                    colorMenu === 'fill' ? 'border-indigo-400 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 text-slate-700'
+                  }`}
+                  title="Màu nền thành phần"
+                >
+                  <PaintBucket className="h-4 w-4" strokeWidth={2.3} />
+                  <span className="absolute bottom-1 h-1.5 w-5 rounded-full border border-slate-300" style={{ backgroundColor: selectedLayer.fillColor || 'transparent' }} />
+                </button>
+                <button
+                  type="button"
+                  onClick={openStyleMenu}
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-white transition hover:bg-indigo-50 hover:text-indigo-700 ${
+                    styleMenuOpen ? 'border-indigo-400 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 text-slate-700'
+                  }`}
+                  title="Tùy chỉnh viền, bo góc, đệm và độ mờ"
+                  aria-label="Mở tùy chỉnh thành phần"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
               </>
             )}
             <input
@@ -223,7 +228,7 @@ export function PropertiesToolbar({
                 <select
                   value={selectedLayer.fontFamily || 'DejaVu Sans'}
                   onChange={(event) => changeLayer(selectedLayer.id, { fontFamily: event.target.value })}
-                  className="h-10 w-36 shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-sm font-bold"
+                  className="h-10 w-28 shrink-0 rounded-lg border border-slate-200 bg-white px-1.5 text-sm font-bold"
                   title="Phông chữ"
                 >
                   <optgroup label="Sans-serif">
@@ -268,7 +273,7 @@ export function PropertiesToolbar({
                   </optgroup>
                 </select>
 
-                <div className="flex h-10 shrink-0 items-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="grid h-10 w-[104px] shrink-0 grid-cols-3 items-center overflow-hidden rounded-lg border border-slate-200 bg-white">
                   <button
                     type="button"
                     onClick={() =>
@@ -276,7 +281,7 @@ export function PropertiesToolbar({
                         fontSize: Math.max(8, (selectedLayer.fontSize || 60) - 2),
                       })
                     }
-                    className="h-full px-2 hover:bg-slate-50"
+                    className="h-full w-full px-0 hover:bg-slate-50"
                     title="Giảm cỡ chữ"
                   >
                     <Minus className="h-4 w-4" />
@@ -291,7 +296,7 @@ export function PropertiesToolbar({
                         fontSize: clamp(Number(event.target.value), 8, 300),
                       })
                     }
-                    className="h-full w-12 border-x border-slate-200 text-center text-sm font-bold outline-none"
+                    className="h-full w-full border-x border-slate-200 text-center text-sm font-bold outline-none [appearance:textfield]"
                     aria-label="Cỡ chữ"
                   />
                   <button
@@ -301,33 +306,12 @@ export function PropertiesToolbar({
                         fontSize: Math.min(300, (selectedLayer.fontSize || 60) + 2),
                       })
                     }
-                    className="h-full px-2 hover:bg-slate-50"
+                    className="h-full w-full px-0 hover:bg-slate-50"
                     title="Tăng cỡ chữ"
                   >
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>
-
-                <label
-                  className="relative flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white"
-                  title="Màu chữ"
-                >
-                  <span className="text-lg font-black" style={{ color: selectedLayer.color || '#ffffff' }}>
-                    A
-                  </span>
-                  <span
-                    className="absolute bottom-1 h-1 w-6 rounded-full"
-                    style={{ backgroundColor: selectedLayer.color || '#ffffff' }}
-                  />
-                  <input
-                    type="color"
-                    value={selectedLayer.color || '#ffffff'}
-                    onFocus={recordLayerHistory}
-                    onChange={(event) => updateLayer(selectedLayer.id, { color: event.target.value })}
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                    aria-label="Màu chữ"
-                  />
-                </label>
 
                 <button
                   type="button"
@@ -425,126 +409,6 @@ export function PropertiesToolbar({
                         : 'aA'}
                 </button>
 
-                <div
-                  className="flex h-10 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white"
-                  title="Căn chữ"
-                >
-                  {([
-                    ['left', AlignLeft, 'Căn trái'],
-                    ['center', AlignCenter, 'Căn giữa'],
-                    ['right', AlignRight, 'Căn phải'],
-                  ] as const).map(([align, Icon, title]) => (
-                    <button
-                      key={align}
-                      type="button"
-                      onClick={() => changeLayer(selectedLayer.id, { textAlign: align })}
-                      className={`flex w-9 items-center justify-center border-r border-slate-200 last:border-r-0 ${
-                        (selectedLayer.textAlign || 'left') === align
-                          ? 'bg-indigo-50 text-indigo-700'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                      title={title}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </button>
-                  ))}
-                </div>
-
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Giãn chữ
-                  <input
-                    type="number"
-                    min="-5"
-                    max="30"
-                    step="1"
-                    value={selectedLayer.letterSpacing || 0}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        letterSpacing: clamp(Number(event.target.value), -5, 30),
-                      })
-                    }
-                    className="w-10 text-center text-sm font-bold text-slate-800 outline-none"
-                    aria-label="Khoảng cách chữ"
-                  />
-                </label>
-
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Dòng
-                  <input
-                    type="number"
-                    min="0.8"
-                    max="3"
-                    step="0.1"
-                    value={selectedLayer.lineHeight || 1.2}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        lineHeight: clamp(Number(event.target.value), 0.8, 3),
-                      })
-                    }
-                    className="w-10 text-center text-sm font-bold text-slate-800 outline-none"
-                    aria-label="Khoảng cách dòng"
-                  />
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    changeLayer(selectedLayer.id, {
-                      autoFit: selectedLayer.autoFit === false,
-                    })
-                  }
-                  className={`h-10 shrink-0 rounded-lg border px-2.5 text-xs font-extrabold ${
-                    selectedLayer.autoFit !== false
-                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                      : 'border-slate-200 bg-white text-slate-500'
-                  }`}
-                  title="Tự giảm cỡ chữ để nội dung vừa khung"
-                >
-                  Tự co chữ
-                </button>
-
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Cỡ tối thiểu
-                  <input
-                    type="number"
-                    min="8"
-                    max={selectedLayer.fontSize || 60}
-                    value={selectedLayer.minFontSize || 12}
-                    disabled={selectedLayer.autoFit === false}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        minFontSize: clamp(
-                          Number(event.target.value),
-                          8,
-                          selectedLayer.fontSize || 60
-                        ),
-                      })
-                    }
-                    className="w-10 text-center text-sm font-bold text-slate-800 outline-none disabled:opacity-40"
-                    aria-label="Cỡ chữ tối thiểu khi tự co"
-                  />
-                </label>
-
-                <label className="flex h-10 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-500">
-                  Tối đa dòng
-                  <input
-                    type="number"
-                    min="1"
-                    max="20"
-                    placeholder="∞"
-                    value={selectedLayer.maxLines || ''}
-                    disabled={selectedLayer.autoFit === false}
-                    onChange={(event) =>
-                      changeLayer(selectedLayer.id, {
-                        maxLines: event.target.value
-                          ? clamp(Number(event.target.value), 1, 20)
-                          : undefined,
-                      })
-                    }
-                    className="w-9 text-center text-sm font-bold text-slate-800 outline-none disabled:opacity-40"
-                    aria-label="Số dòng tối đa"
-                  />
-                </label>
               </>
             )}
             {selectedLayer.type === 'image' && (
@@ -627,6 +491,243 @@ export function PropertiesToolbar({
           </div>
         )}
       </div>
+      {colorMenu && selectedLayer?.type === 'text' && createPortal(
+        <div
+          className="fixed z-[10000] w-[248px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.18)]"
+          style={{ left: colorMenuPosition.left, top: colorMenuPosition.top }}
+          role="menu"
+          aria-label={colorMenu === 'fill' ? 'Màu nền thành phần' : 'Màu chữ'}
+        >
+          <p className="mb-2 text-xs font-extrabold text-slate-700">
+            {colorMenu === 'fill' ? 'Màu nền thành phần' : 'Màu chữ'}
+          </p>
+          <div className="grid grid-cols-6 gap-1.5">
+            {COLOR_SWATCHES.map((color) => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => applyColor(color)}
+                className={`h-7 w-7 rounded-full border shadow-sm transition hover:scale-110 ${
+                  selectedColor.toLowerCase() === color.toLowerCase()
+                    ? 'border-indigo-600 ring-2 ring-indigo-200 ring-offset-1'
+                    : 'border-slate-200'
+                }`}
+                style={{ backgroundColor: color }}
+                title={color}
+                aria-label={`Chọn màu ${color}`}
+                role="menuitem"
+              />
+            ))}
+          </div>
+          <div className="mt-3 rounded-lg border border-slate-200 p-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-600">Tùy chỉnh</span>
+              <input
+                type="text"
+                value={customColor}
+                onChange={(event) => setCustomColor(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && /^#[0-9a-f]{6}$/i.test(customColor)) applyColor(customColor);
+                }}
+                className="h-8 min-w-0 flex-1 rounded border border-slate-200 px-2 text-xs font-bold uppercase outline-none focus:border-indigo-500"
+                aria-label="Mã màu HEX"
+                placeholder="#000000"
+              />
+              <input
+                type="color"
+                value={customColor}
+                onFocus={recordLayerHistory}
+                onChange={(event) => {
+                  setCustomColor(event.target.value);
+                  previewCustomColor(event.target.value);
+                }}
+                className="h-8 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                aria-label="Chọn màu tùy chỉnh"
+              />
+            </div>
+            <button
+              type="button"
+              disabled={!/^#[0-9a-f]{6}$/i.test(customColor)}
+              onClick={() => applyColor(customColor)}
+              className="mt-2 h-8 w-full rounded-lg bg-indigo-600 text-xs font-extrabold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              Áp dụng màu
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+      {styleMenuOpen && selectedLayer && createPortal(
+        <div
+          className="fixed z-[10000] w-[276px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.18)]"
+          style={{ left: styleMenuPosition.left, top: styleMenuPosition.top }}
+          role="dialog"
+          aria-label="Tùy chỉnh thành phần"
+        >
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-extrabold text-slate-700">Tùy chỉnh thành phần</p>
+            <button
+              type="button"
+              onClick={() => changeLayer(selectedLayer.id, { fillColor: undefined })}
+              className="text-xs font-bold text-slate-500 hover:text-rose-600"
+            >
+              Nền trong
+            </button>
+          </div>
+          <div className="space-y-3">
+            <label className="block text-xs font-bold text-slate-600">
+              <span className="mb-1.5 flex justify-between"><span>Bo góc</span><span>{selectedLayer.borderRadius || 0}</span></span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={selectedLayer.borderRadius || 0}
+                onPointerDown={recordLayerHistory}
+                onChange={(event) => changeLayer(selectedLayer.id, { borderRadius: clamp(Number(event.target.value), 0, 100) })}
+                className="w-full accent-indigo-600"
+              />
+            </label>
+            <label className="block text-xs font-bold text-slate-600">
+              <span className="mb-1.5 flex justify-between"><span>Độ dày viền</span><span>{selectedLayer.borderWidth || 0}</span></span>
+              <input
+                type="range"
+                min="0"
+                max="30"
+                value={selectedLayer.borderWidth || 0}
+                onPointerDown={recordLayerHistory}
+                onChange={(event) => changeLayer(selectedLayer.id, { borderWidth: clamp(Number(event.target.value), 0, 30) })}
+                className="w-full accent-indigo-600"
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs font-bold text-slate-600">
+              Màu viền
+              <input
+                type="color"
+                value={selectedLayer.borderColor || selectedLayer.color || '#000000'}
+                onFocus={recordLayerHistory}
+                onChange={(event) => updateLayer(selectedLayer.id, { borderColor: event.target.value })}
+                className="h-7 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                aria-label="Màu viền"
+              />
+            </label>
+            <label className="block text-xs font-bold text-slate-600">
+              <span className="mb-1.5 flex justify-between"><span>Khoảng đệm</span><span>{selectedLayer.padding || 0}</span></span>
+              <input
+                type="range"
+                min="0"
+                max="80"
+                value={selectedLayer.padding || 0}
+                onPointerDown={recordLayerHistory}
+                onChange={(event) => changeLayer(selectedLayer.id, { padding: clamp(Number(event.target.value), 0, 80) })}
+                className="w-full accent-indigo-600"
+              />
+            </label>
+            <label className="block text-xs font-bold text-slate-600">
+              <span className="mb-1.5 flex justify-between"><span>Độ mờ</span><span>{Math.round((selectedLayer.opacity ?? 1) * 100)}%</span></span>
+              <input
+                type="range"
+                min="5"
+                max="100"
+                value={Math.round((selectedLayer.opacity ?? 1) * 100)}
+                onPointerDown={recordLayerHistory}
+                onChange={(event) => changeLayer(selectedLayer.id, { opacity: clamp(Number(event.target.value), 5, 100) / 100 })}
+                className="w-full accent-indigo-600"
+              />
+            </label>
+            {selectedLayer.type === 'text' && (
+              <>
+                <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                  <span>Căn chữ</span>
+                  <div className="flex overflow-hidden rounded-lg border border-slate-200">
+                    {([
+                      ['left', AlignLeft, 'Căn trái'],
+                      ['center', AlignCenter, 'Căn giữa'],
+                      ['right', AlignRight, 'Căn phải'],
+                    ] as const).map(([align, Icon, title]) => (
+                      <button
+                        key={align}
+                        type="button"
+                        onClick={() => changeLayer(selectedLayer.id, { textAlign: align })}
+                        className={`flex h-8 w-9 items-center justify-center border-r border-slate-200 last:border-r-0 ${
+                          (selectedLayer.textAlign || 'left') === align
+                            ? 'bg-indigo-50 text-indigo-700'
+                            : 'text-slate-600 hover:bg-slate-50'
+                        }`}
+                        title={title}
+                        aria-label={title}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <label className="block text-xs font-bold text-slate-600">
+                  <span className="mb-1.5 flex justify-between"><span>Giãn chữ</span><span>{selectedLayer.letterSpacing || 0}</span></span>
+                  <input
+                    type="range"
+                    min="-5"
+                    max="30"
+                    value={selectedLayer.letterSpacing || 0}
+                    onPointerDown={recordLayerHistory}
+                    onChange={(event) => changeLayer(selectedLayer.id, { letterSpacing: clamp(Number(event.target.value), -5, 30) })}
+                    className="w-full accent-indigo-600"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-600">
+                  <span className="mb-1.5 flex justify-between"><span>Khoảng dòng</span><span>{selectedLayer.lineHeight || 1.2}</span></span>
+                  <input
+                    type="range"
+                    min="0.8"
+                    max="3"
+                    step="0.1"
+                    value={selectedLayer.lineHeight || 1.2}
+                    onPointerDown={recordLayerHistory}
+                    onChange={(event) => changeLayer(selectedLayer.id, { lineHeight: clamp(Number(event.target.value), 0.8, 3) })}
+                    className="w-full accent-indigo-600"
+                  />
+                </label>
+                <label className="flex items-center justify-between text-xs font-bold text-slate-600">
+                  Tự co chữ
+                  <input
+                    type="checkbox"
+                    checked={selectedLayer.autoFit !== false}
+                    onChange={(event) => changeLayer(selectedLayer.id, { autoFit: event.target.checked })}
+                    className="h-4 w-4 accent-indigo-600"
+                  />
+                </label>
+                <label className="flex items-center justify-between text-xs font-bold text-slate-600">
+                  Cỡ tối thiểu
+                  <input
+                    type="number"
+                    min="8"
+                    max={selectedLayer.fontSize || 60}
+                    value={selectedLayer.minFontSize || 12}
+                    disabled={selectedLayer.autoFit === false}
+                    onChange={(event) => changeLayer(selectedLayer.id, { minFontSize: clamp(Number(event.target.value), 8, selectedLayer.fontSize || 60) })}
+                    className="w-12 rounded border border-slate-200 py-1 text-center text-sm font-bold text-slate-800 outline-none disabled:opacity-40"
+                    aria-label="Cỡ chữ tối thiểu khi tự co"
+                  />
+                </label>
+                <label className="flex items-center justify-between text-xs font-bold text-slate-600">
+                  Tối đa dòng
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    placeholder="∞"
+                    value={selectedLayer.maxLines || ''}
+                    disabled={selectedLayer.autoFit === false}
+                    onChange={(event) => changeLayer(selectedLayer.id, { maxLines: event.target.value ? clamp(Number(event.target.value), 1, 20) : undefined })}
+                    className="w-12 rounded border border-slate-200 py-1 text-center text-sm font-bold text-slate-800 outline-none disabled:opacity-40"
+                    aria-label="Số dòng tối đa"
+                  />
+                </label>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
       {alignmentMenu && createPortal(
         <div
           className="fixed z-[10000] flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_10px_28px_rgba(15,23,42,0.18)]"
