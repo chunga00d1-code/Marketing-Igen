@@ -115,20 +115,20 @@ export function createHtmlVideoDraftService(
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         let safe: ReturnType<HtmlVideoDraftDependencies["validateComposition"]>;
+        const response = await dependencies.chat({
+          model: process.env.AI_HTML_MODEL || "google/gemini-2.5-flash",
+          temperature: 0.35,
+          jsonMode: true,
+          responseSchema: { html: "string", css: "string" },
+          maxRetries: 1,
+          maxTokens: 10_000,
+          timeoutMs: 45_000,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt },
+          ],
+        });
         try {
-          const response = await dependencies.chat({
-            model: process.env.AI_HTML_MODEL || "google/gemini-2.5-flash",
-            temperature: 0.35,
-            jsonMode: true,
-            responseSchema: { html: "string", css: "string" },
-            maxRetries: 1,
-            maxTokens: 10_000,
-            timeoutMs: 45_000,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: prompt },
-            ],
-          });
           const draft = parseDraft(response.text);
           safe = dependencies.validateComposition({
             ...draft,
@@ -137,7 +137,7 @@ export function createHtmlVideoDraftService(
             resolution: input.resolution,
           });
         } catch {
-          // Provider output and trust-boundary failures are retried once without logging.
+          // Malformed provider output and trust-boundary failures are retried once without logging.
           continue;
         }
 

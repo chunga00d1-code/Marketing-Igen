@@ -187,6 +187,33 @@ test("retries malformed output once and charges once after a valid retry", async
   assert.equal(harness.deductCalls(), 1);
 });
 
+test("propagates a provider error without retrying or charging", async () => {
+  const providerError = new Error("provider unavailable");
+  let chatCalls = 0;
+  let deductCalls = 0;
+  const service = createHtmlVideoDraftService({
+    chat: async () => {
+      chatCalls += 1;
+      throw providerError;
+    },
+    checkBalance: async () => undefined,
+    validateComposition: () => {
+      throw new Error("validator must not be called");
+    },
+    deductBalance: async () => {
+      deductCalls += 1;
+    },
+  });
+
+  await assert.rejects(
+    service.generate(actor, validInput),
+    (error) => error === providerError
+  );
+
+  assert.equal(chatCalls, 1);
+  assert.equal(deductCalls, 0);
+});
+
 test("does not charge after two malformed responses", async () => {
   const harness = createHarness({ responses: ["not-json", "{}"] });
 
