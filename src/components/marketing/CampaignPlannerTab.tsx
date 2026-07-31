@@ -314,9 +314,32 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         console.error(err);
         toast.error(err instanceof Error ? err.message : 'Lỗi xử lý file Word.');
       }
+    } else if (fileExt === 'xlsx' || fileExt === 'xls' || fileExt === 'csv') {
+      try {
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        let extractedText = '';
+        for (const sheetName of workbook.SheetNames) {
+          const worksheet = workbook.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(worksheet);
+          if (csv.trim()) {
+            extractedText += `--- BẢNG TÍNH: ${sheetName} ---\n${csv}\n\n`;
+          }
+        }
+        if (!extractedText.trim()) {
+          throw new Error('Bảng tính Excel/CSV trống hoặc không có văn bản.');
+        }
+        setUploadedDocText(extractedText.trim());
+        setLoadingDoc(false);
+        toast.success('Đã trích xuất bảng tính Excel/CSV thành công!');
+      } catch (err: unknown) {
+        setLoadingDoc(false);
+        console.error(err);
+        toast.error(err instanceof Error ? err.message : 'Lỗi xử lý file Excel/CSV.');
+      }
     } else {
       setLoadingDoc(false);
-      toast.error('Định dạng file không được hỗ trợ. Vui lòng tải hình ảnh, .txt, .md, .pdf hoặc .docx');
+      toast.error('Định dạng file không được hỗ trợ. Vui lòng tải hình ảnh, .txt, .md, .pdf, .docx hoặc Excel/CSV.');
     }
   };
 
