@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
   Trash2,
   Upload,
@@ -13,6 +13,8 @@ import {
   Star,
   Layers3,
   LoaderCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import type {
   EditorTool,
@@ -60,7 +62,9 @@ export interface EditorPanelProps {
   systemTemplates: BulkMarketingPreset[];
   templates: BulkTemplate[];
   loadingTemplates: boolean;
-  templatesHasMore: boolean;
+  templatesTotal: number;
+  templatePage: number;
+  onChangeTemplatePage: (page: number) => void;
   communityTemplates: BulkTemplate[];
   jobs: BulkRenderJob[];
   activeJob: BulkRenderJob | null;
@@ -119,10 +123,11 @@ export function EditorPanel(props: EditorPanelProps) {
     uploadedImages,
     onDeleteUploadedImage,
     loadingTemplates,
-    templatesHasMore,
-    onLoadMoreTemplates,
+    templatesTotal,
+    templatePage,
+    onChangeTemplatePage,
   } = props;
-  const templateLoadMoreRef = useRef<HTMLDivElement>(null);
+
   const startLayerPresetDrag = (
     event: React.DragEvent<HTMLElement>,
     payload: LayerPresetDragPayload,
@@ -130,17 +135,6 @@ export function EditorPanel(props: EditorPanelProps) {
     event.dataTransfer.effectAllowed = 'copy';
     event.dataTransfer.setData('application/x-igen-bulk-layer-preset', JSON.stringify(payload));
   };
-
-  useEffect(() => {
-    const target = templateLoadMoreRef.current;
-    if (!target || !templatesHasMore || loadingTemplates) return;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) onLoadMoreTemplates();
-    }, { rootMargin: '160px' });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [loadingTemplates, onLoadMoreTemplates, templatesHasMore]);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden">
@@ -304,87 +298,108 @@ export function EditorPanel(props: EditorPanelProps) {
               <div>
                 <p className="mb-2 text-sm font-extrabold text-slate-700">Mẫu thiết kế của tôi</p>
                 <div className="space-y-2">
-                  {props.templates.map((template) => (
-                    <div
-                      key={template._id}
-                      className="flex items-center rounded-xl border border-slate-200 hover:border-indigo-400"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => props.onLoadTemplate(template)}
-                        className="min-w-0 flex-1 px-3 py-3 text-left"
+                  <div className={`space-y-2 transition-opacity duration-200 ${loadingTemplates ? 'opacity-60 pointer-events-none' : ''}`}>
+                    {props.templates.map((template) => (
+                      <div
+                        key={template._id}
+                        className="flex items-center rounded-xl border border-slate-200 hover:border-indigo-400 bg-white"
                       >
-                        <span className="block truncate text-sm font-bold text-slate-800">
-                          {template.name}
-                        </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">
-                          {template.layers.length} trường ·{' '}
-                          {template.visibility === 'public'
-                            ? 'Đang chia sẻ'
-                            : `bản ${template.version}`}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          template.visibility === 'public'
-                            ? props.onUnpublishTemplate(template._id)
-                            : props.onPublishTemplate(template._id)
-                        }
-                        className={`rounded-lg p-2 ${
-                          template.visibility === 'public'
-                            ? 'bg-indigo-50 text-indigo-600'
-                            : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'
-                        }`}
-                        title={
-                          template.visibility === 'public'
-                            ? 'Ngừng chia sẻ'
-                            : 'Chia sẻ vào kho mẫu'
-                        }
-                      >
-                        {template.visibility === 'public' ? (
-                          <Globe2 className="h-4 w-4" />
-                        ) : (
-                          <Share2 className="h-4 w-4" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => props.onArchiveTemplate(template._id)}
-                        className="mr-2 rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                        title="Lưu trữ mẫu thiết kế"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                  {props.templates.length === 0 && props.loadingTemplates && (
-                    <>
+                        <button
+                          type="button"
+                          onClick={() => props.onLoadTemplate(template)}
+                          className="min-w-0 flex-1 px-3 py-3 text-left"
+                        >
+                          <span className="block truncate text-sm font-bold text-slate-800">
+                            {template.name}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-slate-500">
+                            {template.layers.length} trường ·{' '}
+                            {template.visibility === 'public'
+                              ? 'Đang chia sẻ'
+                              : `bản ${template.version}`}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            template.visibility === 'public'
+                              ? props.onUnpublishTemplate(template._id)
+                              : props.onPublishTemplate(template._id)
+                          }
+                          className={`rounded-lg p-2 ${
+                            template.visibility === 'public'
+                              ? 'bg-indigo-50 text-indigo-600'
+                              : 'text-slate-400 hover:bg-indigo-50 hover:text-indigo-600'
+                          }`}
+                          title={
+                            template.visibility === 'public'
+                              ? 'Ngừng chia sẻ'
+                              : 'Chia sẻ vào kho mẫu'
+                          }
+                        >
+                          {template.visibility === 'public' ? (
+                            <Globe2 className="h-4 w-4" />
+                          ) : (
+                            <Share2 className="h-4 w-4" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => props.onArchiveTemplate(template._id)}
+                          className="mr-2 rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                          title="Lưu trữ mẫu thiết kế"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {props.templates.length === 0 && loadingTemplates && (
+                    <div className="space-y-2">
                       {[0, 1, 2].map((item) => (
                         <div
                           key={item}
                           className="h-[74px] animate-pulse rounded-xl border border-slate-200 bg-slate-100"
                         />
                       ))}
-                    </>
+                    </div>
                   )}
-                  {props.templates.length > 0 && (
-                    <div ref={templateLoadMoreRef} className="pt-1">
-                      {props.templatesHasMore ? (
-                        <button
-                          type="button"
-                          onClick={props.onLoadMoreTemplates}
-                          disabled={props.loadingTemplates}
-                          className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-wait disabled:opacity-70"
-                        >
-                          {props.loadingTemplates && <LoaderCircle className="h-4 w-4 animate-spin" />}
-                          {props.loadingTemplates ? 'Đang tải thêm...' : 'Tải thêm mẫu'}
-                        </button>
-                      ) : (
-                        <p className="py-1 text-center text-[11px] text-slate-400">
-                          Đã hiển thị toàn bộ mẫu
-                        </p>
-                      )}
+
+                  {templatesTotal > 0 && (
+                    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        disabled={templatePage <= 1 || loadingTemplates}
+                        onClick={() => onChangeTemplatePage(templatePage - 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-500 transition cursor-pointer"
+                        title="Trang trước"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+
+                      <div className="text-center">
+                        <span className="text-[11px] font-bold text-slate-600 block">
+                          Trang {templatePage} / {Math.ceil(templatesTotal / 6) || 1}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-medium">
+                          Tổng số {templatesTotal} mẫu
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={templatePage >= Math.ceil(templatesTotal / 6) || loadingTemplates}
+                        onClick={() => onChangeTemplatePage(templatePage + 1)}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-slate-500 transition cursor-pointer"
+                        title="Trang sau"
+                      >
+                        {loadingTemplates ? (
+                          <LoaderCircle className="h-4 w-4 animate-spin text-indigo-600" />
+                        ) : (
+                          <ChevronRight size={16} />
+                        )}
+                      </button>
                     </div>
                   )}
                 </div>

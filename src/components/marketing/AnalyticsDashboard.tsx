@@ -15,7 +15,6 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import * as XLSX from "xlsx";
 import {
   Download,
   RefreshCw,
@@ -174,10 +173,11 @@ export default function AnalyticsDashboard() {
     void loadData();
   }, [loadData]);
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!data) return;
 
     try {
+      const XLSX = await import('xlsx');
       const wb = XLSX.utils.book_new();
 
       // 1. Tab Tổng quan
