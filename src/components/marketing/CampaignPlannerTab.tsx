@@ -321,7 +321,11 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         let extractedText = '';
         for (const sheetName of workbook.SheetNames) {
           const worksheet = workbook.Sheets[sheetName];
-          const csv = XLSX.utils.sheet_to_csv(worksheet);
+          let csv = XLSX.utils.sheet_to_csv(worksheet);
+          csv = csv
+            .split('\n')
+            .filter((line) => line.trim() && !/^,+$/.test(line.trim()))
+            .join('\n');
           if (csv.trim()) {
             extractedText += `--- BẢNG TÍNH: ${sheetName} ---\n${csv}\n\n`;
           }
