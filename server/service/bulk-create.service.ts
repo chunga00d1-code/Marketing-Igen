@@ -67,8 +67,12 @@ function optionalObjectId(value: unknown, label: string) {
 async function validateCampaignJobContext(actor: Actor, input: JobInput, rows: Array<Record<string, string>>) {
   if (!input.campaignId) return { targetType: "standalone" as const };
   if (!mongoose.isValidObjectId(input.campaignId)) throw new Error("ID chiáº¿n dá»‹ch khÃ´ng há»£p lá»‡.");
-  const campaign = await MarketingCampaignModel.exists({ _id: input.campaignId, companyCode: actor.companyCode });
-  if (!campaign) throw new Error("KhÃ´ng tÃ¬m tháº¥y chiáº¿n dá»‹ch hoáº·c báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p.");
+  const campaign = await MarketingCampaignModel.exists({
+    _id: input.campaignId,
+    companyCode: actor.companyCode,
+    status: "active",
+  });
+  if (!campaign) throw new Error("Chiến dịch không còn hoạt động hoặc bạn không có quyền truy cập.");
 
   const slotIds = Array.from(new Set(rows
     .map((row) => optionalObjectId(row.__campaign_slot_id, "ID bÃ i viáº¿t"))
