@@ -66,6 +66,8 @@ const validAspectRatios = new Set<HtmlVideoAspectRatio>([
   "1:1",
 ]);
 const validResolutions = new Set<HtmlVideoResolution>(["720p", "1080p"]);
+const invalidHtmlVideoDraftMessage =
+  "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -117,16 +119,20 @@ export function parseHtmlVideoPreviewResponse(
 }
 
 export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
-  const raw = envelopeData(payload);
-  if (!isRecord(raw)) {
-    throw new Error("Dữ liệu bản nháp HTML-to-video không hợp lệ.");
+  try {
+    const raw = envelopeData(payload);
+    if (!isRecord(raw)) {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    const html = typeof raw.html === "string" ? raw.html.trim() : "";
+    const css = typeof raw.css === "string" ? raw.css.trim() : null;
+    if (!html || css === null) {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    return { html, css };
+  } catch {
+    throw new Error(invalidHtmlVideoDraftMessage);
   }
-  const html = typeof raw.html === "string" ? raw.html.trim() : "";
-  const css = typeof raw.css === "string" ? raw.css.trim() : null;
-  if (!html || css === null) {
-    throw new Error("Dữ liệu bản nháp HTML-to-video không hợp lệ.");
-  }
-  return { html, css };
 }
 
 export function parseHtmlVideoRenderResponse(

@@ -84,6 +84,7 @@ test("accepts an empty CSS string in an HTML video draft response", () => {
 });
 
 test("rejects invalid HTML video draft response envelopes and source fields", () => {
+  const invalidDraftMessage = "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
   for (const payload of [
     null,
     { success: false, data: { html: "<main>AI</main>", css: "" } },
@@ -95,7 +96,8 @@ test("rejects invalid HTML video draft response envelopes and source fields", ()
   ]) {
     assert.throws(
       () => parseHtmlVideoDraftResponse(payload),
-      /không hợp lệ/
+      (error: unknown) =>
+        error instanceof Error && error.message === invalidDraftMessage
     );
   }
 });
