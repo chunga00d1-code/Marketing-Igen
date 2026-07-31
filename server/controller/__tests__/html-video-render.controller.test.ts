@@ -10,6 +10,7 @@ import {
   htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
 } from "../../router/html-video-render.schemas";
+import { validateRequest } from "../../middleware/validation";
 
 const validBody = {
   html: '<main class="hero">Xin chào</main>',
@@ -132,6 +133,23 @@ test("validates AI draft request bounds", () => {
   }
 });
 
+test("rejects unknown AI draft fields through request validation middleware", () => {
+  let nextCalls = 0;
+  const { response, state } = responseRecorder();
+  const middleware = validateRequest({ body: htmlVideoDraftBodySchema });
+
+  middleware(
+    { body: { ...validDraftBody, unexpected: true } } as never,
+    response as never,
+    () => {
+      nextCalls += 1;
+    }
+  );
+
+  assert.equal(state.status, 400);
+  assert.equal(nextCalls, 0);
+});
+
 test("generates a tenant-scoped draft without enqueueing a render", async () => {
   let received: unknown[] = [];
   let enqueueCalls = 0;
@@ -170,7 +188,7 @@ test("maps draft service failures through the safe error response", async () => 
     dependencies({
       draftService: {
         generate: async () => {
-          throw new Error("AI khÃ´ng tráº£ vá» HTML/CSS há»£p lá»‡.");
+          throw new Error("AI không trả về HTML/CSS hợp lệ.");
         },
       },
     })
@@ -185,7 +203,7 @@ test("maps draft service failures through the safe error response", async () => 
   assert.equal(state.status, 400);
   assert.deepEqual(state.body, {
     success: false,
-    message: "AI khÃ´ng tráº£ vá» HTML/CSS há»£p lá»‡.",
+    message: "AI không trả về HTML/CSS hợp lệ.",
   });
 });
 

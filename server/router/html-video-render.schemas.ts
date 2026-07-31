@@ -25,11 +25,25 @@ const htmlVideoFields = {
   ...htmlVideoSettingFields,
 };
 
+const htmlVideoDraftKeys = new Set([
+  "prompt",
+  "durationSeconds",
+  "aspectRatio",
+  "resolution",
+]);
+
 export const htmlVideoPreviewBodySchema = Joi.object(htmlVideoFields);
 
 export const htmlVideoDraftBodySchema = Joi.object({
   prompt: Joi.string().trim().min(1).max(4_000).required(),
   ...htmlVideoSettingFields,
+}).custom((value, helpers) => {
+  const unknownKey = Object.keys(value).find(
+    (key) => !htmlVideoDraftKeys.has(key)
+  );
+  return unknownKey
+    ? helpers.error("object.unknown", { child: unknownKey })
+    : value;
 });
 
 export const createHtmlVideoRenderBodySchema = Joi.object({
