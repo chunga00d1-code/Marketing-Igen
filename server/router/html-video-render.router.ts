@@ -4,12 +4,19 @@ import { requireAuth } from "../middleware/auth";
 import { validateRequest } from "../middleware/validation";
 import {
   createHtmlVideoRenderBodySchema,
+  htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
   htmlVideoRenderParamsSchema,
 } from "./html-video-render.schemas";
 
 export const htmlVideoRenderRouter = Router();
 
+htmlVideoRenderRouter.post(
+  "/html-video-renders/generate-draft",
+  requireAuth as never,
+  validateRequest({ body: htmlVideoDraftBodySchema }),
+  htmlVideoRenderController.generateDraft as never
+);
 htmlVideoRenderRouter.post(
   "/html-video-renders/preview",
   requireAuth as never,
