@@ -13,15 +13,24 @@ function byteLimitedString(label: "HTML" | "CSS", allowEmpty: boolean) {
   return schema.required();
 }
 
-const htmlVideoFields = {
-  html: byteLimitedString("HTML", false),
-  css: byteLimitedString("CSS", true),
+const htmlVideoSettingFields = {
   durationSeconds: Joi.number().integer().min(1).max(60).required(),
   aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
   resolution: Joi.string().valid("720p", "1080p").required(),
 };
 
+const htmlVideoFields = {
+  html: byteLimitedString("HTML", false),
+  css: byteLimitedString("CSS", true),
+  ...htmlVideoSettingFields,
+};
+
 export const htmlVideoPreviewBodySchema = Joi.object(htmlVideoFields);
+
+export const htmlVideoDraftBodySchema = Joi.object({
+  prompt: Joi.string().trim().min(1).max(4_000).required(),
+  ...htmlVideoSettingFields,
+});
 
 export const createHtmlVideoRenderBodySchema = Joi.object({
   ...htmlVideoFields,

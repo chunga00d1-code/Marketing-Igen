@@ -4,6 +4,7 @@ import {
   htmlVideoRenderService,
   type HtmlVideoActor,
 } from "../service/html-video/html-video-render.service";
+import { htmlVideoDraftService } from "../service/html-video/html-video-draft.service";
 import { buildSafeHtmlVideoComposition } from "../service/html-video/html-video-security.service";
 import { enqueueHtmlVideoRender } from "../queue/html-video-render-queue";
 
@@ -18,8 +19,14 @@ type HtmlVideoRenderServiceContract = {
   ): Promise<unknown>;
 };
 
+type HtmlVideoDraftServiceContract = Pick<
+  typeof htmlVideoDraftService,
+  "generate"
+>;
+
 export type HtmlVideoRenderControllerDependencies = {
   service: HtmlVideoRenderServiceContract;
+  draftService: HtmlVideoDraftServiceContract;
   enqueue: typeof enqueueHtmlVideoRender;
 };
 
@@ -71,6 +78,18 @@ export function createHtmlVideoRenderController(
       }
     },
 
+    async generateDraft(req: AuthenticatedRequest, res: Response) {
+      try {
+        const draft = await dependencies.draftService.generate(
+          actorFrom(req),
+          req.body
+        );
+        return res.json({ success: true, data: draft });
+      } catch (error) {
+        return respondError(res, error);
+      }
+    },
+
     async create(req: AuthenticatedRequest, res: Response) {
       try {
         const result = await dependencies.service.createRender(
@@ -105,5 +124,6 @@ export function createHtmlVideoRenderController(
 
 export const htmlVideoRenderController = createHtmlVideoRenderController({
   service: htmlVideoRenderService,
+  draftService: htmlVideoDraftService,
   enqueue: enqueueHtmlVideoRender,
 });

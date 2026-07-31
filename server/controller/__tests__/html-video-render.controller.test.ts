@@ -7,6 +7,7 @@ import {
 } from "../html-video-render.controller";
 import {
   createHtmlVideoRenderBodySchema,
+  htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
 } from "../../router/html-video-render.schemas";
 
@@ -17,6 +18,13 @@ const validBody = {
   aspectRatio: "16:9",
   resolution: "720p",
   idempotencyKey: "html_render_123456",
+};
+
+const validDraftBody = {
+  prompt: "Create a technology intro with animated title.",
+  durationSeconds: 5,
+  aspectRatio: "16:9",
+  resolution: "720p",
 };
 
 function responseRecorder() {
@@ -51,6 +59,7 @@ function request(overrides: Record<string, unknown> = {}) {
 
 type DependencyOverrides = {
   service?: Partial<HtmlVideoRenderControllerDependencies["service"]>;
+  draftService?: HtmlVideoRenderControllerDependencies["draftService"];
   enqueue?: HtmlVideoRenderControllerDependencies["enqueue"];
 };
 
@@ -68,6 +77,9 @@ function dependencies(overrides: DependencyOverrides = {}) {
         id: new Types.ObjectId().toString(),
         status: "completed",
       }),
+    },
+    draftService: {
+      generate: async () => ({ html: "<main>AI</main>", css: "" }),
     },
     enqueue: async () => ({ id: "job-1" }),
   };
@@ -101,6 +113,80 @@ test("validates preview and render request bounds", () => {
   for (const invalid of invalidCases) {
     assert.ok(createHtmlVideoRenderBodySchema.validate(invalid).error);
   }
+});
+
+test("validates AI draft request bounds", () => {
+  assert.equal(htmlVideoDraftBodySchema.validate(validDraftBody).error, undefined);
+
+  for (const invalid of [
+    { ...validDraftBody, prompt: "" },
+    { ...validDraftBody, prompt: "   " },
+    { ...validDraftBody, prompt: "a".repeat(4_001) },
+    { ...validDraftBody, durationSeconds: 0 },
+    { ...validDraftBody, durationSeconds: 61 },
+    { ...validDraftBody, aspectRatio: "4:3" },
+    { ...validDraftBody, resolution: "4k" },
+    { ...validDraftBody, unexpected: true },
+  ]) {
+    assert.ok(htmlVideoDraftBodySchema.validate(invalid).error);
+  }
+});
+
+test("generates a tenant-scoped draft without enqueueing a render", async () => {
+  let received: unknown[] = [];
+  let enqueueCalls = 0;
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      draftService: {
+        generate: async (...args: unknown[]) => {
+          received = args;
+          return { html: "<main>AI</main>", css: "main{color:white}" };
+        },
+      },
+      enqueue: async () => {
+        enqueueCalls += 1;
+        throw new Error("not expected");
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request({ body: validDraftBody });
+
+  await controller.generateDraft(req as never, response as never);
+
+  assert.deepEqual(received, [
+    { id: req.user.id, companyCode: "ACME" },
+    validDraftBody,
+  ]);
+  assert.equal(enqueueCalls, 0);
+  assert.deepEqual(state.body, {
+    success: true,
+    data: { html: "<main>AI</main>", css: "main{color:white}" },
+  });
+});
+
+test("maps draft service failures through the safe error response", async () => {
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      draftService: {
+        generate: async () => {
+          throw new Error("AI khÃ´ng tráº£ vá» HTML/CSS há»£p lá»‡.");
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+
+  await controller.generateDraft(
+    request({ body: validDraftBody }) as never,
+    response as never
+  );
+
+  assert.equal(state.status, 400);
+  assert.deepEqual(state.body, {
+    success: false,
+    message: "AI khÃ´ng tráº£ vá» HTML/CSS há»£p lá»‡.",
+  });
 });
 
 test("returns a server-built safe preview without persistence", async () => {
