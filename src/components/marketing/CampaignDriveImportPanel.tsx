@@ -13,6 +13,7 @@ interface CampaignDriveImportPanelProps {
   mediaKind: 'image' | 'video';
   allowBulkCreate?: boolean;
   awaitingAssetCount?: number;
+  onCreateBulk?: () => void;
   onApplied?: () => void | Promise<void>;
 }
 
@@ -21,6 +22,7 @@ export default function CampaignDriveImportPanel({
   mediaKind,
   allowBulkCreate,
   awaitingAssetCount = 0,
+  onCreateBulk,
   onApplied,
 }: CampaignDriveImportPanelProps) {
   const [sourceMode, setSourceMode] = useState<'drive' | 'bulk'>('drive');
@@ -41,7 +43,7 @@ export default function CampaignDriveImportPanel({
     ? ['completed', 'partial'].includes(selectedBulkJob.status)
     : false;
 
-  const loadBulkJobs = useCallback(async () => {
+  const loadBulkJobs = useCallback(async (silent = false) => {
     setBulkLoading(true);
     try {
       const jobs = await marketingCampaignService.listBulkImportJobs(campaignId);
@@ -52,7 +54,7 @@ export default function CampaignDriveImportPanel({
           : jobs[0]?._id || ''
       ));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể tải lịch sử Bulk Create.');
+      if (!silent) toast.error(error instanceof Error ? error.message : 'Không thể tải lịch sử Bulk Create.');
     } finally {
       setBulkLoading(false);
     }
@@ -63,6 +65,14 @@ export default function CampaignDriveImportPanel({
       void loadBulkJobs();
     }
   }, [sourceMode, bulkEnabled, bulkJobs.length, loadBulkJobs]);
+
+  const hasPendingBulkJob = bulkJobs.some((job) => ['queued', 'processing'].includes(job.status));
+
+  useEffect(() => {
+    if (sourceMode !== 'bulk' || !bulkEnabled || !hasPendingBulkJob) return;
+    const timer = window.setInterval(() => void loadBulkJobs(true), 5000);
+    return () => window.clearInterval(timer);
+  }, [sourceMode, bulkEnabled, hasPendingBulkJob, loadBulkJobs]);
 
   useEffect(() => {
     if (!selectedBulkJobId || !selectedBulkJobIsComplete) {
@@ -233,6 +243,17 @@ export default function CampaignDriveImportPanel({
             Bulk Create
           </button>
         </div>
+
+        {bulkEnabled && onCreateBulk && (
+          <button
+            type="button"
+            onClick={onCreateBulk}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 text-xs font-extrabold text-violet-700 transition hover:bg-violet-100"
+          >
+            <Images className="h-4 w-4" />
+            Tạo mới trong Bulk Create
+          </button>
+        )}
 
         {sourceMode === 'drive' ? (
           <>

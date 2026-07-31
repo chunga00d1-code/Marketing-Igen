@@ -25,7 +25,6 @@ import * as os from "os";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
 
-// Äá»‹nh nghÄ©a Type tÆ°Æ¡ng thÃ­ch Ä‘á»ƒ cÃ¡c schema hiá»‡n táº¡i khÃ´ng cáº§n sá»­a
 const Type = {
   OBJECT: "object",
   ARRAY: "array",

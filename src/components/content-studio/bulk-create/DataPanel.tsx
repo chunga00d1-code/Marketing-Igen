@@ -29,6 +29,11 @@ interface DataPanelProps {
   loadingSheet: boolean;
   campaigns: Array<{ _id: string; title: string; startDate: string; endDate: string; statistics: { totalSlots: number } }>;
   selectedCampaignId: string;
+  bulkTarget: 'standalone' | 'campaign';
+  campaignContext: {
+    campaign: { title: string };
+    slots: Array<{ _id: string; platform: string; status: string; mediaType: string; topicBrief: string; scheduledAt: string }>;
+  } | null;
   loadingCampaigns: boolean;
   loadingCampaignOrders: boolean;
   readyCount: number;
@@ -37,6 +42,7 @@ interface DataPanelProps {
   onImportGoogleSheet: () => void;
   onLoadCampaigns: () => void;
   onSelectCampaign: (campaignId: string) => void;
+  onBulkTarget: (target: 'standalone' | 'campaign') => void;
   onImportCampaignOrders: () => void;
   onImportExcel: (file: File) => void;
   onSheetInput: (value: string) => void;
@@ -48,6 +54,7 @@ interface DataPanelProps {
   onCreatePages: () => void;
   onAddRow: () => void;
   onSelectRow: (id: string) => void;
+  onAssignCampaignSlot: (rowId: string, slotId: string) => void;
   onUpdateCell: (rowId: string, layerId: string, value: string) => void;
   onDuplicateRow: (row: DataRow) => void;
   onRemoveRow: (id: string) => void;
@@ -63,6 +70,7 @@ export function DataPanel(props: DataPanelProps) {
   const selectedRows = props.rows.filter((row) => row.selected !== false).length;
   const mappedLayers = props.layers.filter((layer) => layer.dataBinding).length;
   const allRowsSelected = props.rows.length > 0 && selectedRows === props.rows.length;
+  const campaignSlotById = new Map((props.campaignContext?.slots || []).map((slot) => [slot._id, slot]));
 
   return (
     <div className="w-full min-w-0 max-w-full space-y-4 overflow-x-hidden">
@@ -104,6 +112,64 @@ export function DataPanel(props: DataPanelProps) {
 
       {props.dataStep === 1 && (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
+            <p className="text-sm font-extrabold text-slate-900">Thiết kế cho đâu?</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => props.onBulkTarget('standalone')}
+                className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${
+                  props.bulkTarget === 'standalone'
+                    ? 'border-slate-800 bg-slate-800 text-white'
+                    : 'border-slate-200 bg-white text-slate-600'
+                }`}
+              >
+                Thiết kế tự do
+              </button>
+              <button
+                type="button"
+                onClick={() => props.onBulkTarget('campaign')}
+                className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${
+                  props.bulkTarget === 'campaign'
+                    ? 'border-violet-600 bg-violet-600 text-white'
+                    : 'border-violet-200 bg-white text-violet-700'
+                }`}
+              >
+                Cho Campaign
+              </button>
+            </div>
+            {props.bulkTarget === 'campaign' && (
+              <div className="mt-3 space-y-2">
+                <div className="flex gap-2">
+                  <select
+                    value={props.selectedCampaignId}
+                    onChange={(event) => props.onSelectCampaign(event.target.value)}
+                    disabled={props.loadingCampaigns || props.loadingCampaignOrders}
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-violet-500"
+                  >
+                    <option value="">Chọn chiến dịch Facebook</option>
+                    {props.campaigns.map((campaign) => (
+                      <option key={campaign._id} value={campaign._id}>
+                        {campaign.title} · {campaign.statistics.totalSlots} bài
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={props.onLoadCampaigns}
+                    className="rounded-lg border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700"
+                  >
+                    {props.loadingCampaigns ? '...' : 'Tải'}
+                  </button>
+                </div>
+                {props.campaignContext && (
+                  <p className="rounded-lg bg-white px-2.5 py-2 text-[11px] font-semibold text-violet-900">
+                    {props.campaignContext.campaign.title} · {props.campaignContext.slots.filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video', 'published', 'cancelled'].includes(slot.mediaType) && !['published', 'cancelled'].includes(slot.status)).length} bài Facebook có thể nhận ảnh.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
           <div>
             <h4 className="text-base font-extrabold text-slate-900">Chọn dữ liệu của bạn</h4>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
@@ -131,7 +197,7 @@ export function DataPanel(props: DataPanelProps) {
             <button
               type="button"
               onClick={props.onImportGoogleSheet}
-              disabled={!props.googleSheetUrl.trim() || props.loadingSheet}
+              disabled={!props.googleSheetUrl.trim() || props.loadingSheet || (props.bulkTarget === 'campaign' && !props.selectedCampaignId)}
               className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-emerald-600 px-2 text-sm font-extrabold text-white hover:bg-emerald-700 disabled:bg-slate-300"
             >
               {props.loadingSheet ? (
@@ -193,7 +259,7 @@ export function DataPanel(props: DataPanelProps) {
             </summary>
             <div className="space-y-3 border-t border-slate-100 p-4">
               <label className={`flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-700 ${
-                props.loadingSheet ? 'cursor-wait bg-slate-50 opacity-60' : 'cursor-pointer hover:bg-slate-50'
+                props.loadingSheet || (props.bulkTarget === 'campaign' && !props.selectedCampaignId) ? 'cursor-wait bg-slate-50 opacity-60' : 'cursor-pointer hover:bg-slate-50'
               }`}>
                 {props.loadingSheet ? (
                   <><LoaderCircle className="h-4 w-4 animate-spin" /> Đang đọc bảng tính...</>
@@ -203,7 +269,7 @@ export function DataPanel(props: DataPanelProps) {
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv"
-                  disabled={props.loadingSheet}
+                  disabled={props.loadingSheet || (props.bulkTarget === 'campaign' && !props.selectedCampaignId)}
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -222,7 +288,7 @@ export function DataPanel(props: DataPanelProps) {
               <button
                 type="button"
                 onClick={props.onImportSheet}
-                disabled={!props.sheetInput.trim()}
+                disabled={!props.sheetInput.trim() || (props.bulkTarget === 'campaign' && !props.selectedCampaignId)}
                 className="h-10 w-full rounded-xl bg-slate-800 text-sm font-bold text-white disabled:bg-slate-300"
               >
                 Dùng dữ liệu đã dán
@@ -326,6 +392,11 @@ export function DataPanel(props: DataPanelProps) {
 
       {props.dataStep === 3 && (
         <div className="space-y-4">
+          {props.bulkTarget === 'campaign' && (
+            <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+              Đã ghép {props.rows.filter((row) => Boolean(row.campaignSlotId)).length}/{props.rows.length} dòng với bài viết của Campaign theo thứ tự lịch đăng.
+            </div>
+          )}
           <div>
             <button
               type="button"
@@ -366,6 +437,7 @@ export function DataPanel(props: DataPanelProps) {
                 ...textPreview,
                 imageCount > 0 ? `${imageCount} ảnh` : '',
               ].filter(Boolean).join(' · ');
+              const mappedSlot = row.campaignSlotId ? campaignSlotById.get(row.campaignSlotId) : undefined;
               return (
                 <div
                   key={row.id}
@@ -390,6 +462,23 @@ export function DataPanel(props: DataPanelProps) {
                     <span className="block text-sm font-extrabold text-slate-800">Trang {index + 1}</span>
                     <span className="block truncate text-xs text-slate-500">{previewValues || 'Chưa có dữ liệu'}</span>
                   </button>
+                  {props.bulkTarget === 'campaign' && (
+                    <select
+                      value={row.campaignSlotId || ''}
+                      onChange={(event) => props.onAssignCampaignSlot(row.id, event.target.value)}
+                      className="h-8 max-w-28 rounded-md border border-violet-200 bg-white px-1 text-[10px] font-bold text-violet-800"
+                      title={mappedSlot ? mappedSlot.topicBrief : 'Chưa ghép bài'}
+                    >
+                      <option value="">Chưa ghép</option>
+                      {(props.campaignContext?.slots || [])
+                        .filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video'].includes(slot.mediaType) && !['published', 'cancelled'].includes(slot.status))
+                        .map((slot, slotIndex) => (
+                          <option key={slot._id} value={slot._id}>
+                            Bài {slotIndex + 1}
+                          </option>
+                        ))}
+                    </select>
+                  )}
                   {missingFields.length > 0 && row.selected !== false && (
                     <span
                       className="shrink-0 text-amber-600"

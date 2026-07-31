@@ -6,6 +6,7 @@ import { CampaignSlotDetail } from './CampaignSlotDetail';
 import { socketService } from '../../services/socketService';
 import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
 import CampaignDriveImportPanel from './CampaignDriveImportPanel';
+import { openContentStudio } from '../../utils/contentStudioNavigation';
 
 const DETAIL_LIST_ITEMS_PER_PAGE = 8;
 
@@ -832,6 +833,10 @@ export default function CampaignDetailModal({
                         mediaKind={campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
                         allowBulkCreate={campaignDetail.campaign.platforms.includes('Facebook')}
                         awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
+                        onCreateBulk={() => openContentStudio({
+                          tab: 'template',
+                          campaignId: campaignDetail.campaign._id,
+                        })}
                         onApplied={onRefresh}
                       />
 

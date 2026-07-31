@@ -2,17 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { ImageIcon, Layers3 } from 'lucide-react';
 import { BulkCreateWorkspace } from './BulkCreateWorkspace';
 import { ImageGenerationWorkspace } from './ImageGenerationWorkspace';
-import type { ContentStudioTab } from '../../utils/contentStudioNavigation';
+import type { ContentStudioLaunchParams, ContentStudioTab } from '../../utils/contentStudioNavigation';
 
 interface ContentStudioWorkspaceProps {
   initialTab?: ContentStudioTab;
-  initialParams?: {
-    tab: 'image' | 'template';
-    prompt: string;
-    cardId: string;
-    image?: string;
-    autoTrigger?: boolean;
-  } | null;
+  initialParams?: ContentStudioLaunchParams | null;
   onClearParams?: () => void;
   onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
   onTabChange?: (tab: ContentStudioTab) => void;
@@ -82,7 +76,14 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
             autoTrigger={initialParams?.autoTrigger}
           />
         )}
-        {activeTab === 'bulk' && <BulkCreateWorkspace onClose={() => changeTab(prevTab)} cardId={initialParams?.cardId} onMediaSaved={onMediaSaved} />}
+        {activeTab === 'bulk' && (
+          <BulkCreateWorkspace
+            onClose={() => changeTab(prevTab)}
+            cardId={initialParams?.cardId}
+            initialCampaignId={initialParams?.campaignId}
+            onMediaSaved={onMediaSaved}
+          />
+        )}
       </div>
     </div>
   );
