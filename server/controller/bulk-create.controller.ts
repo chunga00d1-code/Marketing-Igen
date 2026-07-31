@@ -1,20 +1,10 @@
 import { Response } from "express";
-import * as archiverModule from "archiver";
+import { ZipArchive } from "archiver";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { bulkCreateService } from "../service/bulk-create.service";
 import { enqueueBulkCreateJob } from "../queue/bulk-create-queue";
 import { bulkCreateAiService } from "../service/bulk-create-ai.service";
 
-interface ZipArchive {
-  on(event: "error", listener: (error: Error) => void): void;
-  pipe(destination: Response): void;
-  append(source: Buffer, options: { name: string }): void;
-  finalize(): Promise<void>;
-}
-
-type ArchiverFactory = (format: "zip", options: { zlib: { level: number } }) => ZipArchive;
-
-const createArchive = ((archiverModule as unknown as { default?: ArchiverFactory }).default || archiverModule) as unknown as ArchiverFactory;
 const MAX_ZIP_IMAGE_BYTES = 20 * 1024 * 1024;
 const ZIP_FETCH_CONCURRENCY = 4;
 
@@ -239,7 +229,7 @@ export const bulkCreateController = {
       const safeName = job.templateName.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "bulk-create";
       res.setHeader("Content-Type", "application/zip");
       res.setHeader("Content-Disposition", `attachment; filename="${safeName}.zip"`);
-      const archive = createArchive("zip", { zlib: { level: 6 } });
+      const archive = new ZipArchive({ zlib: { level: 6 } });
       archive.on("error", (error) => {
         console.error(`[Bulk Create ZIP] Job ${job._id} lỗi:`, error);
         if (!res.headersSent) res.status(500).json({ status: "error", message: "Không thể tạo file ZIP." });

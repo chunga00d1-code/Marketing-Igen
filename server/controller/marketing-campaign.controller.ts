@@ -283,7 +283,7 @@ export const marketingCampaignController = {
   async fillAllAssetOrdersAI(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode, userId } = getIdentity(req);
-      const estimate = await campaignAssetOrderService.getFillAllAiCost(companyCode, req.params.id);
+      const estimate = await campaignAssetOrderService.getFillAllAiCost(companyCode, req.params.id, req.body.orderIds);
       if (!estimate.orderCount) {
         return res.status(409).json({ status: "error", message: "Chưa có Order gắn với bài viết để AI điền." });
       }

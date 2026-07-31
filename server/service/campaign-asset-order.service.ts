@@ -37,14 +37,15 @@ const MAX_ASSETS_PER_ORDER = 20;
 const MAX_CUSTOM_FIELDS_PER_CAMPAIGN = 15;
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 500;
 const MAX_BULK_IMAGES_PER_ORDER = 10;
-// Keep each provider request compact so a full campaign does not time out while
-// producing one large JSON response. Billing remains based on the former
-// 20-row logical batch, not the smaller transport batch.
-const AI_FILL_ALL_BATCH_SIZE = 4;
+// Keep provider requests small enough to return well-formed JSON quickly. The
+// job deliberately runs a small number of these batches concurrently.
+const AI_FILL_ALL_BATCH_SIZE = 2;
+const AI_FILL_ALL_BATCH_CONCURRENCY = 2;
 const AI_FILL_ALL_BILLING_BATCH_SIZE = 20;
-const AI_FILL_ALL_TIMEOUT_MS = 60_000;
-const AI_FILL_ALL_MAX_TOKENS = 3_000;
-const ASSET_ORDER_AI_MODEL = process.env.ASSET_ORDER_AI_MODEL || "deepseek/deepseek-v4-flash";
+const AI_FILL_ALL_TIMEOUT_MS = 35_000;
+const AI_FILL_ALL_MAX_TOKENS = 1_800;
+const ASSET_ORDER_AI_MODEL = process.env.ASSET_ORDER_AI_MODEL || "qwen/qwen3.7-flash";
+const ASSET_ORDER_AI_FALLBACK_MODEL = process.env.ASSET_ORDER_AI_FALLBACK_MODEL || "qwen/qwen3.5-flash-02-23";
 const terminalSlotStatuses = ["published", "cancelled"] as const;
 const aiWritableFieldKeys = [
   "contentGroup",
@@ -523,14 +524,25 @@ export const campaignAssetOrderService = {
     return campaign.qualityMode === "budget" ? 0.5 : 2.5;
   },
 
-  async getFillAllAiCost(companyCode: string, campaignId: string) {
+  async getFillAllAiCost(companyCode: string, campaignId: string, orderIds?: string[]) {
+    const requestedOrderIds = [...new Set(orderIds || [])]
+      .filter((id) => mongoose.isValidObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
     const [campaign, orderCount] = await Promise.all([
       assertCampaign(companyCode, campaignId),
-      MarketingCampaignSlotModel.countDocuments({
-        companyCode,
-        campaignId,
-        status: { $nin: [...terminalSlotStatuses] },
-      }),
+      requestedOrderIds.length
+        ? CampaignAssetOrderModel.countDocuments({
+          _id: { $in: requestedOrderIds },
+          companyCode,
+          campaignId,
+          slotId: { $exists: true },
+          status: { $nin: ["completed", "cancelled"] },
+        })
+        : MarketingCampaignSlotModel.countDocuments({
+          companyCode,
+          campaignId,
+          status: { $nin: [...terminalSlotStatuses] },
+        }),
     ]);
     const batches = Math.ceil(orderCount / AI_FILL_ALL_BILLING_BATCH_SIZE);
     const unitCost = campaign.qualityMode === "budget" ? 0.5 : 2.5;
@@ -545,6 +557,7 @@ export const campaignAssetOrderService = {
       idempotencyKey: string;
       instruction?: string;
       overwritePolicy?: CampaignAssetOrderOverwritePolicy;
+      orderIds?: string[];
     }
   ) {
     const campaign = await assertCampaign(companyCode, campaignId);
@@ -557,11 +570,15 @@ export const campaignAssetOrderService = {
       status: { $nin: [...terminalSlotStatuses] },
     }).select("_id pillar objective topicBrief mediaType").lean();
     await migrateLegacySheetOrders(companyCode, campaignId, campaign.createdBy, slots);
+    const requestedOrderIds = [...new Set(input.orderIds || [])]
+      .filter((id) => mongoose.isValidObjectId(id))
+      .map((id) => new mongoose.Types.ObjectId(id));
     const orders = await CampaignAssetOrderModel.find({
       companyCode,
       campaignId,
       slotId: { $exists: true },
       status: { $nin: ["completed", "cancelled"] },
+      ...(requestedOrderIds.length ? { _id: { $in: requestedOrderIds } } : {}),
     }).select("_id").sort({ updatedAt: 1 }).lean();
     if (!orders.length) {
       throw httpError("Chưa có Order gắn với bài viết để AI điền.", 409, "NO_SLOT_ORDERS");
@@ -651,13 +668,13 @@ export const campaignAssetOrderService = {
           .filter(Boolean)
           .join(" ");
       }),
-    ].join("\n").slice(0, 20_000);
+    ].join("\n").slice(0, 12_000);
     const knowledge = await aiKnowledgeService.searchRelevantContext({
       companyCode: job.companyCode,
       query,
       channel: "facebook",
       purpose: "marketing",
-      topK: 8,
+      topK: 5,
     });
     const references = (knowledge.items || []).slice(0, 5).flatMap((item: unknown) => {
       const value = item as { documentId?: unknown; chunkId?: unknown; title?: unknown; text?: unknown };
@@ -672,14 +689,24 @@ export const campaignAssetOrderService = {
     const remainingBudget = Math.max(Number(job.estimatedCost || 0) - Number(job.actualCost || 0), 0);
     const requestCost = remainingRequestCount > 0 ? remainingBudget / remainingRequestCount : 0;
 
-    for (let start = 0; start < orders.length; start += AI_FILL_ALL_BATCH_SIZE) {
+    const batchStarts = Array.from(
+      { length: Math.ceil(orders.length / AI_FILL_ALL_BATCH_SIZE) },
+      (_, index) => index * AI_FILL_ALL_BATCH_SIZE
+    );
+    let nextBatchIndex = 0;
+    let cancellationObserved = false;
+    const processNextBatch = async () => {
+      while (!cancellationObserved) {
+        const start = batchStarts[nextBatchIndex++];
+        if (start === undefined) return;
       const latest = await CampaignAssetOrderAIJobModel.findById(job._id).select("cancelRequestedAt status completedItems failedItems skippedItems conflictedItems actualCost").lean();
       if (latest?.cancelRequestedAt || latest?.status === "cancelled") {
+        cancellationObserved = true;
         await CampaignAssetOrderAIJobModel.updateOne(
           { _id: job._id, lockId },
           { $set: { status: "cancelled", completedAt: new Date() }, $unset: { lockId: 1, lockExpiresAt: 1 } }
         );
-        return CampaignAssetOrderAIJobModel.findById(job._id).lean();
+        return;
       }
 
       const batch = orders.slice(start, start + AI_FILL_ALL_BATCH_SIZE);
@@ -693,13 +720,19 @@ export const campaignAssetOrderService = {
       let providerCharged = false;
       try {
         if (requestCost > 0) await walletService.checkBalance(job.createdBy, requestCost);
-        const response = await openrouterChat({
-          model: job.modelName,
+        const batchIds = new Set(batch.map((order) => String(order._id)));
+        let generatedByOrderId: Map<string, Record<string, unknown>> | undefined;
+        let providerModel = job.modelName;
+        let lastProviderError: unknown;
+        for (const modelName of [...new Set([job.modelName, ASSET_ORDER_AI_FALLBACK_MODEL].filter(Boolean))]) {
+          try {
+            const response = await openrouterChat({
+          model: modelName,
           temperature: 0.35,
           jsonMode: true,
           maxTokens: AI_FILL_ALL_MAX_TOKENS,
           timeoutMs: AI_FILL_ALL_TIMEOUT_MS,
-          maxRetries: 2,
+          maxRetries: 1,
           responseSchema: {
             type: "object",
             properties: {
@@ -742,7 +775,7 @@ export const campaignAssetOrderService = {
             }] : []),
             {
               role: "user",
-              content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${cleanText(knowledge.contextText, 6000) || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
+              content: `CHIẾN DỊCH:\n${cleanText(campaign.sourceBrief, 2_500)}\n\nKHO TRI THỨC FACEBOOK:\n${cleanText(knowledge.contextText, 3_000) || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
                 const slot = order.slotId ? slotMap.get(String(order.slotId)) : undefined;
                 const content = order.slotId ? contentMap.get(String(order.slotId)) : undefined;
                 return {
@@ -754,10 +787,10 @@ export const campaignAssetOrderService = {
                   finalContent: content
                     ? {
                       title: cleanText(content.title, 160),
-                      bodyText: cleanText(content.bodyText, 900),
-                      outline: cleanText(content.outline, 700),
-                      mediaPrompt: cleanText(content.mediaPrompt, 500),
-                      voiceScript: cleanText(content.voiceScript, 700),
+                      bodyText: cleanText(content.bodyText, 600),
+                      outline: cleanText(content.outline, 400),
+                      mediaPrompt: cleanText(content.mediaPrompt, 300),
+                      voiceScript: cleanText(content.voiceScript, 400),
                       mediaType: content.mediaType,
                     }
                     : undefined,
@@ -766,6 +799,24 @@ export const campaignAssetOrderService = {
             },
           ],
         });
+        const parsed = JSON.parse(response.text) as { rows?: unknown };
+        if (!Array.isArray(parsed.rows)) throw httpError("AI không trả về danh sách dòng Order.", 502, "INVALID_AI_RESPONSE");
+        const responseRowsByOrderId = new Map<string, Record<string, unknown>>();
+        for (const item of parsed.rows) {
+          if (!item || typeof item !== "object") continue;
+          const value = item as Record<string, unknown>;
+          const orderId = String(value.orderId || "");
+          if (batchIds.has(orderId) && !responseRowsByOrderId.has(orderId)) responseRowsByOrderId.set(orderId, value);
+        }
+        if (!responseRowsByOrderId.size) throw httpError("AI returned no usable Order rows.", 502, "EMPTY_AI_RESPONSE");
+        generatedByOrderId = responseRowsByOrderId;
+        providerModel = modelName;
+        break;
+          } catch (error) {
+            lastProviderError = error;
+          }
+        }
+        if (!generatedByOrderId) throw lastProviderError || httpError("AI returned no usable Order rows.", 502, "INVALID_AI_RESPONSE");
         if (requestCost > 0) {
           await walletService.deductBalance(
             job.createdBy,
@@ -774,17 +825,6 @@ export const campaignAssetOrderService = {
             `asset-order-ai-job:${job.companyCode}:${job._id}:${start / AI_FILL_ALL_BATCH_SIZE}`
           );
           providerCharged = true;
-        }
-
-        const parsed = JSON.parse(response.text) as { rows?: unknown };
-        if (!Array.isArray(parsed.rows)) throw httpError("AI không trả về danh sách dòng Order.", 502, "INVALID_AI_RESPONSE");
-        const generatedByOrderId = new Map<string, Record<string, unknown>>();
-        const batchIds = new Set(batch.map((order) => String(order._id)));
-        for (const item of parsed.rows) {
-          if (!item || typeof item !== "object") continue;
-          const value = item as Record<string, unknown>;
-          const orderId = String(value.orderId || "");
-          if (batchIds.has(orderId) && !generatedByOrderId.has(orderId)) generatedByOrderId.set(orderId, value);
         }
 
         for (const order of batch) {
@@ -847,7 +887,7 @@ export const campaignAssetOrderService = {
           const aiProposal = {
             idempotencyKey: `${job.idempotencyKey.slice(0, 150)}:${String(order._id)}`,
             generationJobId: String(job._id),
-            modelName: job.modelName,
+            modelName: providerModel,
             ...generatedValues,
             usageChannels: "Facebook",
             references,
@@ -896,17 +936,18 @@ export const campaignAssetOrderService = {
       const skipped = batchResults.filter((result) => result.status === "skipped").length;
       const conflicted = batchResults.filter((result) => result.status === "conflict").length;
       const failed = batchResults.filter((result) => result.status === "failed").length;
-      const processed = start + batch.length;
       await CampaignAssetOrderAIJobModel.updateOne(
         { _id: job._id, lockId },
         {
           $push: { results: { $each: batchResults } },
           $set: {
-            completedItems: processed,
-            progress: Math.round((processed / Math.max(job.totalItems, 1)) * 100),
+            // completedItems is incremented atomically because two compact
+            // batches may finish at nearly the same time.
+            progress: Math.min(99, Math.round(((start + batch.length) / Math.max(job.totalItems, 1)) * 100)),
             lockExpiresAt: new Date(Date.now() + 20 * 60_000),
           },
           $inc: {
+            completedItems: batch.length,
             failedItems: failed,
             skippedItems: skipped,
             conflictedItems: conflicted,
@@ -914,6 +955,22 @@ export const campaignAssetOrderService = {
           },
         }
       );
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(AI_FILL_ALL_BATCH_CONCURRENCY, batchStarts.length) }, () => processNextBatch())
+    );
+    if (cancellationObserved) return CampaignAssetOrderAIJobModel.findById(job._id).lean();
+
+    const cancellationState = await CampaignAssetOrderAIJobModel.findById(job._id)
+      .select("cancelRequestedAt status")
+      .lean();
+    if (cancellationState?.cancelRequestedAt || cancellationState?.status === "cancelled") {
+      await CampaignAssetOrderAIJobModel.updateOne(
+        { _id: job._id, lockId },
+        { $set: { status: "cancelled", completedAt: new Date() }, $unset: { lockId: 1, lockExpiresAt: 1 } }
+      );
+      return CampaignAssetOrderAIJobModel.findById(job._id).lean();
     }
 
     const finalJob = await CampaignAssetOrderAIJobModel.findById(job._id);

@@ -284,6 +284,18 @@ export const bulkCreateService = {
     return (await parse<{ url: string }>(response, 'Không thể tải tài nguyên lên.')).url;
   },
 
+  /** Build a Cloudinary AI background-removal derivative while preserving the original asset. */
+  backgroundRemovedUrl(url: string) {
+    const marker = '/image/upload/';
+    if (!/^https:\/\/res\.cloudinary\.com\//i.test(url) || !url.includes(marker)) {
+      throw new Error('Ảnh cần được tải lên thư viện trước khi xóa nền AI.');
+    }
+    if (url.includes('/e_background_removal/')) return url;
+    // Keep fine foreground details (for example leaves, fabric and product
+    // edges) while turning only the detected background transparent.
+    return url.replace(marker, `${marker}e_background_removal:fineedges_y/f_png/`);
+  },
+
   async createTemplate(payload: BulkTemplatePayload) {
     const response = await fetch('/api/v1/bulk-create/templates', { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
     return (await parse<{ data: BulkTemplate }>(response, 'Không thể lưu template.')).data;

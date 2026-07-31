@@ -326,6 +326,7 @@ marketingCampaignRouter.post("/:id/asset-orders/ai/fill-all", validateRequest({
     idempotencyKey: Joi.string().trim().min(8).max(200).required(),
     instruction: Joi.string().trim().max(2000).allow("").optional(),
     overwritePolicy: Joi.string().valid("empty_only", "replace_ai").default("empty_only"),
+    orderIds: Joi.array().items(objectId).min(1).max(100).unique().optional(),
   }),
 }), marketingCampaignController.fillAllAssetOrdersAI as never);
 marketingCampaignRouter.get("/:id/asset-orders/ai/jobs/:jobId", validateRequest({
