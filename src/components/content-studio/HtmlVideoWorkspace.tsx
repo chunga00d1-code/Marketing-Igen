@@ -8,6 +8,7 @@ import { Code2, Download, LoaderCircle, Play, ShieldCheck } from "lucide-react";
 import {
   htmlVideoRenderService,
   type HtmlVideoAspectRatio,
+  type HtmlVideoDraft,
   type HtmlVideoPreview,
   type HtmlVideoRenderDetail,
   type HtmlVideoRenderStatus,
@@ -51,6 +52,94 @@ type PollHtmlVideoRenderOptions = {
   onUpdate: (detail: HtmlVideoRenderDetail) => void;
   wait?: (signal: AbortSignal) => Promise<void>;
 };
+
+export type HtmlVideoDraftWorkspaceSnapshot = {
+  html: string;
+  css: string;
+  durationSeconds: number;
+  aspectRatio: HtmlVideoAspectRatio;
+  resolution: HtmlVideoResolution;
+};
+
+type HtmlVideoDraftGenerationSettings = Pick<
+  HtmlVideoDraftWorkspaceSnapshot,
+  "durationSeconds" | "aspectRatio" | "resolution"
+>;
+
+export type HtmlVideoPendingDraftConflict = {
+  draft: HtmlVideoDraft;
+  generatedFor: HtmlVideoDraftGenerationSettings;
+};
+
+export type HtmlVideoDraftConflictState = {
+  snapshot: HtmlVideoDraftWorkspaceSnapshot;
+  hasGeneratedDraft: boolean;
+  sourceDirtyAfterGeneration: boolean;
+  pendingDraft: HtmlVideoPendingDraftConflict | null;
+};
+
+export function hasHtmlVideoDraftSourceChanged(
+  started: HtmlVideoDraftWorkspaceSnapshot,
+  current: HtmlVideoDraftWorkspaceSnapshot
+) {
+  return started.html !== current.html || started.css !== current.css;
+}
+
+export function hasHtmlVideoDraftSettingsChanged(
+  started: HtmlVideoDraftWorkspaceSnapshot,
+  current: HtmlVideoDraftWorkspaceSnapshot
+) {
+  return (
+    started.durationSeconds !== current.durationSeconds ||
+    started.aspectRatio !== current.aspectRatio ||
+    started.resolution !== current.resolution
+  );
+}
+
+export function resolveHtmlVideoDraftGeneration(
+  started: HtmlVideoDraftWorkspaceSnapshot,
+  current: HtmlVideoDraftWorkspaceSnapshot,
+  draft: HtmlVideoDraft
+):
+  | { kind: "apply"; draft: HtmlVideoDraft }
+  | { kind: "conflict"; pending: HtmlVideoPendingDraftConflict } {
+  if (
+    hasHtmlVideoDraftSourceChanged(started, current) ||
+    hasHtmlVideoDraftSettingsChanged(started, current)
+  ) {
+    return {
+      kind: "conflict",
+      pending: {
+        draft,
+        generatedFor: {
+          durationSeconds: started.durationSeconds,
+          aspectRatio: started.aspectRatio,
+          resolution: started.resolution,
+        },
+      },
+    };
+  }
+  return { kind: "apply", draft };
+}
+
+export function resolveHtmlVideoDraftConflict(
+  state: HtmlVideoDraftConflictState,
+  decision: "apply-ai" | "keep-current"
+): HtmlVideoDraftConflictState {
+  if (decision === "keep-current" || !state.pendingDraft) {
+    return { ...state, pendingDraft: null };
+  }
+  return {
+    snapshot: {
+      ...state.snapshot,
+      html: state.pendingDraft.draft.html,
+      css: state.pendingDraft.draft.css,
+    },
+    hasGeneratedDraft: true,
+    sourceDirtyAfterGeneration: false,
+    pendingDraft: null,
+  };
+}
 
 function abortError() {
   return new DOMException("Polling aborted.", "AbortError");
@@ -140,9 +229,18 @@ export function HtmlVideoWorkspace({
   const [hasGeneratedDraft, setHasGeneratedDraft] = useState(false);
   const [sourceDirtyAfterGeneration, setSourceDirtyAfterGeneration] =
     useState(false);
+  const [pendingDraft, setPendingDraft] =
+    useState<HtmlVideoPendingDraftConflict | null>(null);
   const pollControllerRef = useRef<AbortController | null>(null);
   const draftControllerRef = useRef<AbortController | null>(null);
   const submissionGenerationRef = useRef(0);
+  const workspaceSnapshotRef = useRef<HtmlVideoDraftWorkspaceSnapshot>({
+    html: defaultHtml,
+    css: defaultCss,
+    durationSeconds: 5,
+    aspectRatio: "16:9",
+    resolution: "720p",
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -201,6 +299,8 @@ export function HtmlVideoWorkspace({
     draftControllerRef.current?.abort();
     const controller = new AbortController();
     draftControllerRef.current = controller;
+    const generationSnapshot = { ...workspaceSnapshotRef.current };
+    setPendingDraft(null);
     setGeneratingDraft(true);
     setDraftError("");
 
@@ -215,8 +315,22 @@ export function HtmlVideoWorkspace({
         controller.signal
       );
       if (controller.signal.aborted) return;
-      setHtml(draft.html);
-      setCss(draft.css);
+      const resolutionResult = resolveHtmlVideoDraftGeneration(
+        generationSnapshot,
+        workspaceSnapshotRef.current,
+        draft
+      );
+      if (resolutionResult.kind === "conflict") {
+        setPendingDraft(resolutionResult.pending);
+        return;
+      }
+      workspaceSnapshotRef.current = {
+        ...workspaceSnapshotRef.current,
+        html: resolutionResult.draft.html,
+        css: resolutionResult.draft.css,
+      };
+      setHtml(resolutionResult.draft.html);
+      setCss(resolutionResult.draft.css);
       setHasGeneratedDraft(true);
       setSourceDirtyAfterGeneration(false);
     } catch (error) {
@@ -226,6 +340,27 @@ export function HtmlVideoWorkspace({
     } finally {
       if (!controller.signal.aborted) setGeneratingDraft(false);
     }
+  };
+
+  const handleDraftConflict = (decision: "apply-ai" | "keep-current") => {
+    if (!pendingDraft) return;
+    const nextState = resolveHtmlVideoDraftConflict(
+      {
+        snapshot: workspaceSnapshotRef.current,
+        hasGeneratedDraft,
+        sourceDirtyAfterGeneration,
+        pendingDraft,
+      },
+      decision
+    );
+    workspaceSnapshotRef.current = nextState.snapshot;
+    if (decision === "apply-ai") {
+      setHtml(nextState.snapshot.html);
+      setCss(nextState.snapshot.css);
+    }
+    setHasGeneratedDraft(nextState.hasGeneratedDraft);
+    setSourceDirtyAfterGeneration(nextState.sourceDirtyAfterGeneration);
+    setPendingDraft(null);
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -331,6 +466,37 @@ export function HtmlVideoWorkspace({
               {draftError}
             </p>
           ) : null}
+          {pendingDraft ? (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            >
+              <p className="font-semibold">
+                HTML/CSS hoặc cài đặt đã thay đổi trong khi AI đang tạo bản nháp.
+                Bản AI này được tạo cho{" "}
+                {pendingDraft.generatedFor.durationSeconds} giây, tỷ lệ{" "}
+                {pendingDraft.generatedFor.aspectRatio}, độ phân giải{" "}
+                {pendingDraft.generatedFor.resolution}.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleDraftConflict("apply-ai")}
+                  className="rounded-lg bg-violet-600 px-3 py-2 font-bold text-white"
+                >
+                  Áp dụng bản AI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDraftConflict("keep-current")}
+                  className="rounded-lg border border-amber-400 bg-white px-3 py-2 font-bold text-amber-950"
+                >
+                  Giữ bản hiện tại
+                </button>
+              </div>
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={() => void handleGenerateDraft()}
@@ -351,7 +517,12 @@ export function HtmlVideoWorkspace({
             <textarea
               value={html}
               onChange={(event) => {
-                setHtml(event.target.value);
+                const nextHtml = event.target.value;
+                workspaceSnapshotRef.current = {
+                  ...workspaceSnapshotRef.current,
+                  html: nextHtml,
+                };
+                setHtml(nextHtml);
                 if (hasGeneratedDraft) setSourceDirtyAfterGeneration(true);
               }}
               className="min-h-72 w-full resize-y rounded-2xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-sky-100 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
@@ -364,7 +535,12 @@ export function HtmlVideoWorkspace({
             <textarea
               value={css}
               onChange={(event) => {
-                setCss(event.target.value);
+                const nextCss = event.target.value;
+                workspaceSnapshotRef.current = {
+                  ...workspaceSnapshotRef.current,
+                  css: nextCss,
+                };
+                setCss(nextCss);
                 if (hasGeneratedDraft) setSourceDirtyAfterGeneration(true);
               }}
               className="min-h-72 w-full resize-y rounded-2xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-emerald-100 outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
@@ -382,11 +558,17 @@ export function HtmlVideoWorkspace({
               min={1}
               max={60}
               value={durationSeconds}
-              onChange={(event) =>
-                setDurationSeconds(
-                  Math.min(60, Math.max(1, Number(event.target.value) || 1))
-                )
-              }
+              onChange={(event) => {
+                const nextDuration = Math.min(
+                  60,
+                  Math.max(1, Number(event.target.value) || 1)
+                );
+                workspaceSnapshotRef.current = {
+                  ...workspaceSnapshotRef.current,
+                  durationSeconds: nextDuration,
+                };
+                setDurationSeconds(nextDuration);
+              }}
               className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-sky-400"
             />
           </label>
@@ -394,9 +576,15 @@ export function HtmlVideoWorkspace({
             <span>Tỷ lệ khung hình</span>
             <select
               value={aspectRatio}
-              onChange={(event) =>
-                setAspectRatio(event.target.value as HtmlVideoAspectRatio)
-              }
+              onChange={(event) => {
+                const nextAspectRatio = event.target
+                  .value as HtmlVideoAspectRatio;
+                workspaceSnapshotRef.current = {
+                  ...workspaceSnapshotRef.current,
+                  aspectRatio: nextAspectRatio,
+                };
+                setAspectRatio(nextAspectRatio);
+              }}
               className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-sky-400"
             >
               <option value="16:9">16:9</option>
@@ -408,9 +596,15 @@ export function HtmlVideoWorkspace({
             <span>Độ phân giải</span>
             <select
               value={resolution}
-              onChange={(event) =>
-                setResolution(event.target.value as HtmlVideoResolution)
-              }
+              onChange={(event) => {
+                const nextResolution = event.target
+                  .value as HtmlVideoResolution;
+                workspaceSnapshotRef.current = {
+                  ...workspaceSnapshotRef.current,
+                  resolution: nextResolution,
+                };
+                setResolution(nextResolution);
+              }}
               className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-sky-400"
             >
               <option value="720p">720p</option>

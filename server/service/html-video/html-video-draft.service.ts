@@ -8,7 +8,35 @@ import {
 
 const MAX_PROMPT_LENGTH = 4_000;
 const MAX_SOURCE_BYTES = 100 * 1024;
-const INVALID_DRAFT_MESSAGE = "AI không trả về HTML/CSS hợp lệ.";
+
+export type HtmlVideoDraftErrorCode =
+  | "INSUFFICIENT_BALANCE"
+  | "AI_UNAVAILABLE"
+  | "INVALID_OUTPUT"
+  | "INTERNAL";
+
+const draftErrorMessages: Record<HtmlVideoDraftErrorCode, string> = {
+  INSUFFICIENT_BALANCE:
+    "Số dư ví không đủ. Vui lòng nạp thêm tiền để tiếp tục.",
+  AI_UNAVAILABLE:
+    "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",
+  INVALID_OUTPUT:
+    "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại.",
+  INTERNAL:
+    "Không thể tạo HTML/CSS video lúc này. Vui lòng thử lại sau.",
+};
+
+export class HtmlVideoDraftError extends Error {
+  constructor(
+    public readonly code: HtmlVideoDraftErrorCode,
+    cause?: unknown
+  ) {
+    super(draftErrorMessages[code], { cause });
+    this.name = "HtmlVideoDraftError";
+  }
+}
+
+const INVALID_DRAFT_MESSAGE = draftErrorMessages.INVALID_OUTPUT;
 
 const videoDimensions: Record<
   HtmlVideoAspectRatio,
@@ -36,6 +64,17 @@ export type HtmlVideoDraftDependencies = {
   deductBalance: typeof walletService.deductBalance;
   validateComposition: typeof buildSafeHtmlVideoComposition;
 };
+
+function walletError(error: unknown) {
+  const statusCode =
+    typeof error === "object" && error !== null
+      ? Number((error as { statusCode?: unknown }).statusCode)
+      : 0;
+  return new HtmlVideoDraftError(
+    statusCode === 402 ? "INSUFFICIENT_BALANCE" : "INTERNAL",
+    error
+  );
+}
 
 function normalizePrompt(input: unknown) {
   const prompt = String(input ?? "").trim();
@@ -111,23 +150,32 @@ export function createHtmlVideoDraftService(
       const prompt = normalizePrompt(input.prompt);
       const systemPrompt = buildSystemPrompt(input);
 
-      await dependencies.checkBalance(actor.id, API_COSTS.AI_HTML_CHAT);
+      try {
+        await dependencies.checkBalance(actor.id, API_COSTS.AI_HTML_CHAT);
+      } catch (error) {
+        throw walletError(error);
+      }
 
       for (let attempt = 0; attempt < 2; attempt += 1) {
         let safe: ReturnType<HtmlVideoDraftDependencies["validateComposition"]>;
-        const response = await dependencies.chat({
-          model: process.env.AI_HTML_MODEL || "google/gemini-2.5-flash",
-          temperature: 0.35,
-          jsonMode: true,
-          responseSchema: { html: "string", css: "string" },
-          maxRetries: 1,
-          maxTokens: 10_000,
-          timeoutMs: 45_000,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: prompt },
-          ],
-        });
+        let response: Awaited<ReturnType<HtmlVideoDraftDependencies["chat"]>>;
+        try {
+          response = await dependencies.chat({
+            model: process.env.AI_HTML_MODEL || "google/gemini-2.5-flash",
+            temperature: 0.35,
+            jsonMode: true,
+            responseSchema: { html: "string", css: "string" },
+            maxRetries: 1,
+            maxTokens: 10_000,
+            timeoutMs: 45_000,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: prompt },
+            ],
+          });
+        } catch (error) {
+          throw new HtmlVideoDraftError("AI_UNAVAILABLE", error);
+        }
         try {
           const draft = parseDraft(response.text);
           safe = dependencies.validateComposition({
@@ -136,20 +184,27 @@ export function createHtmlVideoDraftService(
             aspectRatio: input.aspectRatio,
             resolution: input.resolution,
           });
+          if (!safe.sanitizedHtml.trim()) {
+            throw new Error(INVALID_DRAFT_MESSAGE);
+          }
         } catch {
           // Malformed provider output and trust-boundary failures are retried once without logging.
           continue;
         }
 
-        await dependencies.deductBalance(
-          actor.id,
-          API_COSTS.AI_HTML_CHAT,
-          "Chi phí tạo HTML/CSS video bằng AI"
-        );
+        try {
+          await dependencies.deductBalance(
+            actor.id,
+            API_COSTS.AI_HTML_CHAT,
+            "Chi phí tạo HTML/CSS video bằng AI"
+          );
+        } catch (error) {
+          throw walletError(error);
+        }
         return { html: safe.sanitizedHtml, css: safe.sanitizedCss };
       }
 
-      throw new Error(INVALID_DRAFT_MESSAGE);
+      throw new HtmlVideoDraftError("INVALID_OUTPUT");
     },
   };
 }

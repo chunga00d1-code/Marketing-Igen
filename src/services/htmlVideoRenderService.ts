@@ -66,11 +66,27 @@ const validAspectRatios = new Set<HtmlVideoAspectRatio>([
   "1:1",
 ]);
 const validResolutions = new Set<HtmlVideoResolution>(["720p", "1080p"]);
+const maxHtmlVideoSourceBytes = 100 * 1024;
 const invalidHtmlVideoDraftMessage =
   "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[]
+) {
+  const actualKeys = Object.keys(value);
+  return (
+    actualKeys.length === expectedKeys.length &&
+    expectedKeys.every((key) => actualKeys.includes(key))
+  );
+}
+
+function utf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function authHeaders(includeJson = false): HeadersInit {
@@ -120,13 +136,26 @@ export function parseHtmlVideoPreviewResponse(
 
 export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
   try {
-    const raw = envelopeData(payload);
-    if (!isRecord(raw)) {
+    if (
+      !isRecord(payload) ||
+      !hasExactKeys(payload, ["success", "data"]) ||
+      payload.success !== true ||
+      !isRecord(payload.data) ||
+      !hasExactKeys(payload.data, ["html", "css"])
+    ) {
       throw new Error(invalidHtmlVideoDraftMessage);
     }
-    const html = typeof raw.html === "string" ? raw.html.trim() : "";
-    const css = typeof raw.css === "string" ? raw.css.trim() : null;
-    if (!html || css === null) {
+    const raw = payload.data;
+    if (typeof raw.html !== "string" || typeof raw.css !== "string") {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    const html = raw.html.trim();
+    const css = raw.css.trim();
+    if (
+      !html ||
+      utf8ByteLength(raw.html) > maxHtmlVideoSourceBytes ||
+      utf8ByteLength(raw.css) > maxHtmlVideoSourceBytes
+    ) {
       throw new Error(invalidHtmlVideoDraftMessage);
     }
     return { html, css };
@@ -214,7 +243,12 @@ export const htmlVideoRenderService = {
       {
         method: "POST",
         headers: authHeaders(true),
-        body: JSON.stringify(input),
+        body: JSON.stringify({
+          prompt: input.prompt,
+          durationSeconds: input.durationSeconds,
+          aspectRatio: input.aspectRatio,
+          resolution: input.resolution,
+        }),
         signal,
       }
     );

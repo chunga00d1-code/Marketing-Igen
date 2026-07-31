@@ -5,6 +5,7 @@ import {
   createHtmlVideoRenderController,
   type HtmlVideoRenderControllerDependencies,
 } from "../html-video-render.controller";
+import { HtmlVideoDraftError } from "../../service/html-video/html-video-draft.service";
 import {
   createHtmlVideoRenderBodySchema,
   htmlVideoDraftBodySchema,
@@ -183,29 +184,78 @@ test("generates a tenant-scoped draft without enqueueing a render", async () => 
   });
 });
 
-test("maps draft service failures through the safe error response", async () => {
-  const controller = createHtmlVideoRenderController(
-    dependencies({
-      draftService: {
-        generate: async () => {
-          throw new Error("AI không trả về HTML/CSS hợp lệ.");
+for (const errorCase of [
+  {
+    name: "provider failures",
+    error: new HtmlVideoDraftError(
+      "AI_UNAVAILABLE",
+      new Error(
+        "OpenRouter auth failed payload={apiKey:'provider-secret'} at C:\\private\\provider.ts"
+      )
+    ),
+    status: 503,
+    message: "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",
+    secrets: ["provider-secret", "C:\\private", "OpenRouter"],
+  },
+  {
+    name: "explicit wallet statusCode 402 failures",
+    error: Object.assign(
+      new Error("Wallet query leaked account=wallet-secret"),
+      { statusCode: 402 }
+    ),
+    status: 402,
+    message: "Số dư ví không đủ. Vui lòng nạp thêm tiền để tiếp tục.",
+    secrets: ["wallet-secret", "Wallet query"],
+  },
+  {
+    name: "invalid AI output failures",
+    error: new HtmlVideoDraftError(
+      "INVALID_OUTPUT",
+      new Error("<script>provider-payload-secret</script>")
+    ),
+    status: 422,
+    message: "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại.",
+    secrets: ["provider-payload-secret", "<script>"],
+  },
+  {
+    name: "unknown database failures",
+    error: new Error(
+      "MongoServerError database-secret collection=wallets at D:\\private\\wallet.ts"
+    ),
+    status: 500,
+    message:
+      "Không thể tạo HTML/CSS video lúc này. Vui lòng thử lại sau.",
+    secrets: ["database-secret", "MongoServerError", "D:\\private"],
+  },
+]) {
+  test(`maps draft ${errorCase.name} to an exact safe response`, async () => {
+    const controller = createHtmlVideoRenderController(
+      dependencies({
+        draftService: {
+          generate: async () => {
+            throw errorCase.error;
+          },
         },
-      },
-    })
-  );
-  const { response, state } = responseRecorder();
+      })
+    );
+    const { response, state } = responseRecorder();
 
-  await controller.generateDraft(
-    request({ body: validDraftBody }) as never,
-    response as never
-  );
+    await controller.generateDraft(
+      request({ body: validDraftBody }) as never,
+      response as never
+    );
 
-  assert.equal(state.status, 400);
-  assert.deepEqual(state.body, {
-    success: false,
-    message: "AI không trả về HTML/CSS hợp lệ.",
+    assert.equal(state.status, errorCase.status);
+    assert.deepEqual(state.body, {
+      success: false,
+      message: errorCase.message,
+    });
+    const serialized = JSON.stringify(state.body);
+    for (const secret of errorCase.secrets) {
+      assert.doesNotMatch(serialized, new RegExp(secret.replaceAll("\\", "\\\\")));
+    }
   });
-});
+}
 
 test("returns a server-built safe preview without persistence", async () => {
   let createCalls = 0;

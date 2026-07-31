@@ -83,6 +83,47 @@ test("accepts an empty CSS string in an HTML video draft response", () => {
   );
 });
 
+test("rejects unknown keys in the HTML video draft envelope and data", () => {
+  const invalidDraftMessage =
+    "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
+  for (const payload of [
+    {
+      success: true,
+      data: { html: "<main>AI</main>", css: "" },
+      providerTrace: "must-not-be-accepted",
+    },
+    {
+      success: true,
+      data: {
+        html: "<main>AI</main>",
+        css: "",
+        previewHtml: "<script>must-not-be-accepted</script>",
+      },
+    },
+  ]) {
+    assert.throws(
+      () => parseHtmlVideoDraftResponse(payload),
+      (error: unknown) =>
+        error instanceof Error && error.message === invalidDraftMessage
+    );
+  }
+});
+
+test("rejects HTML video draft source over 100 KiB by UTF-8 byte length", () => {
+  const invalidDraftMessage =
+    "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
+  for (const data of [
+    { html: `<main>${"é".repeat(51_201)}</main>`, css: "" },
+    { html: "<main>AI</main>", css: "é".repeat(51_201) },
+  ]) {
+    assert.throws(
+      () => parseHtmlVideoDraftResponse({ success: true, data }),
+      (error: unknown) =>
+        error instanceof Error && error.message === invalidDraftMessage
+    );
+  }
+});
+
 test("rejects invalid HTML video draft response envelopes and source fields", () => {
   const invalidDraftMessage = "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
   for (const payload of [
@@ -166,7 +207,7 @@ test("preview sends the authenticated endpoint and source settings", async () =>
   assert.deepEqual(JSON.parse(String(requestedInit?.body)), previewInput);
 });
 
-test("generateDraft sends the authenticated prompt and settings request", async () => {
+test("generateDraft sends only the authenticated prompt and settings request", async () => {
   let requestedUrl = "";
   let requestedInit: RequestInit | undefined;
   globalThis.fetch = (async (input, init) => {
@@ -181,7 +222,13 @@ test("generateDraft sends the authenticated prompt and settings request", async 
     );
   }) as typeof fetch;
 
-  await htmlVideoRenderService.generateDraft(draftInput);
+  const runtimeInput = {
+    ...draftInput,
+    companyCode: "must-not-be-serialized",
+    html: "<script>must-not-be-serialized</script>",
+  };
+
+  await htmlVideoRenderService.generateDraft(runtimeInput);
 
   assert.equal(requestedUrl, "/api/v1/html-video-renders/generate-draft");
   assert.equal(requestedInit?.method, "POST");

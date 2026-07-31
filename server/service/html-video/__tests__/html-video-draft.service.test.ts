@@ -6,6 +6,7 @@ import {
   type HtmlVideoDraftActor,
   type HtmlVideoDraftDependencies,
 } from "../html-video-draft.service";
+import { buildSafeHtmlVideoComposition } from "../html-video-security.service";
 
 const validInput = {
   prompt: "  Tạo intro công nghệ với tiêu đề đi lên từ dưới.  ",
@@ -171,6 +172,72 @@ test("strictly parses valid JSON and returns validator-sanitized source", async 
   });
 });
 
+test("retries an empty sanitized draft once and never charges", async () => {
+  let chatCalls = 0;
+  let deductCalls = 0;
+  const service = createHtmlVideoDraftService({
+    chat: async () => {
+      chatCalls += 1;
+      return { text: JSON.stringify({ html: "<!-- model comment -->", css: "" }) };
+    },
+    checkBalance: async () => undefined,
+    validateComposition: buildSafeHtmlVideoComposition,
+    deductBalance: async () => {
+      deductCalls += 1;
+    },
+  });
+
+  await assert.rejects(
+    service.generate(actor, validInput),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message ===
+        "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại." &&
+      (error as Error & { code?: string }).code === "INVALID_OUTPUT"
+  );
+
+  assert.equal(chatCalls, 2);
+  assert.equal(deductCalls, 0);
+});
+
+test("retries an empty sanitized draft and charges once after a valid result", async () => {
+  let chatCalls = 0;
+  let validateCalls = 0;
+  let deductCalls = 0;
+  const service = createHtmlVideoDraftService({
+    chat: async () => {
+      chatCalls += 1;
+      return {
+        text: JSON.stringify({
+          html:
+            chatCalls === 1
+              ? "<main>Discarded by sanitizer</main>"
+              : "<main>Valid retry</main>",
+          css: "",
+        }),
+      };
+    },
+    checkBalance: async () => undefined,
+    validateComposition: (source) => {
+      validateCalls += 1;
+      const safe = buildSafeHtmlVideoComposition(source);
+      return validateCalls === 1
+        ? { ...safe, sanitizedHtml: "   " }
+        : safe;
+    },
+    deductBalance: async () => {
+      deductCalls += 1;
+    },
+  });
+
+  const result = await service.generate(actor, validInput);
+
+  assert.deepEqual(result, { html: "<main>Valid retry</main>", css: "" });
+  assert.equal(chatCalls, 2);
+  assert.equal(validateCalls, 2);
+  assert.equal(deductCalls, 1);
+});
+
 test("retries malformed output once and charges once after a valid retry", async () => {
   const harness = createHarness({
     responses: [
@@ -187,8 +254,10 @@ test("retries malformed output once and charges once after a valid retry", async
   assert.equal(harness.deductCalls(), 1);
 });
 
-test("propagates a provider error without retrying or charging", async () => {
-  const providerError = new Error("provider unavailable");
+test("classifies a provider error without outer retrying, charging, or exposing details", async () => {
+  const providerError = new Error(
+    "OpenRouter 503 payload={apiKey:'provider-secret'} at C:\\private\\provider.ts"
+  );
   let chatCalls = 0;
   let deductCalls = 0;
   const service = createHtmlVideoDraftService({
@@ -207,11 +276,76 @@ test("propagates a provider error without retrying or charging", async () => {
 
   await assert.rejects(
     service.generate(actor, validInput),
-    (error) => error === providerError
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message ===
+        "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau." &&
+      (error as Error & { code?: string; cause?: unknown }).code ===
+        "AI_UNAVAILABLE" &&
+      (error as Error & { cause?: unknown }).cause === providerError &&
+      !error.message.includes("provider-secret") &&
+      !error.message.includes("C:\\private")
   );
 
   assert.equal(chatCalls, 1);
   assert.equal(deductCalls, 0);
+});
+
+test("classifies wallet statusCode 402 with a stable safe balance message", async () => {
+  const walletError = Object.assign(
+    new Error("database payload with wallet-secret"),
+    { statusCode: 402 }
+  );
+  const service = createHtmlVideoDraftService({
+    chat: async () => {
+      throw new Error("provider must not be called");
+    },
+    checkBalance: async () => {
+      throw walletError;
+    },
+    validateComposition: buildSafeHtmlVideoComposition,
+    deductBalance: async () => undefined,
+  });
+
+  await assert.rejects(
+    service.generate(actor, validInput),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message ===
+        "Số dư ví không đủ. Vui lòng nạp thêm tiền để tiếp tục." &&
+      (error as Error & { code?: string; cause?: unknown }).code ===
+        "INSUFFICIENT_BALANCE" &&
+      (error as Error & { cause?: unknown }).cause === walletError &&
+      !error.message.includes("wallet-secret")
+  );
+});
+
+test("classifies unknown wallet deduction failures as internal errors", async () => {
+  const databaseError = new Error(
+    "MongoServerError collection=wallets password=database-secret"
+  );
+  const service = createHtmlVideoDraftService({
+    chat: async () => ({
+      text: JSON.stringify({ html: "<main>Valid</main>", css: "" }),
+    }),
+    checkBalance: async () => undefined,
+    validateComposition: buildSafeHtmlVideoComposition,
+    deductBalance: async () => {
+      throw databaseError;
+    },
+  });
+
+  await assert.rejects(
+    service.generate(actor, validInput),
+    (error: unknown) =>
+      error instanceof Error &&
+      error.message ===
+        "Không thể tạo HTML/CSS video lúc này. Vui lòng thử lại sau." &&
+      (error as Error & { code?: string; cause?: unknown }).code ===
+        "INTERNAL" &&
+      (error as Error & { cause?: unknown }).cause === databaseError &&
+      !error.message.includes("database-secret")
+  );
 });
 
 test("does not charge after two malformed responses", async () => {
@@ -219,7 +353,7 @@ test("does not charge after two malformed responses", async () => {
 
   await assert.rejects(
     harness.service.generate(actor, validInput),
-    /HTML\/CSS hợp lệ/
+    /HTML\/CSS video hợp lệ/
   );
 
   assert.equal(harness.balanceCalls(), 1);
@@ -238,7 +372,7 @@ test("does not charge when the validator rejects both attempts", async () => {
 
   await assert.rejects(
     harness.service.generate(actor, validInput),
-    /HTML\/CSS hợp lệ/
+    /HTML\/CSS video hợp lệ/
   );
 
   assert.equal(harness.chatCalls(), 2);
@@ -258,7 +392,7 @@ for (const text of [
 
     await assert.rejects(
       harness.service.generate(actor, validInput),
-      /HTML\/CSS hợp lệ/
+      /HTML\/CSS video hợp lệ/
     );
 
     assert.equal(harness.chatCalls(), 2);
