@@ -335,6 +335,12 @@ interface BulkCreateWorkspaceProps {
 }
 
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+type CampaignSetupStep = 'target' | 'select_campaign' | 'confirm_campaign';
+
+const CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES = new Set([
+  'planned', 'queued', 'generating', 'researching', 'writing', 'scoring',
+  'awaiting_assets', 'retrying', 'needs_attention', 'failed',
+]);
 
 export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -372,6 +378,8 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const [campaignContext, setCampaignContext] = useState<CampaignAssetOrderData | null>(null);
   const [bulkTarget, setBulkTarget] = useState<'standalone' | 'campaign'>('standalone');
   const [campaignSetupOpen, setCampaignSetupOpen] = useState(true);
+  const [campaignSetupStep, setCampaignSetupStep] = useState<CampaignSetupStep>('target');
+  const [campaignSearch, setCampaignSearch] = useState('');
   const [campaignDataSource, setCampaignDataSource] = useState<'manual' | 'campaign_orders' | 'sheet'>('manual');
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loadingCampaignOrders, setLoadingCampaignOrders] = useState(false);
@@ -381,6 +389,17 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const savedTemplateIdRef = useRef('');
   const aiHistoryStorageReadyRef = useRef(false);
   const aiHistoryStorageKey = `igen-bulk-ai-history:${savedTemplateId || templateName}`;
+  const selectedCampaign = campaigns.find((campaign) => campaign._id === selectedCampaignId);
+  const matchingCampaigns = useMemo(() => {
+    const query = campaignSearch.trim().toLocaleLowerCase('vi-VN');
+    if (!query) return campaigns;
+    return campaigns.filter((campaign) => campaign.title.toLocaleLowerCase('vi-VN').includes(query));
+  }, [campaignSearch, campaigns]);
+  const availableCampaignSlotCount = campaignContext?.slots.filter((slot) => (
+    slot.platform === 'Facebook'
+    && !['video', 'human-video'].includes(slot.mediaType)
+    && CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES.has(slot.status)
+  )).length || 0;
 
   useEffect(() => {
     aiHistoryStorageReadyRef.current = false;
@@ -1392,7 +1411,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     const mappableSlots = (context?.slots || []).filter((slot) => (
       slot.platform === 'Facebook'
       && !['video', 'human-video'].includes(slot.mediaType)
-      && !['published', 'cancelled', 'generating_media', 'verifying', 'ready_to_publish', 'publishing'].includes(slot.status)
+      && CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES.has(slot.status)
     ));
     const orderBySlotId = new Map((context?.orders || [])
       .filter((order) => order.status !== 'cancelled' && order.slotId)
@@ -1508,7 +1527,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     const slots = context.slots.filter((slot) => (
       slot.platform === 'Facebook'
       && !['video', 'human-video'].includes(slot.mediaType)
-      && !['published', 'cancelled', 'generating_media', 'verifying', 'ready_to_publish', 'publishing'].includes(slot.status)
+      && CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES.has(slot.status)
     ));
     const orderBySlotId = new Map(context.orders
       .filter((order) => order.status !== 'cancelled' && order.slotId)
@@ -1856,12 +1875,20 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     setLoadingCampaigns(true);
     try {
       const result = await marketingCampaignService.list(1, 100);
-      const facebookCampaigns = result.campaigns.filter((campaign) => campaign.platforms.includes('Facebook'));
-      setCampaigns(facebookCampaigns);
-      setSelectedCampaignId((current) => current || facebookCampaigns[0]?._id || '');
-      if (!facebookCampaigns.length) toast.warning('Chưa có chiến dịch Facebook để nhập Order.');
+      const activeFacebookCampaigns = result.campaigns.filter((campaign) => (
+        campaign.status === 'active' && campaign.platforms.includes('Facebook')
+      ));
+      setCampaigns(activeFacebookCampaigns);
+      setSelectedCampaignId((current) => (
+        activeFacebookCampaigns.some((campaign) => campaign._id === current)
+          ? current
+          : activeFacebookCampaigns[0]?._id || ''
+      ));
+      if (!activeFacebookCampaigns.length) toast.warning('Chưa có chiến dịch Facebook đang hoạt động để tạo ảnh.');
+      return activeFacebookCampaigns;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Không thể tải danh sách chiến dịch.');
+      return [] as MarketingCampaignSummary[];
     } finally {
       setLoadingCampaigns(false);
     }
@@ -1889,10 +1916,21 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   useEffect(() => {
     if (!initialCampaignId) return;
     setBulkTarget('campaign');
-    setSelectedCampaignId(initialCampaignId);
-    setCampaignOrderImportId(initialCampaignId);
-    void loadCampaignsForImport();
-    void loadCampaignContext(initialCampaignId);
+    setCampaignSetupStep('confirm_campaign');
+    void (async () => {
+      const activeCampaigns = await loadCampaignsForImport();
+      const selectedCampaign = activeCampaigns.find((campaign) => campaign._id === initialCampaignId)
+        || activeCampaigns[0];
+      if (!selectedCampaign) {
+        setSelectedCampaignId('');
+        setCampaignOrderImportId('');
+        setCampaignContext(null);
+        return;
+      }
+      setSelectedCampaignId(selectedCampaign._id);
+      setCampaignOrderImportId(selectedCampaign._id);
+      void loadCampaignContext(selectedCampaign._id);
+    })();
   }, [initialCampaignId, loadCampaignContext, loadCampaignsForImport]);
 
   const importCampaignOrders = async () => {
@@ -2389,66 +2427,95 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       {campaignSetupOpen && (
         <div className="absolute inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
-            <p className="text-lg font-extrabold text-slate-900">Bạn muốn thiết kế cho đâu?</p>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              Chọn Campaign để ảnh tạo xong tự xuất hiện đúng trong lịch nội dung.
-            </p>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => { setBulkTarget('standalone'); setCampaignOrderImportId(''); setCampaignDataSource('manual'); setCampaignSetupOpen(false); }}
-                className="rounded-2xl border-2 border-slate-200 bg-white p-4 text-left transition hover:border-slate-400"
-              >
-                <span className="block text-sm font-extrabold text-slate-800">Thiết kế tự do</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500">Tạo ảnh độc lập, không gắn vào Campaign.</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setBulkTarget('campaign'); if (!campaigns.length) void loadCampaignsForImport(); }}
-                className={`rounded-2xl border-2 p-4 text-left transition ${bulkTarget === 'campaign' ? 'border-violet-600 bg-violet-50' : 'border-violet-200 bg-white hover:border-violet-400'}`}
-              >
-                <span className="block text-sm font-extrabold text-violet-800">Cho Campaign</span>
-                <span className="mt-1 block text-xs leading-5 text-violet-700">Map từng ảnh vào bài Facebook của chiến dịch.</span>
-              </button>
-            </div>
-            {bulkTarget === 'campaign' && (
-              <div className="mt-4 space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
-                <label className="block text-xs font-extrabold text-violet-900">Chiến dịch Facebook</label>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedCampaignId}
-                    onChange={(event) => {
-                      const campaignId = event.target.value;
-                      setSelectedCampaignId(campaignId);
-                      setCampaignContext(null);
-                      if (campaignId) void loadCampaignContext(campaignId);
-                    }}
-                    disabled={loadingCampaigns || loadingCampaignOrders}
-                    className="h-11 min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-violet-500"
+            {campaignSetupStep === 'target' && (
+              <>
+                <p className="text-lg font-extrabold text-slate-900">Bạn muốn thiết kế cho đâu?</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Chọn Campaign để ảnh tạo xong tự xuất hiện đúng trong lịch nội dung.
+                </p>
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => { setBulkTarget('standalone'); setCampaignOrderImportId(''); setCampaignDataSource('manual'); setCampaignSetupOpen(false); }}
+                    className="rounded-2xl border-2 border-slate-200 bg-white p-4 text-left transition hover:border-slate-400"
                   >
-                    <option value="">Chọn chiến dịch</option>
-                    {campaigns.map((campaign) => (
-                      <option key={campaign._id} value={campaign._id}>{campaign.title} · {campaign.statistics.totalSlots} bài</option>
-                    ))}
-                  </select>
-                  <button type="button" onClick={() => void loadCampaignsForImport()} className="rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700">
-                    {loadingCampaigns ? <LoaderCircle className="h-4 w-4 animate-spin" /> : 'Tải'}
+                    <span className="block text-sm font-extrabold text-slate-800">Thiết kế tự do</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500">Tạo ảnh độc lập, không gắn vào Campaign.</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setBulkTarget('campaign'); setCampaignSearch(''); setCampaignSetupStep('select_campaign'); void loadCampaignsForImport(); }}
+                    className="rounded-2xl border-2 border-indigo-200 bg-white p-4 text-left transition hover:border-indigo-400"
+                  >
+                    <span className="block text-sm font-extrabold text-indigo-800">Cho Campaign</span>
+                    <span className="mt-1 block text-xs leading-5 text-indigo-700">Map từng ảnh vào bài Facebook của chiến dịch.</span>
                   </button>
                 </div>
-                {campaignContext && (
-                  <p className="text-xs font-semibold leading-5 text-violet-900">
-                    {campaignContext.slots.filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video', 'published', 'cancelled'].includes(slot.mediaType) && !['published', 'cancelled'].includes(slot.status)).length} bài Facebook có thể nhận ảnh.
-                  </p>
+              </>
+            )}
+
+            {campaignSetupStep === 'select_campaign' && (
+              <>
+                <button type="button" onClick={() => setCampaignSetupStep('target')} className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-500 hover:text-indigo-700">
+                  <ArrowLeft className="h-4 w-4" /> Quay lại
+                </button>
+                <p className="mt-3 text-lg font-extrabold text-slate-900">Chọn Campaign đang chạy</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">Chỉ hiển thị Campaign Facebook còn hoạt động.</p>
+                <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
+                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
+                  <input autoFocus value={campaignSearch} onChange={(event) => setCampaignSearch(event.target.value)} placeholder="Tìm chiến dịch..." className="h-11 min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400" />
+                  {loadingCampaigns && <LoaderCircle className="h-4 w-4 animate-spin text-indigo-600" />}
+                </div>
+                <div className="mt-3 max-h-[310px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                  {matchingCampaigns.map((campaign) => (
+                    <button
+                      key={campaign._id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCampaignId(campaign._id);
+                        setCampaignOrderImportId('');
+                        setCampaignContext(null);
+                        setCampaignSearch('');
+                        setCampaignSetupStep('confirm_campaign');
+                        void loadCampaignContext(campaign._id);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-sm font-black text-indigo-700">{campaign.statistics.totalSlots}</span>
+                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-extrabold text-slate-800">{campaign.title}</span><span className="mt-0.5 block text-xs font-semibold text-slate-500">bài trong Campaign</span></span>
+                    </button>
+                  ))}
+                  {!loadingCampaigns && matchingCampaigns.length === 0 && <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm font-semibold text-slate-500">Không có Campaign đang chạy phù hợp.</p>}
+                </div>
+              </>
+            )}
+
+            {campaignSetupStep === 'confirm_campaign' && (
+              <>
+                <button type="button" onClick={() => { setCampaignSearch(''); setCampaignSetupStep('select_campaign'); }} className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-500 hover:text-indigo-700">
+                  <ArrowLeft className="h-4 w-4" /> Đổi Campaign
+                </button>
+                <p className="mt-3 text-lg font-extrabold text-slate-900">Xác nhận Campaign nhận ảnh</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">Sau khi tạo xong, ảnh sẽ tự hiện trong Campaign này để bạn xem trước và gắn vào bài.</p>
+                <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                  <p className="truncate text-base font-extrabold text-indigo-950">{selectedCampaign?.title || 'Đang tải Campaign...'}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5">
+                    <span className="text-xs font-semibold text-slate-600">Bài Facebook có thể nhận ảnh</span>
+                    <span className="text-lg font-black text-indigo-700">{loadingCampaignOrders ? '...' : availableCampaignSlotCount}</span>
+                  </div>
+                </div>
+                {!loadingCampaignOrders && campaignContext && availableCampaignSlotCount === 0 && (
+                  <p className="mt-3 text-xs font-semibold leading-5 text-amber-700">Campaign này hiện không còn bài Facebook nào có thể nhận ảnh.</p>
                 )}
                 <button
                   type="button"
-                  disabled={!selectedCampaignId || loadingCampaignOrders}
+                  disabled={!selectedCampaignId || !campaignContext || loadingCampaignOrders || availableCampaignSlotCount === 0}
                   onClick={() => { setCampaignOrderImportId(selectedCampaignId); setCampaignSetupOpen(false); setActiveTool('data'); setSidebarOpen(true); }}
-                  className="h-11 w-full rounded-xl bg-violet-600 text-sm font-extrabold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="mt-5 h-11 w-full rounded-xl bg-indigo-600 text-sm font-extrabold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  Bắt đầu với Campaign
+                  Tiếp tục chọn dữ liệu
                 </button>
-              </div>
+              </>
             )}
           </div>
         </div>
