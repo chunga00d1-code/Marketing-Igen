@@ -95,12 +95,12 @@ export default function CampaignPromptBox({
         {/* Attach document */}
         <label
           className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer group relative"
-          title="Đính kèm tài liệu (PDF, DOCX, TXT, MD)"
+          title="Đính kèm tài liệu (PDF, DOCX, TXT, MD, Excel, CSV)"
         >
           <Paperclip className="h-4 w-4" />
           <input
             type="file"
-            accept=".txt,.md,.pdf,.docx"
+            accept=".txt,.md,.pdf,.docx,.xlsx,.xls,.csv"
             onChange={handleDocumentUpload}
             className="hidden"
             disabled={loadingDoc}
