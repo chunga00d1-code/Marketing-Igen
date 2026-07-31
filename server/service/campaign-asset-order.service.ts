@@ -621,6 +621,7 @@ export const campaignAssetOrderService = {
 
     const campaign = await MarketingCampaignModel.findOne({ _id: job.campaignId, companyCode: job.companyCode }).lean();
     if (!campaign) throw httpError("Chiến dịch của AI job không còn tồn tại.", 404);
+    const customFields = activeCustomFields(campaign);
     const allOrders = await CampaignAssetOrderModel.find({
       _id: { $in: job.targetOrderIds },
       companyCode: job.companyCode,
@@ -718,9 +719,13 @@ export const campaignAssetOrderService = {
                     cta: { type: "string" },
                     visualBrief: { type: "string" },
                     videoScript: { type: "string" },
+                    customFields: {
+                      type: "object",
+                      properties: Object.fromEntries(customFields.map((field) => [field.key, { type: "string" }])),
+                    },
                     warnings: { type: "array", items: { type: "string" } },
                   },
-                  required: ["orderId", "format", "contentGroup", "shootingContent", "productionRequirements", "quantitySuggestion", "headline", "subheadline", "cta", "visualBrief", "videoScript", "warnings"],
+                  required: ["orderId", "format", "contentGroup", "shootingContent", "productionRequirements", "quantitySuggestion", "headline", "subheadline", "cta", "visualBrief", "videoScript", "customFields", "warnings"],
                 },
               },
             },
@@ -731,6 +736,10 @@ export const campaignAssetOrderService = {
               role: "system",
               content: "Bạn là người lập brief sản xuất media cho người dùng Việt Nam, không chuyên kỹ thuật. Chỉ trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn, rõ, dễ đọc; không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model. Không sao chép nguyên văn mediaPrompt tiếng Anh từ dữ liệu đầu vào. Hãy diễn đạt các cụm như 'split screen video', 'fast-paced', 'screen recording' thành 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Giới hạn: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
             },
+            ...(customFields.length ? [{
+              role: "system" as const,
+              content: `Đọc nhãn và ngữ cảnh để tự nhận biết cột tùy chỉnh nào có thể điền từ dữ liệu chiến dịch hoặc kho tri thức. Giá trị customFields phải nhất quán với các trường AI tạo cho cùng một dòng Order. Trả về đúng key trong danh sách sau: ${JSON.stringify(customFields.map((field) => ({ key: field.key, label: field.label })))}. Không cố điền mọi cột: nếu trường không phù hợp với AI, thiếu ngữ cảnh hoặc cần dữ kiện nhạy cảm chưa được xác thực thì trả chuỗi rỗng; không được bịa thông tin.`,
+            }] : []),
             {
               role: "user",
               content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${cleanText(knowledge.contextText, 6000) || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
@@ -821,6 +830,19 @@ export const campaignAssetOrderService = {
             if (job.overwritePolicy === "empty_only" && manualFields.has(field)) continue;
             patch[field] = generatedValues[field];
             updatedFields.push(field);
+          }
+          const currentCustomFields = toStringRecord(order.customFields);
+          const generatedCustomFields = toStringRecord(generated.customFields);
+          const nextCustomFields = { ...currentCustomFields };
+          for (const field of customFields) {
+            const value = cleanText(generatedCustomFields[field.key], MAX_CUSTOM_FIELD_VALUE_LENGTH);
+            if (!value || manualFields.has(`customFields.${field.key}`)) continue;
+            if (currentCustomFields[field.key] === value) continue;
+            nextCustomFields[field.key] = value;
+            updatedFields.push(`customFields.${field.key}`);
+          }
+          if (updatedFields.some((field) => field.startsWith("customFields."))) {
+            patch.customFields = nextCustomFields;
           }
           const aiProposal = {
             idempotencyKey: `${job.idempotencyKey.slice(0, 150)}:${String(order._id)}`,
