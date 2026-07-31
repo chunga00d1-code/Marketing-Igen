@@ -952,12 +952,13 @@ export const geminiController = {
           durationSeconds,
           originalVeoUrl: referenceVideoUri,
           activeCardId,
-          piapiTaskId: (result as any).taskId,
+          provider: "openrouter",
+          openrouterVideoJobId: (result as any).jobId,
           status: isPending ? "processing" : "completed",
           progress: isPending ? 1 : 100,
         });
-        if (isPending && (result as any).taskId) {
-          geminiService.pollPiAPIVideoStatusBackground(record._id.toString(), (result as any).taskId, userId);
+        if (isPending && (result as any).jobId) {
+          geminiService.pollOpenRouterVideoStatusBackground(record._id.toString(), (result as any).jobId, userId);
         }
       }
 

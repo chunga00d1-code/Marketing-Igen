@@ -105,6 +105,61 @@ function probeVideoDurationSeconds(videoUrl: string): Promise<number> {
   });
 }
 
+function probeVideoDurationWithFfmpeg(videoUrl: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      resolveMediaBinary("ffmpeg", process.env.TIKTOK_FFMPEG_PATH),
+      ["-hide_banner", "-i", videoUrl, "-f", "null", "-"],
+      { shell: false, windowsHide: true }
+    );
+    let stderr = "";
+    let settled = false;
+    const finishWithError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finishWithError(new Error("Hết thời gian đọc thời lượng video bằng ffmpeg."));
+    }, TIKTOK_DURATION_PROBE_TIMEOUT_MS);
+    timer.unref();
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error: NodeJS.ErrnoException) => {
+      finishWithError(
+        new Error(
+          error.code === "ENOENT"
+            ? "Máy chủ chưa có ffmpeg để đọc thời lượng video."
+            : `Không thể chạy ffmpeg: ${error.message}`
+        )
+      );
+    });
+    child.on("close", () => {
+      if (settled) return;
+      const match = stderr.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i);
+      if (!match) {
+        finishWithError(new Error("ffmpeg không trả về thời lượng video hợp lệ."));
+        return;
+      }
+      const duration =
+        Number(match[1]) * 3600
+        + Number(match[2]) * 60
+        + Number(match[3]);
+      if (!Number.isFinite(duration) || duration <= 0) {
+        finishWithError(new Error("ffmpeg trả về thời lượng video không hợp lệ."));
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(duration);
+    });
+  });
+}
+
 export const cloudinaryService = {
   /**
    * Táº£i tá»‡p tin (Base64 hoáº·c URL cÃ´ng khai) lÃªn Cloudinary
@@ -202,8 +257,16 @@ export const cloudinaryService = {
       try {
         return await probeVideoDurationSeconds(videoUrl);
       } catch (probeError: any) {
-        console.error("[cloudinaryService.getVideoDurationSeconds] Error:", probeError);
-        throw new Error(`Không thể xác minh thời lượng video TikTok: ${probeError.message || probeError}`);
+        console.warn(
+          "[cloudinaryService.getVideoDurationSeconds] ffprobe unavailable; falling back to ffmpeg:",
+          probeError.message || probeError
+        );
+        try {
+          return await probeVideoDurationWithFfmpeg(videoUrl);
+        } catch (ffmpegError: any) {
+          console.error("[cloudinaryService.getVideoDurationSeconds] Error:", ffmpegError);
+          throw new Error(`Không thể xác minh thời lượng video TikTok: ${ffmpegError.message || ffmpegError}`);
+        }
       }
     }
   },

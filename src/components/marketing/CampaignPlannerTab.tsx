@@ -860,7 +860,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                             onClick={() => tiktokVideoInputRef.current?.click()}
                             className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-extrabold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {uploadingTikTokVideo ? 'Đang tải...' : uploadedTikTokVideo ? 'Thay video' : 'Chọn video'}
+                            {uploadingTikTokVideo ? 'Đang tải video lên...' : uploadedTikTokVideo ? 'Thay video' : 'Chọn video'}
                           </button>
                         </div>
                       </div>
@@ -1315,7 +1315,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             )}
           </div>
           <div className="flex items-center gap-2">
-            {loadingCampaigns && <Loader2 size={17} className="animate-spin text-indigo-600" />}
+            {loadingCampaigns && (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600">
+                <Loader2 size={15} className="animate-spin" />
+                Đang đồng bộ lịch sử chiến dịch...
+              </span>
+            )}
           </div>
         </div>
 
@@ -1438,21 +1443,21 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         slotStatusLabel={{
           planned: 'Lên kế hoạch',
           queued: 'Trong hàng đợi',
-          generating: 'Đang chuẩn bị...',
-          researching: 'Đang nghiên cứu...',
-          writing: 'Đang viết bài viết...',
-          scoring: 'Đang chấm điểm AI...',
+          generating: 'AI đang hình thành ý tưởng...',
+          researching: 'AI đang phân tích xu hướng...',
+          writing: 'AI đang viết bài...',
+          scoring: 'AI đang đánh giá chất lượng...',
           awaiting_assets: 'Chờ media từ Drive',
-          generating_media: 'Đang kiểm tra media...',
-          verifying: 'Đang duyệt chất lượng...',
+          generating_media: 'AI đang chuẩn bị media...',
+          verifying: 'AI đang kiểm tra chất lượng...',
           pending_approval: 'Chờ duyệt',
           ready_to_publish: 'Sẵn sàng đăng',
-          publishing: 'Đang đăng...',
+          publishing: 'Đang kết nối nền tảng để đăng...',
           published: 'Đã đăng thành công',
           failed: 'Thất bại',
           cancelled: 'Đã hủy',
           skipped: 'Đã bỏ qua',
-          retrying: 'Đang thử lại...',
+          retrying: 'AI đang thử lại tác vụ...',
           needs_attention: 'Cần chú ý',
         }}
         onRetrySlot={async (campaignId, slotId) => {

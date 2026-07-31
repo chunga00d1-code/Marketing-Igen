@@ -2561,10 +2561,10 @@ export const telegramService = {
             refImageUrl ? { referenceImageUris: [refImageUrl] } : undefined
           );
           if (result && result.url) {
-            if (result.url.startsWith("pending://piapi/")) {
-              const taskId = result.url.replace("pending://piapi/", "");
+            if (result.url.startsWith("pending://openrouter/")) {
+              const taskId = result.url.replace("pending://openrouter/", "");
               await this.sendMessage(chatId, "⏳ <b>Video đang được render trên máy chủ AI...</b>\nBot sẽ tự gửi video khi hoàn tất.");
-              const completedVideoUrl = await this.waitForPiapiVideo(taskId);
+              const completedVideoUrl = await this.waitForOpenRouterVideo(taskId);
               const sendRes = await this.sendVideo(chatId, completedVideoUrl, `🎬 <b>Video được tạo thành công!</b>\nMô tả: <i>${args}</i>`);
               if (!sendRes || !sendRes.ok) {
                 await this.sendMessage(
@@ -2795,6 +2795,25 @@ export const telegramService = {
     }
 
     throw new Error("Quá thời gian chờ render video từ PiAPI.");
+  },
+
+  async waitForOpenRouterVideo(jobId: string): Promise<string> {
+    const maxAttempts = 60;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+      const result = await geminiService.getOpenRouterVideoTaskStatus(jobId);
+      if (result.status === "completed" && result.unsignedUrl) {
+        return result.unsignedUrl;
+      }
+      if (result.status === "failed") {
+        throw new Error(result.error || "Render video thất bại trên OpenRouter.");
+      }
+      attempts++;
+    }
+
+    throw new Error("Quá thời gian chờ render video từ OpenRouter.");
   },
 
   /**

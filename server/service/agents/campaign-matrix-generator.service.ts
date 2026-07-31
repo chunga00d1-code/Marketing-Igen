@@ -59,6 +59,8 @@ Hãy sinh ra Content Strategy Matrix dạng JSON theo yêu cầu.`;
         ],
         jsonMode: true,
         temperature: 0.7,
+        maxRetries: 1,
+        timeoutMs: 45_000,
       });
 
       let parsed: GeneratedMatrixPillar[];
