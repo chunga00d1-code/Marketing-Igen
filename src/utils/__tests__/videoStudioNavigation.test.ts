@@ -15,6 +15,25 @@ test("maps the templates tool to its Video Studio route", () => {
   assert.equal(videoStudioPathToTool("/video-studio/templates/"), "templates");
 });
 
+test("maps the HTML video tool to its stable Video Studio route", () => {
+  assert.equal(
+    VIDEO_STUDIO_ROUTES["html-video"],
+    "/video-studio/html-to-video"
+  );
+  assert.equal(
+    VIDEO_STUDIO_SEO_MAP["html-video"].path,
+    "/video-studio/html-to-video"
+  );
+  assert.equal(
+    videoStudioPathToTool("/video-studio/html-to-video"),
+    "html-video"
+  );
+  assert.equal(
+    videoStudioPathToTool("/video-studio/html-to-video/"),
+    "html-video"
+  );
+});
+
 test("round-trips a templates launch through session storage", () => {
   const values = new Map<string, string>();
   const originalSessionStorage = globalThis.sessionStorage;

@@ -234,6 +234,15 @@ export const VIDEO_STUDIO_SEO_MAP: Record<VideoStudioTool, SeoMeta> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
+  "html-video": {
+    title: "Tạo video từ HTML",
+    description:
+      "Thiết kế video bằng HTML và CSS, xem trước an toàn và kết xuất MP4 trong Video Studio.",
+    keywords: "HTML to video, CSS animation, tạo video từ HTML, video marketing",
+    path: "/video-studio/html-to-video",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
   "ai-video": {
     title: "Tạo video từ nội dung",
     description: "Tạo video marketing bằng AI từ nội dung mô tả hoặc hình ảnh.",

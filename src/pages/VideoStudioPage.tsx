@@ -4,6 +4,7 @@ import {
   Captions,
   ChevronRight,
   Clapperboard,
+  Code2,
   Film,
   LayoutTemplate,
   Mic,
@@ -77,6 +78,12 @@ const TemplateEditorWorkspace = lazy(() =>
   }))
 );
 
+const HtmlVideoWorkspace = lazy(() =>
+  import("../components/content-studio/HtmlVideoWorkspace").then((module) => ({
+    default: module.HtmlVideoWorkspace,
+  }))
+);
+
 type ToolDefinition = {
   id: Exclude<VideoStudioTool, "home">;
   title: string;
@@ -98,6 +105,16 @@ const VIDEO_TOOLS: ToolDefinition[] = [
     icon: LayoutTemplate,
     tone: "from-blue-50 to-white hover:border-blue-300",
     iconTone: "bg-blue-600 text-white",
+  },
+  {
+    id: "html-video",
+    title: "Tạo video từ HTML",
+    description: "Dùng HTML và CSS để thiết kế, xem trước và kết xuất video.",
+    requirement: "Cần: Nội dung HTML và CSS",
+    group: "create",
+    icon: Code2,
+    tone: "from-sky-50 to-white hover:border-sky-300",
+    iconTone: "bg-sky-600 text-white",
   },
   {
     id: "ai-video",
@@ -443,6 +460,14 @@ function VideoToolContent({
             });
           }}
         />
+      </Suspense>
+    );
+  }
+
+  if (tool === "html-video") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ HTML-to-video..." />}>
+        <HtmlVideoWorkspace />
       </Suspense>
     );
   }
