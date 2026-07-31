@@ -1262,29 +1262,38 @@ export const campaignAssetOrderService = {
 
   async listBulkCreateImportJobs(companyCode: string, campaignId: string) {
     await assertCampaign(companyCode, campaignId);
-    const [orders, jobs] = await Promise.all([
+    const [orders, slots, campaignJobs, recentJobs] = await Promise.all([
       CampaignAssetOrderModel.find({ companyCode, campaignId, status: { $ne: "cancelled" } })
         .select("_id slotId")
         .lean(),
-      BulkRenderJobModel.find({
-        companyCode,
-      })
+      MarketingCampaignSlotModel.find({ companyCode, campaignId })
+        .select("_id")
+        .lean(),
+      BulkRenderJobModel.find({ companyCode, campaignId })
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .select("_id campaignId templateName status totalItems completedItems failedItems progress createdAt completedAt")
+        .lean(),
+      BulkRenderJobModel.find({ companyCode })
         .sort({ createdAt: -1 })
         .limit(50)
-        .select("_id templateName status totalItems completedItems failedItems progress createdAt completedAt")
+        .select("_id campaignId templateName status totalItems completedItems failedItems progress createdAt completedAt")
         .lean(),
     ]);
-    if (!orders.length || !jobs.length) return [];
+    const jobs = [...campaignJobs, ...recentJobs.filter((job) => !campaignJobs.some((current) => String(current._id) === String(job._id)))];
+    if (!jobs.length) return [];
     const orderIds = orders.map((order) => String(order._id));
-    const slotIds = orders.map((order) => String(order.slotId || "")).filter(Boolean);
+    const slotIds = slots.map((slot) => String(slot._id));
     const items = await BulkRenderItemModel.find({
       companyCode,
       jobId: { $in: jobs.map((job) => job._id) },
       $or: [
+        { campaignAssetOrderId: { $in: orderIds } },
+        { campaignSlotId: { $in: slotIds } },
         { "values.__campaign_asset_order_id": { $in: orderIds } },
         { "values.__campaign_slot_id": { $in: slotIds } },
       ],
-    }).select("jobId status outputUrl").lean();
+    }).select("jobId status outputUrl campaignAssetOrderId campaignSlotId").lean();
     const linkedItemCountByJobId = new Map<string, number>();
     const linkedCountByJobId = new Map<string, number>();
     for (const item of items) {
@@ -1295,7 +1304,7 @@ export const campaignAssetOrderService = {
       }
     }
     return jobs
-      .filter((job) => linkedItemCountByJobId.has(String(job._id)))
+      .filter((job) => String(job.campaignId || "") === campaignId || linkedItemCountByJobId.has(String(job._id)))
       .map((job) => ({
         ...job,
         _id: String(job._id),
@@ -1309,14 +1318,17 @@ export const campaignAssetOrderService = {
     await assertCampaign(companyCode, campaignId);
     const [job, items] = await Promise.all([
       BulkRenderJobModel.findOne({ _id: jobId, companyCode })
-        .select("_id templateName status totalItems completedItems failedItems createdAt completedAt")
+        .select("_id campaignId templateName status totalItems completedItems failedItems createdAt completedAt")
         .lean(),
       BulkRenderItemModel.find({ jobId, companyCode, status: "completed" })
         .sort({ rowIndex: 1 })
-        .select("rowIndex values outputUrl")
+        .select("rowIndex values outputUrl campaignAssetOrderId campaignSlotId")
         .lean(),
     ]);
     if (!job) throw httpError("Không tìm thấy Bulk Create job.", 404);
+    if (job.campaignId && String(job.campaignId) !== campaignId) {
+      throw httpError("Bulk Create does not belong to this campaign.", 409, "BULK_CREATE_WRONG_CAMPAIGN");
+    }
     if (!["completed", "partial"].includes(job.status)) {
       throw httpError(
         "Bulk Create chưa hoàn tất nên chưa thể gắn vào chiến dịch.",
@@ -1327,8 +1339,8 @@ export const campaignAssetOrderService = {
 
     const itemOutputs = items
       .map((item) => ({
-        orderId: String(item.values?.__campaign_asset_order_id || ""),
-        slotId: String(item.values?.__campaign_slot_id || ""),
+        orderId: String(item.campaignAssetOrderId || item.values?.__campaign_asset_order_id || ""),
+        slotId: String(item.campaignSlotId || item.values?.__campaign_slot_id || ""),
         outputUrl: String(item.outputUrl || ""),
       }))
       .filter((item) => item.outputUrl);
@@ -1943,7 +1955,18 @@ export const campaignAssetOrderService = {
     }
     const job = await bulkCreateService.createJob(
       { id: userId, companyCode },
-      { templateId: input.templateId, rows: [preview.values], idempotencyKey: input.idempotencyKey }
+      {
+        templateId: input.templateId,
+        rows: [{
+          ...preview.values,
+          __campaign_asset_order_id: String(existingOrder._id),
+          __campaign_slot_id: String(existingOrder.slotId || ""),
+        }],
+        campaignId,
+        sourceType: "campaign_orders",
+        mappingMode: "order",
+        idempotencyKey: input.idempotencyKey,
+      }
     );
     const updated = await CampaignAssetOrderModel.findOneAndUpdate(
       { _id: orderId, companyCode, campaignId, status: { $nin: ["completed", "cancelled"] } },

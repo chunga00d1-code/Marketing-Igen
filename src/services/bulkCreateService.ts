@@ -116,6 +116,10 @@ export interface BulkRenderJob {
   failedItems: number;
   progress: number;
   errorMessage?: string;
+  targetType?: 'standalone' | 'campaign';
+  campaignId?: string;
+  sourceType?: 'manual' | 'campaign_orders' | 'sheet';
+  mappingMode?: 'order' | 'position' | 'manual';
   createdAt: string;
   completedAt?: string;
 }
@@ -358,9 +362,21 @@ export const bulkCreateService = {
     return URL.createObjectURL(await response.blob());
   },
 
-  async createJob(templateId: string, rows: Array<Record<string, string>>) {
+  async createJob(
+    templateId: string,
+    rows: Array<Record<string, string>>,
+    options: {
+      campaignId?: string;
+      sourceType?: 'manual' | 'campaign_orders' | 'sheet';
+      mappingMode?: 'order' | 'position' | 'manual';
+    } = {},
+  ) {
     const idempotencyKey = `${templateId}:${Date.now()}:${crypto.randomUUID()}`;
-    const response = await fetch('/api/v1/bulk-create/jobs', { method: 'POST', headers: headers(), body: JSON.stringify({ templateId, rows, idempotencyKey }) });
+    const response = await fetch('/api/v1/bulk-create/jobs', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ templateId, rows, idempotencyKey, ...options }),
+    });
     return (await parse<{ data: BulkRenderJob }>(response, 'Không thể khởi tạo Bulk Create.')).data;
   },
 

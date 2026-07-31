@@ -8,10 +8,11 @@ export const CONTENT_STUDIO_TAB_ROUTES: Record<ContentStudioTab, string> = {
 
 export interface ContentStudioLaunchParams {
   tab: 'image' | 'template';
-  prompt: string;
-  cardId: string;
+  prompt?: string;
+  cardId?: string;
   image?: string;
   autoTrigger?: boolean;
+  campaignId?: string;
 }
 
 const STORAGE_KEY = 'igen:content-studio:launch';
@@ -35,11 +36,9 @@ export function readContentStudioLaunchParams(): ContentStudioLaunchParams | nul
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<ContentStudioLaunchParams>;
-    if (
-      (parsed.tab !== 'image' && parsed.tab !== 'template') ||
-      !parsed.cardId ||
-      typeof parsed.prompt !== 'string'
-    ) {
+    const isCardLaunch = typeof parsed.cardId === 'string' && typeof parsed.prompt === 'string';
+    const isCampaignBulkLaunch = parsed.tab === 'template' && typeof parsed.campaignId === 'string';
+    if ((parsed.tab !== 'image' && parsed.tab !== 'template') || (!isCardLaunch && !isCampaignBulkLaunch)) {
       sessionStorage.removeItem(STORAGE_KEY);
       return null;
     }

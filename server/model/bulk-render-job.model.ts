@@ -8,6 +8,10 @@ const BulkRenderJobSchema = new Schema<IBulkRenderJob>(
     templateId: { type: Schema.Types.ObjectId, ref: "BulkTemplate", index: true },
     templateName: { type: String, required: true },
     templateSnapshot: { type: Schema.Types.Mixed, required: true },
+    targetType: { type: String, enum: ["standalone", "campaign"], default: "standalone", index: true },
+    campaignId: { type: Schema.Types.ObjectId, ref: "MarketingCampaign", index: true },
+    sourceType: { type: String, enum: ["manual", "campaign_orders", "sheet"], default: "manual" },
+    mappingMode: { type: String, enum: ["order", "position", "manual"] },
     status: { type: String, enum: ["queued", "processing", "completed", "partial", "failed", "cancelled"], default: "queued", index: true },
     totalItems: { type: Number, required: true, min: 1, max: 500 },
     completedItems: { type: Number, default: 0 },
@@ -26,6 +30,7 @@ const BulkRenderJobSchema = new Schema<IBulkRenderJob>(
 );
 
 BulkRenderJobSchema.index({ companyCode: 1, createdAt: -1 });
+BulkRenderJobSchema.index({ companyCode: 1, campaignId: 1, createdAt: -1 });
 BulkRenderJobSchema.index({ companyCode: 1, idempotencyKey: 1 }, { unique: true });
 BulkRenderJobSchema.index({ status: 1, lockExpiresAt: 1 });
 
