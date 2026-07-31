@@ -257,7 +257,13 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
     try {
       setFillAllJob(await marketingCampaignService.cancelFillAllAssetOrdersAIJob(campaignId, fillAllJob._id));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể hủy AI điền Order.');
+      try {
+        // The worker can finish or fail between the last poll and this click.
+        // Refresh its authoritative state instead of showing a stale cancel error.
+        setFillAllJob(await marketingCampaignService.getFillAllAssetOrdersAIJob(campaignId, fillAllJob._id));
+      } catch {
+        toast.error(error instanceof Error ? error.message : 'Không thể hủy AI điền Order.');
+      }
     }
   };
 
@@ -304,7 +310,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
           <div>
                 <h3 className="text-sm font-extrabold text-slate-800">Bảng brief sản xuất ảnh, video theo bài viết</h3>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
-              Mỗi bài viết có một dòng Order. AI tự chọn Ảnh hoặc Video và điền thẳng nội dung; cột Phục vụ hiện cố định cho Facebook.
+              Mỗi bài viết có một dòng yêu cầu. AI tự chọn Ảnh hoặc Video và điền nội dung bằng tiếng Việt dễ hiểu.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -374,7 +380,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                 <th className="min-w-44 px-3 py-3 font-extrabold">Nhóm nội dung</th>
                 <th className="min-w-60 px-3 py-3 font-extrabold">Nội dung cần quay/chụp</th>
                 <th className="min-w-80 px-3 py-3 font-extrabold">Chi tiết yêu cầu</th>
-                <th className="w-32 px-3 py-3 font-extrabold">Định dạng</th>
+                <th className="min-w-40 px-3 py-3 font-extrabold whitespace-nowrap">Định dạng</th>
                 <th className="min-w-32 px-3 py-3 font-extrabold">SL đề xuất</th>
                 <th className="min-w-80 px-3 py-3 font-extrabold">Nội dung AI tạo</th>
                 {customFieldColumns.map((field) => (
@@ -438,14 +444,14 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                           className="w-full resize-none rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-slate-700 outline-none transition hover:border-slate-200 focus:border-teal-400 focus:bg-white disabled:cursor-not-allowed"
                         />
                       </td>
-                      <td className="px-2 py-2">
+                      <td className="min-w-40 px-2 py-2">
                         <div className="relative">
                           <select
                             value={order.format}
                             onChange={(event) => changeLocal(order._id, 'format', event.target.value as CampaignAssetOrderFormat)}
                             onBlur={() => void saveCell(order, 'format')}
                             disabled={readOnly || isSaving(order._id)}
-                            className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2 pr-7 font-semibold text-slate-700 outline-none focus:border-teal-400 disabled:cursor-not-allowed"
+                            className="h-9 min-w-36 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2 pr-7 font-semibold text-slate-700 outline-none focus:border-teal-400 disabled:cursor-not-allowed"
                           >
                             {Object.entries(FORMAT_LABEL)
                               .filter(([value]) => value !== 'image_video')
@@ -574,8 +580,8 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
       <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h4 className="text-sm font-extrabold text-slate-700">Nguồn ảnh, video & Bulk Create</h4>
-            <p className="mt-1 text-xs text-slate-500">Mở phần chi tiết để gắn asset nguồn; Bulk Create có thể nhập toàn bộ Order ảnh từ chiến dịch.</p>
+            <h4 className="text-sm font-extrabold text-slate-700">Nguồn ảnh, video & tạo hàng loạt</h4>
+            <p className="mt-1 text-xs text-slate-500">Mở phần chi tiết để gắn file nguồn; công cụ tạo hàng loạt có thể nhập toàn bộ yêu cầu media của chiến dịch.</p>
           </div>
           <button
             type="button"

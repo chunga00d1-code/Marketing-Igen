@@ -12,30 +12,18 @@ import { createHmac, timingSafeEqual } from "crypto";
 const TIKTOK_API_BASE = "https://open.tiktokapis.com";
 const TIKTOK_OAUTH_AUTHORIZE_URL = "https://www.tiktok.com/v2/auth/authorize/";
 
-function getTikTokRedirectUri(target?: string) {
-  if (target === "company") {
-    return String(
-      process.env.TIKTOK_BUSINESS_REDIRECT_URI ||
-      `${String(process.env.APP_URL || "").replace(/\/$/, "")}/api/v1/tiktok-business/oauth/callback`
-    ).trim();
-  }
+function getTikTokRedirectUri() {
   return String(
     process.env.TIKTOK_REDIRECT_URI ||
     `${String(process.env.APP_URL || "").replace(/\/$/, "")}/api/v1/tiktok/oauth/callback`
   ).trim();
 }
 
-function getTikTokClientKey(target?: string) {
-  if (target === "company") {
-    return String(process.env.TIKTOK_BUSINESS_CLIENT_KEY || process.env.TIKTOK_CLIENT_KEY || "").trim();
-  }
+function getTikTokClientKey() {
   return String(process.env.TIKTOK_CLIENT_KEY || "").trim();
 }
 
-function getTikTokClientSecret(target?: string) {
-  if (target === "company") {
-    return String(process.env.TIKTOK_BUSINESS_CLIENT_SECRET || process.env.TIKTOK_CLIENT_SECRET || "").trim();
-  }
+function getTikTokClientSecret() {
   return String(process.env.TIKTOK_CLIENT_SECRET || "").trim();
 }
 
@@ -266,8 +254,8 @@ async function savePublishTracking(
 }
 
 async function refreshCompanyTikTokToken(integrationId: string, integration: any): Promise<string> {
-  const clientKey = integration.verifyToken || process.env.TIKTOK_CLIENT_KEY || "";
-  const clientSecret = integration.appSecret || process.env.TIKTOK_CLIENT_SECRET || "";
+  const clientKey = integration.verifyToken || getTikTokClientKey() || "";
+  const clientSecret = integration.appSecret || getTikTokClientSecret() || "";
   const refreshToken = integration.refreshToken;
 
   if (!refreshToken) {
@@ -323,8 +311,8 @@ async function refreshCompanyTikTokToken(integrationId: string, integration: any
 }
 
 async function refreshUserTikTokToken(userId: string, integration: any): Promise<string> {
-  const clientKey = integration.clientKey || integration.verifyToken || process.env.TIKTOK_CLIENT_KEY || "";
-  const clientSecret = integration.clientSecret || integration.appSecret || process.env.TIKTOK_CLIENT_SECRET || "";
+  const clientKey = getTikTokClientKey() || integration.clientKey || integration.verifyToken || "";
+  const clientSecret = getTikTokClientSecret() || integration.clientSecret || integration.appSecret || "";
   const refreshToken = integration.refreshToken;
 
   if (!refreshToken) {
@@ -556,10 +544,10 @@ function verifyOAuthState(state: string) {
   };
 }
 
-async function exchangeCodeForOAuthToken(code: string, credentials?: { clientKey: string; clientSecret: string }, target?: string) {
-  const clientKey = String(credentials?.clientKey || getTikTokClientKey(target)).trim();
-  const clientSecret = String(credentials?.clientSecret || getTikTokClientSecret(target)).trim();
-  const redirectUri = getTikTokRedirectUri(target);
+async function exchangeCodeForOAuthToken(code: string, credentials?: { clientKey: string; clientSecret: string }) {
+  const clientKey = String(credentials?.clientKey || getTikTokClientKey()).trim();
+  const clientSecret = String(credentials?.clientSecret || getTikTokClientSecret()).trim();
+  const redirectUri = getTikTokRedirectUri();
 
   if (!clientKey || !clientSecret || !redirectUri) {
     throw new Error("TikTok OAuth chua du cau hinh client key, client secret hoac redirect uri.");
@@ -618,16 +606,16 @@ async function resolveOAuthClientCredentials(params: {
       }
     }
 
-    if (!clientKey) clientKey = getTikTokClientKey("company");
-    if (!clientSecret) clientSecret = getTikTokClientSecret("company");
+    if (!clientKey) clientKey = getTikTokClientKey();
+    if (!clientSecret) clientSecret = getTikTokClientSecret();
 
     return { clientKey, clientSecret };
   }
 
   const user = await UserModel.findById(params.userId).lean();
   const integration = user?.tiktokIntegration;
-  const clientKey = String(integration?.clientKey || getTikTokClientKey("personal") || "").trim();
-  const clientSecret = String(integration?.clientSecret || getTikTokClientSecret("personal") || "").trim();
+  const clientKey = String(getTikTokClientKey() || integration?.clientKey || "").trim();
+  const clientSecret = String(getTikTokClientSecret() || integration?.clientSecret || "").trim();
 
   return { clientKey, clientSecret };
 }
@@ -766,7 +754,7 @@ export const tiktokService = {
 
     const clientKey = credentials.clientKey;
     const clientSecret = credentials.clientSecret;
-    const redirectUri = getTikTokRedirectUri(target);
+    const redirectUri = getTikTokRedirectUri();
 
     if (!clientKey || !clientSecret || !redirectUri) {
       throw new Error(
@@ -823,7 +811,7 @@ export const tiktokService = {
       target: statePayload.target,
       integrationId: statePayload.integrationId,
     });
-    const tokenData = await exchangeCodeForOAuthToken(params.code, credentials, statePayload.target);
+    const tokenData = await exchangeCodeForOAuthToken(params.code, credentials);
     const creatorInfo = await this.getCreatorInfo(tokenData.access_token);
 
     if (statePayload.target === "company") {

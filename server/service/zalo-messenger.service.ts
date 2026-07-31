@@ -97,7 +97,6 @@ export const zaloMessengerService = {
     const savedUser = await UserModel.findById(userId).select("email zaloIntegration").lean();
     console.log(`[Zalo SaveIntegrationManual] Saved user integration for ${savedUser?.email || userId}: oaId=${savedUser?.zaloIntegration?.oaId || "none"}, accessTokenTail=${savedUser?.zaloIntegration?.accessToken?.slice(-8) || "none"}, hasRefreshToken=${savedUser?.zaloIntegration?.refreshToken ? "true" : "false"}`);
 
-    // Náº¿u á»Ÿ cháº¿ Ä‘á»™ mock, tá»± Ä‘á»™ng táº¡o má»™t vÃ i cuá»™c há»™i thoáº¡i máº«u Ä‘á»ƒ hiá»ƒn thá»‹ ngay
     if (isMock) {
       await this.seedMockData(integrationData.oaId);
     }

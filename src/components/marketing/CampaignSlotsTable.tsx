@@ -3,6 +3,7 @@ import { CalendarClock, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCc
 import { CampaignSlot } from './CampaignDetailModal';
 import { MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
+import TikTokBatchApprovalModal from './TikTokBatchApprovalModal';
 
 const TikTokIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
@@ -168,6 +169,8 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
   const [slotPage, setSlotPage] = useState(1);
   const [selectedSlotIds, setSelectedSlotIds] = useState<string[]>([]);
   const [isBulkApproving, setIsBulkApproving] = useState(false);
+  const [isTikTokBatchApproving, setIsTikTokBatchApproving] = useState(false);
+  const [showTikTokBatchApproval, setShowTikTokBatchApproval] = useState(false);
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
   const [showCustomPrepare, setShowCustomPrepare] = useState(false);
   const [customStartStr, setCustomStartStr] = useState('');
@@ -224,6 +227,20 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
   const pendingApprovalSlots = useMemo(() => {
     return sortedSlots.filter(s => s.status === 'pending_approval' && s.platform !== 'TikTok');
   }, [sortedSlots]);
+
+  const selectedTikTokApprovalSlots = useMemo(() => {
+    return slots.filter((slot) => (
+      selectedSlotIds.includes(slot._id)
+      && slot.platform === 'TikTok'
+      && slot.status === 'pending_approval'
+    ));
+  }, [selectedSlotIds, slots]);
+
+  const selectedTikTokIntegrationIds = useMemo(() => [
+    ...new Set(selectedTikTokApprovalSlots.map((slot) => slot.integrationId).filter(Boolean)),
+  ], [selectedTikTokApprovalSlots]);
+
+  const selectedTikTokIntegrationId = selectedTikTokIntegrationIds[0];
 
   const handleSelectAllPending = () => {
     setSelectedSlotIds(pendingApprovalSlots.map(s => s._id));
@@ -568,7 +585,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
+            {slots.some(s => selectedSlotIds.includes(s._id) && s.status === 'pending_approval' && s.platform !== 'TikTok') && <button
               type="button"
               disabled={isBulkApproving}
               onClick={handleBulkApprove}
@@ -576,7 +593,23 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
             >
               {isBulkApproving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
               Duyệt hàng loạt ({slots.filter(s => selectedSlotIds.includes(s._id) && s.status === 'pending_approval' && s.platform !== 'TikTok').length})
-            </button>
+            </button>}
+            {selectedTikTokApprovalSlots.length > 0 && <button
+              type="button"
+              disabled={isTikTokBatchApproving}
+              onClick={() => {
+                if (selectedTikTokIntegrationIds.length !== 1 || !selectedTikTokIntegrationId) {
+                  toast.warning('Chỉ có thể duyệt nhóm video thuộc cùng một tài khoản TikTok.');
+                  return;
+                }
+                setShowTikTokBatchApproval(true);
+              }}
+              className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer disabled:opacity-55"
+              title="Chọn quyền TikTok một lần và áp dụng cho toàn bộ video đã chọn"
+            >
+              {isTikTokBatchApproving ? <Loader2 size={12} className="animate-spin" /> : <TikTokIcon className="h-3 w-3" />}
+              Duyệt TikTok theo nhóm ({selectedTikTokApprovalSlots.length})
+            </button>}
             {onRetrySlot && (
               <button
                 type="button"
@@ -733,17 +766,27 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                       </td>
                       <td className="px-4 py-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                         {(() => {
-                          if (slot.status === 'published' && slot.publishedPostUrl) {
+                          if (slot.status === 'published') {
+                            if (slot.publishedPostUrl) {
+                              return (
+                                <a
+                                  href={slot.publishedPostUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-850 transition cursor-pointer"
+                                >
+                                  Xem bài viết
+                                  <ExternalLink size={10} />
+                                </a>
+                              );
+                            }
                             return (
-                              <a
-                                href={slot.publishedPostUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-850 transition cursor-pointer"
+                              <span
+                                className="text-[10px] text-emerald-600 font-semibold select-none"
+                                title="Bài đã đăng thành công nhưng nền tảng chưa cung cấp liên kết công khai"
                               >
-                                Xem bài viết
-                                <ExternalLink size={10} />
-                              </a>
+                                Đã hoàn tất
+                              </span>
                             );
                           }
                           if (slot.status === 'failed') {
@@ -908,7 +951,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
           <span className="text-[11px] font-semibold text-slate-500">
             Hiển thị {(slotPage - 1) * SLOTS_PER_PAGE + 1} - {Math.min(slotPage * SLOTS_PER_PAGE, sortedSlots.length)} trong tổng số {sortedSlots.length} bài viết
           </span>
-          {totalSlotPages > 1 && (
+      {totalSlotPages > 1 && (
             <div className="flex items-center gap-1.5">
             <button
               type="button"
@@ -959,6 +1002,32 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
           )}
         </div>
       )}
+      <TikTokBatchApprovalModal
+        isOpen={showTikTokBatchApproval}
+        onClose={() => setShowTikTokBatchApproval(false)}
+        slots={selectedTikTokApprovalSlots}
+        integrationId={selectedTikTokIntegrationId}
+        isApproving={isTikTokBatchApproving}
+        onConfirmApprove={async ({ tiktokPublishOptions, videoDurations }) => {
+          setIsTikTokBatchApproving(true);
+          try {
+            const result = await marketingCampaignService.approveTikTokSlots(
+              campaign._id,
+              selectedTikTokApprovalSlots.map((slot) => slot._id),
+              tiktokPublishOptions,
+              videoDurations,
+            );
+            toast.success(`Đã duyệt theo lịch ${result.approvedCount} video TikTok.`);
+            setShowTikTokBatchApproval(false);
+            setSelectedSlotIds([]);
+            if (onRefresh) await onRefresh();
+          } catch (error: unknown) {
+            toast.error(error instanceof Error ? error.message : 'Không thể duyệt nhóm video TikTok.');
+          } finally {
+            setIsTikTokBatchApproving(false);
+          }
+        }}
+      />
     </div>
   );
 };

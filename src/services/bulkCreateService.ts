@@ -116,6 +116,10 @@ export interface BulkRenderJob {
   failedItems: number;
   progress: number;
   errorMessage?: string;
+  targetType?: 'standalone' | 'campaign';
+  campaignId?: string;
+  sourceType?: 'manual' | 'campaign_orders' | 'sheet';
+  mappingMode?: 'order' | 'position' | 'manual';
   createdAt: string;
   completedAt?: string;
 }
@@ -186,6 +190,17 @@ async function parse<T>(response: Response, fallback: string): Promise<T> {
     throw new Error(body.message || body.details || fallback);
   }
   return response.json() as Promise<T>;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 export const bulkCreateService = {
@@ -347,9 +362,21 @@ export const bulkCreateService = {
     return URL.createObjectURL(await response.blob());
   },
 
-  async createJob(templateId: string, rows: Array<Record<string, string>>) {
+  async createJob(
+    templateId: string,
+    rows: Array<Record<string, string>>,
+    options: {
+      campaignId?: string;
+      sourceType?: 'manual' | 'campaign_orders' | 'sheet';
+      mappingMode?: 'order' | 'position' | 'manual';
+    } = {},
+  ) {
     const idempotencyKey = `${templateId}:${Date.now()}:${crypto.randomUUID()}`;
-    const response = await fetch('/api/v1/bulk-create/jobs', { method: 'POST', headers: headers(), body: JSON.stringify({ templateId, rows, idempotencyKey }) });
+    const response = await fetch('/api/v1/bulk-create/jobs', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ templateId, rows, idempotencyKey, ...options }),
+    });
     return (await parse<{ data: BulkRenderJob }>(response, 'Không thể khởi tạo Bulk Create.')).data;
   },
 
@@ -380,12 +407,19 @@ export const bulkCreateService = {
 
   async downloadZip(id: string, filename: string) {
     const response = await fetch(`/api/v1/bulk-create/jobs/${id}/download`, { headers: headers(false) });
-    if (!response.ok) throw new Error('Không thể tải file ZIP.');
-    const url = URL.createObjectURL(await response.blob());
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${filename || 'bulk-create'}.zip`;
-    anchor.click();
-    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { message?: string; details?: string };
+      throw new Error(body.message || body.details || 'Không thể tải file ZIP.');
+    }
+    downloadBlob(await response.blob(), `${filename || 'bulk-create'}.zip`);
+  },
+
+  async downloadImage(url: string, filename: string) {
+    const response = await fetch(
+      `/api/v1/media/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`,
+      { headers: headers(false) }
+    );
+    if (!response.ok) throw new Error('Không thể tải ảnh.');
+    downloadBlob(await response.blob(), filename);
   },
 };

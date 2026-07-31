@@ -33,6 +33,7 @@ import {
 } from '../../services/bulkCreateService';
 import {
   marketingCampaignService,
+  type CampaignAssetOrderData,
   type MarketingCampaignSummary,
 } from '../../services/marketingCampaignService';
 import { useAuth } from '../../context/AuthContext';
@@ -329,12 +330,13 @@ async function mapWithConcurrency<T, R>(
 interface BulkCreateWorkspaceProps {
   onClose?: () => void;
   cardId?: string;
+  initialCampaignId?: string;
   onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
 }
 
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
-export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) {
+export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const editorViewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ layerId: string; layerIds: string[]; offsetX: number; offsetY: number } | null>(null);
@@ -367,10 +369,13 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [loadingSheet, setLoadingSheet] = useState(false);
   const [campaigns, setCampaigns] = useState<MarketingCampaignSummary[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [campaignContext, setCampaignContext] = useState<CampaignAssetOrderData | null>(null);
+  const [bulkTarget, setBulkTarget] = useState<'standalone' | 'campaign'>('standalone');
+  const [campaignSetupOpen, setCampaignSetupOpen] = useState(true);
+  const [campaignDataSource, setCampaignDataSource] = useState<'manual' | 'campaign_orders' | 'sheet'>('manual');
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loadingCampaignOrders, setLoadingCampaignOrders] = useState(false);
   const [campaignOrderImportId, setCampaignOrderImportId] = useState('');
-  const syncedOrderBulkJobsRef = useRef(new Set<string>());
   const [templateName, setTemplateName] = useState('Thiết kế chưa đặt tên');
   const [savedTemplateId, setSavedTemplateId] = useState('');
   const savedTemplateIdRef = useRef('');
@@ -419,6 +424,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
   const [pageResults, setPageResults] = useState<Record<string, PageRenderState>>({});
   const [activeJobPageIds, setActiveJobPageIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [downloadingJob, setDownloadingJob] = useState(false);
   const [assetUploadProgress, setAssetUploadProgress] = useState<{ completed: number; total: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -614,26 +620,18 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         syncPageResults(items, activeJobPageIds);
         setJobs((current) => [job, ...current.filter((item) => item._id !== job._id)]);
         if (!['queued', 'processing'].includes(job.status)) {
-          if (
-            campaignOrderImportId &&
-            ['completed', 'partial'].includes(job.status) &&
-            !syncedOrderBulkJobsRef.current.has(job._id)
-          ) {
-            syncedOrderBulkJobsRef.current.add(job._id);
-            void marketingCampaignService.syncAssetOrdersFromBulkImport(campaignOrderImportId, job._id)
-              .then((result) => {
-                if (result.updatedCount) toast.info(`Đã gắn ${result.updatedCount} ảnh Bulk Create về Order nguồn.`);
-              })
-              .catch((error) => {
-                toast.warning(error instanceof Error ? error.message : 'Chưa thể đồng bộ ảnh Bulk Create về Order.');
-              });
-          }
           if (job.status === 'completed') {
             toast.success(`Đã tạo xong ${job.completedItems} ảnh.`);
+            if (campaignOrderImportId) {
+              toast.info('Mở Campaign, chọn Bulk Create để xem trước và gắn ảnh vào bài viết.');
+            }
           } else if (job.status === 'partial') {
             toast.error(
               `Đã tạo ${job.completedItems} ảnh, ${job.failedItems} ảnh bị lỗi.`
             );
+            if (campaignOrderImportId) {
+              toast.info('Mở Campaign, chọn Bulk Create để xem trước các ảnh đã tạo và gắn vào bài viết.');
+            }
           } else if (job.status === 'failed') {
             toast.error(job.errorMessage || 'Không thể tạo ảnh.');
           }
@@ -1259,6 +1257,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       ...createRow(layers, row.values),
       name: row.name ? `${row.name} - bản sao` : undefined,
       sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
+      campaignAssetOrderId: row.campaignAssetOrderId,
+      campaignSlotId: row.campaignSlotId,
     };
     setRows((current) => [...current, duplicated]);
     setActiveRowId(duplicated.id);
@@ -1297,6 +1297,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
       ...createRow(layers, source.values),
       name,
       sourceCells: source.sourceCells ? { ...source.sourceCells } : undefined,
+      campaignAssetOrderId: source.campaignAssetOrderId,
+      campaignSlotId: source.campaignSlotId,
       selected: true,
     };
     setRows((current) => {
@@ -1341,10 +1343,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     const result = pageResults[row.id];
     try {
       if (result?.status === 'completed' && result.outputUrl) {
-        triggerFileDownload(
-          `/api/v1/media/download?url=${encodeURIComponent(result.outputUrl)}&filename=${encodeURIComponent(filename)}`,
-          filename
-        );
+        await bulkCreateService.downloadImage(result.outputUrl, filename);
         return;
       }
       if (editorScene.layers.length === 0) {
@@ -1366,17 +1365,42 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     }
   };
 
+  const downloadJob = async (job: BulkRenderJob) => {
+    if (downloadingJob) return;
+    setDownloadingJob(true);
+    try {
+      await bulkCreateService.downloadZip(job._id, job.templateName);
+      toast.success('Đã bắt đầu tải file ZIP.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể tải file ZIP.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setDownloadingJob(false);
+    }
+  };
+
   const applyImportedData = (
     columns: BulkDataColumn[],
     importedRows: BulkImportedRow[],
     sourceName: string,
-    sourceCampaignId = ''
+    sourceCampaignId = '',
+    sourceType: 'manual' | 'campaign_orders' | 'sheet' = 'manual',
+    context: CampaignAssetOrderData | null = null,
   ) => {
     const nextLayers = matchLayersToColumns(layers, columns);
-    const nextRows: DataRow[] = importedRows.map((row) => ({
+    const mappableSlots = (context?.slots || []).filter((slot) => (
+      slot.platform === 'Facebook'
+      && !['video', 'human-video'].includes(slot.mediaType)
+      && !['published', 'cancelled', 'generating_media', 'verifying', 'ready_to_publish', 'publishing'].includes(slot.status)
+    ));
+    const orderBySlotId = new Map((context?.orders || [])
+      .filter((order) => order.status !== 'cancelled' && order.slotId)
+      .map((order) => [String(order.slotId), order._id]));
+    const nextRows: DataRow[] = importedRows.map((row, rowIndex) => ({
       id: row.id || makeId('row'),
-      campaignAssetOrderId: row.cells.order_id || undefined,
-      campaignSlotId: row.cells.slot_id || undefined,
+      campaignAssetOrderId: row.cells.order_id || orderBySlotId.get(mappableSlots[rowIndex]?._id) || undefined,
+      campaignSlotId: row.cells.slot_id || mappableSlots[rowIndex]?._id || undefined,
       sourceCells: row.cells,
       selected: row.selected !== false,
       values: Object.fromEntries(nextLayers.map((layer) => [
@@ -1392,6 +1416,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     setActiveRowId(nextRows[0]?.id || '');
     setDataSourceName(sourceName);
     setCampaignOrderImportId(sourceCampaignId);
+    setCampaignDataSource(sourceType);
     setDataStep(2);
     setSheetInput('');
     setPagesCreated(false);
@@ -1466,17 +1491,55 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     if (selected && rows[0]) setActiveRowId(rows[0].id);
   };
 
+  const resolveCampaignImportContext = async () => {
+    if (bulkTarget !== 'campaign') return { campaignId: '', context: null as CampaignAssetOrderData | null };
+    if (!selectedCampaignId) throw new Error('Select a campaign before importing data.');
+    const context = campaignContext || await loadCampaignContext(selectedCampaignId);
+    if (!context) throw new Error('Unable to load the selected campaign posts.');
+    return { campaignId: selectedCampaignId, context };
+  };
+
+  const assignCampaignToImportedRows = (
+    campaignId: string,
+    context: CampaignAssetOrderData | null,
+    sourceType: 'campaign_orders' | 'sheet',
+  ) => {
+    if (!campaignId || !context) return;
+    const slots = context.slots.filter((slot) => (
+      slot.platform === 'Facebook'
+      && !['video', 'human-video'].includes(slot.mediaType)
+      && !['published', 'cancelled', 'generating_media', 'verifying', 'ready_to_publish', 'publishing'].includes(slot.status)
+    ));
+    const orderBySlotId = new Map(context.orders
+      .filter((order) => order.status !== 'cancelled' && order.slotId)
+      .map((order) => [String(order.slotId), order._id]));
+    setRows((current) => current.map((row, index) => {
+      const slotId = row.campaignSlotId || slots[index]?._id;
+      return {
+        ...row,
+        campaignSlotId: slotId,
+        campaignAssetOrderId: row.campaignAssetOrderId || orderBySlotId.get(String(slotId || '')),
+      };
+    }));
+    setCampaignOrderImportId(campaignId);
+    setCampaignDataSource(sourceType);
+  };
+
   const importGoogleSheet = async () => {
     if (!googleSheetUrl.trim()) return;
     setLoadingSheet(true);
     setErrorMessage('');
     try {
-      const preview = await bulkCreateService.previewPublicGoogleSheet(googleSheetUrl.trim());
+      const [preview, target] = await Promise.all([
+        bulkCreateService.previewPublicGoogleSheet(googleSheetUrl.trim()),
+        resolveCampaignImportContext(),
+      ]);
       applyImportedData(
         preview.columns,
         preview.rows,
         `Google Sheet · ${preview.sheetName || 'Tự động'}`
       );
+      assignCampaignToImportedRows(target.campaignId, target.context, 'sheet');
       const imageSummary = preview.embeddedImageCount
         ? ` và ${preview.embeddedImageCount} ảnh`
         : '';
@@ -1490,16 +1553,19 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     }
   };
 
-  const importSheet = () => {
+  const importSheet = async () => {
     const matrix = sheetInput
       .split(/\r?\n/)
       .filter((line) => line.trim())
       .map((line) => line.split('\t'));
     const dataSet = matrixToDataSet(matrix);
+    const target = await resolveCampaignImportContext();
     applyImportedData(dataSet.columns, dataSet.rows, 'Dữ liệu đã dán');
+    assignCampaignToImportedRows(target.campaignId, target.context, 'sheet');
   };
 
   const importExcel = async (file: File) => {
+    const target = await resolveCampaignImportContext();
     if (/\.xlsx$/i.test(file.name)) {
       setLoadingSheet(true);
       setErrorMessage('');
@@ -1510,6 +1576,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           preview.rows,
           `${file.name} · ${preview.sheetName || 'Tự động'}`
         );
+        assignCampaignToImportedRows(target.campaignId, target.context, 'sheet');
         const imageSummary = preview.embeddedImageCount
           ? ` và ${preview.embeddedImageCount} ảnh`
           : '';
@@ -1541,6 +1608,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     const best = candidates[0];
     if (!best) throw new Error('Không tìm thấy bảng dữ liệu hợp lệ trong tệp.');
     applyImportedData(best.dataSet.columns, best.dataSet.rows, `${file.name} · ${best.sheetName}`);
+    assignCampaignToImportedRows(target.campaignId, target.context, 'sheet');
   };
 
   const buildTemplatePayload = useCallback(async (): Promise<BulkTemplatePayload> => {
@@ -1677,6 +1745,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         })),
       ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
       ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
+      __source_row_id: row.id,
     }));
     setRows((current) => current.map((row) => {
       const index = readyRows.findIndex((ready) => ready.id === row.id);
@@ -1705,7 +1774,22 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     try {
       const template = await persistTemplate();
       const uploadedRows = await uploadReadyRows();
-      const job = await bulkCreateService.createJob(template._id, uploadedRows.values);
+      if (bulkTarget === 'campaign' && !campaignOrderImportId) {
+        throw new Error('HÃ£y chá»n chiáº¿n dá»‹ch vÃ  nháº­p dá»¯ liá»‡u trÆ°á»›c khi táº¡o áº£nh.');
+      }
+      if (bulkTarget === 'campaign') {
+        const unmappedCount = uploadedRows.values.filter((row) => !row.__campaign_slot_id).length;
+        if (unmappedCount > 0) {
+          throw new Error(`${unmappedCount} rows are not mapped to campaign posts.`);
+        }
+      }
+      const job = await bulkCreateService.createJob(template._id, uploadedRows.values, {
+        campaignId: bulkTarget === 'campaign' ? campaignOrderImportId : undefined,
+        sourceType: bulkTarget === 'campaign' ? campaignDataSource : 'manual',
+        mappingMode: bulkTarget === 'campaign'
+          ? (campaignDataSource === 'campaign_orders' ? 'order' : campaignDataSource === 'sheet' ? 'position' : 'manual')
+          : undefined,
+      });
       setPagesCreated(true);
       setActiveJobPageIds(uploadedRows.pageIds);
       setPageResults((current) => {
@@ -1783,8 +1867,37 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
     }
   }, []);
 
+  const loadCampaignContext = useCallback(async (campaignId: string) => {
+    if (!campaignId) {
+      setCampaignContext(null);
+      return null;
+    }
+    setLoadingCampaignOrders(true);
+    try {
+      const context = await marketingCampaignService.getAssetOrders(campaignId);
+      setCampaignContext(context);
+      return context;
+    } catch (error) {
+      setCampaignContext(null);
+      toast.error(error instanceof Error ? error.message : 'KhÃ´ng thá»ƒ táº£i dÃ»ng bÃ i viáº¿t cá»§a chiáº¿n dá»‹ch.');
+      return null;
+    } finally {
+      setLoadingCampaignOrders(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!initialCampaignId) return;
+    setBulkTarget('campaign');
+    setSelectedCampaignId(initialCampaignId);
+    setCampaignOrderImportId(initialCampaignId);
+    void loadCampaignsForImport();
+    void loadCampaignContext(initialCampaignId);
+  }, [initialCampaignId, loadCampaignContext, loadCampaignsForImport]);
+
   const importCampaignOrders = async () => {
     if (!selectedCampaignId) return;
+    setBulkTarget('campaign');
     setLoadingCampaignOrders(true);
     setErrorMessage('');
     try {
@@ -1793,7 +1906,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
         toast.warning('Chiến dịch chưa có Order ảnh có thể nhập vào Bulk Create.');
         return;
       }
-      applyImportedData(preview.columns, preview.rows, preview.sourceName, selectedCampaignId);
+      applyImportedData(preview.columns, preview.rows, preview.sourceName, selectedCampaignId, 'campaign_orders');
       const notices = [
         preview.skipped.length ? `${preview.skipped.length} Order video giữ lại ở luồng video` : '',
         preview.missingPrimaryAssetCount ? `${preview.missingPrimaryAssetCount} dòng chưa có ảnh chính` : '',
@@ -2273,6 +2386,73 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
 
   return (
     <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-white">
+      {campaignSetupOpen && (
+        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <p className="text-lg font-extrabold text-slate-900">Bạn muốn thiết kế cho đâu?</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Chọn Campaign để ảnh tạo xong tự xuất hiện đúng trong lịch nội dung.
+            </p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => { setBulkTarget('standalone'); setCampaignOrderImportId(''); setCampaignDataSource('manual'); setCampaignSetupOpen(false); }}
+                className="rounded-2xl border-2 border-slate-200 bg-white p-4 text-left transition hover:border-slate-400"
+              >
+                <span className="block text-sm font-extrabold text-slate-800">Thiết kế tự do</span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">Tạo ảnh độc lập, không gắn vào Campaign.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setBulkTarget('campaign'); if (!campaigns.length) void loadCampaignsForImport(); }}
+                className={`rounded-2xl border-2 p-4 text-left transition ${bulkTarget === 'campaign' ? 'border-violet-600 bg-violet-50' : 'border-violet-200 bg-white hover:border-violet-400'}`}
+              >
+                <span className="block text-sm font-extrabold text-violet-800">Cho Campaign</span>
+                <span className="mt-1 block text-xs leading-5 text-violet-700">Map từng ảnh vào bài Facebook của chiến dịch.</span>
+              </button>
+            </div>
+            {bulkTarget === 'campaign' && (
+              <div className="mt-4 space-y-3 rounded-2xl border border-violet-200 bg-violet-50/50 p-4">
+                <label className="block text-xs font-extrabold text-violet-900">Chiến dịch Facebook</label>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedCampaignId}
+                    onChange={(event) => {
+                      const campaignId = event.target.value;
+                      setSelectedCampaignId(campaignId);
+                      setCampaignContext(null);
+                      if (campaignId) void loadCampaignContext(campaignId);
+                    }}
+                    disabled={loadingCampaigns || loadingCampaignOrders}
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-violet-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-violet-500"
+                  >
+                    <option value="">Chọn chiến dịch</option>
+                    {campaigns.map((campaign) => (
+                      <option key={campaign._id} value={campaign._id}>{campaign.title} · {campaign.statistics.totalSlots} bài</option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => void loadCampaignsForImport()} className="rounded-xl border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700">
+                    {loadingCampaigns ? <LoaderCircle className="h-4 w-4 animate-spin" /> : 'Tải'}
+                  </button>
+                </div>
+                {campaignContext && (
+                  <p className="text-xs font-semibold leading-5 text-violet-900">
+                    {campaignContext.slots.filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video', 'published', 'cancelled'].includes(slot.mediaType) && !['published', 'cancelled'].includes(slot.status)).length} bài Facebook có thể nhận ảnh.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={!selectedCampaignId || loadingCampaignOrders}
+                  onClick={() => { setCampaignOrderImportId(selectedCampaignId); setCampaignSetupOpen(false); setActiveTool('data'); setSidebarOpen(true); }}
+                  className="h-11 w-full rounded-xl bg-violet-600 text-sm font-extrabold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Bắt đầu với Campaign
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <nav className="flex w-[76px] shrink-0 flex-col border-r border-slate-200 bg-white py-3">
         <button
           type="button"
@@ -2334,6 +2514,8 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           loadingSheet={loadingSheet}
           campaigns={campaigns}
           selectedCampaignId={selectedCampaignId}
+          bulkTarget={bulkTarget}
+          campaignContext={campaignContext}
           loadingCampaigns={loadingCampaigns}
           loadingCampaignOrders={loadingCampaignOrders}
           readyCount={readyCount}
@@ -2364,7 +2546,20 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onGoogleSheetUrl={setGoogleSheetUrl}
           onImportGoogleSheet={() => void importGoogleSheet()}
           onLoadCampaigns={() => void loadCampaignsForImport()}
-          onSelectCampaign={setSelectedCampaignId}
+          onSelectCampaign={(campaignId) => {
+            setSelectedCampaignId(campaignId);
+            setCampaignContext(null);
+            setCampaignOrderImportId('');
+            if (campaignId) void loadCampaignContext(campaignId);
+          }}
+          onBulkTarget={(target) => {
+            setBulkTarget(target);
+            if (target === 'campaign' && campaigns.length === 0) void loadCampaignsForImport();
+            if (target === 'standalone') {
+              setCampaignOrderImportId('');
+              setCampaignDataSource('manual');
+            }
+          }}
           onImportCampaignOrders={() => void importCampaignOrders()}
           onConnectLayer={connectLayerData}
           onAutoMatch={autoMatchData}
@@ -2376,6 +2571,12 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onApplySystemTemplate={applySystemTemplate}
           onAddRow={addRow}
           onSelectRow={setActiveRowId}
+          onAssignCampaignSlot={(rowId, slotId) => {
+            const orderId = campaignContext?.orders.find((order) => String(order.slotId || '') === slotId)?._id;
+            setRows((current) => current.map((row) => row.id === rowId
+              ? { ...row, campaignSlotId: slotId || undefined, campaignAssetOrderId: orderId }
+              : row));
+          }}
           onUpdateCell={updateCell}
           onDuplicateRow={duplicateRow}
           onRemoveRow={removeRow}
@@ -2388,7 +2589,7 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
           onOpenJob={(job) => void openJob(job)}
           onRetryJob={(jobId) => void retryJob(jobId)}
           onCancelJob={(jobId) => void cancelJob(jobId)}
-          onDownloadJob={(job) => void bulkCreateService.downloadZip(job._id, job.templateName)}
+          onDownloadJob={(job) => void downloadJob(job)}
           onClose={() => setSidebarOpen(false)}
           uploadedImages={uploadedImages}
           uploadingAsset={uploadingAsset}
@@ -2595,10 +2796,12 @@ export function BulkCreateWorkspace({ onClose }: BulkCreateWorkspaceProps = {}) 
                   {activeJob && ['completed', 'partial'].includes(activeJob.status) && (
                     <button
                       type="button"
-                      onClick={() => void bulkCreateService.downloadZip(activeJob._id, activeJob.templateName)}
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                      onClick={() => void downloadJob(activeJob)}
+                      disabled={downloadingJob}
+                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 hover:shadow-sm active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
                     >
-                      <Download className="h-4 w-4" /> Tải tất cả ảnh
+                      {downloadingJob ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                      {downloadingJob ? 'Đang chuẩn bị file ZIP...' : 'Tải tất cả ảnh'}
                     </button>
                   )}
                 </div>

@@ -6,10 +6,11 @@ import { CampaignSlotDetail } from './CampaignSlotDetail';
 import { socketService } from '../../services/socketService';
 import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
 import CampaignDriveImportPanel from './CampaignDriveImportPanel';
+import { openContentStudio } from '../../utils/contentStudioNavigation';
 
 const DETAIL_LIST_ITEMS_PER_PAGE = 8;
 
-interface CampaignSlot {
+export interface CampaignSlot {
   _id: string;
   pillar: string;
   objective?: string;
@@ -389,7 +390,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              Content Pillar ({campaignDetail.campaign.contentMatrix?.length || campaignDetail.campaign.contentPillars?.length || 0})
+              Nhóm chủ đề ({campaignDetail.campaign.contentMatrix?.length || campaignDetail.campaign.contentPillars?.length || 0})
             </button>
             <button
               type="button"
@@ -399,7 +400,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              Content Calendar ({totalSlots} bài)
+              Lịch nội dung ({totalSlots} bài)
             </button>
             <button
               type="button"
@@ -409,7 +410,7 @@ export default function CampaignDetailModal({
                 : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
                 }`}
             >
-              <FolderOpen size={14} /> Order media
+              <FolderOpen size={14} /> Yêu cầu ảnh/video
             </button>
           </div>
         )}
@@ -830,7 +831,12 @@ export default function CampaignDetailModal({
                       <CampaignDriveImportPanel
                         campaignId={campaignDetail.campaign._id}
                         mediaKind={campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
+                        allowBulkCreate={campaignDetail.campaign.platforms.includes('Facebook')}
                         awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
+                        onCreateBulk={() => openContentStudio({
+                          tab: 'template',
+                          campaignId: campaignDetail.campaign._id,
+                        })}
                         onApplied={onRefresh}
                       />
 
@@ -937,4 +943,3 @@ export default function CampaignDetailModal({
     </div>
   );
 }
-export type { CampaignSlot };

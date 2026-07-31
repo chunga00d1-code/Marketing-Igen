@@ -4,6 +4,9 @@ import { BulkTemplateModel } from "../model/bulk-template.model";
 import { BulkRenderJobModel } from "../model/bulk-render-job.model";
 import { BulkRenderItemModel } from "../model/bulk-render-item.model";
 import { BulkAssetModel } from "../model/bulk-asset.model";
+import { MarketingCampaignModel } from "../model/marketing-campaign.model";
+import { MarketingCampaignSlotModel } from "../model/marketing-campaign-slot.model";
+import { CampaignAssetOrderModel } from "../model/campaign-asset-order.model";
 import { IBulkBackground, IBulkCanvas, IBulkLayer } from "../interface/bulk-create.interface";
 import {
   assertSafeBulkImageSource,
@@ -34,6 +37,9 @@ interface JobInput {
   templateId: string;
   rows: Array<Record<string, string>>;
   idempotencyKey: string;
+  campaignId?: string;
+  sourceType?: "manual" | "campaign_orders" | "sheet";
+  mappingMode?: "order" | "position" | "manual";
 }
 
 const JOB_LEASE_MS = 10 * 60 * 1000;
@@ -45,6 +51,63 @@ const configuredItemConcurrency = Number(process.env.BULK_CREATE_ITEM_CONCURRENC
 const ITEM_CONCURRENCY = Number.isFinite(configuredItemConcurrency)
   ? Math.min(5, Math.max(1, Math.floor(configuredItemConcurrency)))
   : 3;
+
+const campaignWritableSlotStatuses = new Set([
+  "planned", "queued", "generating", "researching", "writing", "scoring",
+  "awaiting_assets", "retrying", "needs_attention", "failed",
+]);
+
+function optionalObjectId(value: unknown, label: string) {
+  const id = String(value || "").trim();
+  if (!id) return undefined;
+  if (!mongoose.isValidObjectId(id)) throw new Error(`${label} khÃ´ng há»£p lá»‡.`);
+  return id;
+}
+
+async function validateCampaignJobContext(actor: Actor, input: JobInput, rows: Array<Record<string, string>>) {
+  if (!input.campaignId) return { targetType: "standalone" as const };
+  if (!mongoose.isValidObjectId(input.campaignId)) throw new Error("ID chiáº¿n dá»‹ch khÃ´ng há»£p lá»‡.");
+  const campaign = await MarketingCampaignModel.exists({ _id: input.campaignId, companyCode: actor.companyCode });
+  if (!campaign) throw new Error("KhÃ´ng tÃ¬m tháº¥y chiáº¿n dá»‹ch hoáº·c báº¡n khÃ´ng cÃ³ quyá»n truy cáº­p.");
+
+  const slotIds = Array.from(new Set(rows
+    .map((row) => optionalObjectId(row.__campaign_slot_id, "ID bÃ i viáº¿t"))
+    .filter((id): id is string => Boolean(id))));
+  const orderIds = Array.from(new Set(rows
+    .map((row) => optionalObjectId(row.__campaign_asset_order_id, "ID Order"))
+    .filter((id): id is string => Boolean(id))));
+  if (!slotIds.length) throw new Error("Bulk Create cho chiáº¿n dá»‹ch cáº§n gáº¯n Ã­t nháº¥t má»™t bÃ i viáº¿t.");
+
+  const slots = await MarketingCampaignSlotModel.find({
+    _id: { $in: slotIds }, companyCode: actor.companyCode, campaignId: input.campaignId, platform: "Facebook",
+  }).select("_id status mediaType").lean();
+  const orders = orderIds.length
+    ? await CampaignAssetOrderModel.find({ _id: { $in: orderIds }, companyCode: actor.companyCode, campaignId: input.campaignId })
+      .select("_id slotId status").lean()
+    : [];
+  const slotById = new Map(slots.map((slot) => [String(slot._id), slot]));
+  const orderById = new Map(orders.map((order) => [String(order._id), order]));
+  for (const row of rows) {
+    const slotId = optionalObjectId(row.__campaign_slot_id, "ID bÃ i viáº¿t");
+    const orderId = optionalObjectId(row.__campaign_asset_order_id, "ID Order");
+    if (!slotId) throw new Error("Má»—i dÃ²ng Bulk Create cá»§a chiáº¿n dá»‹ch pháº£i gáº¯n má»™t bÃ i viáº¿t.");
+    const slot = slotById.get(slotId);
+    if (!slot) throw new Error("BÃ i viáº¿t khÃ´ng thuá»™c chiáº¿n dá»‹ch Facebook Ä‘Ã£ chá»n.");
+    if (!campaignWritableSlotStatuses.has(String(slot.status))) {
+      throw new Error("BÃ i viáº¿t Ä‘ang á»Ÿ tráº¡ng thÃ¡i khÃ´ng thá»ƒ gáº¯n áº£nh.");
+    }
+    if (["video", "human-video"].includes(String(slot.mediaType))) {
+      throw new Error("Bulk Create chá»‰ gáº¯n áº£nh vÃ o bÃ i Facebook dÃ¹ng áº£nh.");
+    }
+    if (orderId) {
+      const order = orderById.get(orderId);
+      if (!order || String(order.slotId || "") !== slotId || order.status === "cancelled") {
+        throw new Error("Order khÃ´ng thuá»™c Ä‘Ãºng bÃ i viáº¿t cá»§a chiáº¿n dá»‹ch.");
+      }
+    }
+  }
+  return { targetType: "campaign" as const };
+}
 
 function isCloudinaryImage(value: string) {
   return /^https:\/\/res\.cloudinary\.com\//i.test(value);
@@ -376,6 +439,7 @@ export const bulkCreateService = {
       }
       return normalizedRow;
     });
+    const target = await validateCampaignJobContext(actor, input, normalizedRows);
     const snapshot = {
       sceneVersion: template.sceneVersion || 1,
       canvas: template.canvas,
@@ -388,6 +452,9 @@ export const bulkCreateService = {
         companyCode: actor.companyCode,
         jobId,
         rowIndex,
+        campaignAssetOrderId: optionalObjectId(values.__campaign_asset_order_id, "ID Order"),
+        campaignSlotId: optionalObjectId(values.__campaign_slot_id, "ID bÃ i viáº¿t"),
+        sourceRowId: String(values.__source_row_id || "").trim() || undefined,
         values,
         status: "queued",
       })));
@@ -398,6 +465,10 @@ export const bulkCreateService = {
         templateId: template._id,
         templateName: template.name,
         templateSnapshot: snapshot,
+        targetType: target.targetType,
+        campaignId: input.campaignId || undefined,
+        sourceType: input.sourceType || "manual",
+        mappingMode: input.mappingMode,
         status: "queued",
         totalItems: input.rows.length,
         idempotencyKey: input.idempotencyKey,

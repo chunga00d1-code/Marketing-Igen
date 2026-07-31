@@ -16,6 +16,13 @@ import { approvalNotifierService } from "../approval-notifier.service";
 import { applyCampaignVideoCaption } from "./campaign-caption.service";
 import { broadcastEvent } from "../../socket";
 import { campaignContentSheetService } from "../campaign-content-sheet.service";
+import { aiKnowledgeService } from "../ai-knowledge.service";
+import { SocialIntegrationModel } from "../../model/social-integration.model";
+import {
+  extractKnowledgeContactDetails,
+  formatKnowledgeContactContext,
+  mergePageContactDetails,
+} from "./campaign-contact-footer";
 
 function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: string; status: string }, extra?: Record<string, unknown>) {
   try {
@@ -30,6 +37,19 @@ function emitSlotUpdate(slot: { _id: unknown; campaignId: unknown; companyCode: 
   } catch (e) {
     console.warn("[Orchestrator] Socket broadcast failed:", e);
   }
+}
+
+function buildUserFacingProductionBrief(input: {
+  outline?: unknown;
+  bodyText?: unknown;
+  topicBrief?: unknown;
+}) {
+  const vietnameseBrief = String(input.outline || input.bodyText || input.topicBrief || "").trim();
+  return {
+    shootingContent: vietnameseBrief.slice(0, 1000),
+    productionRequirements: vietnameseBrief.slice(0, 2000),
+    visualBrief: vietnameseBrief.slice(0, 1000),
+  };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -139,7 +159,64 @@ async function getResearchContext(
     await slot.save();
   }
 
-  return analysis.context;
+  const integration = slot.integrationId
+    ? await SocialIntegrationModel.findById(slot.integrationId).select("platform username").lean()
+    : null;
+  const pageId = slot.platform === "Facebook"
+    ? String(integration?.username || "") || undefined
+    : undefined;
+  const knowledgeScope = {
+    companyCode: slot.companyCode,
+    channel: slot.platform === "TikTok" ? "tiktok" as const : "facebook" as const,
+    purpose: "marketing" as const,
+    pageId,
+  };
+  const [knowledge, contactKnowledge] = await Promise.all([
+    aiKnowledgeService.searchRelevantContext({
+      ...knowledgeScope,
+      topK: 8,
+      query: [
+        campaign.title,
+        campaign.sourceBrief,
+        slot.pillar,
+        slot.objective,
+        slot.topicBrief,
+        "thông tin doanh nghiệp thương hiệu sản phẩm dịch vụ",
+      ].filter(Boolean).join(" "),
+    }),
+    aiKnowledgeService.searchRelevantContext({
+      ...knowledgeScope,
+      topK: 12,
+      query: "hotline số điện thoại điện thoại liên hệ địa chỉ trụ sở văn phòng website trang web",
+    }),
+  ]);
+
+  const pageContactText = contactKnowledge.items
+    .filter((item) => (
+      pageId
+      && item.pageScope === "selected"
+      && item.pageIds.includes(pageId)
+    ))
+    .map((item) => item.text)
+    .join("\n");
+  const sharedContactText = contactKnowledge.items
+    .filter((item) => item.pageScope !== "selected")
+    .map((item) => item.text)
+    .join("\n");
+  const effectiveContacts = mergePageContactDetails(
+    extractKnowledgeContactDetails(pageContactText),
+    extractKnowledgeContactDetails(sharedContactText)
+  );
+  const contactContext = formatKnowledgeContactContext(effectiveContacts);
+
+  const knowledgeContext = knowledge.contextText
+    ? `\n\nKHO TRI THỨC DOANH NGHIỆP (nguồn sự thật, đúng công ty/kênh/Page):\n${knowledge.contextText}`
+    : "\n\nKHO TRI THỨC DOANH NGHIỆP: Không tìm thấy dữ liệu phù hợp. Không được tự bịa thông tin.";
+  const effectiveContactContext = contactContext
+    ? `\n\nKHO LIÊN HỆ HIỆU LỰC (bắt buộc đặt ở cuối bài):\n${contactContext}`
+    : "\n\nKHO LIÊN HỆ HIỆU LỰC: Không có hotline, địa chỉ hoặc website phù hợp; không thêm footer liên hệ.";
+
+  return `${analysis.context}${knowledgeContext}${effectiveContactContext}`;
 }
 
 async function getVisualContext(
@@ -349,19 +426,23 @@ export class CampaignOrchestratorService {
 
       if (campaign.imageMode === "order" && slot.mediaType !== "text") {
         const isVideo = slot.mediaType === "video" || slot.mediaType === "human-video";
-        const productionBrief = String(candidate.mediaPrompt || slot.topicBrief || "").trim();
+        const productionBrief = buildUserFacingProductionBrief({
+          outline: candidate.outline,
+          bodyText: candidate.bodyText,
+          topicBrief: slot.topicBrief,
+        });
         const generatedOrderFields = {
           title: String(candidate.title || slot.topicBrief || "Order bài viết").slice(0, 240),
           contentGroup: String(slot.pillar || "").slice(0, 240),
-          shootingContent: productionBrief.slice(0, 1000),
-          productionRequirements: productionBrief.slice(0, 2000),
+          shootingContent: productionBrief.shootingContent,
+          productionRequirements: productionBrief.productionRequirements,
           quantitySuggestion: isVideo ? "1 video" : "1 ảnh",
           usageChannels: slot.platform,
           format: isVideo ? "video" as const : "image" as const,
           aspectRatio: isVideo ? "9:16" as const : "4:5" as const,
           headline: String(candidate.title || slot.topicBrief || "").slice(0, 120),
           subheadline: String(candidate.bodyText || "").slice(0, 220),
-          visualBrief: productionBrief.slice(0, 1000),
+          visualBrief: productionBrief.visualBrief,
           videoScript: isVideo ? String(candidate.voiceScript || candidate.bodyText || "").slice(0, 4000) : "",
         };
         await CampaignAssetOrderModel.updateOne(

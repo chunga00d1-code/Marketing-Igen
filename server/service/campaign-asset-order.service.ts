@@ -30,12 +30,21 @@ import {
   CampaignAssetSource,
   ICampaignAssetOrderAsset,
 } from "../interface/campaign-asset-order.interface";
+import { MarketingCampaignSlotStatus } from "../interface/marketing-campaign-slot.interface";
 
 const MAX_ORDERS_PER_CAMPAIGN = 500;
 const MAX_ASSETS_PER_ORDER = 20;
 const MAX_CUSTOM_FIELDS_PER_CAMPAIGN = 15;
 const MAX_CUSTOM_FIELD_VALUE_LENGTH = 500;
-const AI_FILL_ALL_BATCH_SIZE = 20;
+const MAX_BULK_IMAGES_PER_ORDER = 10;
+// Keep each provider request compact so a full campaign does not time out while
+// producing one large JSON response. Billing remains based on the former
+// 20-row logical batch, not the smaller transport batch.
+const AI_FILL_ALL_BATCH_SIZE = 4;
+const AI_FILL_ALL_BILLING_BATCH_SIZE = 20;
+const AI_FILL_ALL_TIMEOUT_MS = 60_000;
+const AI_FILL_ALL_MAX_TOKENS = 3_000;
+const ASSET_ORDER_AI_MODEL = process.env.ASSET_ORDER_AI_MODEL || "deepseek/deepseek-v4-flash";
 const terminalSlotStatuses = ["published", "cancelled"] as const;
 const aiWritableFieldKeys = [
   "contentGroup",
@@ -367,6 +376,75 @@ async function migrateLegacySheetOrders(
   }
 }
 
+type LegacyGeneratedOrderBrief = {
+  _id: unknown;
+  slotId?: unknown;
+  manualFieldKeys?: string[];
+  shootingContent?: string;
+  productionRequirements?: string;
+  visualBrief?: string;
+  revision?: number;
+};
+
+async function localizeLegacyGeneratedOrderBriefs(
+  companyCode: string,
+  campaignId: string,
+  orders: LegacyGeneratedOrderBrief[],
+  slots: Array<{ _id: unknown; topicBrief?: string }>
+) {
+  const candidates = orders.filter((order) =>
+    order.slotId &&
+    (!Array.isArray(order.manualFieldKeys) || order.manualFieldKeys.length === 0) &&
+    order.shootingContent &&
+    order.shootingContent === order.productionRequirements &&
+    order.shootingContent === order.visualBrief
+  );
+  if (!candidates.length) return;
+
+  const contents = await MarketingContentModel.find({
+    companyCode,
+    campaignId,
+    campaignSlotId: { $in: candidates.map((order) => String(order.slotId)) },
+  }).select("campaignSlotId outline bodyText mediaPrompt").lean();
+  const contentMap = new Map(contents.map((content) => [String(content.campaignSlotId), content]));
+  const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
+  const updates = candidates.flatMap((order) => {
+    const content = contentMap.get(String(order.slotId));
+    const mediaPrompt = cleanText(content?.mediaPrompt, 2000);
+    if (!mediaPrompt || order.shootingContent !== mediaPrompt) return [];
+
+    const slot = slotMap.get(String(order.slotId));
+    const vietnameseBrief = cleanText(content?.outline || content?.bodyText || slot?.topicBrief, 2000);
+    if (!vietnameseBrief || vietnameseBrief === mediaPrompt) return [];
+
+    const previousRevision = Number(order.revision || 0);
+    const localized = {
+      shootingContent: vietnameseBrief.slice(0, 1000),
+      productionRequirements: vietnameseBrief,
+      visualBrief: vietnameseBrief.slice(0, 1000),
+    };
+    Object.assign(order, localized, { revision: previousRevision + 1 });
+    return [{
+      updateOne: {
+        filter: {
+          _id: order._id,
+          companyCode,
+          campaignId,
+          revision: previousRevision,
+          manualFieldKeys: { $size: 0 },
+          shootingContent: mediaPrompt,
+          productionRequirements: mediaPrompt,
+          visualBrief: mediaPrompt,
+        },
+        update: { $set: localized, $inc: { revision: 1 } },
+      },
+    }];
+  });
+  if (updates.length) {
+    await CampaignAssetOrderModel.bulkWrite(updates, { ordered: false });
+  }
+}
+
 async function getDriveImportContext(companyCode: string, campaignId: string, googleDriveFolderUrl: string) {
   const campaign = await assertCampaign(companyCode, campaignId);
   const folderUrl = cleanText(googleDriveFolderUrl, 2000);
@@ -454,7 +532,7 @@ export const campaignAssetOrderService = {
         status: { $nin: [...terminalSlotStatuses] },
       }),
     ]);
-    const batches = Math.ceil(orderCount / AI_FILL_ALL_BATCH_SIZE);
+    const batches = Math.ceil(orderCount / AI_FILL_ALL_BILLING_BATCH_SIZE);
     const unitCost = campaign.qualityMode === "budget" ? 0.5 : 2.5;
     return { orderCount, batches, cost: batches * unitCost };
   },
@@ -499,10 +577,8 @@ export const campaignAssetOrderService = {
         overwritePolicy: input.overwritePolicy || "empty_only",
         targetOrderIds: orders.map((order) => order._id),
         totalItems: orders.length,
-        modelName: campaign.qualityMode === "budget"
-          ? (process.env.CAMPAIGN_BUDGET_MODEL || "qwen/qwen-3.6-flash")
-          : (process.env.CAMPAIGN_PREMIUM_MODEL || "google/gemini-3.5-flash"),
-        estimatedCost: Math.ceil(orders.length / AI_FILL_ALL_BATCH_SIZE) * unitCost,
+        modelName: ASSET_ORDER_AI_MODEL,
+        estimatedCost: Math.ceil(orders.length / AI_FILL_ALL_BILLING_BATCH_SIZE) * unitCost,
         idempotencyKey: input.idempotencyKey,
       });
       return job.toObject();
@@ -545,6 +621,7 @@ export const campaignAssetOrderService = {
 
     const campaign = await MarketingCampaignModel.findOne({ _id: job.campaignId, companyCode: job.companyCode }).lean();
     if (!campaign) throw httpError("Chiến dịch của AI job không còn tồn tại.", 404);
+    const customFields = activeCustomFields(campaign);
     const allOrders = await CampaignAssetOrderModel.find({
       _id: { $in: job.targetOrderIds },
       companyCode: job.companyCode,
@@ -591,7 +668,9 @@ export const campaignAssetOrderService = {
         { kind: "knowledge_chunk" as const, id: String(value.chunkId || ""), title, excerpt },
       ].filter((reference) => reference.id);
     });
-    const unitCost = campaign.qualityMode === "budget" ? 0.5 : 2.5;
+    const remainingRequestCount = Math.ceil(orders.length / AI_FILL_ALL_BATCH_SIZE);
+    const remainingBudget = Math.max(Number(job.estimatedCost || 0) - Number(job.actualCost || 0), 0);
+    const requestCost = remainingRequestCount > 0 ? remainingBudget / remainingRequestCount : 0;
 
     for (let start = 0; start < orders.length; start += AI_FILL_ALL_BATCH_SIZE) {
       const latest = await CampaignAssetOrderAIJobModel.findById(job._id).select("cancelRequestedAt status completedItems failedItems skippedItems conflictedItems actualCost").lean();
@@ -613,11 +692,14 @@ export const campaignAssetOrderService = {
       }> = [];
       let providerCharged = false;
       try {
-        await walletService.checkBalance(job.createdBy, unitCost);
+        if (requestCost > 0) await walletService.checkBalance(job.createdBy, requestCost);
         const response = await openrouterChat({
           model: job.modelName,
           temperature: 0.35,
           jsonMode: true,
+          maxTokens: AI_FILL_ALL_MAX_TOKENS,
+          timeoutMs: AI_FILL_ALL_TIMEOUT_MS,
+          maxRetries: 2,
           responseSchema: {
             type: "object",
             properties: {
@@ -637,9 +719,13 @@ export const campaignAssetOrderService = {
                     cta: { type: "string" },
                     visualBrief: { type: "string" },
                     videoScript: { type: "string" },
+                    customFields: {
+                      type: "object",
+                      properties: Object.fromEntries(customFields.map((field) => [field.key, { type: "string" }])),
+                    },
                     warnings: { type: "array", items: { type: "string" } },
                   },
-                  required: ["orderId", "format", "contentGroup", "shootingContent", "productionRequirements", "quantitySuggestion", "headline", "subheadline", "cta", "visualBrief", "videoScript", "warnings"],
+                  required: ["orderId", "format", "contentGroup", "shootingContent", "productionRequirements", "quantitySuggestion", "headline", "subheadline", "cta", "visualBrief", "videoScript", "customFields", "warnings"],
                 },
               },
             },
@@ -648,11 +734,15 @@ export const campaignAssetOrderService = {
           messages: [
             {
               role: "system",
-              content: "Bạn là planner sản xuất media Facebook. Trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn gọn để dùng cho Bulk Create: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
+              content: "Bạn là người lập brief sản xuất media cho người dùng Việt Nam, không chuyên kỹ thuật. Chỉ trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn, rõ, dễ đọc; không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model. Không sao chép nguyên văn mediaPrompt tiếng Anh từ dữ liệu đầu vào. Hãy diễn đạt các cụm như 'split screen video', 'fast-paced', 'screen recording' thành 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Giới hạn: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
             },
+            ...(customFields.length ? [{
+              role: "system" as const,
+              content: `Đọc nhãn và ngữ cảnh để tự nhận biết cột tùy chỉnh nào có thể điền từ dữ liệu chiến dịch hoặc kho tri thức. Giá trị customFields phải nhất quán với các trường AI tạo cho cùng một dòng Order. Trả về đúng key trong danh sách sau: ${JSON.stringify(customFields.map((field) => ({ key: field.key, label: field.label })))}. Không cố điền mọi cột: nếu trường không phù hợp với AI, thiếu ngữ cảnh hoặc cần dữ kiện nhạy cảm chưa được xác thực thì trả chuỗi rỗng; không được bịa thông tin.`,
+            }] : []),
             {
               role: "user",
-              content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${knowledge.contextText || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
+              content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${cleanText(knowledge.contextText, 6000) || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
                 const slot = order.slotId ? slotMap.get(String(order.slotId)) : undefined;
                 const content = order.slotId ? contentMap.get(String(order.slotId)) : undefined;
                 return {
@@ -663,11 +753,11 @@ export const campaignAssetOrderService = {
                   suggestedMedia: slot?.mediaType || order.format,
                   finalContent: content
                     ? {
-                      title: content.title,
-                      bodyText: content.bodyText,
-                      outline: content.outline,
-                      mediaPrompt: content.mediaPrompt,
-                      voiceScript: content.voiceScript,
+                      title: cleanText(content.title, 160),
+                      bodyText: cleanText(content.bodyText, 900),
+                      outline: cleanText(content.outline, 700),
+                      mediaPrompt: cleanText(content.mediaPrompt, 500),
+                      voiceScript: cleanText(content.voiceScript, 700),
                       mediaType: content.mediaType,
                     }
                     : undefined,
@@ -676,13 +766,15 @@ export const campaignAssetOrderService = {
             },
           ],
         });
-        await walletService.deductBalance(
-          job.createdBy,
-          unitCost,
-          "Chi phí AI điền Order ảnh, video",
-          `asset-order-ai-job:${job.companyCode}:${job._id}:${start / AI_FILL_ALL_BATCH_SIZE}`
-        );
-        providerCharged = true;
+        if (requestCost > 0) {
+          await walletService.deductBalance(
+            job.createdBy,
+            requestCost,
+            "Chi phí AI điền Order ảnh, video",
+            `asset-order-ai-job:${job.companyCode}:${job._id}:${start / AI_FILL_ALL_BATCH_SIZE}`
+          );
+          providerCharged = true;
+        }
 
         const parsed = JSON.parse(response.text) as { rows?: unknown };
         if (!Array.isArray(parsed.rows)) throw httpError("AI không trả về danh sách dòng Order.", 502, "INVALID_AI_RESPONSE");
@@ -738,6 +830,19 @@ export const campaignAssetOrderService = {
             if (job.overwritePolicy === "empty_only" && manualFields.has(field)) continue;
             patch[field] = generatedValues[field];
             updatedFields.push(field);
+          }
+          const currentCustomFields = toStringRecord(order.customFields);
+          const generatedCustomFields = toStringRecord(generated.customFields);
+          const nextCustomFields = { ...currentCustomFields };
+          for (const field of customFields) {
+            const value = cleanText(generatedCustomFields[field.key], MAX_CUSTOM_FIELD_VALUE_LENGTH);
+            if (!value || manualFields.has(`customFields.${field.key}`)) continue;
+            if (currentCustomFields[field.key] === value) continue;
+            nextCustomFields[field.key] = value;
+            updatedFields.push(`customFields.${field.key}`);
+          }
+          if (updatedFields.some((field) => field.startsWith("customFields."))) {
+            patch.customFields = nextCustomFields;
           }
           const aiProposal = {
             idempotencyKey: `${job.idempotencyKey.slice(0, 150)}:${String(order._id)}`,
@@ -805,7 +910,7 @@ export const campaignAssetOrderService = {
             failedItems: failed,
             skippedItems: skipped,
             conflictedItems: conflicted,
-            actualCost: providerCharged ? unitCost : 0,
+            actualCost: providerCharged ? requestCost : 0,
           },
         }
       );
@@ -854,7 +959,7 @@ export const campaignAssetOrderService = {
           completedAt: { $cond: [{ $eq: ["$status", "queued"] }, "$$NOW", "$completedAt"] },
         },
       }],
-      { returnDocument: "after" }
+      { returnDocument: "after", updatePipeline: true }
     ).lean();
     if (!job) throw httpError("AI job Order không còn ở trạng thái có thể hủy.", 409);
     return job;
@@ -880,6 +985,7 @@ export const campaignAssetOrderService = {
       .lean();
     await migrateLegacySheetOrders(companyCode, campaignId, campaign.createdBy, slots);
     const storedOrders = await CampaignAssetOrderModel.find({ companyCode, campaignId }).sort({ updatedAt: -1 }).lean();
+    await localizeLegacyGeneratedOrderBriefs(companyCode, campaignId, storedOrders, slots);
     const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
     const orders = storedOrders
       .filter((order) => !order.slotId || slotMap.has(String(order.slotId)))
@@ -936,7 +1042,7 @@ export const campaignAssetOrderService = {
         "DRIVE_FILES_UNMATCHED"
       );
     }
-    const importableSlotStatuses = new Set([
+    const importableSlotStatuses = new Set<MarketingCampaignSlotStatus>([
       "planned",
       "queued",
       "generating",
@@ -1154,50 +1260,300 @@ export const campaignAssetOrderService = {
     };
   },
 
-  async syncBulkCreateImport(companyCode: string, campaignId: string, jobId: string) {
+  async listBulkCreateImportJobs(companyCode: string, campaignId: string) {
+    await assertCampaign(companyCode, campaignId);
+    const [orders, slots, campaignJobs, recentJobs] = await Promise.all([
+      CampaignAssetOrderModel.find({ companyCode, campaignId, status: { $ne: "cancelled" } })
+        .select("_id slotId")
+        .lean(),
+      MarketingCampaignSlotModel.find({ companyCode, campaignId })
+        .select("_id")
+        .lean(),
+      BulkRenderJobModel.find({ companyCode, campaignId })
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .select("_id campaignId templateName status totalItems completedItems failedItems progress createdAt completedAt")
+        .lean(),
+      BulkRenderJobModel.find({ companyCode })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .select("_id campaignId templateName status totalItems completedItems failedItems progress createdAt completedAt")
+        .lean(),
+    ]);
+    const jobs = [...campaignJobs, ...recentJobs.filter((job) => !campaignJobs.some((current) => String(current._id) === String(job._id)))];
+    if (!jobs.length) return [];
+    const orderIds = orders.map((order) => String(order._id));
+    const slotIds = slots.map((slot) => String(slot._id));
+    const items = await BulkRenderItemModel.find({
+      companyCode,
+      jobId: { $in: jobs.map((job) => job._id) },
+      $or: [
+        { campaignAssetOrderId: { $in: orderIds } },
+        { campaignSlotId: { $in: slotIds } },
+        { "values.__campaign_asset_order_id": { $in: orderIds } },
+        { "values.__campaign_slot_id": { $in: slotIds } },
+      ],
+    }).select("jobId status outputUrl campaignAssetOrderId campaignSlotId").lean();
+    const linkedItemCountByJobId = new Map<string, number>();
+    const linkedCountByJobId = new Map<string, number>();
+    for (const item of items) {
+      const key = String(item.jobId);
+      linkedItemCountByJobId.set(key, (linkedItemCountByJobId.get(key) || 0) + 1);
+      if (item.status === "completed" && item.outputUrl) {
+        linkedCountByJobId.set(key, (linkedCountByJobId.get(key) || 0) + 1);
+      }
+    }
+    return jobs
+      .filter((job) => String(job.campaignId || "") === campaignId || linkedItemCountByJobId.has(String(job._id)))
+      .map((job) => ({
+        ...job,
+        _id: String(job._id),
+        linkedOutputCount: linkedCountByJobId.get(String(job._id)) || 0,
+        linkedItemCount: linkedItemCountByJobId.get(String(job._id)) || 0,
+      }));
+  },
+
+  async previewBulkCreateImport(companyCode: string, campaignId: string, jobId: string) {
     if (!mongoose.isValidObjectId(jobId)) throw httpError("Bulk Create job không hợp lệ.", 400);
     await assertCampaign(companyCode, campaignId);
     const [job, items] = await Promise.all([
-      BulkRenderJobModel.findOne({ _id: jobId, companyCode }).lean(),
-      BulkRenderItemModel.find({ jobId, companyCode, status: "completed" }).select("values outputUrl").lean(),
+      BulkRenderJobModel.findOne({ _id: jobId, companyCode })
+        .select("_id campaignId templateName status totalItems completedItems failedItems createdAt completedAt")
+        .lean(),
+      BulkRenderItemModel.find({ jobId, companyCode, status: "completed" })
+        .sort({ rowIndex: 1 })
+        .select("rowIndex values outputUrl campaignAssetOrderId campaignSlotId")
+        .lean(),
     ]);
     if (!job) throw httpError("Không tìm thấy Bulk Create job.", 404);
+    if (job.campaignId && String(job.campaignId) !== campaignId) {
+      throw httpError("Bulk Create does not belong to this campaign.", 409, "BULK_CREATE_WRONG_CAMPAIGN");
+    }
+    if (!["completed", "partial"].includes(job.status)) {
+      throw httpError(
+        "Bulk Create chưa hoàn tất nên chưa thể gắn vào chiến dịch.",
+        409,
+        "BULK_CREATE_NOT_COMPLETED"
+      );
+    }
+
+    const itemOutputs = items
+      .map((item) => ({
+        orderId: String(item.campaignAssetOrderId || item.values?.__campaign_asset_order_id || ""),
+        slotId: String(item.campaignSlotId || item.values?.__campaign_slot_id || ""),
+        outputUrl: String(item.outputUrl || ""),
+      }))
+      .filter((item) => item.outputUrl);
+    const orderIds = itemOutputs
+      .map((item) => item.orderId)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const linkedSlotIds = itemOutputs
+      .map((item) => item.slotId)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const orders = (orderIds.length || linkedSlotIds.length)
+      ? await CampaignAssetOrderModel.find({
+        companyCode,
+        campaignId,
+        status: { $ne: "cancelled" },
+        $or: [
+          { _id: { $in: orderIds } },
+          { slotId: { $in: linkedSlotIds } },
+        ],
+      }).select("_id slotId title outputUrls").lean()
+      : [];
+    const orderById = new Map(orders.map((order) => [String(order._id), order]));
+    const orderBySlotId = new Map(orders
+      .filter((order) => order.slotId)
+      .map((order) => [String(order.slotId), order]));
     const outputUrlsByOrderId = new Map<string, string[]>();
-    for (const item of items) {
-      const orderId = String(item.values?.__campaign_asset_order_id || "");
-      const outputUrl = String(item.outputUrl || "");
-      if (!mongoose.isValidObjectId(orderId) || !outputUrl) continue;
+    let unlinkedOutputCount = 0;
+    for (const item of itemOutputs) {
+      const order = orderById.get(item.orderId) || orderBySlotId.get(item.slotId);
+      if (!order) {
+        unlinkedOutputCount += 1;
+        continue;
+      }
+      const orderId = String(order._id);
       const urls = outputUrlsByOrderId.get(orderId) || [];
-      if (!urls.includes(outputUrl)) urls.push(outputUrl);
+      if (!urls.includes(item.outputUrl)) urls.push(item.outputUrl);
       outputUrlsByOrderId.set(orderId, urls);
     }
-    if (!outputUrlsByOrderId.size) {
-      return { updatedCount: 0, unmatchedOrderIds: [], jobStatus: job.status };
-    }
-    const existingOrders = await CampaignAssetOrderModel.find({
-      _id: { $in: [...outputUrlsByOrderId.keys()] },
-      companyCode,
-      campaignId,
-      status: { $ne: "cancelled" },
-    }).select("_id").lean();
-    const matchedOrderIds = new Set(existingOrders.map((order) => String(order._id)));
-    const status: CampaignAssetOrderStatus = ["completed", "partial"].includes(job.status) ? "completed" : "bulk_queued";
-    const writes = [...outputUrlsByOrderId.entries()]
-      .filter(([orderId]) => matchedOrderIds.has(orderId))
-      .map(([orderId, outputUrls]) => ({
-        updateOne: {
-          filter: { _id: orderId, companyCode, campaignId, status: { $ne: "cancelled" as const } },
-          update: {
-            $set: { bulkJobId: job._id, outputUrls, status },
-            $inc: { revision: 1 },
-          },
-        },
-      }));
-    const result = writes.length ? await CampaignAssetOrderModel.bulkWrite(writes, { ordered: false }) : null;
+    const slotIds = orders.map((order) => order.slotId).filter(Boolean);
+    const slots = slotIds.length
+      ? await MarketingCampaignSlotModel.find({
+        _id: { $in: slotIds },
+        companyCode,
+        campaignId,
+      }).select("_id platform status scheduledAt realImageDirectUrls").lean()
+      : [];
+    const slotMap = new Map(slots.map((slot) => [String(slot._id), slot]));
+    const matchedOrderIds = new Set(orders.map((order) => String(order._id)));
+    const importableSlotStatuses = new Set<MarketingCampaignSlotStatus>([
+      "planned",
+      "queued",
+      "generating",
+      "researching",
+      "writing",
+      "awaiting_assets",
+      "retrying",
+      "needs_attention",
+      "failed",
+    ]);
+    const mappings = orders.map((order) => {
+      const orderId = String(order._id);
+      const slotId = order.slotId ? String(order.slotId) : "";
+      const slot = slotMap.get(slotId);
+      const allOutputUrls = outputUrlsByOrderId.get(orderId) || [];
+      const outputUrls = allOutputUrls.slice(0, MAX_BULK_IMAGES_PER_ORDER);
+      let blockedReason = "";
+      if (!slot) blockedReason = "Order chưa liên kết với bài viết.";
+      else if (slot.platform !== "Facebook") blockedReason = "Bulk Create chỉ được gắn vào bài Facebook.";
+      else if (!importableSlotStatuses.has(slot.status)) blockedReason = "Bài đang ở trạng thái không thể thay đổi media.";
+      return {
+        orderId,
+        slotId,
+        title: order.title,
+        platform: slot?.platform || "",
+        slotStatus: slot?.status || "",
+        scheduledAt: slot?.scheduledAt,
+        currentUrls: slot?.realImageDirectUrls || order.outputUrls || [],
+        outputUrls,
+        truncatedCount: Math.max(0, allOutputUrls.length - outputUrls.length),
+        canApply: !blockedReason && outputUrls.length > 0,
+        blockedReason: blockedReason || undefined,
+      };
+    });
+    const missingOrderIds = [...outputUrlsByOrderId.keys()].filter((orderId) => !matchedOrderIds.has(orderId));
     return {
-      updatedCount: result?.modifiedCount || 0,
-      unmatchedOrderIds: [...outputUrlsByOrderId.keys()].filter((orderId) => !matchedOrderIds.has(orderId)),
-      jobStatus: job.status,
+      job: { ...job, _id: String(job._id) },
+      mappings,
+      applicableOrders: mappings.filter((mapping) => mapping.canApply).length,
+      blockedOrders: mappings.filter((mapping) => !mapping.canApply).length,
+      linkedOutputCount: mappings.reduce((sum, mapping) => sum + mapping.outputUrls.length, 0),
+      unlinkedOutputCount,
+      missingOrderIds,
+      maxImagesPerOrder: MAX_BULK_IMAGES_PER_ORDER,
+    };
+  },
+
+  async syncBulkCreateImport(
+    companyCode: string,
+    campaignId: string,
+    jobId: string,
+    mode: "replace" | "append" = "replace"
+  ) {
+    const campaign = await assertCampaign(companyCode, campaignId);
+    const preview = await this.previewBulkCreateImport(companyCode, campaignId, jobId);
+    const applicableMappings = preview.mappings.filter((mapping) => mapping.canApply);
+    if (!applicableMappings.length) {
+      return {
+        updatedCount: 0,
+        attachedSlots: 0,
+        queuedSlots: 0,
+        skippedOrders: preview.blockedOrders,
+        truncatedImages: 0,
+        unmatchedOrderIds: preview.missingOrderIds,
+        jobStatus: preview.job.status,
+      };
+    }
+
+    const readySlotIds: string[] = [];
+    let attachedSlots = 0;
+    let updatedCount = 0;
+    let truncatedImages = 0;
+
+    for (const mapping of applicableMappings) {
+      const slot = await MarketingCampaignSlotModel.findOne({
+        _id: mapping.slotId,
+        companyCode,
+        campaignId,
+        platform: "Facebook",
+        status: mapping.slotStatus,
+      }).select("_id status marketingContentId realImageDirectUrls").lean();
+      if (!slot) continue;
+      const mergedUrls = mode === "append"
+        ? [...new Set([...(slot.realImageDirectUrls || []), ...mapping.outputUrls])]
+        : mapping.outputUrls;
+      const finalUrls = mergedUrls.slice(0, MAX_BULK_IMAGES_PER_ORDER);
+      truncatedImages += mapping.truncatedCount + Math.max(0, mergedUrls.length - finalUrls.length);
+      const canStartMedia = slot.status === "awaiting_assets" && Boolean(slot.marketingContentId);
+      const updated = await MarketingCampaignSlotModel.findOneAndUpdate(
+        {
+          _id: slot._id,
+          companyCode,
+          campaignId,
+          platform: "Facebook",
+          status: canStartMedia ? "awaiting_assets" : slot.status,
+        },
+        {
+          $set: {
+            realImageDriveUrls: [],
+            realImageDirectUrls: finalUrls,
+            mediaType: "image",
+            ...(canStartMedia ? { status: "generating_media" } : {}),
+          },
+          $unset: {
+            mediaIngestionFingerprint: 1,
+            ingestedMedia: 1,
+            visualAnalysis: 1,
+          },
+          ...(canStartMedia ? {
+            $push: {
+              transitions: {
+                from: "awaiting_assets",
+                to: "generating_media",
+                reason: `Đã ${mode === "append" ? "bổ sung" : "thay thế"} ${finalUrls.length} ảnh từ Bulk Create; bắt đầu gắn media, không phân tích Vision.`,
+                at: new Date(),
+              },
+            },
+          } : {}),
+        },
+        { returnDocument: "after" }
+      ).lean();
+      if (!updated) continue;
+      attachedSlots += 1;
+      if (canStartMedia) readySlotIds.push(String(slot._id));
+      const orderUpdate = await CampaignAssetOrderModel.updateOne(
+        {
+          _id: mapping.orderId,
+          companyCode,
+          campaignId,
+          status: { $ne: "cancelled" },
+        },
+        {
+          $set: {
+            bulkJobId: preview.job._id,
+            outputUrls: finalUrls,
+            status: "completed" as CampaignAssetOrderStatus,
+          },
+          $inc: { revision: 1 },
+        }
+      );
+      updatedCount += orderUpdate.modifiedCount;
+    }
+
+    await MarketingCampaignModel.updateOne(
+      { _id: campaign._id, companyCode },
+      { $set: { imageMode: "order" } }
+    );
+    for (const slotId of readySlotIds) {
+      broadcastEvent("campaign:slot-update", {
+        slotId,
+        campaignId,
+        companyCode,
+        status: "generating_media",
+        updatedAt: new Date().toISOString(),
+      });
+      await campaignQueueService.addMediaJob(slotId);
+    }
+    return {
+      updatedCount,
+      attachedSlots,
+      queuedSlots: readySlotIds.length,
+      skippedOrders: preview.blockedOrders,
+      truncatedImages,
+      unmatchedOrderIds: preview.missingOrderIds,
+      jobStatus: preview.job.status,
     };
   },
 
@@ -1386,9 +1742,7 @@ export const campaignAssetOrderService = {
       pageId: integrationPageId(slot?.integrationId),
       topK: 5,
     });
-    const model = campaign.qualityMode === "budget"
-      ? (process.env.CAMPAIGN_BUDGET_MODEL || "qwen/qwen-3.6-flash")
-      : (process.env.CAMPAIGN_PREMIUM_MODEL || "google/gemini-3.5-flash");
+    const model = ASSET_ORDER_AI_MODEL;
     const response = await openrouterChat({
       model,
       temperature: 0.55,
@@ -1429,7 +1783,7 @@ export const campaignAssetOrderService = {
         },
         {
           role: "system",
-          content: "Also return the production-table fields: contentGroup (maximum 50 characters), shootingContent (maximum 100 characters), productionRequirements (maximum 140 characters), quantitySuggestion (maximum 30 characters), format (image or video), and videoScript (maximum 350 characters). Choose video only when motion, a process, demonstration, story, or spoken delivery helps; otherwise choose image. For image, write headline as the title, subheadline as the Facebook caption, visualBrief as the image description, and leave videoScript empty. Use Vietnamese. The usage channel is always Facebook; never suggest another channel.",
+          content: "Bắt buộc trả thêm các trường trong bảng sản xuất và viết TOÀN BỘ bằng tiếng Việt dễ hiểu, không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model: contentGroup tối đa 50 ký tự; shootingContent tối đa 100 ký tự; productionRequirements tối đa 140 ký tự; quantitySuggestion tối đa 30 ký tự; format chỉ được là image hoặc video; videoScript tối đa 350 ký tự. Chọn video khi cần chuyển động, quy trình, thao tác, trình diễn, câu chuyện hoặc lời thoại; nếu không thì chọn image. Với image, headline là tiêu đề, subheadline là caption Facebook, visualBrief là mô tả ảnh và videoScript để trống. Không viết các cụm mô tả kiểu tiếng Anh như 'split screen video', 'fast-paced', 'screen recording'; hãy chuyển thành tiếng Việt như 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Kênh sử dụng phải bám theo nền tảng của slot, không tự đổi sang nền tảng khác.",
         },
         {
           role: "user",
@@ -1601,7 +1955,18 @@ export const campaignAssetOrderService = {
     }
     const job = await bulkCreateService.createJob(
       { id: userId, companyCode },
-      { templateId: input.templateId, rows: [preview.values], idempotencyKey: input.idempotencyKey }
+      {
+        templateId: input.templateId,
+        rows: [{
+          ...preview.values,
+          __campaign_asset_order_id: String(existingOrder._id),
+          __campaign_slot_id: String(existingOrder.slotId || ""),
+        }],
+        campaignId,
+        sourceType: "campaign_orders",
+        mappingMode: "order",
+        idempotencyKey: input.idempotencyKey,
+      }
     );
     const updated = await CampaignAssetOrderModel.findOneAndUpdate(
       { _id: orderId, companyCode, campaignId, status: { $nin: ["completed", "cancelled"] } },

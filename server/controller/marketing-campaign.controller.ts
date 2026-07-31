@@ -311,11 +311,38 @@ export const marketingCampaignController = {
   async syncAssetOrdersFromBulkImport(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);
-      const data = await campaignAssetOrderService.syncBulkCreateImport(companyCode, req.params.id, req.body.jobId);
+      const data = await campaignAssetOrderService.syncBulkCreateImport(
+        companyCode,
+        req.params.id,
+        req.body.jobId,
+        req.body.mode
+      );
       return res.status(200).json({ status: "success", data });
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
       return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đồng bộ ảnh Bulk Create về Order." });
+    }
+  },
+
+  async listAssetOrderBulkJobs(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.listBulkCreateImportJobs(companyCode, req.params.id);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải Bulk Create của chiến dịch." });
+    }
+  },
+
+  async previewAssetOrdersFromBulkImport(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.previewBulkCreateImport(companyCode, req.params.id, req.body.jobId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể xem trước kết quả Bulk Create." });
     }
   },
 
@@ -635,6 +662,23 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data: slot });
     } catch (error: unknown) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể duyệt slot." });
+    }
+  },
+
+  async approveTikTokSlots(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode, userId } = getIdentity(req);
+      const result = await marketingCampaignService.approveTikTokSlots(
+        companyCode,
+        req.params.id,
+        req.body.slotIds,
+        userId,
+        req.body.tiktokPublishOptions,
+        req.body.videoDurations,
+      );
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : "Không thể duyệt các video TikTok." });
     }
   },
 

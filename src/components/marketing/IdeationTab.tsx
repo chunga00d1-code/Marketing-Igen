@@ -964,7 +964,6 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
       );
 
       if (data.pillars && Array.isArray(data.pillars) && data.pillars.length > 0) {
-        // Láº¥y pillar á»Ÿ cÃ¹ng vá»‹ trÃ­ index, fallback sang pillar Ä‘áº§u tiÃªn
         const targetIdx = pillarIndex >= 0 && pillarIndex < data.pillars.length
           ? pillarIndex
           : 0;
@@ -975,7 +974,6 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
           title: rawPillar.title,
           ratio: rawPillar.ratio || (originalPillar ? originalPillar.ratio : "33% tỷ trọng"),
           description: rawPillar.description,
-          // Giá»¯ nguyÃªn mÃ u sáº¯c cá»§a pillar cÅ© Ä‘á»ƒ UI nháº¥t quÃ¡n
           colorClass: originalPillar?.colorClass || "border-gray-200 bg-white text-gray-500",
           selectedColorClass: originalPillar?.selectedColorClass || "border-indigo-500 bg-indigo-50 text-indigo-700",
           bulletColor: originalPillar?.bulletColor || "bg-indigo-500",
@@ -1049,7 +1047,6 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
       let pillarsToUse = selectedPillars;
       if (isAutoPilot) {
         if (analyzedTopic === topic && selectedPillars.length > 0) {
-          // Sá»­ dá»¥ng pillars Ä‘Ã£ phÃ¢n tÃ­ch tá»« trÆ°á»›c Ä‘á»ƒ trÃ¡nh gá» i láº¡i API trÃ¹ng láº·p
           pillarsToUse = selectedPillars;
         } else {
           setAutoPilotStatus("Đang phân tích định hướng Content Pillars...");
@@ -1203,7 +1200,6 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
         void runBackgroundMediaGeneration(savedCards, result.posts, bestConcept);
 
         setAutoPilotProgress(100);
-        // Chá»  800ms Ä‘á»ƒ ngÆ°á» i dÃ¹ng nhÃ¬n tháº¥y tiáº¿n trÃ¬nh Ä‘áº¡t 100% trÆ°á»›c khi chuyá»ƒn tab
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         toast.success("Chiến dịch đã khởi chạy! Đang tự động tạo phương tiện truyền thông chạy nà...");

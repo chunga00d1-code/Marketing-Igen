@@ -5,10 +5,8 @@ import { requireAuth } from "../middleware/auth";
 
 export const zaloMessengerRouter = Router();
 
-// Endpoint webhook cá»§a Zalo OA - Pháº£i cÃ´ng khai (public) Ä‘á»ƒ Zalo gá»i tá»›i
 zaloMessengerRouter.post("/webhook", zaloMessengerController.receiveWebhookEvent);
 
-// Routes phá»¥c vá»¥ Client Igen-ERP - YÃªu cáº§u xÃ¡c thá»±c Ä‘Äƒng nháº­p (requireAuth)
 zaloMessengerRouter.post("/validate-integration", requireAuth as any, zaloMessengerController.validateIntegration);
 zaloMessengerRouter.post("/save-integration", requireAuth as any, zaloMessengerController.saveIntegration);
 zaloMessengerRouter.delete("/integration", requireAuth as any, zaloMessengerController.removeIntegration);
