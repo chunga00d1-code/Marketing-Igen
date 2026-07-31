@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
   Copy,
   Database,
   FileSpreadsheet,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { DataColumn, DataRow, TemplateLayer } from './types';
 import { readImage } from './utils';
+import { CampaignPicker } from './CampaignPicker';
 
 interface DataPanelProps {
   layers: TemplateLayer[];
@@ -66,6 +68,11 @@ const STEPS = [
   { id: 3 as const, label: 'Tạo trang' },
 ];
 
+const CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES = new Set([
+  'planned', 'queued', 'generating', 'researching', 'writing', 'scoring',
+  'awaiting_assets', 'retrying', 'needs_attention', 'failed',
+]);
+
 export function DataPanel(props: DataPanelProps) {
   const selectedRows = props.rows.filter((row) => row.selected !== false).length;
   const mappedLayers = props.layers.filter((layer) => layer.dataBinding).length;
@@ -112,7 +119,7 @@ export function DataPanel(props: DataPanelProps) {
 
       {props.dataStep === 1 && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3">
             <p className="text-sm font-extrabold text-slate-900">Thiết kế cho đâu?</p>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <button
@@ -131,8 +138,8 @@ export function DataPanel(props: DataPanelProps) {
                 onClick={() => props.onBulkTarget('campaign')}
                 className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${
                   props.bulkTarget === 'campaign'
-                    ? 'border-violet-600 bg-violet-600 text-white'
-                    : 'border-violet-200 bg-white text-violet-700'
+                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                    : 'border-indigo-200 bg-white text-indigo-700'
                 }`}
               >
                 Cho Campaign
@@ -140,31 +147,16 @@ export function DataPanel(props: DataPanelProps) {
             </div>
             {props.bulkTarget === 'campaign' && (
               <div className="mt-3 space-y-2">
-                <div className="flex gap-2">
-                  <select
-                    value={props.selectedCampaignId}
-                    onChange={(event) => props.onSelectCampaign(event.target.value)}
-                    disabled={props.loadingCampaigns || props.loadingCampaignOrders}
-                    className="h-10 min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-violet-500"
-                  >
-                    <option value="">Chọn chiến dịch Facebook</option>
-                    {props.campaigns.map((campaign) => (
-                      <option key={campaign._id} value={campaign._id}>
-                        {campaign.title} · {campaign.statistics.totalSlots} bài
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={props.onLoadCampaigns}
-                    className="rounded-lg border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700"
-                  >
-                    {props.loadingCampaigns ? '...' : 'Tải'}
-                  </button>
-                </div>
+                <CampaignPicker
+                  campaigns={props.campaigns}
+                  selectedCampaignId={props.selectedCampaignId}
+                  loading={props.loadingCampaigns || props.loadingCampaignOrders}
+                  onLoad={props.onLoadCampaigns}
+                  onSelect={props.onSelectCampaign}
+                />
                 {props.campaignContext && (
-                  <p className="rounded-lg bg-white px-2.5 py-2 text-[11px] font-semibold text-violet-900">
-                    {props.campaignContext.campaign.title} · {props.campaignContext.slots.filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video', 'published', 'cancelled'].includes(slot.mediaType) && !['published', 'cancelled'].includes(slot.status)).length} bài Facebook có thể nhận ảnh.
+                  <p className="rounded-lg bg-white px-2.5 py-2 text-[11px] font-semibold text-indigo-900">
+                    {props.campaignContext.campaign.title} · {props.campaignContext.slots.filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video'].includes(slot.mediaType) && CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES.has(slot.status)).length} bài Facebook có thể nhận ảnh.
                   </p>
                 )}
               </div>
@@ -208,9 +200,9 @@ export function DataPanel(props: DataPanelProps) {
             </button>
           </div>
 
-          <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+          <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
             <div className="flex min-w-0 items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
                 <Database className="h-4 w-4" />
               </span>
               <div className="min-w-0">
@@ -218,34 +210,21 @@ export function DataPanel(props: DataPanelProps) {
                 <p className="mt-0.5 break-words text-[11px] leading-relaxed text-slate-500">Nhập các Order dạng Ảnh vào Bulk Create; Order Video được giữ ở luồng kịch bản.</p>
               </div>
             </div>
-            <div className="mt-3 flex gap-2">
-              <select
-                value={props.selectedCampaignId}
-                onChange={(event) => props.onSelectCampaign(event.target.value)}
-                disabled={props.loadingCampaigns || props.loadingCampaignOrders}
-                className="h-10 min-w-0 flex-1 rounded-lg border border-violet-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none focus:border-violet-500 disabled:opacity-60"
-              >
-                <option value="">Chọn chiến dịch</option>
-                {props.campaigns.map((campaign) => (
-                  <option key={campaign._id} value={campaign._id}>
-                    {campaign.title} · {campaign.statistics.totalSlots} bài
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={props.onLoadCampaigns}
-                disabled={props.loadingCampaigns || props.loadingCampaignOrders}
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded-lg border border-violet-200 bg-white px-3 text-xs font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-60"
-              >
-                {props.loadingCampaigns ? <LoaderCircle className="h-4 w-4 animate-spin" /> : 'Tải'}
-              </button>
+            <div className="mt-3">
+              <CampaignPicker
+                campaigns={props.campaigns}
+                selectedCampaignId={props.selectedCampaignId}
+                loading={props.loadingCampaigns || props.loadingCampaignOrders}
+                emptyLabel="Chọn Campaign có Order"
+                onLoad={props.onLoadCampaigns}
+                onSelect={props.onSelectCampaign}
+              />
             </div>
             <button
               type="button"
               onClick={props.onImportCampaignOrders}
               disabled={!props.selectedCampaignId || props.loadingCampaignOrders}
-              className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-violet-600 px-2 text-sm font-extrabold text-white hover:bg-violet-700 disabled:bg-slate-300"
+              className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-indigo-600 px-2 text-sm font-extrabold text-white hover:bg-indigo-700 disabled:bg-slate-300"
             >
               {props.loadingCampaignOrders
                 ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang nhập Order...</span></>
@@ -393,7 +372,7 @@ export function DataPanel(props: DataPanelProps) {
       {props.dataStep === 3 && (
         <div className="space-y-4">
           {props.bulkTarget === 'campaign' && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-900">
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900">
               Đã ghép {props.rows.filter((row) => Boolean(row.campaignSlotId)).length}/{props.rows.length} dòng với bài viết của Campaign theo thứ tự lịch đăng.
             </div>
           )}
@@ -463,21 +442,24 @@ export function DataPanel(props: DataPanelProps) {
                     <span className="block truncate text-xs text-slate-500">{previewValues || 'Chưa có dữ liệu'}</span>
                   </button>
                   {props.bulkTarget === 'campaign' && (
-                    <select
-                      value={row.campaignSlotId || ''}
-                      onChange={(event) => props.onAssignCampaignSlot(row.id, event.target.value)}
-                      className="h-8 max-w-28 rounded-md border border-violet-200 bg-white px-1 text-[10px] font-bold text-violet-800"
-                      title={mappedSlot ? mappedSlot.topicBrief : 'Chưa ghép bài'}
-                    >
-                      <option value="">Chưa ghép</option>
-                      {(props.campaignContext?.slots || [])
-                        .filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video'].includes(slot.mediaType) && !['published', 'cancelled'].includes(slot.status))
-                        .map((slot, slotIndex) => (
-                          <option key={slot._id} value={slot._id}>
-                            Bài {slotIndex + 1}
-                          </option>
-                        ))}
-                    </select>
+                    <div className="relative shrink-0">
+                      <select
+                        value={row.campaignSlotId || ''}
+                        onChange={(event) => props.onAssignCampaignSlot(row.id, event.target.value)}
+                        className="h-8 max-w-32 appearance-none rounded-lg border border-indigo-200 bg-indigo-50 px-2 pr-7 text-[10px] font-extrabold text-indigo-800 outline-none transition hover:border-indigo-400 focus:border-indigo-500"
+                        title={mappedSlot ? mappedSlot.topicBrief : 'Chưa ghép bài'}
+                      >
+                        <option value="">Chưa ghép</option>
+                        {(props.campaignContext?.slots || [])
+                          .filter((slot) => slot.platform === 'Facebook' && !['video', 'human-video'].includes(slot.mediaType) && CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES.has(slot.status))
+                          .map((slot, slotIndex) => (
+                            <option key={slot._id} value={slot._id}>
+                              Bài {slotIndex + 1}
+                            </option>
+                          ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5 text-indigo-600" />
+                    </div>
                   )}
                   {missingFields.length > 0 && row.selected !== false && (
                     <span

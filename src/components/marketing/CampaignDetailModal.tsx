@@ -831,7 +831,7 @@ export default function CampaignDetailModal({
                       <CampaignDriveImportPanel
                         campaignId={campaignDetail.campaign._id}
                         mediaKind={campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
-                        allowBulkCreate={campaignDetail.campaign.platforms.includes('Facebook')}
+                        allowBulkCreate={campaignDetail.campaign.status === 'active' && campaignDetail.campaign.platforms.includes('Facebook')}
                         awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
                         onCreateBulk={() => openContentStudio({
                           tab: 'template',
