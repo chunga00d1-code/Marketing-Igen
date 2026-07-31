@@ -36,6 +36,10 @@ export default function CampaignDriveImportPanel({
   const [bulkApplying, setBulkApplying] = useState(false);
   const isVideo = mediaKind === 'video';
   const bulkEnabled = allowBulkCreate ?? !isVideo;
+  const selectedBulkJob = bulkJobs.find((job) => job._id === selectedBulkJobId);
+  const selectedBulkJobIsComplete = selectedBulkJob
+    ? ['completed', 'partial'].includes(selectedBulkJob.status)
+    : false;
 
   const loadBulkJobs = useCallback(async () => {
     setBulkLoading(true);
@@ -61,7 +65,7 @@ export default function CampaignDriveImportPanel({
   }, [sourceMode, bulkEnabled, bulkJobs.length, loadBulkJobs]);
 
   useEffect(() => {
-    if (!selectedBulkJobId) {
+    if (!selectedBulkJobId || !selectedBulkJobIsComplete) {
       setBulkPreview(null);
       return;
     }
@@ -83,7 +87,7 @@ export default function CampaignDriveImportPanel({
     return () => {
       active = false;
     };
-  }, [campaignId, selectedBulkJobId]);
+  }, [campaignId, selectedBulkJobId, selectedBulkJobIsComplete]);
 
   const applyBulkImport = async () => {
     if (!selectedBulkJobId || !bulkPreview) return;
@@ -312,10 +316,10 @@ export default function CampaignDriveImportPanel({
                 disabled={bulkLoading || bulkApplying}
                 className="h-11 min-w-72 flex-1 rounded-xl border-2 border-blue-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500"
               >
-                <option value="">Chọn lần Bulk Create đã hoàn tất</option>
+                <option value="">Chọn Bulk Create của chiến dịch</option>
                 {bulkJobs.map((job) => (
                   <option key={job._id} value={job._id}>
-                    {job.templateName} · {job.linkedOutputCount} ảnh liên kết · {new Date(job.createdAt).toLocaleString('vi-VN')}
+                    {job.templateName} · {job.status === 'completed' ? 'Hoàn tất' : job.status === 'partial' ? 'Hoàn tất một phần' : job.status === 'processing' ? 'Đang tạo' : job.status === 'queued' ? 'Đang chờ' : job.status === 'failed' ? 'Lỗi' : 'Đã hủy'} · {job.linkedOutputCount}/{job.linkedItemCount} ảnh · {new Date(job.createdAt).toLocaleString('vi-VN')}
                   </option>
                 ))}
               </select>
@@ -331,6 +335,12 @@ export default function CampaignDriveImportPanel({
                 Làm mới
               </button>
             </div>
+
+            {selectedBulkJob && !selectedBulkJobIsComplete && (
+              <p className="mt-3 text-xs font-semibold text-amber-700">
+                Bulk Create đang ở trạng thái {selectedBulkJob.status === 'processing' ? 'đang tạo ảnh' : selectedBulkJob.status === 'queued' ? 'đang chờ xử lý' : selectedBulkJob.status === 'failed' ? 'lỗi' : 'đã hủy'}. Khi hoàn tất, bấm Làm mới để gắn ảnh vào chiến dịch.
+              </p>
+            )}
 
             {bulkPreview && (
               <div className="mt-3 rounded-lg bg-blue-50 px-3 py-3 text-xs text-blue-900">
@@ -418,7 +428,7 @@ export default function CampaignDriveImportPanel({
 
             {!bulkLoading && bulkJobs.length === 0 && (
               <p className="mt-3 text-xs text-slate-500">
-                Chưa có Bulk Create nào hoàn tất. Hãy nhập Order chiến dịch sang Bulk Create, render ảnh rồi quay lại đây.
+                Chưa có Bulk Create nào được tạo từ Order của chiến dịch này. Hãy nhập Order chiến dịch sang Bulk Create rồi tạo ảnh.
               </p>
             )}
           </div>

@@ -4,6 +4,7 @@ import { bulkCreateService } from "../service/bulk-create.service";
 
 const QUEUE_NAME = "bulk-create-render-queue";
 const REDIS_RECHECK_MS = 30_000;
+const QUEUE_STALL_FALLBACK_MS = 15_000;
 
 function boundedInteger(value: string | undefined, fallback: number, maximum: number) {
   const parsed = Number(value);
@@ -122,6 +123,15 @@ function runWithDatabaseFallback(jobId: string) {
   return { id: `direct:${jobId}` };
 }
 
+function scheduleQueueStallFallback(jobId: string) {
+  const timer = setTimeout(() => {
+    // A reachable Redis instance can still have no active worker. processJob
+    // claims the database job atomically, so this cannot render a job twice.
+    runWithDatabaseFallback(jobId);
+  }, QUEUE_STALL_FALLBACK_MS);
+  timer.unref();
+}
+
 export async function enqueueBulkCreateJob(jobId: string, forceNewQueueEntry = false) {
   if (!(await ensureQueue()) || !queue) {
     console.warn(`[Bulk Create Queue] Redis không khả dụng, chạy job ${jobId} bằng background fallback.`);
@@ -135,6 +145,7 @@ export async function enqueueBulkCreateJob(jobId: string, forceNewQueueEntry = f
       if (existing) {
         const state = await existing.getState();
         if (["active", "waiting", "delayed", "prioritized", "waiting-children"].includes(state)) {
+          if (state !== "active") scheduleQueueStallFallback(jobId);
           return existing;
         }
         if (forceNewQueueEntry || ["completed", "failed"].includes(state)) {
@@ -143,7 +154,7 @@ export async function enqueueBulkCreateJob(jobId: string, forceNewQueueEntry = f
           return existing;
         }
       }
-      return activeQueue.add(
+      const added = await activeQueue.add(
         "render",
         { jobId },
         {
@@ -154,6 +165,8 @@ export async function enqueueBulkCreateJob(jobId: string, forceNewQueueEntry = f
           removeOnFail: false,
         }
       );
+      scheduleQueueStallFallback(jobId);
+      return added;
     })(), 5_000, "Redis không phản hồi trong 5 giây.");
   } catch (error) {
     redisAvailable = false;

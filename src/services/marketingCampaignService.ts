@@ -438,12 +438,13 @@ export interface CampaignDriveImportPreview {
 export interface CampaignBulkImportJob {
   _id: string;
   templateName: string;
-  status: 'completed' | 'partial';
+  status: 'queued' | 'processing' | 'completed' | 'partial' | 'failed' | 'cancelled';
   totalItems: number;
   completedItems: number;
   failedItems: number;
   progress: number;
   linkedOutputCount: number;
+  linkedItemCount: number;
   createdAt: string;
   completedAt?: string;
 }
