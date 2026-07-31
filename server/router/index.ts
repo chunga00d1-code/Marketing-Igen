@@ -28,6 +28,7 @@ import { bulkCreateRouter } from "./bulk-create.router";
 import { videoCaptionRouter } from "./video-caption.router";
 import { companyKnowledgeRouter } from "./company-knowledge.router";
 import { creativeImageRouter } from "./creative-image.router";
+import { htmlVideoRenderRouter } from "./html-video-render.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -82,6 +83,7 @@ apiRouter.use("/bulk-create", bulkCreateRouter);
 apiRouter.use("/video-caption-projects", videoCaptionRouter);
 apiRouter.use("/company-knowledge", companyKnowledgeRouter);
 apiRouter.use("/creative-image", creativeImageRouter);
+apiRouter.use(htmlVideoRenderRouter);
 
 // Gáº¯n káº¿t router phá»¥ cá»§a Media Cloudinary Relay
 apiRouter.use("/media", mediaRouter);

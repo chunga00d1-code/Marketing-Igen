@@ -25,3 +25,15 @@ test("wires the templates tool to the existing library and editor", () => {
   assert.match(source, /setTemplateEditorConfig/);
   assert.match(source, /onBackToLibrary=\{\(\) => setTemplateEditorConfig\(null\)\}/);
 });
+
+test("renders and wires the HTML-to-video creation tool", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(VideoStudioHome, { onSelect: () => undefined })
+  );
+  const source = readFileSync("src/pages/VideoStudioPage.tsx", "utf8");
+
+  assert.match(markup, /Tạo video từ HTML/);
+  assert.match(source, /HtmlVideoWorkspace/);
+  assert.match(source, /tool === "html-video"/);
+  assert.match(source, /Đang mở công cụ HTML-to-video/);
+});
