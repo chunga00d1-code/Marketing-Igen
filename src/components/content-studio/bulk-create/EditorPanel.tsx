@@ -28,7 +28,7 @@ import type {
   BulkAsset,
   BulkDataColumn,
 } from '../../../services/bulkCreateService';
-import type { MarketingCampaignSummary } from '../../../services/marketingCampaignService';
+import type { CampaignAssetOrderData, MarketingCampaignSummary } from '../../../services/marketingCampaignService';
 import { TOOLS } from './constants';
 import { CanvasSizePicker } from './CanvasSizePicker';
 import { TemplatePreview } from './TemplatePreview';
@@ -51,6 +51,8 @@ export interface EditorPanelProps {
   loadingSheet: boolean;
   campaigns: MarketingCampaignSummary[];
   selectedCampaignId: string;
+  bulkTarget: 'standalone' | 'campaign';
+  campaignContext: CampaignAssetOrderData | null;
   loadingCampaigns: boolean;
   loadingCampaignOrders: boolean;
   readyCount: number;
@@ -76,6 +78,7 @@ export interface EditorPanelProps {
   onImportGoogleSheet: () => void;
   onLoadCampaigns: () => void;
   onSelectCampaign: (campaignId: string) => void;
+  onBulkTarget: (target: 'standalone' | 'campaign') => void;
   onImportCampaignOrders: () => void;
   onConnectLayer: (layerId: string, columnKey: string) => void;
   onAutoMatch: () => void;
@@ -87,6 +90,7 @@ export interface EditorPanelProps {
   onApplySystemTemplate: (template: BulkMarketingPreset) => void;
   onAddRow: () => void;
   onSelectRow: (id: string) => void;
+  onAssignCampaignSlot: (rowId: string, slotId: string) => void;
   onUpdateCell: (rowId: string, layerId: string, value: string) => void;
   onDuplicateRow: (row: DataRow) => void;
   onRemoveRow: (id: string) => void;

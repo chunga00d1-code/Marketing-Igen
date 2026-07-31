@@ -120,6 +120,9 @@ export interface IBulkAsset extends Document {
 
 export type BulkJobStatus = "queued" | "processing" | "completed" | "partial" | "failed" | "cancelled";
 export type BulkItemStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
+export type BulkJobTargetType = "standalone" | "campaign";
+export type BulkJobSourceType = "manual" | "campaign_orders" | "sheet";
+export type BulkJobMappingMode = "order" | "position" | "manual";
 
 export interface IBulkRenderJob extends Document {
   companyCode: string;
@@ -132,6 +135,11 @@ export interface IBulkRenderJob extends Document {
     background: IBulkBackground;
     layers: IBulkLayer[];
   };
+  /** Optional campaign context. Standalone jobs deliberately leave this empty. */
+  targetType: BulkJobTargetType;
+  campaignId?: Types.ObjectId;
+  sourceType: BulkJobSourceType;
+  mappingMode?: BulkJobMappingMode;
   status: BulkJobStatus;
   totalItems: number;
   completedItems: number;
@@ -153,6 +161,10 @@ export interface IBulkRenderItem extends Document {
   companyCode: string;
   jobId: Types.ObjectId;
   rowIndex: number;
+  /** Typed links let Campaign find and attach a result without inspecting render values. */
+  campaignAssetOrderId?: Types.ObjectId;
+  campaignSlotId?: Types.ObjectId;
+  sourceRowId?: string;
   values: Record<string, string>;
   status: BulkItemStatus;
   outputUrl?: string;

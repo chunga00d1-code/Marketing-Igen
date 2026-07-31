@@ -861,7 +861,6 @@ export default function CRMTab() {
         if (isMatch) {
           console.log("[FE CRMTab] Match found! Appending message to current chat view.");
 
-          // Gá»­i request ngáº§m lÃªn server Ä‘á»ƒ reset unreadCount vá» 0 trong DB
           if (activeCust.channel === "zalo") {
             zaloMessengerService.markRead(activeId).catch(() => { });
           } else if (activeCust.channel === "tiktok") {
@@ -872,7 +871,6 @@ export default function CRMTab() {
 
           const mapped = mapFbMessages([message])[0];
           setChatHistory((prev) => {
-            // Khá»­ trÃ¹ng láº·p vÃ  thay tháº¿ tin nhắn tạm thời (optimistic update)
             const optimisticIndex = prev.findIndex(
               (m) => m.id.startsWith("user_") && m.text === mapped.text && m.sender === mapped.sender
             );
@@ -1016,7 +1014,7 @@ export default function CRMTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, activeCustomer?.id]);
 
-  // XÃ³a sáº¡ch lá»‹ch sá»­ chat cÅ© ngay khi chuyá»ƒn khÃ¡ch hÃ ng Ä‘á»ƒ chuyá»ƒn Ä‘á»•i mÆ°á»£t mÃ  tá»©c thÃ¬
+  // Xóa sách lịch sử chat cũ ngay khi chuyển khách hàng để tránh hiển thị nhầm lẫn
   useEffect(() => {
     setChatHistory([]);
   }, [activeCustomer?.id]);

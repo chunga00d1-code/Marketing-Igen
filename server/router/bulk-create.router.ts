@@ -71,7 +71,14 @@ const templatePaginationSchema = {
   }),
 };
 const previewSchema = { body: Joi.object({ templateId: Joi.string().hex().length(24).optional(), template: Joi.object(templateFields).optional(), values: Joi.object().pattern(Joi.string().max(100), Joi.string().max(14_000_000)).required() }).or("templateId", "template") };
-const createJobSchema = { body: Joi.object({ templateId: Joi.string().hex().length(24).required(), idempotencyKey: Joi.string().min(8).max(150).required(), rows: Joi.array().items(Joi.object().pattern(Joi.string().max(100), Joi.string().max(14_000_000))).min(1).max(100).required() }) };
+const createJobSchema = { body: Joi.object({
+  templateId: Joi.string().hex().length(24).required(),
+  idempotencyKey: Joi.string().min(8).max(150).required(),
+  campaignId: Joi.string().hex().length(24).optional(),
+  sourceType: Joi.string().valid("manual", "campaign_orders", "sheet").default("manual"),
+  mappingMode: Joi.string().valid("order", "position", "manual").optional(),
+  rows: Joi.array().items(Joi.object().pattern(Joi.string().max(100), Joi.string().max(14_000_000))).min(1).max(100).required(),
+}) };
 const uploadAssetSchema = {
   body: Joi.object({
     file: Joi.string().dataUri().max(14_000_000).required(),
