@@ -848,7 +848,7 @@ export const marketingCampaignService = {
     });
   },
 
-  fillAllAssetOrdersAI(campaignId: string, input: { idempotencyKey: string; instruction?: string; overwritePolicy?: 'empty_only' | 'replace_ai' }) {
+  fillAllAssetOrdersAI(campaignId: string, input: { idempotencyKey: string; instruction?: string; overwritePolicy?: 'empty_only' | 'replace_ai'; orderIds?: string[] }) {
     return request<CampaignAssetOrderAIJob>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/ai/fill-all`, {
       method: 'POST',
       body: JSON.stringify(input),

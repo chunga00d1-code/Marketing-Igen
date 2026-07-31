@@ -158,6 +158,12 @@ export function EditorPanel(props: EditorPanelProps) {
       <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
         {activeTool === 'background' && (
           <div className="space-y-4">
+            <div className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2.5">
+              <p className="text-sm font-extrabold text-violet-900">Ảnh nền luôn ở dưới các trường</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-violet-700">
+                Chọn hoặc kéo ảnh từ thư viện vào trang để thay nền. Muốn thay ảnh sản phẩm, hãy chuyển sang mục Hình ảnh.
+              </p>
+            </div>
             <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
               <div>
                 <p className="text-sm font-extrabold text-slate-800">Mẫu marketing có sẵn</p>
@@ -269,9 +275,13 @@ export function EditorPanel(props: EditorPanelProps) {
                       <button
                         type="button"
                         onClick={() => props.onBackgroundUpload(asset.url)}
-                        className="h-full w-full p-0"
+                        className="relative h-full w-full p-0"
+                        title="Đặt làm ảnh nền"
                       >
                         <img src={asset.url} alt={asset.originalName || `Upload ${idx}`} className="h-full w-full object-cover" />
+                        <span className="absolute inset-x-1 bottom-1 rounded-md bg-slate-900/70 px-1 py-0.5 text-[9px] font-extrabold text-white opacity-0 transition group-hover:opacity-100">
+                          Đặt làm nền
+                        </span>
                       </button>
                       <button
                         type="button"
