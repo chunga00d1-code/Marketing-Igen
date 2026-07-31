@@ -4,6 +4,11 @@ import {
   htmlVideoRenderService,
   type HtmlVideoActor,
 } from "../service/html-video/html-video-render.service";
+import {
+  HtmlVideoDraftError,
+  htmlVideoDraftService,
+  type HtmlVideoDraftErrorCode,
+} from "../service/html-video/html-video-draft.service";
 import { buildSafeHtmlVideoComposition } from "../service/html-video/html-video-security.service";
 import { enqueueHtmlVideoRender } from "../queue/html-video-render-queue";
 
@@ -18,8 +23,14 @@ type HtmlVideoRenderServiceContract = {
   ): Promise<unknown>;
 };
 
+type HtmlVideoDraftServiceContract = Pick<
+  typeof htmlVideoDraftService,
+  "generate"
+>;
+
 export type HtmlVideoRenderControllerDependencies = {
   service: HtmlVideoRenderServiceContract;
+  draftService: HtmlVideoDraftServiceContract;
   enqueue: typeof enqueueHtmlVideoRender;
 };
 
@@ -50,6 +61,45 @@ function respondError(res: Response, error: unknown) {
   return res.status(status).json({ success: false, message });
 }
 
+const draftErrorResponses: Record<
+  HtmlVideoDraftErrorCode,
+  { status: number; message: string }
+> = {
+  INSUFFICIENT_BALANCE: {
+    status: 402,
+    message: "Số dư ví không đủ. Vui lòng nạp thêm tiền để tiếp tục.",
+  },
+  AI_UNAVAILABLE: {
+    status: 503,
+    message: "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",
+  },
+  INVALID_OUTPUT: {
+    status: 422,
+    message: "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại.",
+  },
+  INTERNAL: {
+    status: 500,
+    message:
+      "Không thể tạo HTML/CSS video lúc này. Vui lòng thử lại sau.",
+  },
+};
+
+function respondDraftError(res: Response, error: unknown) {
+  const statusCode =
+    typeof error === "object" && error !== null
+      ? Number((error as { statusCode?: unknown }).statusCode)
+      : 0;
+  const response =
+    statusCode === 402
+      ? draftErrorResponses.INSUFFICIENT_BALANCE
+      : error instanceof HtmlVideoDraftError
+        ? draftErrorResponses[error.code] || draftErrorResponses.INTERNAL
+        : draftErrorResponses.INTERNAL;
+  return res
+    .status(response.status)
+    .json({ success: false, message: response.message });
+}
+
 export function createHtmlVideoRenderController(
   dependencies: HtmlVideoRenderControllerDependencies
 ) {
@@ -68,6 +118,18 @@ export function createHtmlVideoRenderController(
         });
       } catch (error) {
         return respondError(res, error);
+      }
+    },
+
+    async generateDraft(req: AuthenticatedRequest, res: Response) {
+      try {
+        const draft = await dependencies.draftService.generate(
+          actorFrom(req),
+          req.body
+        );
+        return res.json({ success: true, data: draft });
+      } catch (error) {
+        return respondDraftError(res, error);
       }
     },
 
@@ -105,5 +167,6 @@ export function createHtmlVideoRenderController(
 
 export const htmlVideoRenderController = createHtmlVideoRenderController({
   service: htmlVideoRenderService,
+  draftService: htmlVideoDraftService,
   enqueue: enqueueHtmlVideoRender,
 });

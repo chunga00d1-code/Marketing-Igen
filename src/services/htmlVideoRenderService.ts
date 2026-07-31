@@ -17,6 +17,13 @@ export type HtmlVideoPreviewRequest = {
   resolution: HtmlVideoResolution;
 };
 
+export type HtmlVideoDraftRequest = {
+  prompt: string;
+  durationSeconds: number;
+  aspectRatio: HtmlVideoAspectRatio;
+  resolution: HtmlVideoResolution;
+};
+
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
 };
@@ -25,6 +32,11 @@ export type HtmlVideoPreview = {
   compositionHtml: string;
   width: number;
   height: number;
+};
+
+export type HtmlVideoDraft = {
+  html: string;
+  css: string;
 };
 
 export type HtmlVideoRenderDetail = {
@@ -54,9 +66,27 @@ const validAspectRatios = new Set<HtmlVideoAspectRatio>([
   "1:1",
 ]);
 const validResolutions = new Set<HtmlVideoResolution>(["720p", "1080p"]);
+const maxHtmlVideoSourceBytes = 100 * 1024;
+const invalidHtmlVideoDraftMessage =
+  "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expectedKeys: readonly string[]
+) {
+  const actualKeys = Object.keys(value);
+  return (
+    actualKeys.length === expectedKeys.length &&
+    expectedKeys.every((key) => actualKeys.includes(key))
+  );
+}
+
+function utf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
 }
 
 function authHeaders(includeJson = false): HeadersInit {
@@ -102,6 +132,36 @@ export function parseHtmlVideoPreviewResponse(
     width: Number(raw.width),
     height: Number(raw.height),
   };
+}
+
+export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
+  try {
+    if (
+      !isRecord(payload) ||
+      !hasExactKeys(payload, ["success", "data"]) ||
+      payload.success !== true ||
+      !isRecord(payload.data) ||
+      !hasExactKeys(payload.data, ["html", "css"])
+    ) {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    const raw = payload.data;
+    if (typeof raw.html !== "string" || typeof raw.css !== "string") {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    const html = raw.html.trim();
+    const css = raw.css.trim();
+    if (
+      !html ||
+      utf8ByteLength(raw.html) > maxHtmlVideoSourceBytes ||
+      utf8ByteLength(raw.css) > maxHtmlVideoSourceBytes
+    ) {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    return { html, css };
+  } catch {
+    throw new Error(invalidHtmlVideoDraftMessage);
+  }
 }
 
 export function parseHtmlVideoRenderResponse(
@@ -174,6 +234,31 @@ function requestError(payload: unknown, fallback: string) {
 }
 
 export const htmlVideoRenderService = {
+  async generateDraft(
+    input: HtmlVideoDraftRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoDraft> {
+    const response = await fetch(
+      "/api/v1/html-video-renders/generate-draft",
+      {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({
+          prompt: input.prompt,
+          durationSeconds: input.durationSeconds,
+          aspectRatio: input.aspectRatio,
+          resolution: input.resolution,
+        }),
+        signal,
+      }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tạo HTML/CSS video bằng AI.");
+    }
+    return parseHtmlVideoDraftResponse(payload);
+  },
+
   async preview(
     input: HtmlVideoPreviewRequest,
     signal?: AbortSignal
