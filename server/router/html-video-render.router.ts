@@ -1,0 +1,30 @@
+import { Router } from "express";
+import { htmlVideoRenderController } from "../controller/html-video-render.controller";
+import { requireAuth } from "../middleware/auth";
+import { validateRequest } from "../middleware/validation";
+import {
+  createHtmlVideoRenderBodySchema,
+  htmlVideoPreviewBodySchema,
+  htmlVideoRenderParamsSchema,
+} from "./html-video-render.schemas";
+
+export const htmlVideoRenderRouter = Router();
+
+htmlVideoRenderRouter.post(
+  "/html-video-renders/preview",
+  requireAuth as never,
+  validateRequest({ body: htmlVideoPreviewBodySchema }),
+  htmlVideoRenderController.preview as never
+);
+htmlVideoRenderRouter.post(
+  "/html-video-renders",
+  requireAuth as never,
+  validateRequest({ body: createHtmlVideoRenderBodySchema }),
+  htmlVideoRenderController.create as never
+);
+htmlVideoRenderRouter.get(
+  "/html-video-renders/:renderId",
+  requireAuth as never,
+  validateRequest({ params: htmlVideoRenderParamsSchema }),
+  htmlVideoRenderController.get as never
+);

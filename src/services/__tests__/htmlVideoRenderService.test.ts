@@ -1,0 +1,180 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  htmlVideoRenderService,
+  parseHtmlVideoPreviewResponse,
+  parseHtmlVideoRenderResponse,
+} from "../htmlVideoRenderService";
+
+const originalFetch = globalThis.fetch;
+const previewInput = {
+  html: '<main class="hero">Xin chào</main>',
+  css: ".hero { color: white; }",
+  durationSeconds: 5,
+  aspectRatio: "16:9" as const,
+  resolution: "720p" as const,
+};
+const activeRender = {
+  id: "render-1",
+  status: "rendering",
+  progress: 60,
+  stageMessage: "Rendering video frames.",
+  aspectRatio: "16:9",
+  resolution: "720p",
+  durationSeconds: 5,
+  outputUrl: "https://cdn.example/not-ready.mp4",
+  error: null,
+  createdAt: "2026-07-29T00:00:00.000Z",
+  updatedAt: "2026-07-29T00:01:00.000Z",
+};
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    getItem: (key: string) =>
+      key === "accessToken" ? "html-video-test-token" : null,
+  },
+});
+
+test.afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+test("parses a safe preview response", () => {
+  const preview = parseHtmlVideoPreviewResponse({
+    success: true,
+    data: {
+      compositionHtml:
+        '<!doctype html><html data-composition-id="html-video"></html>',
+      width: 1280,
+      height: 720,
+    },
+  });
+
+  assert.equal(preview.width, 1280);
+  assert.equal(preview.height, 720);
+  assert.match(preview.compositionHtml, /data-composition-id="html-video"/);
+});
+
+test("parses a completed render and suppresses premature output URLs", () => {
+  const active = parseHtmlVideoRenderResponse({
+    success: true,
+    data: activeRender,
+  });
+  assert.equal(active.outputUrl, null);
+
+  const completed = parseHtmlVideoRenderResponse({
+    success: true,
+    data: {
+      ...activeRender,
+      status: "completed",
+      progress: 100,
+      outputUrl: "https://cdn.example/final.mp4",
+    },
+  });
+  assert.equal(completed.outputUrl, "https://cdn.example/final.mp4");
+});
+
+test("rejects invalid render status, progress, and settings", () => {
+  for (const data of [
+    { ...activeRender, status: "unknown" },
+    { ...activeRender, progress: 101 },
+    { ...activeRender, progress: -1 },
+    { ...activeRender, aspectRatio: "4:3" },
+    { ...activeRender, resolution: "4k" },
+  ]) {
+    assert.throws(
+      () => parseHtmlVideoRenderResponse({ success: true, data }),
+      /không hợp lệ/
+    );
+  }
+});
+
+test("preview sends the authenticated endpoint and source settings", async () => {
+  let requestedUrl = "";
+  let requestedInit: RequestInit | undefined;
+  globalThis.fetch = (async (input, init) => {
+    requestedUrl = String(input);
+    requestedInit = init;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          compositionHtml:
+            '<!doctype html><html data-composition-id="html-video"></html>',
+          width: 1280,
+          height: 720,
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  await htmlVideoRenderService.preview(previewInput);
+
+  assert.equal(requestedUrl, "/api/v1/html-video-renders/preview");
+  assert.equal(requestedInit?.method, "POST");
+  const headers = new Headers(requestedInit?.headers);
+  assert.equal(headers.get("Authorization"), "Bearer html-video-test-token");
+  assert.equal(headers.get("Content-Type"), "application/json");
+  assert.deepEqual(JSON.parse(String(requestedInit?.body)), previewInput);
+});
+
+test("create sends one idempotent render request", async () => {
+  let requestedUrl = "";
+  let requestedBody: unknown;
+  globalThis.fetch = (async (input, init) => {
+    requestedUrl = String(input);
+    requestedBody = JSON.parse(String(init?.body));
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: { ...activeRender, status: "queued", progress: 0 },
+      }),
+      { status: 202, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  await htmlVideoRenderService.create({
+    ...previewInput,
+    idempotencyKey: "html_render_123456",
+  });
+
+  assert.equal(requestedUrl, "/api/v1/html-video-renders");
+  assert.deepEqual(requestedBody, {
+    ...previewInput,
+    idempotencyKey: "html_render_123456",
+  });
+});
+
+test("get fetches one render with authentication", async () => {
+  let requestedUrl = "";
+  let authorization = "";
+  globalThis.fetch = (async (input, init) => {
+    requestedUrl = String(input);
+    authorization = new Headers(init?.headers).get("Authorization") || "";
+    return new Response(
+      JSON.stringify({ success: true, data: activeRender }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  const detail = await htmlVideoRenderService.get("render/unsafe");
+
+  assert.equal(requestedUrl, "/api/v1/html-video-renders/render%2Funsafe");
+  assert.equal(authorization, "Bearer html-video-test-token");
+  assert.equal(detail.status, "rendering");
+});
+
+test("uses a safe server error message when a request fails", async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({ success: false, message: "HTML chứa nội dung không được phép." }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    )) as typeof fetch;
+
+  await assert.rejects(
+    htmlVideoRenderService.preview(previewInput),
+    /HTML chứa nội dung không được phép/
+  );
+});

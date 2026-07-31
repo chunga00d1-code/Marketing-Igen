@@ -21,6 +21,7 @@ import { initCampaignContentSheetAIWorker } from "./server/queue/campaign-conten
 import { initCampaignAssetOrderAIWorker } from "./server/queue/campaign-asset-order-ai-queue";
 import { initCampaignScheduler } from "./server/service/campaign-scheduler.service";
 import { initCreativeImageWorker } from "./server/queue/creative-image-queue";
+import { initHtmlVideoRenderWorker } from "./server/queue/html-video-render-queue";
 import { videoProjectRenderQueue } from "./server/queue/video-project-render-queue";
 
 dotenv.config();
@@ -216,6 +217,7 @@ async function startServer() {
   initCampaignContentSheetAIWorker();
   initCampaignAssetOrderAIWorker();
   initCreativeImageWorker();
+  initHtmlVideoRenderWorker();
 
 
 
