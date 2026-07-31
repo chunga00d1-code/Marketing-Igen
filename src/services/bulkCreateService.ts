@@ -391,7 +391,10 @@ export const bulkCreateService = {
 
   async downloadZip(id: string, filename: string) {
     const response = await fetch(`/api/v1/bulk-create/jobs/${id}/download`, { headers: headers(false) });
-    if (!response.ok) throw new Error('Không thể tải file ZIP.');
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { message?: string; details?: string };
+      throw new Error(body.message || body.details || 'Không thể tải file ZIP.');
+    }
     downloadBlob(await response.blob(), `${filename || 'bulk-create'}.zip`);
   },
 

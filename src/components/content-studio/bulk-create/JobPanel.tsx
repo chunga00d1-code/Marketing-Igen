@@ -84,7 +84,7 @@ export function JobPanel({
               <button
                 type="button"
                 onClick={() => onDownloadJob(activeJob)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white"
+                className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-indigo-700 hover:shadow-sm active:translate-y-0"
               >
                 <Download className="h-4 w-4" /> Tải tất cả ảnh
               </button>

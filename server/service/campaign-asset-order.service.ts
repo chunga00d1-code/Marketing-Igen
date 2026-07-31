@@ -621,6 +621,7 @@ export const campaignAssetOrderService = {
 
     const campaign = await MarketingCampaignModel.findOne({ _id: job.campaignId, companyCode: job.companyCode }).lean();
     if (!campaign) throw httpError("Chiến dịch của AI job không còn tồn tại.", 404);
+    const customFields = activeCustomFields(campaign);
     const allOrders = await CampaignAssetOrderModel.find({
       _id: { $in: job.targetOrderIds },
       companyCode: job.companyCode,
@@ -718,9 +719,13 @@ export const campaignAssetOrderService = {
                     cta: { type: "string" },
                     visualBrief: { type: "string" },
                     videoScript: { type: "string" },
+                    customFields: {
+                      type: "object",
+                      properties: Object.fromEntries(customFields.map((field) => [field.key, { type: "string" }])),
+                    },
                     warnings: { type: "array", items: { type: "string" } },
                   },
-                  required: ["orderId", "format", "contentGroup", "shootingContent", "productionRequirements", "quantitySuggestion", "headline", "subheadline", "cta", "visualBrief", "videoScript", "warnings"],
+                  required: ["orderId", "format", "contentGroup", "shootingContent", "productionRequirements", "quantitySuggestion", "headline", "subheadline", "cta", "visualBrief", "videoScript", "customFields", "warnings"],
                 },
               },
             },
@@ -731,6 +736,10 @@ export const campaignAssetOrderService = {
               role: "system",
               content: "Bạn là người lập brief sản xuất media cho người dùng Việt Nam, không chuyên kỹ thuật. Chỉ trả JSON đúng schema. Điền mọi dòng bằng câu tiếng Việt ngắn, rõ, dễ đọc; không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model. Không sao chép nguyên văn mediaPrompt tiếng Anh từ dữ liệu đầu vào. Hãy diễn đạt các cụm như 'split screen video', 'fast-paced', 'screen recording' thành 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Giới hạn: contentGroup tối đa 50 ký tự; shootingContent 100; productionRequirements 140; quantitySuggestion 30; headline 35; subheadline (caption) 70; cta 24; visualBrief 120; videoScript 350. Chọn chính xác image hoặc video: video chỉ khi chuyển động, thao tác, trình diễn, câu chuyện hoặc lời thoại giúp ích rõ ràng; còn lại chọn image. Với image, videoScript để rỗng. Với video, videoScript phải có mở cảnh, diễn biến và CTA ngắn. Không bịa giá, ưu đãi, chính sách, tồn kho, liên hệ hoặc cam kết.",
             },
+            ...(customFields.length ? [{
+              role: "system" as const,
+              content: `Đọc nhãn và ngữ cảnh để tự nhận biết cột tùy chỉnh nào có thể điền từ dữ liệu chiến dịch hoặc kho tri thức. Giá trị customFields phải nhất quán với các trường AI tạo cho cùng một dòng Order. Trả về đúng key trong danh sách sau: ${JSON.stringify(customFields.map((field) => ({ key: field.key, label: field.label })))}. Không cố điền mọi cột: nếu trường không phù hợp với AI, thiếu ngữ cảnh hoặc cần dữ kiện nhạy cảm chưa được xác thực thì trả chuỗi rỗng; không được bịa thông tin.`,
+            }] : []),
             {
               role: "user",
               content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nKHO TRI THỨC FACEBOOK:\n${cleanText(knowledge.contextText, 6000) || "Không có"}\n\nCÁC DÒNG CẦN ĐIỀN:\n${JSON.stringify(batch.map((order) => {
@@ -821,6 +830,19 @@ export const campaignAssetOrderService = {
             if (job.overwritePolicy === "empty_only" && manualFields.has(field)) continue;
             patch[field] = generatedValues[field];
             updatedFields.push(field);
+          }
+          const currentCustomFields = toStringRecord(order.customFields);
+          const generatedCustomFields = toStringRecord(generated.customFields);
+          const nextCustomFields = { ...currentCustomFields };
+          for (const field of customFields) {
+            const value = cleanText(generatedCustomFields[field.key], MAX_CUSTOM_FIELD_VALUE_LENGTH);
+            if (!value || manualFields.has(`customFields.${field.key}`)) continue;
+            if (currentCustomFields[field.key] === value) continue;
+            nextCustomFields[field.key] = value;
+            updatedFields.push(`customFields.${field.key}`);
+          }
+          if (updatedFields.some((field) => field.startsWith("customFields."))) {
+            patch.customFields = nextCustomFields;
           }
           const aiProposal = {
             idempotencyKey: `${job.idempotencyKey.slice(0, 150)}:${String(order._id)}`,
@@ -1242,7 +1264,7 @@ export const campaignAssetOrderService = {
     await assertCampaign(companyCode, campaignId);
     const [orders, jobs] = await Promise.all([
       CampaignAssetOrderModel.find({ companyCode, campaignId, status: { $ne: "cancelled" } })
-        .select("_id")
+        .select("_id slotId")
         .lean(),
       BulkRenderJobModel.find({
         companyCode,
@@ -1254,10 +1276,14 @@ export const campaignAssetOrderService = {
     ]);
     if (!orders.length || !jobs.length) return [];
     const orderIds = orders.map((order) => String(order._id));
+    const slotIds = orders.map((order) => String(order.slotId || "")).filter(Boolean);
     const items = await BulkRenderItemModel.find({
       companyCode,
       jobId: { $in: jobs.map((job) => job._id) },
-      "values.__campaign_asset_order_id": { $in: orderIds },
+      $or: [
+        { "values.__campaign_asset_order_id": { $in: orderIds } },
+        { "values.__campaign_slot_id": { $in: slotIds } },
+      ],
     }).select("jobId status outputUrl").lean();
     const linkedItemCountByJobId = new Map<string, number>();
     const linkedCountByJobId = new Map<string, number>();
@@ -1299,28 +1325,47 @@ export const campaignAssetOrderService = {
       );
     }
 
-    const outputUrlsByOrderId = new Map<string, string[]>();
-    let unlinkedOutputCount = 0;
-    for (const item of items) {
-      const orderId = String(item.values?.__campaign_asset_order_id || "");
-      const outputUrl = String(item.outputUrl || "");
-      if (!mongoose.isValidObjectId(orderId) || !outputUrl) {
-        if (outputUrl) unlinkedOutputCount += 1;
-        continue;
-      }
-      const urls = outputUrlsByOrderId.get(orderId) || [];
-      if (!urls.includes(outputUrl)) urls.push(outputUrl);
-      outputUrlsByOrderId.set(orderId, urls);
-    }
-
-    const orders = outputUrlsByOrderId.size
+    const itemOutputs = items
+      .map((item) => ({
+        orderId: String(item.values?.__campaign_asset_order_id || ""),
+        slotId: String(item.values?.__campaign_slot_id || ""),
+        outputUrl: String(item.outputUrl || ""),
+      }))
+      .filter((item) => item.outputUrl);
+    const orderIds = itemOutputs
+      .map((item) => item.orderId)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const linkedSlotIds = itemOutputs
+      .map((item) => item.slotId)
+      .filter((id) => mongoose.isValidObjectId(id));
+    const orders = (orderIds.length || linkedSlotIds.length)
       ? await CampaignAssetOrderModel.find({
-        _id: { $in: [...outputUrlsByOrderId.keys()] },
         companyCode,
         campaignId,
         status: { $ne: "cancelled" },
+        $or: [
+          { _id: { $in: orderIds } },
+          { slotId: { $in: linkedSlotIds } },
+        ],
       }).select("_id slotId title outputUrls").lean()
       : [];
+    const orderById = new Map(orders.map((order) => [String(order._id), order]));
+    const orderBySlotId = new Map(orders
+      .filter((order) => order.slotId)
+      .map((order) => [String(order.slotId), order]));
+    const outputUrlsByOrderId = new Map<string, string[]>();
+    let unlinkedOutputCount = 0;
+    for (const item of itemOutputs) {
+      const order = orderById.get(item.orderId) || orderBySlotId.get(item.slotId);
+      if (!order) {
+        unlinkedOutputCount += 1;
+        continue;
+      }
+      const orderId = String(order._id);
+      const urls = outputUrlsByOrderId.get(orderId) || [];
+      if (!urls.includes(item.outputUrl)) urls.push(item.outputUrl);
+      outputUrlsByOrderId.set(orderId, urls);
+    }
     const slotIds = orders.map((order) => order.slotId).filter(Boolean);
     const slots = slotIds.length
       ? await MarketingCampaignSlotModel.find({
