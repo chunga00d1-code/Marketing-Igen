@@ -453,6 +453,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const [templates, setTemplates] = useState<BulkTemplate[]>([]);
   const [templatePage, setTemplatePage] = useState(1);
   const [templatesHasMore, setTemplatesHasMore] = useState(false);
+  const [templatesTotal, setTemplatesTotal] = useState(0);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const loadingTemplatesRef = useRef(false);
   const [communityTemplates, setCommunityTemplates] = useState<BulkTemplate[]>([]);
@@ -582,9 +583,28 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       setTemplates(templateResult.items);
       setTemplatePage(templateResult.page);
       setTemplatesHasMore(templateResult.hasMore);
+      setTemplatesTotal(templateResult.total);
       setCommunityTemplates(communityList);
       setJobs(jobList);
       setUploadedImages(assetList);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      loadingTemplatesRef.current = false;
+      setLoadingTemplates(false);
+    }
+  }, []);
+
+  const goToTemplatePage = useCallback(async (page: number) => {
+    if (loadingTemplatesRef.current) return;
+    loadingTemplatesRef.current = true;
+    setLoadingTemplates(true);
+    try {
+      const result = await bulkCreateService.listTemplatesPage(page, 6);
+      setTemplates(result.items);
+      setTemplatePage(result.page);
+      setTemplatesHasMore(result.hasMore);
+      setTemplatesTotal(result.total);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -610,6 +630,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       });
       setTemplatePage(result.page);
       setTemplatesHasMore(result.hasMore);
+      setTemplatesTotal(result.total);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -1807,6 +1828,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     if (persistRequestRef.current) {
       await persistRequestRef.current.catch(() => undefined);
     }
+    const isNew = !savedTemplateIdRef.current;
     const request = savedTemplateIdRef.current
       ? bulkCreateService.updateTemplate(savedTemplateIdRef.current, payload)
       : bulkCreateService.createTemplate(payload);
@@ -1821,6 +1843,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         setSavedTemplateId(template._id);
       }
       setTemplates((current) => [template, ...current.filter((item) => item._id !== template._id)]);
+      if (isNew) {
+        setTemplatesTotal((total) => total + 1);
+      }
       return template;
     } finally {
       if (persistRequestRef.current === request) {
@@ -2172,6 +2197,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     try {
       await bulkCreateService.archiveTemplate(templateId);
       setTemplates((current) => current.filter((template) => template._id !== templateId));
+      setTemplatesTotal((total) => Math.max(0, total - 1));
       if (savedTemplateId === templateId) createNewTemplate();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -2216,6 +2242,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     try {
       const template = await bulkCreateService.useCommunityTemplate(templateId);
       setTemplates((current) => [template, ...current]);
+      setTemplatesTotal((total) => total + 1);
       setCommunityTemplates((current) => current.map((item) => item._id === templateId ? { ...item, useCount: (item.useCount || 0) + 1 } : item));
       loadTemplate(template);
     } catch (error) {
@@ -2748,7 +2775,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           systemTemplates={BULK_MARKETING_PRESETS}
           templates={templates}
           loadingTemplates={loadingTemplates}
-          templatesHasMore={templatesHasMore}
+          templatesTotal={templatesTotal}
+          templatePage={templatePage}
+          onChangeTemplatePage={goToTemplatePage}
           communityTemplates={communityTemplates}
           jobs={jobs}
           activeJob={activeJob}
