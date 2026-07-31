@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-empty */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as path from "path";
 import { normalizeMediaUrl } from "./remotion";
 
