@@ -70,6 +70,7 @@ const CampaignAssetOrderSchema = new Schema<ICampaignAssetOrder>(
       cta: { type: String, maxlength: 80 },
       visualBrief: { type: String, maxlength: 1000 },
       videoScript: { type: String, maxlength: 4000 },
+      customFields: { type: Map, of: String, default: {} },
       references: { type: [aiReferenceSchema], default: [] },
       warnings: { type: [String], default: [] },
       createdAt: { type: Date },

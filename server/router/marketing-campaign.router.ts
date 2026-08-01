@@ -358,10 +358,15 @@ marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/apply", validateRequ
       "subheadline",
       "cta",
       "visualBrief",
-      "videoScript"
-    )).max(11).optional(),
+      "videoScript",
+      "customFields"
+    )).max(12).optional(),
   }),
 }), marketingCampaignController.applyAssetOrderAI as never);
+marketingCampaignRouter.post("/:id/asset-orders/:orderId/ai/dismiss", validateRequest({
+  params: Joi.object({ id: objectId, orderId: objectId }),
+  body: Joi.object({}),
+}), marketingCampaignController.dismissAssetOrderAI as never);
 marketingCampaignRouter.post("/:id/asset-orders/:orderId/bulk/preview", validateRequest({
   params: Joi.object({ id: objectId, orderId: objectId }),
   body: Joi.object({ templateId: objectId }),

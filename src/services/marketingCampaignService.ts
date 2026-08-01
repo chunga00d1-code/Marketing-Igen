@@ -332,6 +332,7 @@ export interface CampaignAssetOrder {
     cta?: string;
     visualBrief?: string;
     videoScript?: string;
+    customFields?: Record<string, string>;
     references: Array<{
       kind: 'campaign' | 'slot' | 'knowledge_document' | 'knowledge_chunk';
       id: string;
@@ -902,11 +903,19 @@ export const marketingCampaignService = {
       | 'cta'
       | 'visualBrief'
       | 'videoScript'
+      | 'customFields'
     >;
   }) {
     return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/ai/apply`, {
       method: 'POST',
       body: JSON.stringify(input),
+    });
+  },
+
+  dismissAssetOrderAI(campaignId: string, orderId: string) {
+    return request<CampaignAssetOrder>(`/api/v1/marketing-campaigns/${campaignId}/asset-orders/${orderId}/ai/dismiss`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
 

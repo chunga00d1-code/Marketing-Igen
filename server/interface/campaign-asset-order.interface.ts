@@ -37,6 +37,7 @@ export interface ICampaignAssetOrderAiProposal {
   cta?: string;
   visualBrief?: string;
   videoScript?: string;
+  customFields?: Record<string, string>;
   references: ICampaignAssetOrderReference[];
   warnings: string[];
   createdAt: Date;

@@ -187,7 +187,7 @@ async function getResearchContext(
     aiKnowledgeService.searchRelevantContext({
       ...knowledgeScope,
       topK: 12,
-      query: "hotline số điện thoại điện thoại liên hệ địa chỉ trụ sở văn phòng website trang web",
+      query: "hotline sđt sdt số điện thoại điện thoại liên hệ địa chỉ đ/c dc trụ sở văn phòng website trang web",
     }),
   ]);
 
