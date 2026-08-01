@@ -380,6 +380,17 @@ export const marketingCampaignController = {
     }
   },
 
+  async dismissAssetOrderAI(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const data = await campaignAssetOrderService.dismissAiProposal(companyCode, req.params.id, req.params.orderId);
+      return res.status(200).json({ status: "success", data });
+    } catch (error: unknown) {
+      const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể bỏ qua đề xuất AI." });
+    }
+  },
+
   async previewAssetOrderBulk(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);

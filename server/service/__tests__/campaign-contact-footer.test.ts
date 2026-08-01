@@ -62,3 +62,18 @@ test("keeps content unchanged when effective knowledge has no contact data", () 
 
   assert.equal(body, original);
 });
+
+test("extracts contact details using SDT and dc/đ/c abbreviations", () => {
+  const details = extractKnowledgeContactDetails(`
+Tên thương hiệu TUNA
+SDT: 0123456789
+dc: 123 Thanh xuân Hà Nội
+  `);
+
+  assert.deepEqual(details, {
+    phones: ["0123456789"],
+    addresses: ["123 Thanh xuân Hà Nội"],
+    websites: [],
+  });
+});
+

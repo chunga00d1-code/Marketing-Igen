@@ -203,7 +203,7 @@ function detectChatIntent(message: string, history: any[] = []): ChatIntent {
     /\b(gia|bao nhieu tien|bao nhieu|bang gia|bao gia|chi phi|phi ship|freeship|uu dai|khuyen mai)\b/,
     /\b(bao hanh|doi tra|hoan tien|giao hang|van chuyen|thanh toan|thoi gian giao)\b/,
     /\b(san pham|goi dich vu|goi|tinh nang|thong so|con hang|size|mau|chat lieu)\b/,
-    /\b(dia chi|hotline|so dien thoai|email|cong ty|thuong hieu|chi nhanh)\b/,
+    /\b(dia chi|dc|hotline|so dien thoai|sdt|email|cong ty|thuong hieu|chi nhanh)\b/,
   ];
   if (factualPatterns.some((pattern) => pattern.test(combinedText))) {
     return "product_pricing_policy";

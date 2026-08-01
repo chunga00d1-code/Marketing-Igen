@@ -890,31 +890,17 @@ export const campaignAssetOrderService = {
             modelName: providerModel,
             ...generatedValues,
             usageChannels: "Facebook",
+            customFields: nextCustomFields,
             references,
             warnings,
             createdAt: new Date(),
-            appliedAt: updatedFields.length ? new Date() : undefined,
           };
-          if (!updatedFields.length) {
-            await CampaignAssetOrderModel.updateOne(
-              { _id: order._id, companyCode: job.companyCode, campaignId: job.campaignId, revision: order.revision },
-              { $set: { aiProposal } }
-            );
-            batchResults.push({ orderId: order._id, expectedRevision: order.revision, updatedFields, warnings, status: "skipped" });
-            continue;
-          }
-          const nextFormat = (patch.format || order.format) as CampaignAssetOrderFormat;
-          const nextHeadline = String(patch.headline ?? order.headline);
           const updated = await CampaignAssetOrderModel.updateOne(
             { _id: order._id, companyCode: job.companyCode, campaignId: job.campaignId, revision: order.revision },
             {
               $set: {
-                ...patch,
-                usageChannels: "Facebook",
                 aiProposal,
-                status: resolveStatus({ format: nextFormat, headline: nextHeadline, assets: order.assets }),
               },
-              $inc: { revision: 1 },
             }
           );
           batchResults.push({
@@ -1799,6 +1785,7 @@ export const campaignAssetOrderService = {
       pageId: integrationPageId(slot?.integrationId),
       topK: 5,
     });
+    const customFields = activeCustomFields(campaign);
     const model = ASSET_ORDER_AI_MODEL;
     const response = await openrouterChat({
       model,
@@ -1817,6 +1804,14 @@ export const campaignAssetOrderService = {
           quantitySuggestion: { type: "string" },
           format: { type: "string", enum: ["image", "video"] },
           videoScript: { type: "string" },
+          ...(customFields.length
+            ? {
+                customFields: {
+                  type: "object",
+                  properties: Object.fromEntries(customFields.map((field) => [field.key, { type: "string" }])),
+                },
+              }
+            : {}),
           warnings: { type: "array", items: { type: "string" } },
         },
         required: [
@@ -1830,6 +1825,7 @@ export const campaignAssetOrderService = {
           "quantitySuggestion",
           "format",
           "videoScript",
+          ...(customFields.length ? ["customFields"] : []),
           "warnings",
         ],
       },
@@ -1842,6 +1838,14 @@ export const campaignAssetOrderService = {
           role: "system",
           content: "Bắt buộc trả thêm các trường trong bảng sản xuất và viết TOÀN BỘ bằng tiếng Việt dễ hiểu, không dùng tiếng Anh trừ tên riêng, tên sản phẩm hoặc tên model: contentGroup tối đa 50 ký tự; shootingContent tối đa 100 ký tự; productionRequirements tối đa 140 ký tự; quantitySuggestion tối đa 30 ký tự; format chỉ được là image hoặc video; videoScript tối đa 350 ký tự. Chọn video khi cần chuyển động, quy trình, thao tác, trình diễn, câu chuyện hoặc lời thoại; nếu không thì chọn image. Với image, headline là tiêu đề, subheadline là caption Facebook, visualBrief là mô tả ảnh và videoScript để trống. Không viết các cụm mô tả kiểu tiếng Anh như 'split screen video', 'fast-paced', 'screen recording'; hãy chuyển thành tiếng Việt như 'video chia đôi màn hình', 'nhịp nhanh', 'quay màn hình'. Kênh sử dụng phải bám theo nền tảng của slot, không tự đổi sang nền tảng khác.",
         },
+        ...(customFields.length
+          ? [
+              {
+                role: "system" as const,
+                content: `Đọc nhãn và ngữ cảnh để tự nhận biết cột tùy chỉnh nào có thể điền từ dữ liệu chiến dịch hoặc kho tri thức. Giá trị customFields phải nhất quán với các trường AI tạo cho cùng một dòng Order. Trả về đúng key trong danh sách sau: ${JSON.stringify(customFields.map((field) => ({ key: field.key, label: field.label })))}. Không cố điền mọi cột: nếu trường không phù hợp với AI, thiếu ngữ cảnh hoặc cần dữ kiện nhạy cảm chưa được xác thực thì trả chuỗi rỗng; không được bịa thông tin.`,
+              },
+            ]
+          : []),
         {
           role: "user",
           content: `CHIẾN DỊCH:\n${campaign.sourceBrief}\n\nSLOT:\n${JSON.stringify(slot ? { pillar: slot.pillar, objective: slot.objective, topicBrief: slot.topicBrief, platform: slot.platform } : {})}\n\nCONTENT CUỐI CÙNG CỦA BÀI:\n${JSON.stringify(finalContent || {})}\n\nORDER HIỆN TẠI:\n${JSON.stringify({ title: order.title, contentGroup: order.contentGroup, shootingContent: order.shootingContent, productionRequirements: order.productionRequirements, quantitySuggestion: order.quantitySuggestion, usageChannels: "Facebook", format: order.format, aspectRatio: order.aspectRatio, headline: order.headline, subheadline: order.subheadline, cta: order.cta, visualBrief: order.visualBrief, assetRoles: order.assets.map((asset) => asset.role) })}\n\nKHO TRI THỨC ĐÚNG PAGE:\n${knowledge.contextText || "Không có"}\n\nYÊU CẦU THÊM:\n${input.instruction || "Không có"}`,
@@ -1859,6 +1863,7 @@ export const campaignAssetOrderService = {
       subheadline?: unknown;
       cta?: unknown;
       visualBrief?: unknown;
+      customFields?: unknown;
       warnings?: unknown;
     };
     try {
@@ -1876,6 +1881,11 @@ export const campaignAssetOrderService = {
       ].filter((reference) => reference.id);
     });
     const generatedFormat: CampaignAssetOrderFormat = generated.format === "video" ? "video" : "image";
+    const generatedCustomFields = toStringRecord(generated.customFields);
+    const nextCustomFields: Record<string, string> = {};
+    for (const field of customFields) {
+      nextCustomFields[field.key] = cleanText(generatedCustomFields[field.key], MAX_CUSTOM_FIELD_VALUE_LENGTH);
+    }
     order.aiProposal = {
       idempotencyKey: input.idempotencyKey,
       contentGroup: cleanText(generated.contentGroup, 50),
@@ -1889,6 +1899,7 @@ export const campaignAssetOrderService = {
       cta: cleanText(generated.cta, 24),
       visualBrief: cleanText(generated.visualBrief, 120),
       videoScript: generatedFormat === "video" ? cleanText(generated.videoScript, 350) : "",
+      customFields: nextCustomFields,
       references,
       warnings: Array.isArray(generated.warnings) ? generated.warnings.map((warning) => cleanText(warning, 300)).filter(Boolean).slice(0, 5) : [],
       createdAt: new Date(),
@@ -1915,6 +1926,7 @@ export const campaignAssetOrderService = {
         | "cta"
         | "visualBrief"
         | "videoScript"
+        | "customFields"
       >;
     }
   ) {
@@ -1925,6 +1937,8 @@ export const campaignAssetOrderService = {
     if (order.revision !== input.expectedRevision) {
       throw httpError("Order đã được cập nhật ở nơi khác. Hãy tải lại trước khi áp dụng AI.", 409, "REVISION_CONFLICT");
     }
+    const campaign = await assertCampaign(companyCode, campaignId);
+    const customFields = activeCustomFields(campaign);
     const selected = new Set(input.fieldKeys?.length ? input.fieldKeys : [
       "contentGroup",
       "shootingContent",
@@ -1937,8 +1951,38 @@ export const campaignAssetOrderService = {
       "cta",
       "visualBrief",
       "videoScript",
+      "customFields",
     ]);
-    const patch = {
+
+    const currentCustomFields = toStringRecord(order.customFields);
+    const proposalCustomFields = toStringRecord(order.aiProposal.customFields);
+    const nextCustomFields = { ...currentCustomFields };
+    let hasCustomFieldsPatch = false;
+
+    for (const field of customFields) {
+      if (selected.has("customFields") || selected.has(`customFields.${field.key}`)) {
+        const value = proposalCustomFields[field.key] || "";
+        if (nextCustomFields[field.key] !== value) {
+          nextCustomFields[field.key] = value;
+          hasCustomFieldsPatch = true;
+        }
+      }
+    }
+
+    const patch: {
+      contentGroup?: string;
+      shootingContent?: string;
+      productionRequirements?: string;
+      quantitySuggestion?: string;
+      usageChannels?: string;
+      format?: CampaignAssetOrderFormat;
+      headline?: string;
+      subheadline?: string;
+      cta?: string;
+      visualBrief?: string;
+      videoScript?: string;
+      customFields?: Record<string, string>;
+    } = {
       ...(selected.has("contentGroup") ? { contentGroup: order.aiProposal.contentGroup || "" } : {}),
       ...(selected.has("shootingContent") ? { shootingContent: order.aiProposal.shootingContent || "" } : {}),
       ...(selected.has("productionRequirements") ? { productionRequirements: order.aiProposal.productionRequirements || "" } : {}),
@@ -1950,7 +1994,20 @@ export const campaignAssetOrderService = {
       ...(selected.has("cta") ? { cta: order.aiProposal.cta || "" } : {}),
       ...(selected.has("visualBrief") ? { visualBrief: order.aiProposal.visualBrief || "" } : {}),
       ...(selected.has("videoScript") ? { videoScript: order.aiProposal.videoScript || "" } : {}),
+      ...(hasCustomFieldsPatch ? { customFields: nextCustomFields } : {}),
     };
+
+    const updatedFieldKeys: string[] = [];
+    for (const key of selected) {
+      if (key === "customFields") {
+        for (const field of customFields) {
+          updatedFieldKeys.push(`customFields.${field.key}`);
+        }
+      } else {
+        updatedFieldKeys.push(key);
+      }
+    }
+
     const headline = (patch.headline === undefined ? order.headline : patch.headline) || "";
     const format = (patch.format === undefined ? order.format : patch.format) as CampaignAssetOrderFormat;
     const updated = await CampaignAssetOrderModel.findOneAndUpdate(
@@ -1961,12 +2018,23 @@ export const campaignAssetOrderService = {
           status: resolveStatus({ format, headline, assets: order.assets }),
           "aiProposal.appliedAt": new Date(),
         },
+        $addToSet: { manualFieldKeys: { $each: updatedFieldKeys } },
         $inc: { revision: 1 },
       },
       { returnDocument: "after" }
     ).lean();
     if (!updated) throw httpError("Order đã được cập nhật ở nơi khác. Hãy tải lại trước khi áp dụng AI.", 409, "REVISION_CONFLICT");
     return serializeOrder(updated as unknown as Record<string, unknown>);
+  },
+
+  async dismissAiProposal(companyCode: string, campaignId: string, orderId: string) {
+    if (!mongoose.isValidObjectId(orderId)) throw httpError("ID Order không hợp lệ.", 400);
+    const order = await CampaignAssetOrderModel.findOne({ _id: orderId, companyCode, campaignId });
+    if (!order) throw httpError("Không tìm thấy Order.", 404);
+    if (!order.aiProposal) return serializeOrder(order.toObject() as unknown as Record<string, unknown>);
+    order.aiProposal = undefined;
+    await order.save();
+    return serializeOrder(order.toObject() as unknown as Record<string, unknown>);
   },
 
   async previewBulkMapping(companyCode: string, campaignId: string, orderId: string, templateId: string) {
