@@ -32,14 +32,14 @@ export function extractKnowledgeContactDetails(text: string): KnowledgeContactDe
     if (!line) continue;
 
     const phoneMatch = line.match(
-      /(?:hotline|số\s*điện\s*thoại|điện\s*thoại|phone|telephone|tel|liên\s*hệ)\s*(?:[:：\-–—]\s*)?(\+?\d[\d(). \t-]{7,}\d)/iu
+      /(?:hotline|số\s*điện\s*thoại|điện\s*thoại|sđt|sdt|phone|telephone|tel|liên\s*hệ)\s*(?:[:：\-–—]\s*)?(\+?\d[\d(). \t-]{7,}\d)/iu
     );
     if (phoneMatch?.[1]) {
       phones.push(cleanValue(phoneMatch[1], 40));
     }
 
     const addressMatch = line.match(
-      /(?:địa\s*chỉ|address|trụ\s*sở|văn\s*phòng)\s*(?:[:：\-–—]\s*)(.+)$/iu
+      /(?:địa\s*chỉ|đ\/c|dc|address|trụ\s*sở|văn\s*phòng)\s*(?:[:：\-–—]\s*)(.+)$/iu
     );
     if (addressMatch?.[1]) {
       const address = addressMatch[1].split(/\s+[|•]\s+/u)[0];

@@ -1,7 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Bot,
-  Check,
   ChevronDown,
   Loader2,
   Plus,
@@ -19,6 +18,7 @@ import {
 } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
 import CampaignAssetOrders from './CampaignAssetOrders';
+import AssetOrderAIPreviewModal from './AssetOrderAIPreviewModal';
 
 interface CampaignAssetOrderSheetProps {
   campaignId: string;
@@ -33,17 +33,6 @@ type PlannerField =
   | 'subheadline'
   | 'visualBrief'
   | 'videoScript';
-
-const plannerFields: PlannerField[] = [
-  'contentGroup',
-  'shootingContent',
-  'productionRequirements',
-  'quantitySuggestion',
-  'headline',
-  'subheadline',
-  'visualBrief',
-  'videoScript',
-];
 
 const FORMAT_LABEL: Record<CampaignAssetOrderFormat, string> = {
   image: 'Ảnh',
@@ -74,6 +63,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
   const [aiIds, setAiIds] = useState<string[]>([]);
   const [applyingIds, setApplyingIds] = useState<string[]>([]);
   const [fillAllJob, setFillAllJob] = useState<CampaignAssetOrderAIJob | null>(null);
+  const [previewOrders, setPreviewOrders] = useState<CampaignAssetOrder[]>([]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAddCustomField, setShowAddCustomField] = useState(false);
   const [customFieldLabel, setCustomFieldLabel] = useState('');
@@ -202,12 +192,9 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
       const proposed = await marketingCampaignService.previewAssetOrderAI(campaignId, order._id, {
         idempotencyKey: createIdempotencyKey(),
       });
-      const applied = await marketingCampaignService.applyAssetOrderAI(campaignId, proposed._id, {
-        expectedRevision: proposed.revision,
-        fieldKeys: [...plannerFields, 'format'],
-      });
-      setData((current) => updateOrderInData(current, applied));
-      toast.success('AI đã điền nội dung vào dòng này.');
+      setData((current) => updateOrderInData(current, proposed));
+      setPreviewOrders([proposed]);
+      toast.success('AI đã tạo đề xuất. Hãy kiểm tra và xác nhận.');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'AI chưa thể điền nội dung cho dòng này.');
     } finally {
@@ -215,25 +202,23 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
     }
   };
 
-  const applyProposal = async (order: CampaignAssetOrder) => {
-    if (!order.aiProposal) return;
+  const dismissProposal = async (order: CampaignAssetOrder) => {
     setApplyingIds((current) => [...current, order._id]);
     try {
-      const applied = await marketingCampaignService.applyAssetOrderAI(campaignId, order._id, {
-        expectedRevision: order.revision,
-        fieldKeys: plannerFields,
-      });
-      setData((current) => updateOrderInData(current, applied));
-      toast.success('Đã áp dụng mô tả sản xuất từ AI.');
+      const updated = await marketingCampaignService.dismissAssetOrderAI(campaignId, order._id);
+      setData((current) => updateOrderInData(current, updated));
+      toast.success('Đã bỏ qua đề xuất AI.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể áp dụng đề xuất AI.');
-      await loadOrders();
+      toast.error(error instanceof Error ? error.message : 'Không thể bỏ qua đề xuất AI.');
     } finally {
       setApplyingIds((current) => current.filter((id) => id !== order._id));
     }
   };
 
   const plannedOrders = (data?.orders || []).filter((order) => Boolean(order.slotId));
+  const pendingProposalOrders = (data?.orders || []).filter(
+    (order) => order.aiProposal && !order.aiProposal.appliedAt
+  );
 
   const fillAllRows = async (orderIds?: string[]) => {
     if (!orderIds?.length && !plannedOrders.length) {
@@ -349,6 +334,15 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                 <RotateCcw className="h-3.5 w-3.5" /> Thử lại {failedOrderIds.length} dòng lỗi
               </button>
             )}
+            {!fillAllInProgress && pendingProposalOrders.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPreviewOrders(pendingProposalOrders)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
+              >
+                <Bot className="h-3.5 w-3.5" /> Xem đề xuất AI ({pendingProposalOrders.length})
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowAddCustomField((current) => !current)}
@@ -373,6 +367,19 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 bg-indigo-50/70 px-5 py-2.5 text-xs text-indigo-800">
             <span className="font-semibold">Qwen đang xử lý nền: {fillAllJob.completedItems}/{fillAllJob.totalItems} dòng đã có kết quả.</span>
             <span className="text-indigo-600">Bạn có thể rời trang; job vẫn tiếp tục chạy.</span>
+          </div>
+        )}
+
+        {!fillAllInProgress && pendingProposalOrders.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-violet-100 bg-violet-50 px-5 py-2.5 text-xs text-violet-800">
+            <span className="font-semibold">Có {pendingProposalOrders.length} dòng đề xuất AI đang chờ bạn xem xét và phê duyệt.</span>
+            <button
+              type="button"
+              onClick={() => setPreviewOrders(pendingProposalOrders)}
+              className="font-bold text-violet-700 hover:underline"
+            >
+              Xem chi tiết & Phê duyệt ngay →
+            </button>
           </div>
         )}
 
@@ -583,14 +590,24 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
                           {proposal.warnings.length > 0 && <p className="mt-1 text-[11px] text-amber-700">{proposal.warnings.join(' · ')}</p>}
                         </td>
                         <td className="px-2 py-3">
-                          <button
-                            type="button"
-                            onClick={() => void applyProposal(order)}
-                            disabled={readOnly || isApplying(order._id) || isGenerating(order._id)}
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-violet-200 bg-white px-2 text-[11px] font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50"
-                          >
-                            {isApplying(order._id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />} Duyệt AI
-                          </button>
+                          <div className="flex flex-wrap gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setPreviewOrders([order])}
+                              disabled={readOnly || isApplying(order._id) || isGenerating(order._id)}
+                              className="inline-flex h-8 items-center gap-1 rounded-md bg-violet-600 px-2 text-[11px] font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+                            >
+                              Xem & Duyệt
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void dismissProposal(order)}
+                              disabled={readOnly || isApplying(order._id) || isGenerating(order._id)}
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-rose-200 bg-white px-2 text-[11px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              {isApplying(order._id) && isSaving(order._id) ? <Loader2 className="h-3 w-3 animate-spin" /> : null} Bỏ qua
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -618,6 +635,36 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
         </div>
         {showAdvanced && <div className="mt-4 border-t border-slate-200 pt-4"><CampaignAssetOrders campaignId={campaignId} /></div>}
       </section>
+
+      {previewOrders.length > 0 && (
+        <AssetOrderAIPreviewModal
+          isOpen={previewOrders.length > 0}
+          onClose={() => setPreviewOrders([])}
+          orders={previewOrders}
+          customFieldColumns={customFieldColumns}
+          campaignId={campaignId}
+          onApplied={(appliedOrders) => {
+            for (const order of appliedOrders) {
+              setData((current) => updateOrderInData(current, order));
+            }
+            const appliedIds = new Set(appliedOrders.map((o) => o._id));
+            setPreviewOrders((current) => current.filter((o) => !appliedIds.has(o._id)));
+          }}
+          onDismissed={(dismissedIds) => {
+            const dismissedSet = new Set(dismissedIds);
+            setData((current) => {
+              if (!current) return current;
+              return {
+                ...current,
+                orders: current.orders.map((o) =>
+                  dismissedSet.has(o._id) ? { ...o, aiProposal: undefined } : o
+                ),
+              };
+            });
+            setPreviewOrders((current) => current.filter((o) => !dismissedSet.has(o._id)));
+          }}
+        />
+      )}
     </div>
   );
 }
