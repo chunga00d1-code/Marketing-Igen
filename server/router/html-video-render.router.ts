@@ -1,14 +1,23 @@
 import { Router } from "express";
 import { htmlVideoRenderController } from "../controller/html-video-render.controller";
+import { htmlVideoContextController } from "../controller/html-video-context.controller";
 import { requireAuth } from "../middleware/auth";
 import { validateRequest } from "../middleware/validation";
 import {
   createHtmlVideoRenderBodySchema,
+  htmlVideoContextPreviewBodySchema,
   htmlVideoPreviewBodySchema,
   htmlVideoRenderParamsSchema,
 } from "./html-video-render.schemas";
 
 export const htmlVideoRenderRouter = Router();
+
+htmlVideoRenderRouter.post(
+  "/html-video-renders/context-preview",
+  requireAuth as never,
+  validateRequest({ body: htmlVideoContextPreviewBodySchema }),
+  htmlVideoContextController.preview as never
+);
 
 htmlVideoRenderRouter.post(
   "/html-video-renders/preview",

@@ -23,6 +23,14 @@ const htmlVideoFields = {
 
 export const htmlVideoPreviewBodySchema = Joi.object(htmlVideoFields);
 
+export const htmlVideoContextPreviewBodySchema = Joi.object({
+  prompt: Joi.string().trim().min(3).max(5_000).required(),
+  aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
+  useKnowledge: Joi.boolean().required(),
+  useBrandGuideline: Joi.boolean().required(),
+  referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(6).default([]),
+});
+
 export const createHtmlVideoRenderBodySchema = Joi.object({
   ...htmlVideoFields,
   idempotencyKey: Joi.string()

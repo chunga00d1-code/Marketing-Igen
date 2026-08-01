@@ -1,24 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ChevronDown,
-  Download,
   PanelLeftClose,
   PanelLeftOpen,
-  Redo2,
-  Sparkles,
-  Share2,
-  Undo2,
-  Search,
-  Users,
-  Link,
   ArrowLeft,
-  FilePlus2,
-  Cloud,
-  CloudCheck,
-  CloudOff,
-  LoaderCircle,
   WandSparkles,
-  X,
 } from 'lucide-react';
 import {
   bulkCreateService,
@@ -32,28 +17,13 @@ import {
   type BulkTemplate,
   type BulkTemplatePayload,
 } from '../../services/bulkCreateService';
-import {
-  marketingCampaignService,
-  type CampaignAssetOrderData,
-  type MarketingCampaignSummary,
-} from '../../services/marketingCampaignService';
+import { marketingCampaignService, type CampaignAssetOrderData, type MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
 import type { UserProfile } from '../../types';
 import { toast } from '../../pages/Toast';
 import { BRAND_LOGO_PATH, BRAND_NAME } from '../../config/brand';
-
-import type {
-  EditorTool,
-  LayerPresetDragPayload,
-  LayerType,
-  TemplateLayer,
-  DataRow,
-  EditorSnapshot,
-  ResizeCorner,
-  SelectionBox,
-  PageRenderState,
-} from './bulk-create/types';
+import type { EditorTool, LayerPresetDragPayload, LayerType, TemplateLayer, DataRow, EditorSnapshot, SelectionBox, PageRenderState } from './bulk-create/types';
 import { BACKGROUNDS, TOOLS } from './bulk-create/constants';
 import { EditorPanel } from './bulk-create/EditorPanel';
 import { clamp } from './bulk-create/utils';
@@ -70,263 +40,28 @@ import {
   type BulkSceneDocument,
 } from './bulk-create/SceneCanvas';
 import { BulkAiPanel } from './bulk-create/BulkAiPanel';
-
-function makeId(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function pageFilename(name: string, index: number) {
-  const normalized = name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/gi, 'd')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return `${normalized || `trang-${index + 1}`}.png`;
-}
-
-function triggerFileDownload(url: string, filename: string) {
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-}
-
-function createRow(layers: TemplateLayer[], values: Record<string, string> = {}): DataRow {
-  return {
-    id: makeId('row'),
-    values: Object.fromEntries(layers.map((layer) => [
-      layer.id,
-      values[layer.id] || layer.defaultValue || (
-        layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''
-      ),
-    ])),
-    selected: true,
-  };
-}
-
-function normalizeDataKey(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/gi, 'd')
-    .trim()
-    .toLocaleLowerCase('vi-VN')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function dataMatchTokens(value: string) {
-  return normalizeDataKey(value)
-    .split('-')
-    .filter(Boolean)
-    .map((token) => {
-      if (['anh', 'hinh', 'image', 'photo', 'picture'].includes(token)) return 'image';
-      if (['chu', 'text'].includes(token)) return 'text';
-      return token;
-    });
-}
-
-function matchLayersToColumns(
-  currentLayers: TemplateLayer[],
-  columns: BulkDataColumn[]
-) {
-  const claimedColumnKeys = new Set<string>();
-  return currentLayers.map((layer) => {
-    const currentColumn = layer.dataBinding
-      ? columns.find((column) =>
-          column.key === layer.dataBinding?.columnKey && column.type === layer.type
-        )
-      : undefined;
-    if (currentColumn) {
-      claimedColumnKeys.add(currentColumn.key);
-      return {
-        ...layer,
-        dataBinding: {
-          columnKey: currentColumn.key,
-          columnLabel: currentColumn.label,
-        },
-      };
-    }
-
-    const layerKey = normalizeDataKey(layer.fieldName);
-    const layerTokens = dataMatchTokens(layer.fieldName);
-    const availableColumns = columns.filter((column) =>
-      column.type === layer.type && !claimedColumnKeys.has(column.key)
-    );
-    const ranked = availableColumns
-      .map((column, index) => {
-        const columnTokens = dataMatchTokens(column.label);
-        const sharedTokens = layerTokens.filter((token) => columnTokens.includes(token));
-        const layerNumber = layerTokens.find((token) => /^\d+$/.test(token));
-        const columnNumber = columnTokens.find((token) => /^\d+$/.test(token));
-        const score =
-          (column.key === layerKey ? 10_000 : 0) +
-          sharedTokens.length * 100 +
-          (layerNumber && layerNumber === columnNumber ? 500 : 0) +
-          (layerKey.includes(column.key) || column.key.includes(layerKey) ? 25 : 0) -
-          index;
-        return { column, score };
-      })
-      .sort((left, right) => right.score - left.score);
-    const best = ranked[0];
-    if (!best || best.score <= 0) {
-      return { ...layer, dataBinding: undefined };
-    }
-    claimedColumnKeys.add(best.column.key);
-    return {
-      ...layer,
-      dataBinding: {
-        columnKey: best.column.key,
-        columnLabel: best.column.label,
-      },
-    };
-  });
-}
-
-function extractTableRegion<T>(matrix: T[][]) {
-  const populatedRows = matrix.filter((row) =>
-    row.some((cell) => String(cell ?? '').trim())
-  );
-  let bestHeaderIndex = -1;
-  let bestHeaderColumns: number[] = [];
-  let bestScore = -1;
-
-  populatedRows.slice(0, -1).forEach((row, rowIndex) => {
-    const headerColumns = row
-      .map((cell, columnIndex) => String(cell ?? '').trim() ? columnIndex : -1)
-      .filter((columnIndex) => columnIndex >= 0);
-    const supportedColumns = headerColumns.filter((columnIndex) =>
-      populatedRows.slice(rowIndex + 1).some(
-        (dataRow) => String(dataRow[columnIndex] ?? '').trim()
-      )
-    );
-    if (supportedColumns.length === 0) return;
-    const score = supportedColumns.length * 100 + headerColumns.length;
-    if (score > bestScore) {
-      bestScore = score;
-      bestHeaderIndex = rowIndex;
-      bestHeaderColumns = headerColumns;
-    }
-  });
-
-  if (bestHeaderIndex < 0 || bestHeaderColumns.length === 0) return populatedRows;
-  const firstColumn = bestHeaderColumns[0];
-  const lastColumn = bestHeaderColumns[bestHeaderColumns.length - 1];
-  return populatedRows
-    .slice(bestHeaderIndex)
-    .map((row) => row.slice(firstColumn, lastColumn + 1));
-}
-
-function matrixToDataSet(matrix: Array<Array<string | number | boolean>>) {
-  const data = extractTableRegion(matrix);
-  if (data.length < 2) throw new Error('Dữ liệu cần một dòng tiêu đề và ít nhất một dòng nội dung.');
-  if (data[0].length > 50) throw new Error('Dữ liệu chỉ được tối đa 50 cột.');
-  const labels = data[0].map((cell) => String(cell ?? '').trim());
-  if (labels.some((label) => !label)) throw new Error('Dòng tiêu đề có cột để trống.');
-  const keys = labels.map(normalizeDataKey);
-  if (keys.some((key) => !key)) {
-    throw new Error('Tên cột cần có ít nhất một chữ cái hoặc chữ số.');
-  }
-  if (new Set(keys).size !== keys.length) throw new Error('Dòng tiêu đề có tên cột bị trùng.');
-  const sourceRows = data.slice(1).slice(0, 100);
-  const columns: BulkDataColumn[] = labels.map((label, columnIndex) => {
-    const samples = sourceRows
-      .map((row) => String(row[columnIndex] ?? '').trim())
-      .filter(Boolean)
-      .slice(0, 4);
-    return {
-      key: keys[columnIndex],
-      label,
-      type: (
-        /(ảnh|hình|image|photo|logo|avatar|thumbnail)/i.test(label) ||
-        samples.some((value) => /^https:\/\/\S+\.(png|jpe?g|webp|gif)(\?\S*)?$/i.test(value))
-      ) ? 'image' : 'text',
-      samples,
-    };
-  });
-  const rows: BulkImportedRow[] = sourceRows.map((row, rowIndex) => ({
-    id: `import-row-${rowIndex + 1}`,
-    selected: true,
-    cells: Object.fromEntries(columns.map((column, columnIndex) => [
-      column.key,
-      String(row[columnIndex] ?? '').trim(),
-    ])),
-  }));
-  return { columns, rows };
-}
-
-function estimateTextLayerWidth(text: string, fontSize: number, canvasWidth: number) {
-  const characterCount = Math.max(1, Array.from(text.trim()).length);
-  const estimatedPixelWidth = characterCount * fontSize * 0.58 + fontSize;
-  return clamp(Math.round((estimatedPixelWidth / canvasWidth) * 100), 18, 64);
-}
-
-function normalizeLayerBounds(
-  layer: TemplateLayer,
-  canvas: { width: number; height: number }
-): TemplateLayer {
-  const width = clamp(Number(layer.width), 1, 100);
-  const height = clamp(Number(layer.height), 1, 100);
-  return {
-    ...layer,
-    x: clamp(Number(layer.x), 0, 100 - width),
-    y: clamp(Number(layer.y), 0, 100 - height),
-    width,
-    height,
-    rotation: clamp(Number(layer.rotation), -360, 360),
-    zIndex: clamp(Number(layer.zIndex), 0, 1000),
-    fontSize: layer.type === 'text'
-      ? clamp(Number(layer.fontSize || 60), 8, Math.min(300, Math.max(8, canvas.width / 2)))
-      : layer.fontSize,
-  };
-}
-
-function snapToClosest(value: number, targets: number[], threshold = 1.2) {
-  const closest = targets.reduce(
-    (best, target) => Math.abs(target - value) < Math.abs(best - value) ? target : best,
-    value
-  );
-  return Math.abs(closest - value) <= threshold ? closest : value;
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') resolve(reader.result);
-      else reject(new Error('Không thể đọc ảnh đã chọn.'));
-    };
-    reader.onerror = () => reject(new Error('Không thể đọc ảnh đã chọn.'));
-    reader.readAsDataURL(file);
-  });
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  worker: (item: T, index: number) => Promise<R>
-) {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-  const runners = Array.from(
-    { length: Math.min(Math.max(1, concurrency), items.length) },
-    async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await worker(items[index], index);
-      }
-    }
-  );
-  await Promise.all(runners);
-  return results;
-}
-
+import { useCanvasInteractions } from './bulk-create/useCanvasInteractions';
+import { useBulkKeyboardShortcuts } from './bulk-create/useBulkKeyboardShortcuts';
+import { useBulkPageActions } from './bulk-create/useBulkPageActions';
+import { BulkWorkspaceHeader } from './bulk-create/BulkWorkspaceHeader';
+import { BulkWorkspaceStatus } from './bulk-create/BulkWorkspaceStatus';
+import {
+  CampaignSetupDialog,
+  type CampaignSetupStep,
+} from './bulk-create/CampaignSetupDialog';
+import {
+  createRow,
+  createTemplateLayer,
+  closeBulkWorkspace,
+  makeId,
+  mapWithConcurrency,
+  matchLayersToColumns,
+  matrixToDataSet,
+  normalizeLayerBounds,
+  optimizeLayersForReadability,
+  readFileAsDataUrl,
+  waitForDerivedImage,
+} from './bulk-create/workspace-utils';
 
 interface BulkCreateWorkspaceProps {
   onClose?: () => void;
@@ -334,29 +69,7 @@ interface BulkCreateWorkspaceProps {
   initialCampaignId?: string;
   onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
 }
-
-async function waitForDerivedImage(url: string, attempts = 5): Promise<void> {
-  let lastError: Error | undefined;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve();
-        image.onerror = () => reject(new Error('Ảnh xóa nền chưa sẵn sàng.'));
-        image.src = url;
-      });
-      return;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error('Ảnh xóa nền chưa sẵn sàng.');
-      await new Promise((resolve) => window.setTimeout(resolve, 1500));
-    }
-  }
-  throw lastError || new Error('Không thể tải ảnh sau khi xóa nền.');
-}
-
 type AutoSaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
-type CampaignSetupStep = 'target' | 'select_campaign' | 'confirm_campaign';
-
 const CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES = new Set([
   'planned', 'queued', 'generating', 'researching', 'writing', 'scoring',
   'awaiting_assets', 'retrying', 'needs_attention', 'failed',
@@ -365,10 +78,6 @@ const CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES = new Set([
 export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const editorViewportRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ layerId: string; layerIds: string[]; offsetX: number; offsetY: number } | null>(null);
-  const resizeRef = useRef<{ layerId: string; corner: ResizeCorner; pointerX: number; startX: number; startY: number; startWidth: number; startHeight: number } | null>(null);
-  const selectionRef = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
-  const selectionBoxRef = useRef<SelectionBox | null>(null);
   const undoRef = useRef<EditorSnapshot[]>([]);
   const redoRef = useRef<EditorSnapshot[]>([]);
   const [activeTool, setActiveTool] = useState<EditorTool>('background');
@@ -420,7 +129,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     && !['video', 'human-video'].includes(slot.mediaType)
     && CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES.has(slot.status)
   )).length || 0;
-
   useEffect(() => {
     aiHistoryStorageReadyRef.current = false;
     try {
@@ -433,7 +141,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       aiHistoryStorageReadyRef.current = true;
     }
   }, [aiHistoryStorageKey]);
-
   useEffect(() => {
     if (!aiHistoryStorageReadyRef.current) return;
     try {
@@ -442,7 +149,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         JSON.stringify(aiHistory.slice(-20)),
       );
     } catch {
-      // Local history is an enhancement; private browsing/storage limits must not block editing.
+      // Local history is best effort only.
     }
   }, [aiHistory, aiHistoryStorageKey]);
   const persistRequestRef = useRef<Promise<BulkTemplate> | null>(null);
@@ -464,7 +171,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const [pageResults, setPageResults] = useState<Record<string, PageRenderState>>({});
   const [activeJobPageIds, setActiveJobPageIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [downloadingJob, setDownloadingJob] = useState(false);
   const [assetUploadProgress, setAssetUploadProgress] = useState<{ completed: number; total: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
@@ -472,19 +178,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const [zoomMode, setZoomMode] = useState<'fit' | 'manual'>('fit');
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; targetLayerId?: string } | null>(null);
   const copiedLayerRef = useRef<TemplateLayer | null>(null);
-  const [copiedPage, setCopiedPage] = useState<DataRow | null>(null);
-  const rotateRef = useRef<{
-    layerId: string;
-    centerX: number;
-    centerY: number;
-    startAngle: number;
-    startRotation: number;
-  } | null>(null);
-
   const [uploadedImages, setUploadedImages] = useState<BulkAsset[]>([]);
   const [uploadingAsset, setUploadingAsset] = useState(false);
   const [removingBackground, setRemovingBackground] = useState(false);
-
   const { user } = useAuth();
   const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
@@ -497,7 +193,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         .catch((error) => console.error('Lỗi khi tải thành viên công ty:', error));
     }
   }, [user?.companyCode]);
-
   const selectedBackground = BACKGROUNDS.find((background) => background.id === backgroundId);
   const selectedLayer = layers.find((layer) => layer.id === selectedLayerId);
   const selectedLayers = useMemo(
@@ -594,7 +289,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       setLoadingTemplates(false);
     }
   }, []);
-
   const goToTemplatePage = useCallback(async (page: number) => {
     if (loadingTemplatesRef.current) return;
     loadingTemplatesRef.current = true;
@@ -612,9 +306,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       setLoadingTemplates(false);
     }
   }, []);
-
   useEffect(() => { void refreshLibrary(); }, [refreshLibrary]);
-
   const loadMoreTemplates = useCallback(async () => {
     if (loadingTemplatesRef.current || !templatesHasMore) return;
     loadingTemplatesRef.current = true;
@@ -638,7 +330,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       setLoadingTemplates(false);
     }
   }, [templatePage, templatesHasMore]);
-
   const syncPageResults = useCallback((
     items: BulkRenderItem[],
     pageIds: string[]
@@ -658,7 +349,6 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       return next;
     });
   }, []);
-
   const polledJobId = activeJob?._id;
   const polledJobStatus = activeJob?.status;
   useEffect(() => {
@@ -766,89 +456,21 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       ? normalizeLayerBounds({ ...layer, ...updates }, canvasSize)
       : layer));
   }, [canvasSize]);
-
   const optimizeReadability = () => {
     recordLayerHistory();
-    const hasImage = layers.some((layer) => layer.type === 'image');
-    const panelId = 'readability-panel';
-    const panel: TemplateLayer = {
-      id: panelId,
-      type: 'text',
-      layerKind: 'shape',
-      fieldName: 'Vùng nội dung dễ đọc',
-      x: hasImage ? 5 : 8,
-      y: 8,
-      width: hasImage ? 50 : 84,
-      height: hasImage ? 68 : 76,
-      rotation: 0,
-      zIndex: 1,
-      fillColor: '#ffffff',
-      opacity: 0.88,
-      borderRadius: 24,
-      borderWidth: 0,
-      padding: 0,
-      locked: true,
-    };
-
-    setLayers((current) => {
-      const nextLayers = current.map((layer) => {
-        if (layer.id === panelId) return panel;
-        if (layer.type === 'image') {
-          return normalizeLayerBounds({
-            ...layer,
-            x: hasImage ? 59 : layer.x,
-            y: hasImage ? 23 : layer.y,
-            width: hasImage ? 34 : layer.width,
-            height: hasImage ? 52 : layer.height,
-            zIndex: 3,
-            fit: 'cover',
-          }, canvasSize);
-        }
-
-        const field = `${layer.id} ${layer.fieldName}`.toLocaleLowerCase('vi-VN');
-        const isBrand = field.includes('brand') || field.includes('thương hiệu');
-        const isPrice = field.includes('price') || field.includes('giá');
-        const isDescription = field.includes('subheadline') || field.includes('mô tả') || field.includes('lợi ích') || field.includes('thời hạn');
-        const isTitle = field.includes('headline') || field.includes('tiêu đề') || field.includes('tên sản phẩm') || field.includes('tên sự kiện');
-        const isCallToAction = layer.layerKind === 'cta' || layer.layerKind === 'badge';
-
-        if (isCallToAction || layer.layerKind === 'shape' || layer.layerKind === 'icon') return layer;
-
-        const contentX = hasImage ? 10 : 13;
-        const contentWidth = hasImage ? 40 : 74;
-        const base = {
-          ...layer,
-          x: contentX,
-          width: contentWidth,
-          zIndex: Math.max(4, layer.zIndex),
-          fillColor: undefined,
-          borderWidth: 0,
-          borderRadius: 0,
-          padding: 0,
-          opacity: 1,
-          textAlign: 'left' as const,
-          autoFit: true,
-          minFontSize: 20,
-        };
-
-        if (isBrand) return normalizeLayerBounds({ ...base, y: 13, height: 6, fontSize: 26, fontWeight: 800, color: '#4f46e5', letterSpacing: 1, textTransform: 'uppercase', maxLines: 1 }, canvasSize);
-        if (isTitle) return normalizeLayerBounds({ ...base, y: 21, height: 17, fontSize: 62, fontWeight: 900, color: '#0f172a', letterSpacing: 0, textTransform: 'none', maxLines: 2 }, canvasSize);
-        if (isDescription) return normalizeLayerBounds({ ...base, y: 41, height: 11, fontSize: 30, fontWeight: 500, color: '#334155', lineHeight: 1.25, maxLines: 3 }, canvasSize);
-        if (isPrice) return normalizeLayerBounds({ ...base, y: 57, height: 12, fontSize: 60, fontWeight: 900, color: '#c2410c', maxLines: 1 }, canvasSize);
-        return normalizeLayerBounds({ ...base, color: '#1e293b', maxLines: 3 }, canvasSize);
-      });
-      return current.some((layer) => layer.id === panelId) ? nextLayers : [panel, ...nextLayers];
-    });
+    const optimized = optimizeLayersForReadability(layers, canvasSize);
+    setLayers(optimized.layers);
     setRows((current) => current.map((row) => ({
       ...row,
-      values: row.values[panelId] === undefined ? { ...row.values, [panelId]: '' } : row.values,
+      values: row.values[optimized.panelId] === undefined
+        ? { ...row.values, [optimized.panelId]: '' }
+        : row.values,
     })));
-    setSelectedLayerId(panelId);
-    setSelectedLayerIds([panelId]);
+    setSelectedLayerId(optimized.panelId);
+    setSelectedLayerIds([optimized.panelId]);
     setBackgroundSelected(false);
     toast.success('Đã tối ưu bố cục để nội dung dễ đọc hơn.');
   };
-
   const createEditorSnapshot = useCallback((): EditorSnapshot => ({
       layers: layers.map((layer) => ({ ...layer })),
       rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
@@ -955,87 +577,15 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     placement?: { centerX: number; centerY: number },
   ) => {
     recordLayerHistory();
-    const layerKind = overrides?.layerKind || 'text';
-    const isShape = layerKind === 'shape';
-    const isIcon = layerKind === 'icon';
-    const number = layers.filter((layer) => (
-      layer.type === type
-      && (type !== 'text' || (layer.layerKind || 'text') === layerKind)
-    )).length + 1;
-
-    const baseFieldName = (
-      type === 'image'
-        ? 'Hình ảnh'
-        : isShape
-          ? 'Hình khối'
-          : layerKind === 'badge'
-            ? 'Nhãn'
-            : layerKind === 'cta'
-              ? 'Nút kêu gọi'
-              : layerKind === 'icon'
-                ? 'Biểu tượng'
-                : overrides?.fieldName || 'Nội dung chữ'
-    );
-    let finalFieldName = baseFieldName;
-    let nameNumber = 2;
-    while (layers.some((l) => l.fieldName.toLowerCase() === finalFieldName.toLowerCase())) {
-      finalFieldName = `${baseFieldName} ${nameNumber++}`;
-    }
-    const initialFontSize = overrides?.fontSize || 60;
-    const initialText = initialValue || (isShape ? '' : isIcon ? '★' : finalFieldName);
-    const layerWidth = type === 'text'
-      ? isShape || isIcon
-        ? 18
-        : layerKind === 'badge' || layerKind === 'cta'
-          ? 42
-          : estimateTextLayerWidth(initialText, initialFontSize, canvasSize.width)
-      : 40;
-    const layerHeight = type === 'text'
-      ? isShape || isIcon
-        ? 18
-        : layerKind === 'badge' || layerKind === 'cta'
-          ? 12
-          : Math.max(4, Math.round(initialFontSize * 0.125))
-      : 40;
-    const defaultX = type === 'text' ? (isShape ? 18 : isIcon ? 42 : 10) : 30;
-    const defaultY = type === 'text' ? (isShape || isIcon ? 36 : 12 + (number - 1) * 12) : 38;
-
-    const layer: TemplateLayer = {
-      id: makeId('field'),
+    const layer = createTemplateLayer({
       type,
-      layerKind: type === 'text' ? layerKind : undefined,
-      rotation: 0,
-      zIndex: layers.length,
-      locked: false,
-      fit: 'contain',
-      fontSize: type === 'text'
-        ? isIcon
-          ? 72
-          : layerKind === 'badge' || layerKind === 'cta'
-            ? 28
-            : 60
-        : 24,
-      fontFamily: 'DejaVu Sans',
-      fontWeight: 700,
-      color: isIcon ? '#f59e0b' : '#000000',
-      textAlign: 'left',
-      autoFit: true,
-      minFontSize: 12,
-      fillColor: isShape ? '#e2e8f0' : layerKind === 'badge' ? '#fef3c7' : layerKind === 'cta' ? '#2563eb' : undefined,
-      borderRadius: isShape ? 12 : layerKind === 'badge' || layerKind === 'cta' ? 999 : 0,
-      padding: layerKind === 'badge' || layerKind === 'cta' ? 12 : 0,
-      ...overrides,
-      fieldName: finalFieldName,
-      x: placement
-        ? clamp(placement.centerX - layerWidth / 2, 0, 100 - layerWidth)
-        : overrides?.x ?? defaultX,
-      y: placement
-        ? clamp(placement.centerY - layerHeight / 2, 0, 100 - layerHeight)
-        : overrides?.y ?? defaultY,
-      width: overrides?.width ?? layerWidth,
-      height: overrides?.height ?? layerHeight,
-      defaultValue: overrides?.defaultValue ?? (initialText || (type === 'text' && !isShape ? finalFieldName : '')),
-    };
+      initialValue,
+      overrides,
+      placement,
+      existingLayers: layers,
+      canvas: canvasSize,
+    });
+    const isShape = layer.layerKind === 'shape';
     setLayers((current) => [...current, layer]);
     setRows((current) => current.map((row) => ({
       ...row,
@@ -1372,197 +922,32 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     )));
   }, [recordLayerHistory, selectedLayers]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const activeElement = document.activeElement;
-      if (
-        activeElement &&
-        (activeElement.tagName === 'INPUT' ||
-          activeElement.tagName === 'TEXTAREA' ||
-          activeElement.tagName === 'SELECT' ||
-          activeElement.getAttribute('contenteditable') === 'true')
-      ) {
-        return;
-      }
-
-      if (event.ctrlKey || event.metaKey) {
-        if (event.key.toLowerCase() === 'c') {
-          event.preventDefault();
-          handleCopy();
-        } else if (event.key.toLowerCase() === 'v') {
-          event.preventDefault();
-          handlePaste();
-        } else if (event.key.toLowerCase() === 'd') {
-          event.preventDefault();
-          handleDuplicate();
-        }
-      } else if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault();
-        handleDelete();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleCopy, handlePaste, handleDuplicate, handleDelete]);
-
-  const updateCell = (rowId: string, layerId: string, value: string) => {
-    const layer = layers.find((item) => item.id === layerId);
-    if (!layer) return;
-    const bindingKey = layer.dataBinding?.columnKey;
-    if (!bindingKey) {
-      setLayers((current) => current.map((item) =>
-        item.id === layerId ? { ...item, defaultValue: value } : item
-      ));
-      setRows((current) => current.map((row) => ({
-        ...row,
-        values: { ...row.values, [layerId]: value },
-      })));
-      return;
-    }
-    setRows((current) => current.map((row) => row.id === rowId
-      ? {
-          ...row,
-          values: { ...row.values, [layerId]: value },
-          sourceCells: { ...row.sourceCells, [bindingKey]: value },
-        }
-      : row));
-  };
-
-  const addRow = () => {
-    const row = createRow(layers);
-    setRows((current) => [...current, row]);
-    setActiveRowId(row.id);
-    setPagesCreated(true);
-  };
-
-  const duplicateRow = (row: DataRow) => {
-    const duplicated = {
-      ...createRow(layers, row.values),
-      name: row.name ? `${row.name} - bản sao` : undefined,
-      sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
-      campaignAssetOrderId: row.campaignAssetOrderId,
-      campaignSlotId: row.campaignSlotId,
-    };
-    setRows((current) => [...current, duplicated]);
-    setActiveRowId(duplicated.id);
-    setPagesCreated(true);
-  };
-
-  const removeRow = (rowId: string) => {
-    setPageResults((current) => {
-      if (!current[rowId]) return current;
-      const next = { ...current };
-      delete next[rowId];
-      return next;
-    });
-    if (rows.length === 1) {
-      const replacement = createRow(layers);
-      setRows([replacement]);
-      setActiveRowId(replacement.id);
-      return;
-    }
-    const nextRows = rows.filter((row) => row.id !== rowId);
-    setRows(nextRows);
-    if (activeRowId === rowId) setActiveRowId(nextRows[0].id);
-  };
-
-  const copyPage = (row: DataRow) => {
-    setCopiedPage({
-      ...row,
-      values: { ...row.values },
-      sourceCells: row.sourceCells ? { ...row.sourceCells } : undefined,
-    });
-    toast.success(`Đã sao chép ${row.name || 'trang'}.`);
-  };
-
-  const insertPageAfter = (source: DataRow, afterRowId: string, name?: string) => {
-    const inserted = {
-      ...createRow(layers, source.values),
-      name,
-      sourceCells: source.sourceCells ? { ...source.sourceCells } : undefined,
-      campaignAssetOrderId: source.campaignAssetOrderId,
-      campaignSlotId: source.campaignSlotId,
-      selected: true,
-    };
-    setRows((current) => {
-      const targetIndex = current.findIndex((row) => row.id === afterRowId);
-      const insertIndex = targetIndex >= 0 ? targetIndex + 1 : current.length;
-      const next = [...current];
-      next.splice(insertIndex, 0, inserted);
-      return next;
-    });
-    setActiveRowId(inserted.id);
-    setPagesCreated(true);
-  };
-
-  const pastePageAfter = (afterRowId: string) => {
-    if (!copiedPage) return;
-    insertPageAfter(
-      copiedPage,
-      afterRowId,
-      copiedPage.name ? `${copiedPage.name} - bản sao` : 'Trang đã dán'
-    );
-  };
-
-  const duplicatePage = (row: DataRow) => {
-    insertPageAfter(
-      row,
-      row.id,
-      row.name ? `${row.name} - bản sao` : 'Trang bản sao'
-    );
-  };
-
-  const renamePage = (rowId: string, name: string) => {
-    const normalizedName = name.trim().slice(0, 80);
-    if (!normalizedName) return;
-    setRows((current) => current.map((row) =>
-      row.id === rowId ? { ...row, name: normalizedName } : row
-    ));
-  };
-
-  const downloadPage = async (row: DataRow, index: number) => {
-    const name = row.name || `Trang ${index + 1}`;
-    const filename = pageFilename(name, index);
-    const result = pageResults[row.id];
-    try {
-      if (result?.status === 'completed' && result.outputUrl) {
-        await bulkCreateService.downloadImage(result.outputUrl, filename);
-        return;
-      }
-      if (editorScene.layers.length === 0) {
-        toast.error('Hãy thêm ít nhất một nội dung chữ hoặc ảnh trước khi tải trang.');
-        return;
-      }
-      toast.info(`Đang chuẩn bị tải “${name}”...`);
-      const previewUrl = await bulkCreateService.previewScene({
-        name,
-        sceneVersion: editorScene.sceneVersion,
-        canvas: editorScene.canvas,
-        background: editorScene.background,
-        layers: editorScene.layers,
-      }, row.values);
-      triggerFileDownload(previewUrl, filename);
-      window.setTimeout(() => URL.revokeObjectURL(previewUrl), 10_000);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể tải trang.');
-    }
-  };
-
-  const downloadJob = async (job: BulkRenderJob) => {
-    if (downloadingJob) return;
-    setDownloadingJob(true);
-    try {
-      await bulkCreateService.downloadZip(job._id, job.templateName);
-      toast.success('Đã bắt đầu tải file ZIP.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể tải file ZIP.';
-      setErrorMessage(message);
-      toast.error(message);
-    } finally {
-      setDownloadingJob(false);
-    }
-  };
+  const {
+    copiedPage,
+    downloadingJob,
+    updateCell,
+    addRow,
+    duplicateRow,
+    removeRow,
+    copyPage,
+    pastePageAfter,
+    duplicatePage,
+    renamePage,
+    downloadPage,
+    downloadJob,
+  } = useBulkPageActions({
+    layers,
+    setLayers,
+    rows,
+    setRows,
+    activeRowId,
+    setActiveRowId,
+    setPagesCreated,
+    pageResults,
+    setPageResults,
+    editorScene,
+    setErrorMessage,
+  });
 
   const applyImportedData = (
     columns: BulkDataColumn[],
@@ -2294,417 +1679,71 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      const target = event.target as HTMLElement | null;
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        if (event.shiftKey) redoLayers(); else undoLayers();
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
-        event.preventDefault();
-        redoLayers();
-      } else if (selectedLayerId) {
-        const layer = layers.find((l) => l.id === selectedLayerId);
-        if (layer && layer.type === 'text' && !layer.locked) {
-          const isModifier = event.ctrlKey || event.metaKey || event.altKey;
-          if (!isModifier && (event.key === 'Backspace' || event.key.length === 1)) {
-            setEditingLayerId(selectedLayerId);
-            return;
-          }
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+  useBulkKeyboardShortcuts({
+    layers,
+    selectedLayerId,
+    setEditingLayerId,
+    onCopy: handleCopy,
+    onPaste: handlePaste,
+    onDuplicate: handleDuplicate,
+    onDelete: handleDelete,
+    onUndo: undoLayers,
+    onRedo: redoLayers,
   });
 
-  const pickLayersInBox = useCallback((box: SelectionBox, additive: boolean) => {
-    const selectedIds = layers
-      .filter((layer) => {
-        const layerRight = layer.x + layer.width;
-        const layerBottom = layer.y + layer.height;
-        const boxRight = box.left + box.width;
-        const boxBottom = box.top + box.height;
-        return layer.x < boxRight && layerRight > box.left && layer.y < boxBottom && layerBottom > box.top;
-      })
-      .map((layer) => layer.id);
+  const {
+    handleSelectionStart,
+    handleSelectionMove,
+    handleSelectionEnd,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleResizeStart,
+    handleResizeMove,
+    handleResizeEnd,
+    handleRotateStart,
+    handleRotateMove,
+    handleRotateEnd,
+  } = useCanvasInteractions({
+    canvasRef,
+    layers,
+    setLayers,
+    selectedLayerIds,
+    setSelectedLayerIds,
+    setSelectedLayerId,
+    editingLayerId,
+    setEditingLayerId,
+    setSelectionBox,
+    setBackgroundSelected,
+    setActiveTool,
+    clearLayerSelection,
+    selectLayer,
+    recordLayerHistory,
+    updateLayer,
+  });
 
-    const nextIds = additive ? Array.from(new Set([...selectedLayerIds, ...selectedIds])) : selectedIds;
-    setSelectedLayerIds(nextIds);
-    setSelectedLayerId(nextIds[nextIds.length - 1] || '');
-    setBackgroundSelected(false);
-    setEditingLayerId('');
-  }, [layers, selectedLayerIds]);
-
-  const handleSelectionStart = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const startX = clamp((event.clientX - rect.left) / rect.width * 100, 0, 100);
-    const startY = clamp((event.clientY - rect.top) / rect.height * 100, 0, 100);
-    selectionRef.current = { startX, startY, additive: event.shiftKey };
-    const initialBox = { left: startX, top: startY, width: 0, height: 0 };
-    selectionBoxRef.current = initialBox;
-    setSelectionBox(initialBox);
-    setBackgroundSelected(false);
-    setEditingLayerId('');
-    if (!event.shiftKey) {
-      clearLayerSelection();
-    }
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handleSelectionMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const selection = selectionRef.current;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!selection || !rect || event.buttons === 0) return;
-    const currentX = clamp((event.clientX - rect.left) / rect.width * 100, 0, 100);
-    const currentY = clamp((event.clientY - rect.top) / rect.height * 100, 0, 100);
-    const nextBox = {
-      left: Math.min(selection.startX, currentX),
-      top: Math.min(selection.startY, currentY),
-      width: Math.abs(currentX - selection.startX),
-      height: Math.abs(currentY - selection.startY),
-    };
-    selectionBoxRef.current = nextBox;
-    setSelectionBox(nextBox);
-  };
-
-  const handleSelectionEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    const selection = selectionRef.current;
-    const box = selectionBoxRef.current;
-    if (!selection) return;
-    if (box && (box.width > 0.5 || box.height > 0.5)) {
-      pickLayersInBox(box, selection.additive);
-    } else {
-      setBackgroundSelected(true);
-      setActiveTool('background');
-    }
-    selectionRef.current = null;
-    selectionBoxRef.current = null;
-    setSelectionBox(null);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLElement>, layer: TemplateLayer) => {
-    event.stopPropagation();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    if (editingLayerId !== layer.id) {
-      setEditingLayerId('');
-    }
-    if (event.shiftKey) {
-      setSelectedLayerIds((current) => {
-        const next = current.includes(layer.id) ? current.filter((id) => id !== layer.id) : [...current, layer.id];
-        setSelectedLayerId(next[next.length - 1] || '');
-        return next;
-      });
-    } else {
-      selectLayer(layer.id);
-    }
-    setBackgroundSelected(false);
-    if (event.shiftKey || layer.locked || editingLayerId === layer.id) return;
-    recordLayerHistory();
-    const dragLayerIds = layer.groupId
-      ? layers.filter((item) => item.groupId === layer.groupId && !item.locked).map((item) => item.id)
-      : selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)
-        ? layers.filter((item) => selectedLayerIds.includes(item.id) && !item.locked).map((item) => item.id)
-        : [layer.id];
-    dragRef.current = {
-      layerId: layer.id,
-      layerIds: dragLayerIds,
-      offsetX: event.clientX - (rect.left + rect.width * layer.x / 100),
-      offsetY: event.clientY - (rect.top + rect.height * layer.y / 100),
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
-    const drag = dragRef.current;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!drag || !rect || event.buttons === 0) return;
-    const layer = layers.find((item) => item.id === drag.layerId);
-    if (!layer) return;
-    const rawX = (event.clientX - rect.left - drag.offsetX) / rect.width * 100;
-    const rawY = (event.clientY - rect.top - drag.offsetY) / rect.height * 100;
-    const otherLayers = layers.filter((item) => !drag.layerIds.includes(item.id));
-    const x = snapToClosest(rawX, [
-      0,
-      6,
-      50 - layer.width / 2,
-      94 - layer.width,
-      100 - layer.width,
-      ...otherLayers.flatMap((item) => [
-        item.x,
-        item.x + item.width - layer.width,
-        item.x + item.width / 2 - layer.width / 2,
-      ]),
-    ]);
-    const y = snapToClosest(rawY, [
-      0,
-      6,
-      50 - layer.height / 2,
-      94 - layer.height,
-      100 - layer.height,
-      ...otherLayers.flatMap((item) => [
-        item.y,
-        item.y + item.height - layer.height,
-        item.y + item.height / 2 - layer.height / 2,
-      ]),
-    ]);
-    const nextX = clamp(x, 0, Math.max(0, 100 - layer.width));
-    const nextY = clamp(y, 0, Math.max(0, 100 - layer.height));
-    if (drag.layerIds.length > 1) {
-      const deltaX = nextX - layer.x;
-      const deltaY = nextY - layer.y;
-      setLayers((current) => current.map((item) => drag.layerIds.includes(item.id)
-        ? {
-            ...item,
-            x: clamp(item.x + deltaX, 0, Math.max(0, 100 - item.width)),
-            y: clamp(item.y + deltaY, 0, Math.max(0, 100 - item.height)),
-          }
-        : item));
-    } else {
-      updateLayer(layer.id, { x: nextX, y: nextY });
-    }
-  };
-
-  const handlePointerUp = (event: React.PointerEvent<HTMLElement>) => {
-    dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const handleResizeStart = (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer, corner: ResizeCorner) => {
-    event.stopPropagation();
-    if (layer.locked) return;
-    recordLayerHistory();
-    resizeRef.current = { layerId: layer.id, corner, pointerX: event.clientX, startX: layer.x, startY: layer.y, startWidth: layer.width, startHeight: layer.height };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handleResizeMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    const resize = resizeRef.current;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!resize || !rect || event.buttons === 0) return;
-    const layer = layers.find((item) => item.id === resize.layerId);
-    if (!layer) return;
-
-    const deltaX = (event.clientX - resize.pointerX) / rect.width * 100;
-
-    if (resize.corner === 'e') {
-      const nextWidth = clamp(resize.startWidth + deltaX, 5, 100 - resize.startX);
-      updateLayer(layer.id, {
-        width: nextWidth,
-      });
-    } else if (resize.corner === 'w') {
-      const nextWidth = clamp(resize.startWidth - deltaX, 5, resize.startX + resize.startWidth);
-      const nextX = resize.startX + resize.startWidth - nextWidth;
-      updateLayer(layer.id, {
-        x: nextX,
-        width: nextWidth,
-      });
-    } else {
-      const delta = (event.clientX - resize.pointerX) / rect.width * 100;
-      const fromWest = resize.corner === 'nw' || resize.corner === 'sw';
-      const fromNorth = resize.corner === 'nw' || resize.corner === 'ne';
-      const ratio = resize.startHeight / resize.startWidth;
-      const maxWidth = fromWest ? resize.startX + resize.startWidth : 100 - resize.startX;
-      const maxHeight = fromNorth ? resize.startY + resize.startHeight : 100 - resize.startY;
-      const upperWidth = Math.max(5, Math.min(maxWidth, maxHeight / ratio));
-      const nextWidth = clamp(resize.startWidth + (fromWest ? -delta : delta), 5, upperWidth);
-      const nextHeight = nextWidth * ratio;
-      updateLayer(layer.id, {
-        x: fromWest ? resize.startX + resize.startWidth - nextWidth : resize.startX,
-        y: fromNorth ? resize.startY + resize.startHeight - nextHeight : resize.startY,
-        width: nextWidth,
-        height: nextHeight,
-      });
-    }
-  };
-
-  const handleResizeEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    resizeRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const handleRotateStart = (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer) => {
-    event.stopPropagation();
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    recordLayerHistory();
-
-    const layerCenterX = rect.left + rect.width * (layer.x + layer.width / 2) / 100;
-    const layerCenterY = rect.top + rect.height * (layer.y + layer.height / 2) / 100;
-
-    const angle = Math.atan2(event.clientY - layerCenterY, event.clientX - layerCenterX);
-
-    rotateRef.current = {
-      layerId: layer.id,
-      centerX: layerCenterX,
-      centerY: layerCenterY,
-      startAngle: angle,
-      startRotation: layer.rotation || 0,
-    };
-
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handleRotateMove = (event: React.PointerEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    const rotate = rotateRef.current;
-    if (!rotate || event.buttons === 0) return;
-    const layer = layers.find((item) => item.id === rotate.layerId);
-    if (!layer) return;
-
-    const currentAngle = Math.atan2(event.clientY - rotate.centerY, event.clientX - rotate.centerX);
-    const deltaAngle = currentAngle - rotate.startAngle;
-    let nextRotation = Math.round(rotate.startRotation + (deltaAngle * 180) / Math.PI);
-
-    const snap = 3;
-    const targets = [0, 90, 180, 270, -90, -180, -270, 360, -360];
-    for (const t of targets) {
-      if (Math.abs(nextRotation - t) < snap) {
-        nextRotation = t;
-        break;
-      }
-    }
-
-    updateLayer(layer.id, {
-      rotation: nextRotation,
-    });
-  };
-
-  const handleRotateEnd = (event: React.PointerEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    rotateRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const closeWorkspace = () => {
-    if (onClose) {
-      onClose();
-      return;
-    }
-    window.history.pushState(null, '', '/xuong-noi-dung/tao-hinh-anh');
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  };
+  const closeWorkspace = () => closeBulkWorkspace(onClose);
 
   return (
     <div className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-white">
-      {campaignSetupOpen && (
-        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
-            <button
-              type="button"
-              onClick={() => {
-                setBulkTarget('standalone');
-                setCampaignOrderImportId('');
-                setCampaignDataSource('manual');
-                setCampaignSetupOpen(false);
-              }}
-              className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-              title="Đóng và thiết kế tự do"
-              aria-label="Đóng và thiết kế tự do"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            {campaignSetupStep === 'target' && (
-              <>
-                <p className="text-lg font-extrabold text-slate-900">Bạn muốn thiết kế cho đâu?</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  Chọn Campaign để ảnh tạo xong tự xuất hiện đúng trong lịch nội dung.
-                </p>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => { setBulkTarget('standalone'); setCampaignOrderImportId(''); setCampaignDataSource('manual'); setCampaignSetupOpen(false); }}
-                    className="rounded-2xl border-2 border-slate-200 bg-white p-4 text-left transition hover:border-slate-400"
-                  >
-                    <span className="block text-sm font-extrabold text-slate-800">Thiết kế tự do</span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-500">Tạo ảnh độc lập, không gắn vào Campaign.</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setBulkTarget('campaign'); setCampaignSearch(''); setCampaignSetupStep('select_campaign'); void loadCampaignsForImport(); }}
-                    className="rounded-2xl border-2 border-indigo-200 bg-white p-4 text-left transition hover:border-indigo-400"
-                  >
-                    <span className="block text-sm font-extrabold text-indigo-800">Cho Campaign</span>
-                    <span className="mt-1 block text-xs leading-5 text-indigo-700">Map từng ảnh vào bài Facebook của chiến dịch.</span>
-                  </button>
-                </div>
-              </>
-            )}
-
-            {campaignSetupStep === 'select_campaign' && (
-              <>
-                <button type="button" onClick={() => setCampaignSetupStep('target')} className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-500 hover:text-indigo-700">
-                  <ArrowLeft className="h-4 w-4" /> Quay lại
-                </button>
-                <p className="mt-3 text-lg font-extrabold text-slate-900">Chọn Campaign đang chạy</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">Chỉ hiển thị Campaign Facebook còn hoạt động.</p>
-                <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3">
-                  <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                  <input autoFocus value={campaignSearch} onChange={(event) => setCampaignSearch(event.target.value)} placeholder="Tìm chiến dịch..." className="h-11 min-w-0 flex-1 bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400" />
-                  {loadingCampaigns && <LoaderCircle className="h-4 w-4 animate-spin text-indigo-600" />}
-                </div>
-                <div className="mt-3 max-h-[310px] space-y-2 overflow-y-auto overscroll-contain pr-1">
-                  {matchingCampaigns.map((campaign) => (
-                    <button
-                      key={campaign._id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCampaignId(campaign._id);
-                        setCampaignOrderImportId('');
-                        setCampaignContext(null);
-                        setCampaignSearch('');
-                        setCampaignSetupStep('confirm_campaign');
-                        void loadCampaignContext(campaign._id);
-                      }}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50"
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-sm font-black text-indigo-700">{campaign.statistics.totalSlots}</span>
-                      <span className="min-w-0 flex-1"><span className="block truncate text-sm font-extrabold text-slate-800">{campaign.title}</span><span className="mt-0.5 block text-xs font-semibold text-slate-500">bài trong Campaign</span></span>
-                    </button>
-                  ))}
-                  {!loadingCampaigns && matchingCampaigns.length === 0 && <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm font-semibold text-slate-500">Không có Campaign đang chạy phù hợp.</p>}
-                </div>
-              </>
-            )}
-
-            {campaignSetupStep === 'confirm_campaign' && (
-              <>
-                <button type="button" onClick={() => { setCampaignSearch(''); setCampaignSetupStep('select_campaign'); }} className="inline-flex items-center gap-1 text-xs font-extrabold text-slate-500 hover:text-indigo-700">
-                  <ArrowLeft className="h-4 w-4" /> Đổi Campaign
-                </button>
-                <p className="mt-3 text-lg font-extrabold text-slate-900">Xác nhận Campaign nhận ảnh</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">Sau khi tạo xong, ảnh sẽ tự hiện trong Campaign này để bạn xem trước và gắn vào bài.</p>
-                <div className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                  <p className="truncate text-base font-extrabold text-indigo-950">{selectedCampaign?.title || 'Đang tải Campaign...'}</p>
-                  <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2.5">
-                    <span className="text-xs font-semibold text-slate-600">Bài Facebook có thể nhận ảnh</span>
-                    <span className="text-lg font-black text-indigo-700">{loadingCampaignOrders ? '...' : availableCampaignSlotCount}</span>
-                  </div>
-                </div>
-                {!loadingCampaignOrders && campaignContext && availableCampaignSlotCount === 0 && (
-                  <p className="mt-3 text-xs font-semibold leading-5 text-amber-700">Campaign này hiện không còn bài Facebook nào có thể nhận ảnh.</p>
-                )}
-                <button
-                  type="button"
-                  disabled={!selectedCampaignId || !campaignContext || loadingCampaignOrders || availableCampaignSlotCount === 0}
-                  onClick={() => { setCampaignOrderImportId(selectedCampaignId); setCampaignSetupOpen(false); setActiveTool('data'); setSidebarOpen(true); }}
-                  className="mt-5 h-11 w-full rounded-xl bg-indigo-600 text-sm font-extrabold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                >
-                  Tiếp tục chọn dữ liệu
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <CampaignSetupDialog
+        open={campaignSetupOpen}
+        step={campaignSetupStep}
+        search={campaignSearch}
+        campaigns={matchingCampaigns}
+        selectedCampaign={selectedCampaign}
+        selectedCampaignId={selectedCampaignId}
+        campaignContext={campaignContext}
+        loadingCampaigns={loadingCampaigns}
+        loadingCampaignOrders={loadingCampaignOrders}
+        availableCampaignSlotCount={availableCampaignSlotCount}
+        onSearch={setCampaignSearch}
+        onStep={setCampaignSetupStep}
+        onChooseStandalone={() => { setBulkTarget('standalone'); setCampaignOrderImportId(''); setCampaignDataSource('manual'); setCampaignSetupOpen(false); }}
+        onChooseCampaign={() => { setBulkTarget('campaign'); setCampaignSearch(''); setCampaignSetupStep('select_campaign'); void loadCampaignsForImport(); }}
+        onSelectCampaign={(campaignId) => { setSelectedCampaignId(campaignId); setCampaignOrderImportId(''); setCampaignContext(null); setCampaignSearch(''); setCampaignSetupStep('confirm_campaign'); void loadCampaignContext(campaignId); }}
+        onConfirmCampaign={() => { setCampaignOrderImportId(selectedCampaignId); setCampaignSetupOpen(false); setActiveTool('data'); setSidebarOpen(true); }}
+      />
       <nav className="flex w-[76px] shrink-0 flex-col border-r border-slate-200 bg-white py-3">
         <button
           type="button"
@@ -2860,209 +1899,33 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       </div>
 
       <main className="relative flex min-w-0 flex-1 flex-col bg-[#f4f5f7]">
-        <div className="relative flex h-14 shrink-0 items-center justify-between gap-3 bg-gradient-to-r from-blue-600 via-blue-600 to-indigo-600 px-4 text-white shadow-sm">
-          <div className="flex shrink-0 items-center gap-2">
-            {onClose && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-extrabold transition-colors hover:bg-white/20"
-                title="Quay lại Xưởng nội dung"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span>Xưởng nội dung</span>
-              </button>
-            )}
-            {onClose && <span className="h-5 w-px bg-white/20" />}
-
-            {/* Undo / Redo */}
-            <button type="button" onClick={undoLayers} disabled={undoRef.current.length === 0} className="rounded-lg p-2.5 hover:bg-white/15 disabled:opacity-30" title="Hoàn tác"><Undo2 className="h-5 w-5" /></button>
-            <button type="button" onClick={redoLayers} disabled={redoRef.current.length === 0} className="rounded-lg p-2.5 hover:bg-white/15 disabled:opacity-30" title="Làm lại"><Redo2 className="h-5 w-5" /></button>
-            <button
-              type="button"
-              onClick={createNewTemplate}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-extrabold hover:bg-white/15"
-              title="Tạo thiết kế mới"
-            >
-              <FilePlus2 className="h-4 w-4" />
-              <span className="hidden xl:inline">Tạo mới</span>
-            </button>
-          </div>
-          <div className="flex max-w-xs flex-1 min-w-[120px] flex-col items-center justify-center md:max-w-md">
-            <input
-              type="text"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Thiết kế chưa đặt tên"
-              className="w-full rounded-lg border-0 border-b border-transparent bg-transparent px-2 py-0.5 text-center text-sm font-extrabold text-white outline-none transition placeholder-white/50 hover:border-white/20 hover:bg-white/10 focus:border-white focus:bg-white/15"
-              title="Đổi tên thiết kế"
-            />
-            <span
-              className={`mt-0.5 flex items-center gap-1 text-[10px] font-bold ${
-                autoSaveStatus === 'error' ? 'text-rose-100' : 'text-white/70'
-              }`}
-            >
-              {autoSaveStatus === 'saving' ? (
-                <LoaderCircle className="h-3 w-3 animate-spin" />
-              ) : autoSaveStatus === 'saved' ? (
-                <CloudCheck className="h-3 w-3" />
-              ) : autoSaveStatus === 'error' ? (
-                <CloudOff className="h-3 w-3" />
-              ) : (
-                <Cloud className="h-3 w-3" />
-              )}
-              {autoSaveStatus === 'saving'
-                ? 'Đang tự động lưu...'
-                : autoSaveStatus === 'saved'
-                  ? 'Đã tự động lưu'
-                  : autoSaveStatus === 'dirty'
-                    ? 'Sẽ tự động lưu'
-                    : autoSaveStatus === 'error'
-                      ? 'Tự động lưu thất bại'
-                      : 'Tự động lưu khi bắt đầu thiết kế'}
-            </span>
-          </div>
-          <div className="relative flex items-center gap-2">
-            {pagesCreated && (
-              <button
-                type="button"
-                onClick={() => void startGeneration()}
-                disabled={
-                  readyCount === 0 ||
-                  busy ||
-                  !!activeJob && ['queued', 'processing'].includes(activeJob.status)
-                }
-                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-blue-700 px-4 text-sm font-extrabold text-white shadow-sm hover:bg-blue-800 disabled:bg-white/30 disabled:text-white/70"
-              >
-                {busy ? (
-                  <LoaderCircle className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                {assetUploadProgress
-                  ? `Đang tải ảnh ${assetUploadProgress.completed}/${assetUploadProgress.total}`
-                  : busy
-                    ? 'Đang đưa vào hàng chờ...'
-                    : `Tạo ${readyCount} ảnh`}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShareMenuOpen((current) => !current)}
-              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl bg-white px-4 text-sm font-extrabold text-blue-700 shadow-sm hover:bg-blue-50"
-            >
-              <Share2 className="h-4 w-4" /> Chia sẻ
-            </button>
-
-            {shareMenuOpen && (
-              <div
-                className="absolute right-0 top-12 z-[1000] w-[340px] rounded-2xl border border-slate-200 bg-white p-4 text-slate-800 shadow-[0_12px_40px_rgba(15,23,42,0.18)]"
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                {/* Header */}
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <h4 className="text-sm font-extrabold text-slate-900">Chia sẻ thiết kế</h4>
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
-                    <Users className="h-3 w-3" /> {companyMembers.length} thành viên
-                  </span>
-                </div>
-
-                {/* Company Members Access */}
-                <div className="mt-3 space-y-3">
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">Thành viên có quyền truy cập</label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Tìm thành viên công ty..."
-                      value={memberSearchQuery}
-                      onChange={(event) => setMemberSearchQuery(event.target.value)}
-                      className="h-9 w-full rounded-lg border border-slate-250 pl-9 pr-3 text-xs outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div className="max-h-[140px] overflow-y-auto space-y-2 pr-1 [scrollbar-width:thin]">
-                    {companyMembers
-                      .filter((member) => {
-                        const name = member.displayName || '';
-                        const email = member.email || '';
-                        const query = memberSearchQuery.toLowerCase();
-                        return name.toLowerCase().includes(query) || email.toLowerCase().includes(query);
-                      })
-                      .map((member) => {
-                        const initials = (member.displayName || member.email || 'US').slice(0, 2).toUpperCase();
-                        return (
-                          <div key={member.uid} className="flex items-center gap-2.5 py-1">
-                            {member.photoURL ? (
-                              <img src={member.photoURL} alt={member.displayName} className="h-7 w-7 rounded-full border border-slate-100 object-cover" />
-                            ) : (
-                              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-extrabold text-indigo-700">
-                                {initials}
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <span className="block truncate text-xs font-bold text-slate-800">{member.displayName}</span>
-                              <span className="block truncate text-[10px] text-slate-500">{member.email}</span>
-                            </div>
-                            <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 uppercase">
-                              {member.role}
-                            </span>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-
-                {/* Access Level Option */}
-                <div className="mt-4 border-t border-slate-100 pt-3">
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Cấp độ truy cập</label>
-                  <div className="relative">
-                    <select
-                      value={templates.find((t) => t._id === savedTemplateId)?.visibility || 'private'}
-                      onChange={(event) => void handleToggleVisibility(event.target.value as 'private' | 'public')}
-                      className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pl-9 pr-10 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500"
-                    >
-                      <option value="private">🔒 Chỉ bạn mới có quyền truy cập</option>
-                      <option value="public">🌐 Công khai (Kho mẫu cộng đồng)</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-500" />
-                  </div>
-                </div>
-
-                {/* Copy Link Button */}
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const link = `${window.location.origin}${window.location.pathname}?template=${savedTemplateId || ''}`;
-                      void navigator.clipboard.writeText(link).then(() => {
-                        toast.success('Đã sao chép liên kết thiết kế!');
-                      });
-                    }}
-                    className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 text-xs font-bold hover:bg-slate-50"
-                  >
-                    <Link className="h-3.5 w-3.5 text-slate-500" /> Sao chép liên kết
-                  </button>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="mt-4 border-t border-slate-100 pt-3 space-y-2">
-                  {activeJob && ['completed', 'partial'].includes(activeJob.status) && (
-                    <button
-                      type="button"
-                      onClick={() => void downloadJob(activeJob)}
-                      disabled={downloadingJob}
-                      className="flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100 hover:shadow-sm active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-none"
-                    >
-                      {downloadingJob ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                      {downloadingJob ? 'Đang chuẩn bị file ZIP...' : 'Tải tất cả ảnh'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <BulkWorkspaceHeader
+          onClose={onClose}
+          canUndo={undoRef.current.length > 0}
+          canRedo={redoRef.current.length > 0}
+          onUndo={undoLayers}
+          onRedo={redoLayers}
+          onCreateNew={createNewTemplate}
+          templateName={templateName}
+          onTemplateNameChange={setTemplateName}
+          autoSaveStatus={autoSaveStatus}
+          pagesCreated={pagesCreated}
+          readyCount={readyCount}
+          busy={busy}
+          activeJob={activeJob}
+          assetUploadProgress={assetUploadProgress}
+          onStartGeneration={() => void startGeneration()}
+          shareMenuOpen={shareMenuOpen}
+          onToggleShareMenu={() => setShareMenuOpen((current) => !current)}
+          companyMembers={companyMembers}
+          memberSearchQuery={memberSearchQuery}
+          onMemberSearchQueryChange={setMemberSearchQuery}
+          templateId={savedTemplateId}
+          visibility={templates.find((template) => template._id === savedTemplateId)?.visibility || 'private'}
+          onVisibilityChange={(visibility) => void handleToggleVisibility(visibility)}
+          downloadingJob={downloadingJob}
+          onDownloadJob={(job) => void downloadJob(job)}
+        />
 
         <PropertiesToolbar
           selectedLayer={selectedLayer}
@@ -3077,28 +1940,11 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           onOptimizeReadability={optimizeReadability}
         />
 
-        {errorMessage && (
-          <div className="mx-5 mt-4 flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
-            <span>{errorMessage}</span>
-            <button type="button" onClick={() => setErrorMessage('')}>
-              Đóng
-            </button>
-          </div>
-        )}
-        {activeJob && ['queued', 'processing'].includes(activeJob.status) && (
-          <div className="mx-5 mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-            <div className="flex items-center justify-between text-sm font-bold text-indigo-800">
-              <span>Đang tạo {activeJob.completedItems}/{activeJob.totalItems} ảnh</span>
-              <span>{activeJob.progress}%</span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-100">
-              <div
-                className="h-full rounded-full bg-indigo-600 transition-all"
-                style={{ width: `${activeJob.progress}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <BulkWorkspaceStatus
+          errorMessage={errorMessage}
+          onDismissError={() => setErrorMessage('')}
+          activeJob={activeJob}
+        />
 
         <EditorCanvas
           activeTool={activeTool}

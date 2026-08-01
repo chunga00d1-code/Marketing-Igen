@@ -148,8 +148,8 @@ export function parseHtmlVideoRenderResponse(
     durationSeconds: Number(durationSeconds),
     outputUrl:
       status === "completed" &&
-      typeof raw.outputUrl === "string" &&
-      raw.outputUrl.trim()
+        typeof raw.outputUrl === "string" &&
+        raw.outputUrl.trim()
         ? raw.outputUrl.trim()
         : null,
     error:
@@ -226,3 +226,62 @@ export const htmlVideoRenderService = {
     return parseHtmlVideoRenderResponse(payload);
   },
 };
+
+export function isActiveHtmlVideoStatus(status?: HtmlVideoRenderStatus | null) {
+  return status === "queued" || status === "rendering" || status === "uploading";
+}
+
+export function createHtmlVideoIdempotencyKey() {
+  const unique =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return `html_video_${unique}`;
+}
+
+export type PollHtmlVideoRenderOptions = {
+  renderId: string;
+  signal: AbortSignal;
+  getRender: (renderId: string, signal: AbortSignal) => Promise<HtmlVideoRenderDetail>;
+  onUpdate: (detail: HtmlVideoRenderDetail) => void;
+  wait?: (signal: AbortSignal) => Promise<void>;
+};
+
+function abortError() {
+  return new DOMException("Polling aborted.", "AbortError");
+}
+
+function defaultPollWait(signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(abortError());
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, 2_000);
+    const handleAbort = () => {
+      window.clearTimeout(timeout);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
+export async function pollHtmlVideoRender({
+  renderId,
+  signal,
+  getRender,
+  onUpdate,
+  wait = defaultPollWait,
+}: PollHtmlVideoRenderOptions): Promise<HtmlVideoRenderDetail> {
+  while (true) {
+    await wait(signal);
+    if (signal.aborted) throw abortError();
+    const detail = await getRender(renderId, signal);
+    if (signal.aborted) throw abortError();
+    onUpdate(detail);
+    if (!isActiveHtmlVideoStatus(detail.status)) return detail;
+  }
+}

@@ -297,7 +297,7 @@ export default function CampaignAssetOrderSheet({ campaignId }: CampaignAssetOrd
   const proposalColumnSpan = 8 + customFieldColumns.length;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full overflow-hidden">
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div>
