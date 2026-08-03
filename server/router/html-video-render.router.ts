@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth";
 import { validateRequest } from "../middleware/validation";
 import {
   createHtmlVideoRenderBodySchema,
+  createHtmlVideoPromptHistoryBodySchema,
   htmlVideoContextPreviewBodySchema,
   htmlVideoPreviewBodySchema,
   htmlVideoRenderParamsSchema,
@@ -30,6 +31,22 @@ htmlVideoRenderRouter.post(
   requireAuth as never,
   validateRequest({ body: createHtmlVideoRenderBodySchema }),
   htmlVideoRenderController.create as never
+);
+htmlVideoRenderRouter.get(
+  "/html-video-renders",
+  requireAuth as never,
+  htmlVideoRenderController.list as never
+);
+htmlVideoRenderRouter.get(
+  "/html-video-prompt-history",
+  requireAuth as never,
+  htmlVideoRenderController.listPromptHistory as never
+);
+htmlVideoRenderRouter.post(
+  "/html-video-prompt-history",
+  requireAuth as never,
+  validateRequest({ body: createHtmlVideoPromptHistoryBodySchema }),
+  htmlVideoRenderController.createPromptHistory as never
 );
 htmlVideoRenderRouter.get(
   "/html-video-renders/:renderId",

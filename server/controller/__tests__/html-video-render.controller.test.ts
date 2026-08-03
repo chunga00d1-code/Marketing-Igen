@@ -6,6 +6,7 @@ import {
   type HtmlVideoRenderControllerDependencies,
 } from "../html-video-render.controller";
 import {
+  createHtmlVideoPromptHistoryBodySchema,
   createHtmlVideoRenderBodySchema,
   htmlVideoPreviewBodySchema,
 } from "../../router/html-video-render.schemas";
@@ -51,7 +52,17 @@ function request(overrides: Record<string, unknown> = {}) {
 
 type DependencyOverrides = {
   service?: Partial<HtmlVideoRenderControllerDependencies["service"]>;
+  promptHistoryService?: Partial<
+    HtmlVideoRenderControllerDependencies["promptHistoryService"]
+  >;
   enqueue?: HtmlVideoRenderControllerDependencies["enqueue"];
+};
+
+const validPromptHistoryBody = {
+  projectName: "Video giới thiệu sản phẩm",
+  prompt: "Tạo video giới thiệu sản phẩm mới với ưu đãi và CTA mua ngay.",
+  aspectRatio: "9:16",
+  referenceNames: ["brand-guideline.md"],
 };
 
 function dependencies(overrides: DependencyOverrides = {}) {
@@ -68,6 +79,13 @@ function dependencies(overrides: DependencyOverrides = {}) {
         id: new Types.ObjectId().toString(),
         status: "completed",
       }),
+      listRenders: async () => [],
+    },
+    promptHistoryService: {
+      createHistory: async () => ({
+        id: new Types.ObjectId().toString(),
+      }),
+      listHistory: async () => [],
     },
     enqueue: async () => ({ id: "job-1" }),
   };
@@ -77,6 +95,10 @@ function dependencies(overrides: DependencyOverrides = {}) {
     service: {
       ...base.service,
       ...overrides.service,
+    },
+    promptHistoryService: {
+      ...base.promptHistoryService,
+      ...overrides.promptHistoryService,
     },
   };
 }
@@ -88,10 +110,14 @@ test("validates preview and render request bounds", () => {
     undefined
   );
   assert.equal(createHtmlVideoRenderBodySchema.validate(validBody).error, undefined);
+  assert.equal(
+    createHtmlVideoPromptHistoryBodySchema.validate(validPromptHistoryBody).error,
+    undefined
+  );
 
   const invalidCases = [
     { ...validBody, durationSeconds: 0 },
-    { ...validBody, durationSeconds: 61 },
+    { ...validBody, durationSeconds: 181 },
     { ...validBody, aspectRatio: "4:3" },
     { ...validBody, resolution: "4k" },
     { ...validBody, idempotencyKey: "short" },
@@ -197,6 +223,54 @@ test("returns 200 and re-enqueues an existing queued idempotent render", async (
 
   assert.equal(state.status, 200);
   assert.deepEqual(queued, [renderId]);
+});
+
+test("creates prompt history with the authenticated user and company scope", async () => {
+  let received: unknown[] = [];
+  const history = { id: new Types.ObjectId().toString(), revision: 1 };
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      promptHistoryService: {
+        createHistory: async (...args: unknown[]) => {
+          received = args;
+          return history;
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request({ body: validPromptHistoryBody });
+
+  await controller.createPromptHistory(req as never, response as never);
+
+  assert.equal(state.status, 201);
+  assert.deepEqual(received, [
+    { id: req.user.id, companyCode: "ACME" },
+    validPromptHistoryBody,
+  ]);
+  assert.deepEqual(state.body, { success: true, data: history });
+});
+
+test("lists prompt history through the authenticated user and company scope", async () => {
+  let received: unknown;
+  const histories = [{ id: new Types.ObjectId().toString(), revision: 2 }];
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      promptHistoryService: {
+        listHistory: async (actor) => {
+          received = actor;
+          return histories;
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request();
+
+  await controller.listPromptHistory(req as never, response as never);
+
+  assert.deepEqual(received, { id: req.user.id, companyCode: "ACME" });
+  assert.deepEqual(state.body, { success: true, data: histories });
 });
 
 test("reads render status through the scoped service", async () => {

@@ -24,6 +24,7 @@ import * as os from "os";
 
 const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
+const HTML_VIDEO_MODEL = process.env.HTML_VIDEO_MODEL || "gemini-3.5-flash";
 
 const Type = {
   OBJECT: "object",
@@ -434,6 +435,10 @@ async function generateText(
     images?: string[];
     maxRetries?: number;
     timeoutMs?: number;
+    fallbackModel?: string;
+    fallbackMaxRetries?: number;
+    fallbackTimeoutMs?: number;
+    maxTokens?: number;
   }
 ): Promise<{ text: string }> {
   let modelId = model || GEMINI_TEXT_MODEL;
@@ -453,6 +458,7 @@ async function generateText(
       responseSchema: config?.responseSchema,
       maxRetries: config?.maxRetries,
       timeoutMs: config?.timeoutMs,
+      maxTokens: config?.maxTokens,
     });
 
     if (needsJson) {
@@ -461,7 +467,10 @@ async function generateText(
 
     return res;
   } catch (error: any) {
-    const fallbackModel = process.env.FALLBACK_MODEL || "qwen/qwen-3.6-flash";
+    const fallbackModel =
+      config?.fallbackModel ||
+      process.env.FALLBACK_MODEL ||
+      "qwen/qwen-3.6-flash";
     console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
 
     try {
@@ -471,8 +480,9 @@ async function generateText(
         temperature: config?.temperature ?? 0.7,
         jsonMode: needsJson,
         responseSchema: config?.responseSchema,
-        maxRetries: config?.maxRetries,
-        timeoutMs: config?.timeoutMs,
+        maxRetries: config?.fallbackMaxRetries ?? config?.maxRetries,
+        timeoutMs: config?.fallbackTimeoutMs ?? config?.timeoutMs,
+        maxTokens: config?.maxTokens,
       });
 
       if (needsJson) {
@@ -489,6 +499,33 @@ async function generateText(
 }
 
 export const geminiService = {
+  async composeHtmlVideo(
+    prompt: string,
+    systemInstruction: string
+  ): Promise<{ text: string; isMock: false }> {
+    console.log(
+      `[geminiService.composeHtmlVideo] Calling HTML video model: ${HTML_VIDEO_MODEL}`
+    );
+    const response = await generateText(
+      HTML_VIDEO_MODEL,
+      [{ role: "user", parts: [{ text: prompt }] }],
+      {
+        systemInstruction,
+        temperature: 0.55,
+        responseMimeType: "application/json",
+        maxTokens: 8_192,
+        maxRetries: 1,
+        timeoutMs: 60_000,
+        fallbackMaxRetries: 1,
+        fallbackTimeoutMs: 120_000,
+        fallbackModel:
+          process.env.HTML_VIDEO_FALLBACK_MODEL ||
+          "qwen/qwen3-coder-30b-a3b-instruct",
+      }
+    );
+    return { text: response.text, isMock: false };
+  },
+
   async conductWebResearch(prompt: string): Promise<string> {
     try {
       console.log(`[geminiService] Conducting web research with OpenRouter for prompt: "${prompt}"`);

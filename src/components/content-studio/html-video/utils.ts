@@ -27,6 +27,7 @@ export function parseAiComposition(text: string) {
 }
 
 export function candidateStatusLabel(candidate: HtmlVideoCandidate) {
+  if (candidate.promptHistoryId && !candidate.html && !candidate.render) return `Bấm để dùng lại prompt v${candidate.promptRevision || 1}`;
   if (candidate.status === 'generating') return 'Đang tạo bản dựng';
   if (candidate.status === 'ready') return 'Sẵn sàng render';
   if (candidate.status === 'queued') return 'Đang xếp hàng';

@@ -1,4 +1,4 @@
-import type { HtmlVideoPreview, HtmlVideoRenderDetail } from '../../../services/htmlVideoRenderService';
+import type { HtmlVideoAspectRatio, HtmlVideoPreview, HtmlVideoRenderDetail, HtmlVideoResolution } from '../../../services/htmlVideoRenderService';
 
 export type CandidateStatus = 'generating' | 'ready' | 'queued' | 'rendering' | 'uploading' | 'completed' | 'failed';
 
@@ -8,11 +8,17 @@ export type HtmlVideoCandidate = {
   prompt: string;
   html: string;
   css: string;
+  durationSeconds: number;
+  resolution: HtmlVideoResolution;
   status: CandidateStatus;
   preview: HtmlVideoPreview | null;
   render: HtmlVideoRenderDetail | null;
   error: string | null;
   createdAt: string;
+  promptHistoryId?: string;
+  promptRevision?: number;
+  promptAspectRatio?: HtmlVideoAspectRatio;
+  editMode?: boolean;
 };
 
 export type CandidateFilter = 'all' | 'active' | 'completed' | 'failed';

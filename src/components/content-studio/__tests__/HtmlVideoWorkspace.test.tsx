@@ -38,11 +38,11 @@ test("renders the prompt-first batch workspace and keeps its preview sandboxed",
     "utf8"
   );
 
-  assert.match(markup, /Tạo video bằng AI/);
-  assert.match(markup, /Bạn muốn video nói gì/);
+  assert.match(markup, /Cài đặt video/);
+  assert.match(markup, /Lưu cài đặt/);
   assert.match(markup, /Thời lượng/);
   assert.match(markup, /Khung hình/);
-  assert.match(markup, /Thời lượng, phong cách và chất lượng được AI tự điều chỉnh/);
+  assert.match(markup, /Thiết lập khung hình, thời lượng và chất lượng trước khi nhập prompt/);
   assert.match(source, /sandbox=""/);
   assert.match(source, /seekableCompositionDocument\(selectedCandidate\.preview\.compositionHtml/);
   assert.doesNotMatch(source, /allow-scripts|allow-same-origin/);
@@ -50,7 +50,7 @@ test("renders the prompt-first batch workspace and keeps its preview sandboxed",
   assert.match(source, /\{!selectedCandidate \? <section/);
   assert.doesNotMatch(source, /selectedCandidate && activeTool === "prompt"/);
   assert.doesNotMatch(source, /\{activeTool === "history" \? <>/);
-  assert.match(markup, /Tạo video bằng AI/);
+  assert.match(markup, /Cài đặt video/);
 });
 
 test("recognizes only non-terminal statuses as active", () => {

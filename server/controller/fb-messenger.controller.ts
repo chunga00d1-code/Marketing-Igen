@@ -490,7 +490,7 @@ export const fbMessengerController = {
       }
 
       // Query Facebook Graph API
-      const url = `https://graph.facebook.com/v19.0/${postId}?fields=message,story,created_time,full_picture&access_token=${token}`;
+      const url = `https://graph.facebook.com/v25.0/${postId}?fields=message,story,created_time,full_picture&access_token=${token}`;
       const response = await (globalThis as any).fetch(url);
       
       if (!response.ok) {

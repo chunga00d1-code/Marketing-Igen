@@ -19,6 +19,7 @@ export type HtmlVideoPreviewRequest = {
 
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
+  promptHistoryId?: string;
 };
 
 export type HtmlVideoPreview = {
@@ -39,6 +40,27 @@ export type HtmlVideoRenderDetail = {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  promptHistoryId?: string | null;
+};
+
+export type HtmlVideoPromptHistory = {
+  id: string;
+  projectName: string;
+  prompt: string;
+  aspectRatio: HtmlVideoAspectRatio;
+  referenceNames: string[];
+  parentHistoryId: string | null;
+  revision: number;
+  createdAt: string;
+  renderId: string | null;
+};
+
+export type CreateHtmlVideoPromptHistoryRequest = {
+  projectName: string;
+  prompt: string;
+  aspectRatio: HtmlVideoAspectRatio;
+  referenceNames: string[];
+  parentHistoryId?: string;
 };
 
 const validStatuses = new Set<HtmlVideoRenderStatus>([
@@ -128,7 +150,7 @@ export function parseHtmlVideoRenderResponse(
     !validResolutions.has(resolution) ||
     !Number.isInteger(durationSeconds) ||
     Number(durationSeconds) < 1 ||
-    Number(durationSeconds) > 60 ||
+    Number(durationSeconds) > 180 ||
     typeof raw.stageMessage !== "string" ||
     typeof raw.createdAt !== "string" ||
     !raw.createdAt ||
@@ -158,6 +180,39 @@ export function parseHtmlVideoRenderResponse(
         : null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    promptHistoryId:
+      typeof raw.promptHistoryId === "string" && raw.promptHistoryId.trim()
+        ? raw.promptHistoryId.trim()
+        : null,
+  };
+}
+
+function parseHtmlVideoPromptHistory(raw: unknown): HtmlVideoPromptHistory {
+  if (
+    !isRecord(raw) ||
+    typeof raw.id !== "string" ||
+    typeof raw.projectName !== "string" ||
+    typeof raw.prompt !== "string" ||
+    !validAspectRatios.has(raw.aspectRatio as HtmlVideoAspectRatio) ||
+    !Array.isArray(raw.referenceNames) ||
+    !raw.referenceNames.every((name) => typeof name === "string") ||
+    (raw.parentHistoryId !== null && typeof raw.parentHistoryId !== "string") ||
+    !Number.isInteger(raw.revision) ||
+    typeof raw.createdAt !== "string" ||
+    (raw.renderId != null && typeof raw.renderId !== "string")
+  ) {
+    throw new Error("Dữ liệu lịch sử prompt HTML-to-video không hợp lệ.");
+  }
+  return {
+    id: raw.id,
+    projectName: raw.projectName,
+    prompt: raw.prompt,
+    aspectRatio: raw.aspectRatio as HtmlVideoAspectRatio,
+    referenceNames: raw.referenceNames,
+    parentHistoryId: raw.parentHistoryId as string | null,
+    revision: Number(raw.revision),
+    createdAt: raw.createdAt,
+    renderId: typeof raw.renderId === "string" ? raw.renderId : null,
   };
 }
 
@@ -174,6 +229,59 @@ function requestError(payload: unknown, fallback: string) {
 }
 
 export const htmlVideoRenderService = {
+  async listRenders(
+    signal?: AbortSignal
+  ): Promise<HtmlVideoRenderDetail[]> {
+    const response = await fetch("/api/v1/html-video-renders", {
+      headers: authHeaders(),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải lịch sử video HTML-to-video.");
+    }
+    const raw = envelopeData(payload);
+    if (!Array.isArray(raw)) {
+      throw new Error("Dữ liệu lịch sử video HTML-to-video không hợp lệ.");
+    }
+    return raw.map(parseHtmlVideoRenderResponse);
+  },
+
+  async listPromptHistory(
+    signal?: AbortSignal
+  ): Promise<HtmlVideoPromptHistory[]> {
+    const response = await fetch("/api/v1/html-video-prompt-history", {
+      headers: authHeaders(),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải lịch sử prompt HTML-to-video.");
+    }
+    const raw = envelopeData(payload);
+    if (!Array.isArray(raw)) {
+      throw new Error("Dữ liệu lịch sử prompt HTML-to-video không hợp lệ.");
+    }
+    return raw.map(parseHtmlVideoPromptHistory);
+  },
+
+  async createPromptHistory(
+    input: CreateHtmlVideoPromptHistoryRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoPromptHistory> {
+    const response = await fetch("/api/v1/html-video-prompt-history", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify(input),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể lưu lịch sử prompt HTML-to-video.");
+    }
+    return parseHtmlVideoPromptHistory(envelopeData(payload));
+  },
+
   async preview(
     input: HtmlVideoPreviewRequest,
     signal?: AbortSignal

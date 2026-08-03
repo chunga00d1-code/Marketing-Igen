@@ -21,6 +21,7 @@ export type HtmlVideoActor = {
 
 export type CreateHtmlVideoRenderInput = HtmlVideoSource & {
   idempotencyKey: string;
+  promptHistoryId?: string;
 };
 
 export type HtmlVideoRenderPublic = {
@@ -35,6 +36,7 @@ export type HtmlVideoRenderPublic = {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  promptHistoryId: string | null;
 };
 
 type RenderRecord = Partial<HtmlVideoRenderDocument> & {
@@ -63,6 +65,7 @@ function serializeRender(value: unknown): HtmlVideoRenderPublic {
   const updatedAt = render.updatedAt ?? createdAt;
   return {
     id: String(render._id),
+    promptHistoryId: render.promptHistoryId ? String(render.promptHistoryId) : null,
     status: render.status,
     progress: Number(render.progress ?? 0),
     stageMessage: String(render.stageMessage ?? ""),
@@ -120,6 +123,9 @@ export const htmlVideoRenderService = {
     try {
       const created = await HtmlVideoRenderModel.create({
         ...filter,
+        ...(input.promptHistoryId && mongoose.isValidObjectId(input.promptHistoryId)
+          ? { promptHistoryId: input.promptHistoryId }
+          : {}),
         sourceHtml: input.html,
         sourceCss: input.css,
         sanitizedHtml: safeComposition.sanitizedHtml,
@@ -162,6 +168,17 @@ export const htmlVideoRenderService = {
       );
     }
     return serializeRender(render);
+  },
+
+  async listRenders(actor: HtmlVideoActor): Promise<HtmlVideoRenderPublic[]> {
+    const renders = await HtmlVideoRenderModel.find({
+      userId: actor.id,
+      companyCode: actor.companyCode,
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+    return renders.map(serializeRender);
   },
 
   async recoverPendingRenders(): Promise<string[]> {

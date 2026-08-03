@@ -1031,7 +1031,9 @@ export function LegacyHtmlVideoWorkspace({
         <button
           type="button"
           onClick={() => setSidebarOpen((current) => !current)}
-          className="absolute -left-4.5 top-20 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md hover:text-sky-600"
+          className={`absolute top-20 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-md hover:text-sky-600 ${
+            sidebarOpen ? "left-0 translate-x-1/2" : "left-4"
+          }`}
           title={sidebarOpen ? "Ẩn bảng tùy chọn" : "Mở bảng tùy chọn"}
         >
           {sidebarOpen ? (
