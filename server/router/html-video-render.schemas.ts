@@ -13,13 +13,24 @@ function byteLimitedString(label: "HTML" | "CSS", allowEmpty: boolean) {
   return schema.required();
 }
 
-const htmlVideoFields = {
-  html: byteLimitedString("HTML", false),
-  css: byteLimitedString("CSS", true),
+const htmlVideoSettingFields = {
   durationSeconds: Joi.number().integer().min(1).max(180).required(),
   aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
   resolution: Joi.string().valid("720p", "1080p").required(),
 };
+
+const htmlVideoFields = {
+  html: byteLimitedString("HTML", false),
+  css: byteLimitedString("CSS", true),
+  ...htmlVideoSettingFields,
+};
+
+const htmlVideoDraftKeys = new Set([
+  "prompt",
+  "durationSeconds",
+  "aspectRatio",
+  "resolution",
+]);
 
 export const htmlVideoPreviewBodySchema = Joi.object(htmlVideoFields);
 
@@ -29,6 +40,18 @@ export const htmlVideoContextPreviewBodySchema = Joi.object({
   useKnowledge: Joi.boolean().required(),
   useBrandGuideline: Joi.boolean().required(),
   referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(6).default([]),
+});
+
+export const htmlVideoDraftBodySchema = Joi.object({
+  prompt: Joi.string().trim().min(1).max(4_000).required(),
+  ...htmlVideoSettingFields,
+}).custom((value, helpers) => {
+  const unknownKey = Object.keys(value).find(
+    (key) => !htmlVideoDraftKeys.has(key)
+  );
+  return unknownKey
+    ? helpers.error("object.unknown", { child: unknownKey })
+    : value;
 });
 
 export const createHtmlVideoRenderBodySchema = Joi.object({

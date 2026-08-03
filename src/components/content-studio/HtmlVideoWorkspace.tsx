@@ -31,6 +31,7 @@ import {
 import {
   htmlVideoRenderService,
   type HtmlVideoAspectRatio,
+  type HtmlVideoDraft,
   type HtmlVideoPreview,
   type HtmlVideoRenderDetail,
   type HtmlVideoRenderStatus,
@@ -38,7 +39,6 @@ import {
 } from "../../services/htmlVideoRenderService";
 import { BRAND_LOGO_PATH, BRAND_NAME } from "../../config/brand";
 import { toast } from "../../pages/Toast";
-import { geminiApi } from "../../api/gemini";
 
 const defaultHtml = `<main class="hero">
   <p class="eyebrow">iGen Marketing</p>
@@ -67,8 +67,31 @@ h1 { margin: 0; font-size: 72px; animation: rise 1s ease-out both; }
 
 type HtmlVideoWorkspaceService = Pick<
   typeof htmlVideoRenderService,
-  "preview" | "create" | "get"
+  "preview" | "create" | "generateDraft" | "get"
 >;
+
+export type HtmlVideoDraftWorkspaceSnapshot = {
+  html: string;
+  css: string;
+  durationSeconds: number;
+  aspectRatio: HtmlVideoAspectRatio;
+  resolution: HtmlVideoResolution;
+};
+type HtmlVideoDraftGenerationSettings = Pick<HtmlVideoDraftWorkspaceSnapshot, "durationSeconds" | "aspectRatio" | "resolution">;
+export type HtmlVideoPendingDraftConflict = { draft: HtmlVideoDraft; generatedFor: HtmlVideoDraftGenerationSettings };
+export type HtmlVideoDraftConflictState = { snapshot: HtmlVideoDraftWorkspaceSnapshot; hasGeneratedDraft: boolean; sourceDirtyAfterGeneration: boolean; pendingDraft: HtmlVideoPendingDraftConflict | null };
+export function hasHtmlVideoDraftSourceChanged(started: HtmlVideoDraftWorkspaceSnapshot, current: HtmlVideoDraftWorkspaceSnapshot) { return started.html !== current.html || started.css !== current.css; }
+export function hasHtmlVideoDraftSettingsChanged(started: HtmlVideoDraftWorkspaceSnapshot, current: HtmlVideoDraftWorkspaceSnapshot) { return started.durationSeconds !== current.durationSeconds || started.aspectRatio !== current.aspectRatio || started.resolution !== current.resolution; }
+export function shouldConfirmHtmlVideoDraftOverwrite(input: Pick<HtmlVideoDraftConflictState, "hasGeneratedDraft" | "sourceDirtyAfterGeneration">) { return input.hasGeneratedDraft && input.sourceDirtyAfterGeneration; }
+export function resolveHtmlVideoDraftGeneration(started: HtmlVideoDraftWorkspaceSnapshot, current: HtmlVideoDraftWorkspaceSnapshot, draft: HtmlVideoDraft) {
+  return hasHtmlVideoDraftSourceChanged(started, current) || hasHtmlVideoDraftSettingsChanged(started, current)
+    ? { kind: "conflict" as const, pending: { draft, generatedFor: { durationSeconds: started.durationSeconds, aspectRatio: started.aspectRatio, resolution: started.resolution } } }
+    : { kind: "apply" as const, draft };
+}
+export function resolveHtmlVideoDraftConflict(state: HtmlVideoDraftConflictState, decision: "apply-ai" | "keep-current"): HtmlVideoDraftConflictState {
+  if (decision === "keep-current" || !state.pendingDraft) return { ...state, pendingDraft: null };
+  return { ...state, snapshot: { ...state.snapshot, html: state.pendingDraft.draft.html, css: state.pendingDraft.draft.css }, hasGeneratedDraft: true, sourceDirtyAfterGeneration: false, pendingDraft: null };
+}
 
 type PollHtmlVideoRenderOptions = {
   renderId: string;
@@ -295,19 +318,6 @@ h1 { margin: 0; font-size: 72px; animation: rise 1s ease-out both; }
   }
 ];
 
-const cleanAndParseAiJson = (text: string) => {
-  let cleaned = text.trim();
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.replace(/^```[a-zA-Z]*\n/, "").replace(/\n```$/, "");
-  }
-  cleaned = cleaned.trim();
-  const parsed = JSON.parse(cleaned);
-  if (typeof parsed.html === "string" && typeof parsed.css === "string") {
-    return parsed as { html: string; css: string };
-  }
-  throw new Error("Dữ liệu AI trả về không đúng định dạng mong đợi.");
-};
-
 export function LegacyHtmlVideoWorkspace({
   service = htmlVideoRenderService,
 }: {
@@ -343,6 +353,11 @@ export function LegacyHtmlVideoWorkspace({
   const [render, setRender] = useState<HtmlVideoRenderDetail | null>(null);
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const draftControllerRef = useRef<AbortController | null>(null);
+  const [hasGeneratedDraft, setHasGeneratedDraft] = useState(false);
+  const [sourceDirtyAfterGeneration, setSourceDirtyAfterGeneration] = useState(false);
+  const [pendingDraft, setPendingDraft] = useState<HtmlVideoPendingDraftConflict | null>(null);
+  const workspaceSnapshotRef = useRef<HtmlVideoDraftWorkspaceSnapshot>({ html: defaultHtml, css: defaultCss, durationSeconds: 5, aspectRatio: "16:9", resolution: "720p" });
   
   const pollControllerRef = useRef<AbortController | null>(null);
   const submissionGenerationRef = useRef(0);
@@ -458,26 +473,39 @@ export function LegacyHtmlVideoWorkspace({
 
   const handleAiGenerate = async () => {
     if (!aiPrompt.trim() || aiLoading) return;
+    const normalizedPrompt = aiPrompt.trim();
+    if (shouldConfirmHtmlVideoDraftOverwrite({ hasGeneratedDraft, sourceDirtyAfterGeneration }) && !window.confirm("Tạo lại bằng AI sẽ thay toàn bộ HTML và CSS bạn đã chỉnh sửa. Bạn có muốn tiếp tục?")) return;
+    draftControllerRef.current?.abort();
+    const controller = new AbortController();
     setAiLoading(true);
     setAiError("");
     try {
-      const systemInstruction = `Bạn là một chuyên gia thiết kế HTML/CSS. Hãy viết một khối mã HTML và CSS theo yêu cầu của người dùng để làm video (sử dụng animation CSS). Chỉ trả về mã JSON có định dạng: { "html": "...", "css": "..." } mà không có markdown, không có bất kỳ văn bản giải thích nào khác.`;
-      const response = await geminiApi.sendChatMessage(
-        aiPrompt,
-        [],
-        { systemInstruction }
-      );
-      const parsed = cleanAndParseAiJson(response.text);
-      setHtml(parsed.html);
-      setCss(parsed.css);
-      pushToHistory(parsed.html, parsed.css);
+      const draft = await service.generateDraft({ prompt: normalizedPrompt, durationSeconds, aspectRatio, resolution }, controller.signal);
+      if (controller.signal.aborted) return;
+      const result = resolveHtmlVideoDraftGeneration(workspaceSnapshotRef.current, { ...workspaceSnapshotRef.current, html, css, durationSeconds, aspectRatio, resolution }, draft);
+      if (result.kind === "conflict") { setPendingDraft(result.pending); return; }
+      setHtml(draft.html);
+      setCss(draft.css);
+      workspaceSnapshotRef.current = { ...workspaceSnapshotRef.current, html: draft.html, css: draft.css };
+      setHasGeneratedDraft(true);
+      setSourceDirtyAfterGeneration(false);
+      pushToHistory(draft.html, draft.css);
       toast.success("AI đã tạo mã thành công!");
       setAiPrompt("");
     } catch (error) {
+      if (controller.signal.aborted) return;
       setAiError(errorMessage(error, "Không thể tạo mã bằng AI. Vui lòng mô tả lại chi tiết hơn."));
     } finally {
-      setAiLoading(false);
+      if (!controller.signal.aborted) setAiLoading(false);
     }
+  };
+
+  const handleDraftConflict = (decision: "apply-ai" | "keep-current") => {
+    if (!pendingDraft) return;
+    const next = resolveHtmlVideoDraftConflict({ snapshot: workspaceSnapshotRef.current, hasGeneratedDraft, sourceDirtyAfterGeneration, pendingDraft }, decision);
+    workspaceSnapshotRef.current = next.snapshot;
+    if (decision === "apply-ai") { setHtml(next.snapshot.html); setCss(next.snapshot.css); }
+    setHasGeneratedDraft(next.hasGeneratedDraft); setSourceDirtyAfterGeneration(next.sourceDirtyAfterGeneration); setPendingDraft(null);
   };
 
   // Safe preview rendering triggers
@@ -514,6 +542,7 @@ export function LegacyHtmlVideoWorkspace({
   useEffect(
     () => () => {
       pollControllerRef.current?.abort();
+      draftControllerRef.current?.abort();
       submissionGenerationRef.current += 1;
     },
     []
@@ -958,6 +987,13 @@ export function LegacyHtmlVideoWorkspace({
                 </div>
               ) : null}
 
+              {pendingDraft ? (
+                <div role="alert" aria-live="assertive" className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
+                  <p>HTML/CSS hoặc cài đặt đã thay đổi trong khi AI đang tạo bản nháp. Bản AI này được tạo cho {pendingDraft.generatedFor.durationSeconds} giây, tỷ lệ {pendingDraft.generatedFor.aspectRatio}, độ phân giải {pendingDraft.generatedFor.resolution}.</p>
+                  <div className="flex gap-2"><button type="button" onClick={() => handleDraftConflict("apply-ai")} className="rounded-lg bg-violet-600 px-3 py-2 font-bold text-white">Áp dụng bản AI</button><button type="button" onClick={() => handleDraftConflict("keep-current")} className="rounded-lg border border-amber-400 bg-white px-3 py-2 font-bold">Giữ bản hiện tại</button></div>
+                </div>
+              ) : null}
+
               <button
                 type="button"
                 onClick={handleAiGenerate}
@@ -969,7 +1005,7 @@ export function LegacyHtmlVideoWorkspace({
                 ) : (
                   <WandSparkles className="h-4 w-4" />
                 )}
-                {aiLoading ? "Đang viết code..." : "Tạo code bằng AI"}
+                {aiLoading ? "Đang tạo HTML/CSS..." : "Tạo HTML/CSS bằng AI"}
               </button>
             </div>
           </div>

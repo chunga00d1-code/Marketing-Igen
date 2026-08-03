@@ -7,6 +7,7 @@ import {
   createHtmlVideoRenderBodySchema,
   createHtmlVideoPromptHistoryBodySchema,
   htmlVideoContextPreviewBodySchema,
+  htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
   htmlVideoRenderParamsSchema,
 } from "./html-video-render.schemas";
@@ -20,6 +21,12 @@ htmlVideoRenderRouter.post(
   htmlVideoContextController.preview as never
 );
 
+htmlVideoRenderRouter.post(
+  "/html-video-renders/generate-draft",
+  requireAuth as never,
+  validateRequest({ body: htmlVideoDraftBodySchema }),
+  htmlVideoRenderController.generateDraft as never
+);
 htmlVideoRenderRouter.post(
   "/html-video-renders/preview",
   requireAuth as never,

@@ -52,6 +52,7 @@ function request(overrides: Record<string, unknown> = {}) {
 
 type DependencyOverrides = {
   service?: Partial<HtmlVideoRenderControllerDependencies["service"]>;
+  draftService?: HtmlVideoRenderControllerDependencies["draftService"];
   promptHistoryService?: Partial<
     HtmlVideoRenderControllerDependencies["promptHistoryService"]
   >;
@@ -86,6 +87,9 @@ function dependencies(overrides: DependencyOverrides = {}) {
         id: new Types.ObjectId().toString(),
       }),
       listHistory: async () => [],
+    },
+    draftService: {
+      generate: async () => ({ html: "<main>AI</main>", css: "" }),
     },
     enqueue: async () => ({ id: "job-1" }),
   };
