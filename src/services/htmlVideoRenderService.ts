@@ -26,6 +26,7 @@ export type HtmlVideoDraftRequest = {
 
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
+  promptHistoryId?: string;
 };
 
 export type HtmlVideoPreview = {
@@ -51,6 +52,27 @@ export type HtmlVideoRenderDetail = {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  promptHistoryId?: string | null;
+};
+
+export type HtmlVideoPromptHistory = {
+  id: string;
+  projectName: string;
+  prompt: string;
+  aspectRatio: HtmlVideoAspectRatio;
+  referenceNames: string[];
+  parentHistoryId: string | null;
+  revision: number;
+  createdAt: string;
+  renderId: string | null;
+};
+
+export type CreateHtmlVideoPromptHistoryRequest = {
+  projectName: string;
+  prompt: string;
+  aspectRatio: HtmlVideoAspectRatio;
+  referenceNames: string[];
+  parentHistoryId?: string;
 };
 
 const validStatuses = new Set<HtmlVideoRenderStatus>([
@@ -188,7 +210,7 @@ export function parseHtmlVideoRenderResponse(
     !validResolutions.has(resolution) ||
     !Number.isInteger(durationSeconds) ||
     Number(durationSeconds) < 1 ||
-    Number(durationSeconds) > 60 ||
+    Number(durationSeconds) > 180 ||
     typeof raw.stageMessage !== "string" ||
     typeof raw.createdAt !== "string" ||
     !raw.createdAt ||
@@ -208,8 +230,8 @@ export function parseHtmlVideoRenderResponse(
     durationSeconds: Number(durationSeconds),
     outputUrl:
       status === "completed" &&
-      typeof raw.outputUrl === "string" &&
-      raw.outputUrl.trim()
+        typeof raw.outputUrl === "string" &&
+        raw.outputUrl.trim()
         ? raw.outputUrl.trim()
         : null,
     error:
@@ -218,6 +240,39 @@ export function parseHtmlVideoRenderResponse(
         : null,
     createdAt: raw.createdAt,
     updatedAt: raw.updatedAt,
+    promptHistoryId:
+      typeof raw.promptHistoryId === "string" && raw.promptHistoryId.trim()
+        ? raw.promptHistoryId.trim()
+        : null,
+  };
+}
+
+function parseHtmlVideoPromptHistory(raw: unknown): HtmlVideoPromptHistory {
+  if (
+    !isRecord(raw) ||
+    typeof raw.id !== "string" ||
+    typeof raw.projectName !== "string" ||
+    typeof raw.prompt !== "string" ||
+    !validAspectRatios.has(raw.aspectRatio as HtmlVideoAspectRatio) ||
+    !Array.isArray(raw.referenceNames) ||
+    !raw.referenceNames.every((name) => typeof name === "string") ||
+    (raw.parentHistoryId !== null && typeof raw.parentHistoryId !== "string") ||
+    !Number.isInteger(raw.revision) ||
+    typeof raw.createdAt !== "string" ||
+    (raw.renderId != null && typeof raw.renderId !== "string")
+  ) {
+    throw new Error("Dữ liệu lịch sử prompt HTML-to-video không hợp lệ.");
+  }
+  return {
+    id: raw.id,
+    projectName: raw.projectName,
+    prompt: raw.prompt,
+    aspectRatio: raw.aspectRatio as HtmlVideoAspectRatio,
+    referenceNames: raw.referenceNames,
+    parentHistoryId: raw.parentHistoryId as string | null,
+    revision: Number(raw.revision),
+    createdAt: raw.createdAt,
+    renderId: typeof raw.renderId === "string" ? raw.renderId : null,
   };
 }
 
@@ -234,6 +289,59 @@ function requestError(payload: unknown, fallback: string) {
 }
 
 export const htmlVideoRenderService = {
+  async listRenders(
+    signal?: AbortSignal
+  ): Promise<HtmlVideoRenderDetail[]> {
+    const response = await fetch("/api/v1/html-video-renders", {
+      headers: authHeaders(),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải lịch sử video HTML-to-video.");
+    }
+    const raw = envelopeData(payload);
+    if (!Array.isArray(raw)) {
+      throw new Error("Dữ liệu lịch sử video HTML-to-video không hợp lệ.");
+    }
+    return raw.map(parseHtmlVideoRenderResponse);
+  },
+
+  async listPromptHistory(
+    signal?: AbortSignal
+  ): Promise<HtmlVideoPromptHistory[]> {
+    const response = await fetch("/api/v1/html-video-prompt-history", {
+      headers: authHeaders(),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải lịch sử prompt HTML-to-video.");
+    }
+    const raw = envelopeData(payload);
+    if (!Array.isArray(raw)) {
+      throw new Error("Dữ liệu lịch sử prompt HTML-to-video không hợp lệ.");
+    }
+    return raw.map(parseHtmlVideoPromptHistory);
+  },
+
+  async createPromptHistory(
+    input: CreateHtmlVideoPromptHistoryRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoPromptHistory> {
+    const response = await fetch("/api/v1/html-video-prompt-history", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify(input),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể lưu lịch sử prompt HTML-to-video.");
+    }
+    return parseHtmlVideoPromptHistory(envelopeData(payload));
+  },
+
   async generateDraft(
     input: HtmlVideoDraftRequest,
     signal?: AbortSignal
@@ -311,3 +419,62 @@ export const htmlVideoRenderService = {
     return parseHtmlVideoRenderResponse(payload);
   },
 };
+
+export function isActiveHtmlVideoStatus(status?: HtmlVideoRenderStatus | null) {
+  return status === "queued" || status === "rendering" || status === "uploading";
+}
+
+export function createHtmlVideoIdempotencyKey() {
+  const unique =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  return `html_video_${unique}`;
+}
+
+export type PollHtmlVideoRenderOptions = {
+  renderId: string;
+  signal: AbortSignal;
+  getRender: (renderId: string, signal: AbortSignal) => Promise<HtmlVideoRenderDetail>;
+  onUpdate: (detail: HtmlVideoRenderDetail) => void;
+  wait?: (signal: AbortSignal) => Promise<void>;
+};
+
+function abortError() {
+  return new DOMException("Polling aborted.", "AbortError");
+}
+
+function defaultPollWait(signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(abortError());
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, 2_000);
+    const handleAbort = () => {
+      window.clearTimeout(timeout);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
+export async function pollHtmlVideoRender({
+  renderId,
+  signal,
+  getRender,
+  onUpdate,
+  wait = defaultPollWait,
+}: PollHtmlVideoRenderOptions): Promise<HtmlVideoRenderDetail> {
+  while (true) {
+    await wait(signal);
+    if (signal.aborted) throw abortError();
+    const detail = await getRender(renderId, signal);
+    if (signal.aborted) throw abortError();
+    onUpdate(detail);
+    if (!isActiveHtmlVideoStatus(detail.status)) return detail;
+  }
+}

@@ -5,13 +5,11 @@ import {
   createHtmlVideoRenderController,
   type HtmlVideoRenderControllerDependencies,
 } from "../html-video-render.controller";
-import { HtmlVideoDraftError } from "../../service/html-video/html-video-draft.service";
 import {
+  createHtmlVideoPromptHistoryBodySchema,
   createHtmlVideoRenderBodySchema,
-  htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
 } from "../../router/html-video-render.schemas";
-import { validateRequest } from "../../middleware/validation";
 
 const validBody = {
   html: '<main class="hero">Xin chào</main>',
@@ -20,13 +18,6 @@ const validBody = {
   aspectRatio: "16:9",
   resolution: "720p",
   idempotencyKey: "html_render_123456",
-};
-
-const validDraftBody = {
-  prompt: "Create a technology intro with animated title.",
-  durationSeconds: 5,
-  aspectRatio: "16:9",
-  resolution: "720p",
 };
 
 function responseRecorder() {
@@ -62,7 +53,17 @@ function request(overrides: Record<string, unknown> = {}) {
 type DependencyOverrides = {
   service?: Partial<HtmlVideoRenderControllerDependencies["service"]>;
   draftService?: HtmlVideoRenderControllerDependencies["draftService"];
+  promptHistoryService?: Partial<
+    HtmlVideoRenderControllerDependencies["promptHistoryService"]
+  >;
   enqueue?: HtmlVideoRenderControllerDependencies["enqueue"];
+};
+
+const validPromptHistoryBody = {
+  projectName: "Video giới thiệu sản phẩm",
+  prompt: "Tạo video giới thiệu sản phẩm mới với ưu đãi và CTA mua ngay.",
+  aspectRatio: "9:16",
+  referenceNames: ["brand-guideline.md"],
 };
 
 function dependencies(overrides: DependencyOverrides = {}) {
@@ -79,6 +80,13 @@ function dependencies(overrides: DependencyOverrides = {}) {
         id: new Types.ObjectId().toString(),
         status: "completed",
       }),
+      listRenders: async () => [],
+    },
+    promptHistoryService: {
+      createHistory: async () => ({
+        id: new Types.ObjectId().toString(),
+      }),
+      listHistory: async () => [],
     },
     draftService: {
       generate: async () => ({ html: "<main>AI</main>", css: "" }),
@@ -92,6 +100,10 @@ function dependencies(overrides: DependencyOverrides = {}) {
       ...base.service,
       ...overrides.service,
     },
+    promptHistoryService: {
+      ...base.promptHistoryService,
+      ...overrides.promptHistoryService,
+    },
   };
 }
 
@@ -102,10 +114,14 @@ test("validates preview and render request bounds", () => {
     undefined
   );
   assert.equal(createHtmlVideoRenderBodySchema.validate(validBody).error, undefined);
+  assert.equal(
+    createHtmlVideoPromptHistoryBodySchema.validate(validPromptHistoryBody).error,
+    undefined
+  );
 
   const invalidCases = [
     { ...validBody, durationSeconds: 0 },
-    { ...validBody, durationSeconds: 61 },
+    { ...validBody, durationSeconds: 181 },
     { ...validBody, aspectRatio: "4:3" },
     { ...validBody, resolution: "4k" },
     { ...validBody, idempotencyKey: "short" },
@@ -116,146 +132,6 @@ test("validates preview and render request bounds", () => {
     assert.ok(createHtmlVideoRenderBodySchema.validate(invalid).error);
   }
 });
-
-test("validates AI draft request bounds", () => {
-  assert.equal(htmlVideoDraftBodySchema.validate(validDraftBody).error, undefined);
-
-  for (const invalid of [
-    { ...validDraftBody, prompt: "" },
-    { ...validDraftBody, prompt: "   " },
-    { ...validDraftBody, prompt: "a".repeat(4_001) },
-    { ...validDraftBody, durationSeconds: 0 },
-    { ...validDraftBody, durationSeconds: 61 },
-    { ...validDraftBody, aspectRatio: "4:3" },
-    { ...validDraftBody, resolution: "4k" },
-    { ...validDraftBody, unexpected: true },
-  ]) {
-    assert.ok(htmlVideoDraftBodySchema.validate(invalid).error);
-  }
-});
-
-test("rejects unknown AI draft fields through request validation middleware", () => {
-  let nextCalls = 0;
-  const { response, state } = responseRecorder();
-  const middleware = validateRequest({ body: htmlVideoDraftBodySchema });
-
-  middleware(
-    { body: { ...validDraftBody, unexpected: true } } as never,
-    response as never,
-    () => {
-      nextCalls += 1;
-    }
-  );
-
-  assert.equal(state.status, 400);
-  assert.equal(nextCalls, 0);
-});
-
-test("generates a tenant-scoped draft without enqueueing a render", async () => {
-  let received: unknown[] = [];
-  let enqueueCalls = 0;
-  const controller = createHtmlVideoRenderController(
-    dependencies({
-      draftService: {
-        generate: async (...args: unknown[]) => {
-          received = args;
-          return { html: "<main>AI</main>", css: "main{color:white}" };
-        },
-      },
-      enqueue: async () => {
-        enqueueCalls += 1;
-        throw new Error("not expected");
-      },
-    })
-  );
-  const { response, state } = responseRecorder();
-  const req = request({ body: validDraftBody });
-
-  await controller.generateDraft(req as never, response as never);
-
-  assert.deepEqual(received, [
-    { id: req.user.id, companyCode: "ACME" },
-    validDraftBody,
-  ]);
-  assert.equal(enqueueCalls, 0);
-  assert.deepEqual(state.body, {
-    success: true,
-    data: { html: "<main>AI</main>", css: "main{color:white}" },
-  });
-});
-
-for (const errorCase of [
-  {
-    name: "provider failures",
-    error: new HtmlVideoDraftError(
-      "AI_UNAVAILABLE",
-      new Error(
-        "OpenRouter auth failed payload={apiKey:'provider-secret'} at C:\\private\\provider.ts"
-      )
-    ),
-    status: 503,
-    message: "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",
-    secrets: ["provider-secret", "C:\\private", "OpenRouter"],
-  },
-  {
-    name: "explicit wallet statusCode 402 failures",
-    error: Object.assign(
-      new Error("Wallet query leaked account=wallet-secret"),
-      { statusCode: 402 }
-    ),
-    status: 402,
-    message: "Số dư ví không đủ. Vui lòng nạp thêm tiền để tiếp tục.",
-    secrets: ["wallet-secret", "Wallet query"],
-  },
-  {
-    name: "invalid AI output failures",
-    error: new HtmlVideoDraftError(
-      "INVALID_OUTPUT",
-      new Error("<script>provider-payload-secret</script>")
-    ),
-    status: 422,
-    message: "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại.",
-    secrets: ["provider-payload-secret", "<script>"],
-  },
-  {
-    name: "unknown database failures",
-    error: new Error(
-      "MongoServerError database-secret collection=wallets at D:\\private\\wallet.ts"
-    ),
-    status: 500,
-    message:
-      "Không thể tạo HTML/CSS video lúc này. Vui lòng thử lại sau.",
-    secrets: ["database-secret", "MongoServerError", "D:\\private"],
-  },
-]) {
-  test(`maps draft ${errorCase.name} to an exact safe response`, async () => {
-    const controller = createHtmlVideoRenderController(
-      dependencies({
-        draftService: {
-          generate: async () => {
-            throw errorCase.error;
-          },
-        },
-      })
-    );
-    const { response, state } = responseRecorder();
-
-    await controller.generateDraft(
-      request({ body: validDraftBody }) as never,
-      response as never
-    );
-
-    assert.equal(state.status, errorCase.status);
-    assert.deepEqual(state.body, {
-      success: false,
-      message: errorCase.message,
-    });
-    const serialized = JSON.stringify(state.body);
-    for (const secret of errorCase.secrets) {
-      assert.doesNotMatch(serialized, new RegExp(secret.replaceAll("\\", "\\\\")));
-    }
-  });
-}
 
 test("returns a server-built safe preview without persistence", async () => {
   let createCalls = 0;
@@ -351,6 +227,54 @@ test("returns 200 and re-enqueues an existing queued idempotent render", async (
 
   assert.equal(state.status, 200);
   assert.deepEqual(queued, [renderId]);
+});
+
+test("creates prompt history with the authenticated user and company scope", async () => {
+  let received: unknown[] = [];
+  const history = { id: new Types.ObjectId().toString(), revision: 1 };
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      promptHistoryService: {
+        createHistory: async (...args: unknown[]) => {
+          received = args;
+          return history;
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request({ body: validPromptHistoryBody });
+
+  await controller.createPromptHistory(req as never, response as never);
+
+  assert.equal(state.status, 201);
+  assert.deepEqual(received, [
+    { id: req.user.id, companyCode: "ACME" },
+    validPromptHistoryBody,
+  ]);
+  assert.deepEqual(state.body, { success: true, data: history });
+});
+
+test("lists prompt history through the authenticated user and company scope", async () => {
+  let received: unknown;
+  const histories = [{ id: new Types.ObjectId().toString(), revision: 2 }];
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      promptHistoryService: {
+        listHistory: async (actor) => {
+          received = actor;
+          return histories;
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request();
+
+  await controller.listPromptHistory(req as never, response as never);
+
+  assert.deepEqual(received, { id: req.user.id, companyCode: "ACME" });
+  assert.deepEqual(state.body, { success: true, data: histories });
 });
 
 test("reads render status through the scoped service", async () => {

@@ -132,7 +132,7 @@ export const facebookCommentService = {
       }
 
       // 1. Đăng câu trả lời công khai lên Graph API của Facebook
-      const commentUrl = `https://graph.facebook.com/v19.0/${commentId}/comments?access_token=${token}`;
+      const commentUrl = `https://graph.facebook.com/v25.0/${commentId}/comments?access_token=${token}`;
       const commentResponse = await (globalThis as any).fetch(commentUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -152,7 +152,7 @@ export const facebookCommentService = {
       let isInboxFailed = false;
       if (privateInbox) {
         try {
-          const inboxUrl = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
+          const inboxUrl = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
           const inboxResponse = await (globalThis as any).fetch(inboxUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

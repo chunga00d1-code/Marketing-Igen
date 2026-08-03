@@ -394,6 +394,43 @@ function chunkText(text: string) {
   });
 }
 
+let legacyChunkIndexRepairPromise: Promise<void> | undefined;
+
+/**
+ * Older deployments created a compound index containing both channelScope and
+ * purposeScope. Both fields are arrays, which MongoDB cannot index together
+ * in one compound index (error 171). The current schema uses separate indexes,
+ * so remove only that obsolete, invalid index before writing chunks.
+ */
+async function repairLegacyChunkScopeIndexes() {
+  if (!legacyChunkIndexRepairPromise) {
+    const repairPromise = (async () => {
+      const indexes = await AIKnowledgeChunkModel.collection.indexes();
+      const legacyIndexes = indexes.filter((index) =>
+        Object.prototype.hasOwnProperty.call(index.key, "channelScope") &&
+        Object.prototype.hasOwnProperty.call(index.key, "purposeScope")
+      );
+
+      for (const index of legacyIndexes) {
+        if (!index.name) continue;
+        console.warn(
+          `[aiKnowledgeService] Removing obsolete parallel-array index: ${index.name}`
+        );
+        await AIKnowledgeChunkModel.collection.dropIndex(index.name);
+      }
+    })();
+
+    legacyChunkIndexRepairPromise = repairPromise;
+    void repairPromise.catch(() => {
+      if (legacyChunkIndexRepairPromise === repairPromise) {
+        legacyChunkIndexRepairPromise = undefined;
+      }
+    });
+  }
+
+  await legacyChunkIndexRepairPromise;
+}
+
 export const aiKnowledgeService = {
   normalizeCompanyCode,
 
@@ -469,6 +506,7 @@ export const aiKnowledgeService = {
 
     const chunks = chunkText(text);
     if (chunks.length > 0) {
+      await repairLegacyChunkScopeIndexes();
       await AIKnowledgeChunkModel.insertMany(
         chunks.map((chunk, index) => ({
           companyCode,

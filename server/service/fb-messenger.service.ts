@@ -63,7 +63,7 @@ export const fbMessengerService = {
       "senders",
       "messages.limit(1){id,message,created_time,from,to}"
     ].join(",");
-    const url = `https://graph.facebook.com/v19.0/${pageId}/conversations?fields=${encodeURIComponent(fields)}&limit=50&access_token=${encodeURIComponent(token)}`;
+    const url = `https://graph.facebook.com/v25.0/${pageId}/conversations?fields=${encodeURIComponent(fields)}&limit=50&access_token=${encodeURIComponent(token)}`;
     const data = await this.fetchGraphJson(url);
     const conversations = Array.isArray(data?.data) ? data.data : [];
 
@@ -171,7 +171,7 @@ export const fbMessengerService = {
     );
 
     const fields = ["id", "message", "created_time", "from", "to", "attachments"].join(",");
-    const url = `https://graph.facebook.com/v19.0/${refreshedConversation.facebookConversationId}/messages?fields=${encodeURIComponent(fields)}&limit=25&access_token=${encodeURIComponent(token)}`;
+    const url = `https://graph.facebook.com/v25.0/${refreshedConversation.facebookConversationId}/messages?fields=${encodeURIComponent(fields)}&limit=25&access_token=${encodeURIComponent(token)}`;
     const data = await this.fetchGraphJson(url);
     const messages = Array.isArray(data?.data) ? data.data : [];
     let upsertedCount = 0;
@@ -408,7 +408,7 @@ export const fbMessengerService = {
     }
 
     const fields = "feed,messages,messaging_postbacks,message_deliveries,message_reads";
-    const url = `https://graph.facebook.com/v19.0/${cleanPageId}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`;
+    const url = `https://graph.facebook.com/v25.0/${cleanPageId}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`;
     console.log(`[FB Service subscribePageWebhooks] Đang đăng ký webhook cho Page ID: ${cleanPageId}...`);
 
     try {
@@ -668,7 +668,7 @@ export const fbMessengerService = {
       throw new Error(`Không tìm thấy Access Token cấu hình cho Page ID: ${resolvedPageId}`);
     }
 
-    const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
+    const url = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
     
     const body = {
       recipient: { id: recipientPsid },
@@ -776,7 +776,7 @@ export const fbMessengerService = {
     const token = await this.getPageAccessTokenByPageId(resolvedPageId);
     if (!token) return;
 
-    const url = `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`;
+    const url = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
     const body = {
       recipient: { id: recipientPsid },
       sender_action: action

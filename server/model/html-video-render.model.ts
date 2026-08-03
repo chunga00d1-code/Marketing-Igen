@@ -12,6 +12,7 @@ export type HtmlVideoRenderDocument = {
   userId: Types.ObjectId | string;
   companyCode: string;
   idempotencyKey: string;
+  promptHistoryId?: Types.ObjectId;
   sourceHtml: string;
   sourceCss: string;
   sanitizedHtml: string;
@@ -49,6 +50,7 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
       immutable: true,
     },
     idempotencyKey: { type: String, required: true, immutable: true },
+    promptHistoryId: { type: Schema.Types.ObjectId, ref: "HtmlVideoPromptHistory", index: true, immutable: true },
     sourceHtml: { type: String, required: true, immutable: true, select: false },
     sourceCss: { type: String, default: "", immutable: true, select: false },
     sanitizedHtml: {

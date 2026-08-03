@@ -107,7 +107,7 @@ export class MetricsSyncService {
           }
 
           // Gọi API lấy tương tác cơ bản (Likes, Comments, Shares)
-          const basicUrl = `https://graph.facebook.com/v19.0/${encodeURIComponent(postId)}?fields=likes.summary(true),comments.summary(true),shares&access_token=${encodeURIComponent(credentials.accessToken)}`;
+          const basicUrl = `https://graph.facebook.com/v25.0/${encodeURIComponent(postId)}?fields=likes.summary(true),comments.summary(true),shares&access_token=${encodeURIComponent(credentials.accessToken)}`;
           
           let likes = 0;
           let comments = 0;
@@ -125,7 +125,7 @@ export class MetricsSyncService {
           }
 
           // Gọi API lấy Insights (Reach, Impressions, Clicks)
-          const insightsUrl = `https://graph.facebook.com/v19.0/${encodeURIComponent(postId)}/insights?metric=post_impressions,post_impressions_unique,post_clicks&access_token=${encodeURIComponent(credentials.accessToken)}`;
+          const insightsUrl = `https://graph.facebook.com/v25.0/${encodeURIComponent(postId)}/insights?metric=post_impressions,post_impressions_unique,post_clicks&access_token=${encodeURIComponent(credentials.accessToken)}`;
           
           let impressions = 0;
           let reach = 0;

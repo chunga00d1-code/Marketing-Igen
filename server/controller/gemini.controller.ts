@@ -547,6 +547,34 @@ export const geminiController = {
   },
 
   /**
+   * POST /api/v1/gemini/html-video-compose
+   * Generates an HTML/CSS composition without applying CRM chat instructions.
+   */
+  async composeHtmlVideo(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
+      }
+
+      await walletService.checkBalance(userId, API_COSTS.AI_HTML_CHAT);
+      const result = await geminiService.composeHtmlVideo(
+        req.body.prompt,
+        req.body.systemInstruction
+      );
+      await walletService.deductBalance(
+        userId,
+        API_COSTS.AI_HTML_CHAT,
+        "Chi phí tạo bản dựng video HTML bằng AI"
+      );
+      return res.status(200).json(result);
+    } catch (error: any) {
+      console.error("[geminiController.composeHtmlVideo] Error:", error);
+      return handleGeminiError(res, error, "Lỗi tạo bản dựng video HTML bằng AI");
+    }
+  },
+
+  /**
    * GET /api/v1/gemini/knowledge-health
    */
   async getKnowledgeHealth(req: AuthenticatedRequest, res: Response) {
