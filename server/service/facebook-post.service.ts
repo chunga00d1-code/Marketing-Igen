@@ -25,7 +25,7 @@ export const facebookPostService = {
     };
 
     const fetchGraphFields = async (targetId: string) => {
-      const url = `https://graph.facebook.com/v19.0/${encodeURIComponent(targetId)}?fields=permalink_url,post_id&access_token=${encodeURIComponent(accessToken)}`;
+      const url = `https://graph.facebook.com/v25.0/${encodeURIComponent(targetId)}?fields=permalink_url,post_id&access_token=${encodeURIComponent(accessToken)}`;
       const response = await (globalThis as any).fetch(url);
       if (!response.ok) {
         const errText = await response.text();
@@ -184,7 +184,7 @@ export const facebookPostService = {
     // 1. Thử xác thực trực tiếp bằng cách gọi Facebook Graph API
     try {
       console.log(`[Facebook Service] Đang xác thực trực tiếp Page ID ${pageId} qua Graph API...`);
-      const url = `https://graph.facebook.com/v19.0/${pageId}?fields=name&access_token=${accessToken}`;
+      const url = `https://graph.facebook.com/v25.0/${pageId}?fields=name&access_token=${accessToken}`;
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 giây timeout
@@ -286,7 +286,7 @@ export const facebookPostService = {
   ): Promise<{ status: "ready" | "processing" | "failed"; error?: string }> {
     try {
       const fields = isVideo ? "status,is_published" : "is_published";
-      const url = `https://graph.facebook.com/v19.0/${videoId}?fields=${fields}&access_token=${accessToken}`;
+      const url = `https://graph.facebook.com/v25.0/${videoId}?fields=${fields}&access_token=${accessToken}`;
       const response = await (globalThis as any).fetch(url);
       
       if (!response.ok) {
@@ -330,7 +330,7 @@ export const facebookPostService = {
    */
   async exchangeCodeForPagesWithCreds(code: string, redirectUri: string, appId: string, appSecret: string) {
     console.log(`[FB Service exchangeCode] Bắt đầu gọi OAuth tokenUrl...`);
-    const tokenUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
+    const tokenUrl = `https://graph.facebook.com/v25.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`;
     
     // Sử dụng AbortController để giới hạn thời gian gọi API là 15 giây
     const controller = new AbortController();
@@ -357,7 +357,7 @@ export const facebookPostService = {
 
     // 2. Đổi User Access Token ngắn hạn thành User Access Token dài hạn (60 ngày)
     console.log("[FB Service exchangeCode] Bắt đầu đổi User Access Token dài hạn...");
-    const longLivedUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortUserToken}`;
+    const longLivedUrl = `https://graph.facebook.com/v25.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortUserToken}`;
     
     const longLivedController = new AbortController();
     const longLivedTimeoutId = setTimeout(() => longLivedController.abort(), 15000);
@@ -383,7 +383,7 @@ export const facebookPostService = {
 
     // 3. Lấy danh sách Trang (Page) kèm Page Access Token vĩnh viễn (Never-expiring)
     console.log("[FB Service exchangeCode] Bắt đầu lấy danh sách Page...");
-    const pagesUrl = `https://graph.facebook.com/v19.0/me/accounts?access_token=${longUserToken}`;
+    const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?access_token=${longUserToken}`;
     
     const pagesController = new AbortController();
     const pagesTimeoutId = setTimeout(() => pagesController.abort(), 15000);

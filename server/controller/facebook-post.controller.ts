@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { Request, Response } from "express";
 import { facebookPostService } from "../service/facebook-post.service";
+import { fbMessengerService } from "../service/fb-messenger.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { UserDataDeletionModel } from "../model/user-data-deletion.model";
 import { MarketingContentModel } from "../model/marketing-content.model";
@@ -353,6 +354,11 @@ export const facebookPostController = {
               },
               { upsert: true, new: true }
             );
+            try {
+              await fbMessengerService.subscribePageWebhooks(page.id, page.access_token);
+            } catch (webhookError: any) {
+              console.warn(`[FB OAuth Callback] Không thể đăng ký webhook cho Page ${page.id}:`, webhookError.message || webhookError);
+            }
             successCount++;
           } catch (dbErr: any) {
             console.error(`[FB OAuth Callback] Lỗi ghi DB cho page ID ${page.id}:`, dbErr.message || dbErr);

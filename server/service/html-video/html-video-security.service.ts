@@ -115,9 +115,9 @@ function assertSettings(source: HtmlVideoSource) {
   if (
     !Number.isInteger(source.durationSeconds) ||
     source.durationSeconds < 1 ||
-    source.durationSeconds > 60
+    source.durationSeconds > 180
   ) {
-    throw new Error("Thời lượng phải là số nguyên từ 1 đến 60 giây.");
+    throw new Error("Thời lượng phải là số nguyên từ 1 đến 180 giây.");
   }
   if (!(source.aspectRatio in dimensions)) {
     throw new Error("Tỷ lệ video không được hỗ trợ.");

@@ -37,6 +37,16 @@ const chatSchema = {
   }),
 };
 
+const htmlVideoComposeSchema = {
+  body: Joi.object({
+    // HTML video prompts may contain grounded excerpts from several uploaded
+    // documents. Keep a bounded request size, but do not reject normal
+    // multi-document prompts at the old 20k limit.
+    prompt: Joi.string().trim().min(3).max(100_000).required(),
+    systemInstruction: Joi.string().trim().min(3).max(20_000).required(),
+  }),
+};
+
 const pillarsSchema = {
   body: Joi.object({
     campaignTopic: Joi.string().required(),
@@ -263,6 +273,12 @@ const feedbackSchema = {
 
 // Đăng ký định tuyến API kèm Joi validation
 geminiRouter.post("/chat", requireAuth as any, validateRequest(chatSchema), geminiController.chat as any);
+geminiRouter.post(
+  "/html-video-compose",
+  requireAuth as any,
+  validateRequest(htmlVideoComposeSchema),
+  geminiController.composeHtmlVideo as any
+);
 geminiRouter.get("/marketing-suggestions", requireAuth as any, geminiController.getMarketingSuggestions as any);
 geminiRouter.post("/marketing-pillars", requireAuth as any, validateRequest(pillarsSchema), geminiController.analyzeMarketingPillars as any);
 geminiRouter.post("/marketing-pillars/swap", requireAuth as any, validateRequest(swapPillarSchema), geminiController.swapMarketingPillar as any);

@@ -4,6 +4,7 @@ import {
   htmlVideoRenderService,
   type HtmlVideoActor,
 } from "../service/html-video/html-video-render.service";
+import { htmlVideoPromptHistoryService } from "../service/html-video/html-video-prompt-history.service";
 import {
   HtmlVideoDraftError,
   htmlVideoDraftService,
@@ -21,6 +22,21 @@ type HtmlVideoRenderServiceContract = {
   getRender(
     ...args: Parameters<typeof htmlVideoRenderService.getRender>
   ): Promise<unknown>;
+  listRenders(
+    ...args: Parameters<typeof htmlVideoRenderService.listRenders>
+  ): Promise<unknown>;
+};
+
+type HtmlVideoPromptHistoryServiceContract = {
+  createHistory(
+    ...args: Parameters<typeof htmlVideoPromptHistoryService.createHistory>
+  ): Promise<unknown>;
+  listHistory(
+    ...args: Parameters<typeof htmlVideoPromptHistoryService.listHistory>
+  ): Promise<unknown>;
+  attachRender?: (
+    ...args: Parameters<typeof htmlVideoPromptHistoryService.attachRender>
+  ) => Promise<unknown>;
 };
 
 type HtmlVideoDraftServiceContract = Pick<
@@ -30,6 +46,7 @@ type HtmlVideoDraftServiceContract = Pick<
 
 export type HtmlVideoRenderControllerDependencies = {
   service: HtmlVideoRenderServiceContract;
+  promptHistoryService: HtmlVideoPromptHistoryServiceContract;
   draftService: HtmlVideoDraftServiceContract;
   enqueue: typeof enqueueHtmlVideoRender;
 };
@@ -139,6 +156,11 @@ export function createHtmlVideoRenderController(
           actorFrom(req),
           req.body
         );
+        if (req.body.promptHistoryId && dependencies.promptHistoryService.attachRender) {
+          await dependencies.promptHistoryService.attachRender(
+            actorFrom(req), req.body.promptHistoryId, result.render.id
+          );
+        }
         if (result.created || result.render.status === "queued") {
           await dependencies.enqueue(result.render.id);
         }
@@ -162,11 +184,44 @@ export function createHtmlVideoRenderController(
         return respondError(res, error);
       }
     },
+
+    async list(req: AuthenticatedRequest, res: Response) {
+      try {
+        const renders = await dependencies.service.listRenders(actorFrom(req));
+        return res.json({ success: true, data: renders });
+      } catch (error) {
+        return respondError(res, error);
+      }
+    },
+
+    async listPromptHistory(req: AuthenticatedRequest, res: Response) {
+      try {
+        const histories = await dependencies.promptHistoryService.listHistory(
+          actorFrom(req)
+        );
+        return res.json({ success: true, data: histories });
+      } catch (error) {
+        return respondError(res, error);
+      }
+    },
+
+    async createPromptHistory(req: AuthenticatedRequest, res: Response) {
+      try {
+        const history = await dependencies.promptHistoryService.createHistory(
+          actorFrom(req),
+          req.body
+        );
+        return res.status(201).json({ success: true, data: history });
+      } catch (error) {
+        return respondError(res, error);
+      }
+    },
   };
 }
 
 export const htmlVideoRenderController = createHtmlVideoRenderController({
   service: htmlVideoRenderService,
+  promptHistoryService: htmlVideoPromptHistoryService,
   draftService: htmlVideoDraftService,
   enqueue: enqueueHtmlVideoRender,
 });

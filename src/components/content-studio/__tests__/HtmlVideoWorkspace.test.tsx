@@ -39,22 +39,26 @@ function render(status: HtmlVideoRenderStatus): HtmlVideoRenderDetail {
   };
 }
 
-test("renders HTML/CSS editors, settings, and a scriptless preview sandbox", () => {
+test("renders the prompt-first batch workspace and keeps its preview sandboxed", () => {
   const markup = renderToStaticMarkup(React.createElement(HtmlVideoWorkspace));
   const source = readFileSync(
-    "src/components/content-studio/HtmlVideoWorkspace.tsx",
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
     "utf8"
   );
 
-  assert.match(markup, /Nội dung HTML/);
-  assert.match(markup, /CSS &amp; animation/);
+  assert.match(markup, /Cài đặt video/);
+  assert.match(markup, /Lưu cài đặt/);
   assert.match(markup, /Thời lượng/);
-  assert.match(markup, /Tỷ lệ khung hình/);
-  assert.match(markup, /Độ phân giải/);
+  assert.match(markup, /Khung hình/);
+  assert.match(markup, /Thiết lập khung hình, thời lượng và chất lượng trước khi nhập prompt/);
   assert.match(source, /sandbox=""/);
-  assert.match(source, /srcDoc=\{preview\.compositionHtml\}/);
+  assert.match(source, /seekableCompositionDocument\(selectedCandidate\.preview\.compositionHtml/);
   assert.doesNotMatch(source, /allow-scripts|allow-same-origin/);
-  assert.match(markup, /Kết xuất video/);
+  assert.match(source, /\{selectedCandidate \? <section/);
+  assert.match(source, /\{!selectedCandidate \? <section/);
+  assert.doesNotMatch(source, /selectedCandidate && activeTool === "prompt"/);
+  assert.doesNotMatch(source, /\{activeTool === "history" \? <>/);
+  assert.match(markup, /Cài đặt video/);
 });
 
 test("renders prompt generation controls and the exact wallet cost", () => {

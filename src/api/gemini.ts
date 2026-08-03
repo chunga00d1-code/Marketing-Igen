@@ -247,6 +247,22 @@ export const geminiApi = {
     return response.json();
   },
 
+  async composeHtmlVideo(
+    prompt: string,
+    systemInstruction: string
+  ): Promise<{ text: string; isMock: boolean }> {
+    const headers = await getHeaders(true);
+    const response = await fetch('/api/v1/gemini/html-video-compose', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ prompt, systemInstruction }),
+    });
+    if (!response.ok) {
+      await handleErrorResponse(response, 'Lỗi tạo bản dựng video HTML bằng AI');
+    }
+    return response.json();
+  },
+
   async getKnowledgeHealth(): Promise<any> {
     const response = await fetch("/api/v1/gemini/knowledge-health", {
       headers: getJwtHeaders(false),

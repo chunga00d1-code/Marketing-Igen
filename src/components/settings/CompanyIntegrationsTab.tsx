@@ -316,7 +316,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       const stateStr = encodeURIComponent(JSON.stringify(stateObj));
 
       const redirectUri = `${window.location.origin}/api/v1/facebook/oauth-callback`;
-      const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_manage_posts,pages_read_engagement,pages_show_list,pages_messaging,pages_manage_engagement,read_insights&state=${stateStr}`;
+      const oauthUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=pages_show_list,pages_read_engagement,pages_read_user_content,pages_manage_posts,pages_manage_engagement,pages_messaging,pages_manage_metadata,read_insights&state=${stateStr}`;
 
       const width = 600;
       const height = 800;

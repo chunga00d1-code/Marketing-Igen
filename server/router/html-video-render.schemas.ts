@@ -14,7 +14,7 @@ function byteLimitedString(label: "HTML" | "CSS", allowEmpty: boolean) {
 }
 
 const htmlVideoSettingFields = {
-  durationSeconds: Joi.number().integer().min(1).max(60).required(),
+  durationSeconds: Joi.number().integer().min(1).max(180).required(),
   aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
   resolution: Joi.string().valid("720p", "1080p").required(),
 };
@@ -34,6 +34,14 @@ const htmlVideoDraftKeys = new Set([
 
 export const htmlVideoPreviewBodySchema = Joi.object(htmlVideoFields);
 
+export const htmlVideoContextPreviewBodySchema = Joi.object({
+  prompt: Joi.string().trim().min(3).max(5_000).required(),
+  aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
+  useKnowledge: Joi.boolean().required(),
+  useBrandGuideline: Joi.boolean().required(),
+  referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(6).default([]),
+});
+
 export const htmlVideoDraftBodySchema = Joi.object({
   prompt: Joi.string().trim().min(1).max(4_000).required(),
   ...htmlVideoSettingFields,
@@ -51,8 +59,17 @@ export const createHtmlVideoRenderBodySchema = Joi.object({
   idempotencyKey: Joi.string()
     .pattern(/^[a-zA-Z0-9_-]{12,100}$/)
     .required(),
+  promptHistoryId: Joi.string().hex().length(24).optional(),
 });
 
 export const htmlVideoRenderParamsSchema = Joi.object({
   renderId: Joi.string().hex().length(24).required(),
+});
+
+export const createHtmlVideoPromptHistoryBodySchema = Joi.object({
+  projectName: Joi.string().trim().min(1).max(180).required(),
+  prompt: Joi.string().trim().min(3).max(10_000).required(),
+  aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
+  referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(6).default([]),
+  parentHistoryId: Joi.string().hex().length(24).optional(),
 });
