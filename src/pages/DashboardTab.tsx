@@ -236,7 +236,7 @@ export default function DashboardTab() {
           />
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <section className="grid gap-6 2xl:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-xs backdrop-blur">
             <div className="flex items-center justify-between gap-3">
               <div>

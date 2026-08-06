@@ -257,7 +257,16 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
 
     const content: any[] = [{ type: "text", text: prompt }];
     for (const img of params.referenceImages || []) {
-      content.push({ type: "image_url", image_url: { url: img } });
+      let finalImg = img;
+      if (typeof finalImg === "string" && (finalImg.toLowerCase().endsWith(".heic") || finalImg.toLowerCase().endsWith(".heif"))) {
+        if (finalImg.includes("res.cloudinary.com")) {
+          finalImg = finalImg.replace(/\.heic$/i, ".jpg").replace(/\.heif$/i, ".jpg");
+        } else {
+          console.warn(`[OpenRouter Image] Skipping unsupported HEIC reference image: ${finalImg}`);
+          continue;
+        }
+      }
+      content.push({ type: "image_url", image_url: { url: finalImg } });
     }
 
     const body = {
