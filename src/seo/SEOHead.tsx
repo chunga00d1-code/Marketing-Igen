@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { BRAND_NAME, BRAND_TAGLINE } from "../config/brand";
-import { buildDocumentTitle, DEFAULT_SEO, SEO_BASE_URL, SEO_DEFAULT_IMAGE, SEO_DEFAULT_LOCALE, type SeoMeta, resolveSeoUrl } from "./seo-config";
+import { buildDocumentTitle, DEFAULT_SEO, LANDING_FAQS, SEO_BASE_URL, SEO_DEFAULT_IMAGE, SEO_DEFAULT_LOCALE, type SeoMeta, resolveSeoUrl } from "./seo-config";
 
 function ensureMeta(selector: string, attributes: Record<string, string>) {
   let el = document.head.querySelector(selector) as HTMLMetaElement | null;
@@ -79,7 +79,7 @@ export function SEOHead({ meta }: { meta: SeoMeta }) {
     ensureLink('link[rel="alternate"][hreflang="x-default"]', { rel: "alternate", hreflang: "x-default" }).setAttribute("href", canonicalUrl);
 
     const jsonLd = ensureJsonLd("igen-seo-jsonld");
-    jsonLd.textContent = JSON.stringify({
+    const structuredData = {
       "@context": "https://schema.org",
       "@graph": [
         {
@@ -129,8 +129,21 @@ export function SEOHead({ meta }: { meta: SeoMeta }) {
             url: merged.image || SEO_DEFAULT_IMAGE,
           },
         },
+        ...(merged.path === "/" ? [{
+          "@type": "FAQPage",
+          "@id": `${canonicalUrl}/#faq`,
+          mainEntity: LANDING_FAQS.map((faq) => ({
+            "@type": "Question",
+            name: faq.question,
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: faq.answer,
+            },
+          })),
+        }] : []),
       ],
-    });
+    };
+    jsonLd.textContent = JSON.stringify(structuredData);
   }, [meta]);
 
   return null;

@@ -1,0 +1,23 @@
+# iGen Marketing
+
+> iGen Marketing is a Vietnamese Marketing & Sales workspace that uses AI to support content planning, media production, campaign operations, customer relationship management, and approved social publishing workflows.
+
+## Public information
+
+- [Homepage](https://marketing.igentechsolutions.com/): Product overview, key capabilities, TikTok integration information, security commitments, and frequently asked questions.
+- [Privacy Policy](https://marketing.igentechsolutions.com/privacy-policy): How account and connected-platform data is handled.
+- [Terms of Service](https://marketing.igentechsolutions.com/terms-of-service): Product terms and user responsibilities.
+- [User Data Deletion](https://marketing.igentechsolutions.com/user-data-deletion): Instructions for disconnecting integrations and requesting data deletion.
+
+## Product capabilities
+
+- AI-assisted marketing content planning, writing, and campaign workflows.
+- Image, video, voice, and caption production tools.
+- Sales CRM and omni-inbox workflows for supported channels.
+- TikTok OAuth connection and controlled video publishing after user confirmation.
+
+## Important notes
+
+- The application is primarily a private, authenticated business workspace.
+- Do not infer access to customer data, private dashboards, or connected social accounts from public pages.
+- For product support and data requests, use the public policy pages above.

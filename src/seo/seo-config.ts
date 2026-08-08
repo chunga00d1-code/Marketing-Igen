@@ -38,6 +38,25 @@ export const DEFAULT_SEO: SeoMeta = {
   changeFrequency: "weekly",
 };
 
+export const LANDING_FAQS = [
+  {
+    question: "iGen Marketing kết nối với TikTok bằng cách nào và có an toàn không?",
+    answer: "iGen Marketing kết nối trực tiếp với TikTok thông qua API chính thức của TikTok Open Platform và xác thực OAuth 2.0. Hệ thống không yêu cầu người dùng cung cấp mật khẩu TikTok.",
+  },
+  {
+    question: "Quyền user.info.basic và video.publish được sử dụng vào mục đích gì?",
+    answer: "user.info.basic dùng để hiển thị tài khoản TikTok đã kết nối. video.publish dùng để đăng video sau khi người dùng tạo nội dung, kiểm duyệt và chủ động bấm xuất bản trong iGen Marketing.",
+  },
+  {
+    question: "Tôi có thể hủy liên kết tài khoản TikTok bất cứ lúc nào không?",
+    answer: "Có. Người dùng có thể ngắt kết nối tài khoản TikTok trong phần cài đặt kết nối của workspace. Sau khi ngắt kết nối, iGen Marketing ngừng truy xuất dữ liệu từ API TikTok cho tài khoản đó.",
+  },
+  {
+    question: "Làm cách nào để yêu cầu xóa dữ liệu đã đồng bộ?",
+    answer: "Người dùng có thể truy cập trang User Data Deletion ở chân trang để gửi yêu cầu xóa dữ liệu. Hệ thống xử lý dữ liệu tài khoản kết nối, nội dung và lịch sử tác vụ liên quan theo chính sách bảo mật đã công bố.",
+  },
+] as const;
+
 export const AUTH_SEO: SeoMeta = {
   title: "Đăng nhập Marketing & Sales Workspace",
   description:
