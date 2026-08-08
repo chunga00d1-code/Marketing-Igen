@@ -345,6 +345,10 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
               toast.error(`Kết nối Facebook thất bại: ${result.error || "Lỗi không xác định"}`);
               clearInterval(checkInterval);
               alreadyRefreshed = true;
+            } else if (result.type === "FACEBOOK_PAGES_SELECTED") {
+              alreadyRefreshed = true;
+              clearInterval(checkInterval);
+              void handleFacebookPagesSelected(result.pages || []);
             }
           } catch (_) { /* bỏ qua lỗi parse */ }
         }
@@ -377,9 +381,8 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
       }
 
       if (event.data && event.data.type === "FACEBOOK_PAGES_SELECTED") {
-        // Backend đã lưu DB — chỉ refresh UI
-        console.log("[Facebook OAuth] Nhận postMessage PAGES_SELECTED, refresh UI.");
-        void fetchCompanyIntegrations();
+        console.log("[Facebook OAuth] Nhận postMessage PAGES_SELECTED, đồng bộ giao diện.");
+        void handleFacebookPagesSelected(event.data.pages || []);
       } else if (event.data && event.data.type === "FACEBOOK_PAGE_SELECTED") {
         const page = event.data.page;
         handleFacebookPageSelected(page);
