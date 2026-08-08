@@ -11,8 +11,8 @@ import { swaggerRouter } from "./server/swagger";
 import { initSocketServer } from "./server/socket";
 import { remotionQueueService } from "./server/service/remotion-queue.service";
 import { tiktokController } from "./server/controller/tiktok.controller";
-import { buildDocumentTitle, getSeoForPath, resolveSeoUrl } from "./src/seo/seo-config";
-import { BRAND_NAME, BRAND_TAGLINE, BRAND_LOGO_URL, SERVICE_WEBSITE_URL } from "./src/config/brand";
+import { buildDocumentTitle, getSeoForPath, LANDING_FAQS, resolveSeoUrl } from "./src/seo/seo-config";
+import { BRAND_NAME, BRAND_TAGLINE, BRAND_LOGO_URL, SERVICE_WEBSITE_URL, SUPPORT_EMAIL } from "./src/config/brand";
 import { telegramService } from "./server/service/telegram.service";
 import { initCampaignWorkers } from "./server/queue/campaign-workers";
 import { initBulkCreateWorker } from "./server/queue/bulk-create-queue";
@@ -144,6 +144,12 @@ function injectSeoMeta(html: string, requestPath: string): string {
           "logo": {
             "@type": "ImageObject",
             "url": BRAND_LOGO_URL
+          },
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "email": SUPPORT_EMAIL,
+            "contactType": "customer support",
+            "availableLanguage": ["vi", "en"]
           }
         },
         {
@@ -166,7 +172,14 @@ function injectSeoMeta(html: string, requestPath: string): string {
           "operatingSystem": "Web",
           "description": seo.description,
           "image": imageUrl,
-          "inLanguage": "vi-VN"
+          "inLanguage": "vi-VN",
+          "featureList": [
+            "Marketing AI",
+            "Sales CRM và omni-inbox",
+            "Lập kế hoạch nội dung và chiến dịch",
+            "Tạo và chỉnh sửa video AI",
+            "Tích hợp đăng video TikTok có kiểm soát"
+          ]
         },
         {
           "@type": "WebPage",
@@ -182,7 +195,19 @@ function injectSeoMeta(html: string, requestPath: string): string {
             "@type": "ImageObject",
             "url": imageUrl
           }
-        }
+        },
+        ...(seo.path === "/" ? [{
+          "@type": "FAQPage",
+          "@id": `${canonicalUrl}/#faq`,
+          "mainEntity": LANDING_FAQS.map((faq) => ({
+            "@type": "Question",
+            "name": faq.question,
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": faq.answer
+            }
+          }))
+        }] : [])
       ]
     };
 
