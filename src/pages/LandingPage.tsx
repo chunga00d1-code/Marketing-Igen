@@ -25,6 +25,7 @@ import {
   USER_DATA_DELETION_URL,
 } from "../config/brand";
 import { SEOHead } from "../seo/SEOHead";
+import { LANDING_FAQS } from "../seo/seo-config";
 
 export default function LandingPage() {
   const [solutionsOpen, setSolutionsOpen] = useState(false);
@@ -691,24 +692,7 @@ export default function LandingPage() {
           </div>
 
           <div className="space-y-4 text-left">
-            {[
-              {
-                q: "iGen Marketing kết nối với TikTok bằng cách nào và có an toàn không?",
-                a: "iGen Marketing kết nối trực tiếp với TikTok thông qua giao thức API chính thức (TikTok Open Platform) sử dụng chuẩn xác thực bảo mật OAuth 2.0. Hệ thống không yêu cầu người dùng cung cấp mật khẩu tài khoản TikTok, đảm bảo an toàn tuyệt đối."
-              },
-              {
-                q: "Quyền 'user.info.basic' và 'video.publish' được sử dụng vào mục đích gì?",
-                a: "Quyền 'user.info.basic' dùng để hiển thị tài khoản TikTok đã kết nối. Quyền 'video.publish' dùng để đăng video sau khi người dùng tạo nội dung, kiểm duyệt và chủ động bấm xuất bản trong iGen Marketing."
-              },
-              {
-                q: "Tôi có thể hủy liên kết tài khoản TikTok bất cứ lúc nào không?",
-                a: "Hoàn toàn được. Bạn có thể ngắt kết nối tài khoản TikTok của mình ngay lập tức chỉ với một nút bấm trong mục 'Cài đặt kết nối' của Workspace. Sau khi ngắt kết nối, iGen Marketing sẽ ngưng mọi hoạt động truy xuất dữ liệu từ API TikTok."
-              },
-              {
-                q: "Làm cách nào để yêu cầu xóa toàn bộ dữ liệu đã đồng bộ khỏi hệ thống?",
-                a: "Chúng tôi tuân thủ nghiêm ngặt chính sách bảo vệ dữ liệu người dùng. Bạn có thể truy cập trang 'Data Deletion Instructions' tại chân trang hoặc gửi yêu cầu xóa dữ liệu tự động. Hệ thống sẽ xử lý xóa dữ liệu tài khoản kết nối, nội dung và lịch sử tác vụ liên quan trong vòng 72 giờ làm việc."
-              }
-            ].map((faq, index) => {
+            {LANDING_FAQS.map((faq, index) => {
               const isOpen = activeFaq === index;
               return (
                 <div key={index} className="bg-white border border-slate-200/60 rounded-2xl overflow-hidden transition-all">
@@ -716,12 +700,12 @@ export default function LandingPage() {
                     onClick={() => setActiveFaq(isOpen ? null : index)}
                     className="w-full flex items-center justify-between p-5 text-left font-bold text-slate-800 text-[11px] sm:text-xs hover:bg-slate-50 transition-colors focus:outline-none cursor-pointer"
                   >
-                    <span>{faq.q}</span>
+                    <span>{faq.question}</span>
                     <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`} />
                   </button>
                   {isOpen && (
                     <div className="p-5 pt-0 border-t border-slate-100 text-[11px] text-slate-550 leading-relaxed bg-slate-50/20">
-                      {faq.a}
+                      {faq.answer}
                     </div>
                   )}
                 </div>

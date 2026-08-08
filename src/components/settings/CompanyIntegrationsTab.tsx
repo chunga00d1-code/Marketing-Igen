@@ -80,16 +80,48 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
   const canStartCompanyTikTokOAuth = compPlatform === "TikTok";
 
   // Fetch company integrations
-  const fetchCompanyIntegrations = async () => {
-    setLoadingIntegrations(true);
+  const fetchCompanyIntegrations = async (fallbackFacebookPages: any[] = [], showLoading = true) => {
+    if (showLoading) {
+      setLoadingIntegrations(true);
+    }
     try {
       const data = await socialIntegrationService.getIntegrations();
-      setCompanyIntegrations(data);
+      setCompanyIntegrations((currentIntegrations) => {
+        if (fallbackFacebookPages.length === 0) {
+          return data;
+        }
+
+        const integrationsWithFallback = [...data];
+        fallbackFacebookPages.forEach((page) => {
+          const pageId = String(page?.id || "").trim();
+          if (!pageId || integrationsWithFallback.some((item) => (
+            item.platform === "Facebook" && item.username === pageId
+          ))) {
+            return;
+          }
+
+          const optimisticIntegration = currentIntegrations.find((item) => (
+            item.platform === "Facebook" && item.username === pageId
+          ));
+          integrationsWithFallback.push(optimisticIntegration || {
+            _id: `facebook-oauth-${pageId}`,
+            platform: "Facebook",
+            displayName: page.name || `Fanpage ${pageId}`,
+            username: pageId,
+            isConnected: true,
+            createdBy: userProfile?.email || "system",
+          });
+        });
+
+        return integrationsWithFallback;
+      });
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Lỗi khi tải danh sách liên kết mạng xã hội");
     } finally {
-      setLoadingIntegrations(false);
+      if (showLoading) {
+        setLoadingIntegrations(false);
+      }
     }
   };
 
@@ -291,7 +323,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     }
     // Backend đã upsert tất cả pages vào DB trong oauthCallback
     // Chỉ cần gọi lại API để lấy danh sách mới nhất và cập nhật UI
-    await fetchCompanyIntegrations();
+    await fetchCompanyIntegrations(pages, false);
   };
 
   // Lưu Fanpage Facebook sau khi lấy được token từ OAuth (Fallback đơn lẻ)
@@ -361,6 +393,11 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         "FacebookOAuthPopup",
         `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
       );
+
+      if (!oauthWindow) {
+        toast.error("Trình duyệt đang chặn cửa sổ đăng nhập Facebook.");
+        return;
+      }
 
       // Theo dõi popup: khi đóng thì refresh UI
       // Backend đã lưu DB trong callback, không cần frontend tạo lại

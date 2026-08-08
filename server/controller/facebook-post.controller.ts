@@ -333,6 +333,7 @@ export const facebookPostController = {
 
       // Tự động lưu các pages vào DB ngay tại backend (đảm bảo đồng bộ 100% không phụ thuộc trình duyệt)
       let successCount = 0;
+      const savedPages: typeof pages = [];
       if (companyCode) {
         console.log(`[FB OAuth Callback] Bắt đầu tự động lưu ${pages.length} Pages vào DB cho company: ${companyCode}...`);
         for (const page of pages) {
@@ -360,6 +361,7 @@ export const facebookPostController = {
               console.warn(`[FB OAuth Callback] Không thể đăng ký webhook cho Page ${page.id}:`, webhookError.message || webhookError);
             }
             successCount++;
+            savedPages.push(page);
           } catch (dbErr: any) {
             console.error(`[FB OAuth Callback] Lỗi ghi DB cho page ID ${page.id}:`, dbErr.message || dbErr);
           }
@@ -367,6 +369,10 @@ export const facebookPostController = {
         console.log(`[FB OAuth Callback] Đã lưu thành công ${successCount}/${pages.length} Pages vào DB.`);
       } else {
         console.warn(`[FB OAuth Callback] Bỏ qua lưu tự động do không xác định được companyCode.`);
+      }
+
+      if (successCount === 0) {
+        return sendErrorHtml("Không thể lưu Fanpage vào hệ thống. Vui lòng thử lại.");
       }
 
       // Trả về giao diện đồng bộ tự động và thông báo thành công
@@ -436,7 +442,7 @@ export const facebookPostController = {
             }, 3000);
 
             try {
-              const pages = ${JSON.stringify(pages)};
+              const pages = ${JSON.stringify(savedPages)};
               const integrationId = ${JSON.stringify(integrationId)};
               
               // 1. Gửi message cập nhật giao diện ngay lập tức
