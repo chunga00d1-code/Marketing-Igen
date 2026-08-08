@@ -54,6 +54,7 @@ export const socialIntegrationService = {
   async getIntegrations(platform?: string): Promise<SocialIntegration[]> {
     const query = platform ? `?platform=${encodeURIComponent(platform)}` : "";
     const res = await fetch(`/api/v1/crud/social-integrations${query}`, {
+      cache: "no-store",
       headers: {
         "Authorization": `Bearer ${getAccessToken()}`,
       },
