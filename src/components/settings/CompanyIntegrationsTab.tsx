@@ -255,6 +255,38 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     console.log("[Facebook OAuth] Backend đã lưu DB, refresh UI với", pages?.length, "pages.");
     const count = pages?.length || 0;
     if (count > 0) {
+      setCompanyIntegrations((currentIntegrations) => {
+        const nextIntegrations = [...currentIntegrations];
+
+        pages.forEach((page) => {
+          const pageId = String(page?.id || "").trim();
+          if (!pageId) return;
+
+          const existingIndex = nextIntegrations.findIndex((integration) => (
+            integration.platform === "Facebook" && integration.username === pageId
+          ));
+          const pageIntegration: SocialIntegration = {
+            _id: `facebook-oauth-${pageId}`,
+            platform: "Facebook",
+            displayName: page.name || `Fanpage ${pageId}`,
+            username: pageId,
+            isConnected: true,
+            createdBy: userProfile?.email || "system",
+          };
+
+          if (existingIndex >= 0) {
+            nextIntegrations[existingIndex] = {
+              ...nextIntegrations[existingIndex],
+              ...pageIntegration,
+              _id: nextIntegrations[existingIndex]._id,
+            };
+          } else {
+            nextIntegrations.push(pageIntegration);
+          }
+        });
+
+        return nextIntegrations;
+      });
       toast.success(`✅ Đã kết nối thành công ${count} Fanpage! Đang cập nhật danh sách...`);
     }
     // Backend đã upsert tất cả pages vào DB trong oauthCallback
