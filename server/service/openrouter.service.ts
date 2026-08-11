@@ -162,6 +162,36 @@ export interface OpenRouterImageParams {
   referenceImages?: string[];
 }
 
+const REFERENCE_IMAGE_INSTRUCTIONS = [
+  "REFERENCE IMAGE 1 — DEFAULT POSTER BACKGROUND OR TEMPLATE: preserve the intended composition, visual style, color palette, text-safe areas, and any usable layout cues from this image.",
+  "REFERENCE IMAGE 2 — DEFAULT HERO PRODUCT OR SUBJECT: integrate this exact subject naturally into the poster. Preserve its recognizable silhouette, label, materials, colors, and key identifying details. Do not redesign, replace, or merge it with the background.",
+  "REFERENCE IMAGE 3 — DEFAULT LOGO OR SECONDARY ASSET: preserve this asset accurately and place it cleanly as a supporting element. Do not invent, distort, or turn it into unreadable text.",
+] as const;
+
+function buildReferenceCompositionInstruction(referenceCount: number): string {
+  if (referenceCount < 2) return "";
+
+  return `\n\nSMART POSTER COMPOSITION MODE:\nCreate one coherent commercial poster, not a collage of unrelated images. The user's explicit prompt is the source of truth: if it assigns a different role or order to a reference image, follow that instruction instead of the defaults below. Otherwise, use the supplied order and default roles. Keep the hero subject visually separate from the background, match its lighting, perspective, scale, contact shadow, and color grading to the poster, and preserve readable negative space for copy. Do not duplicate the hero subject. Do not recreate logos or product labels as AI text.\n\n${REFERENCE_IMAGE_INSTRUCTIONS.slice(0, referenceCount).join("\n")}`;
+}
+
+function resolveReferenceImages(images: string[] | undefined): string[] {
+  return (images || []).flatMap((image) => {
+    if (typeof image !== "string" || !image.trim()) return [];
+    const isHeic = /\.hei[cf](?:$|[?#])/i.test(image);
+    if (!isHeic) return [image];
+    if (image.includes("res.cloudinary.com")) {
+      return [image.replace(/\.heic(?=($|[?#]))/i, ".jpg").replace(/\.heif(?=($|[?#]))/i, ".jpg")];
+    }
+    console.warn("[OpenRouter Image] Skipping unsupported HEIC reference image.");
+    return [];
+  });
+}
+
+function shouldSanitizePrompt(error: any): boolean {
+  const detail = String(error?.message || error).toUpperCase();
+  return detail.includes("CONTENT_FILTER") || detail.includes("PROHIBITED_CONTENT") || detail.includes("SAFETY");
+}
+
 /**
  * Image generation qua OpenRouter /chat/completions v�:i modalities: ["image", "text"]
  * Đây là cách chính thức theo OpenRouter SDK � /images endpoint b�9 geo-block Vietnam
@@ -216,7 +246,8 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
   const ratioKey = params.aspectRatio || "1:1";
   const dimensions = ASPECT_RATIO_MAP[ratioKey] || ASPECT_RATIO_MAP["1:1"];
   const aspectRatioInstruction = `Generate the image with aspect ratio ${ratioKey} (${dimensions.width}x${dimensions.height} pixels).`;
-  const finalPrompt = `${params.prompt}\n\n${aspectRatioInstruction}`;
+  const referenceImages = resolveReferenceImages(params.referenceImages);
+  const finalPrompt = `${params.prompt}${buildReferenceCompositionInstruction(referenceImages.length)}\n\n${aspectRatioInstruction}`;
 
   const tryFluxSchnell = async (prompt: string): Promise<{ url: string }> => {
     console.log("[OpenRouter Image] Trying fallback to black-forest-labs/flux-schnell via /api/v1/images...");
@@ -256,17 +287,9 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
     console.log(`[OpenRouter Image] chat+modalities | model=${model} | promptLen=${prompt.length} | aspectRatio=${ratioKey} | dimensions=${dimensions.width}x${dimensions.height}`);
 
     const content: any[] = [{ type: "text", text: prompt }];
-    for (const img of params.referenceImages || []) {
-      let finalImg = img;
-      if (typeof finalImg === "string" && (finalImg.toLowerCase().endsWith(".heic") || finalImg.toLowerCase().endsWith(".heif"))) {
-        if (finalImg.includes("res.cloudinary.com")) {
-          finalImg = finalImg.replace(/\.heic$/i, ".jpg").replace(/\.heif$/i, ".jpg");
-        } else {
-          console.warn(`[OpenRouter Image] Skipping unsupported HEIC reference image: ${finalImg}`);
-          continue;
-        }
-      }
-      content.push({ type: "image_url", image_url: { url: finalImg } });
+    for (const [index, imageUrl] of referenceImages.entries()) {
+      content.push({ type: "text", text: REFERENCE_IMAGE_INSTRUCTIONS[index] || `REFERENCE IMAGE ${index + 1}: use this image as a supporting visual constraint.` });
+      content.push({ type: "image_url", image_url: { url: imageUrl } });
     }
 
     const body = {
@@ -281,6 +304,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
 
     const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
       method: "POST",
+      signal: AbortSignal.timeout(120_000),
       headers,
       body: JSON.stringify(body),
     });
@@ -324,11 +348,25 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
     throw new Error("Image response không chứa ảnh.");
   };
 
-  // Main flow with dual fallback
+  // Reference-image composition must never fall back to text-only Flux, because it
+  // would lose the source products/logos that the user asked to preserve.
   try {
     return await tryGemini(primaryModel, finalPrompt);
   } catch (error) {
     console.warn(`[OpenRouter Image] Primary Gemini generation failed: ${error?.message || error}. Trying fallback...`);
+
+    if (referenceImages.length > 0) {
+      const retryPrompt = shouldSanitizePrompt(error)
+        ? `${sanitizePrompt(params.prompt)}${buildReferenceCompositionInstruction(referenceImages.length)}\n\n${aspectRatioInstruction}`
+        : finalPrompt;
+      console.log(`[OpenRouter Image] Retrying reference composition | sanitized=${retryPrompt !== finalPrompt}`);
+      try {
+        return await tryGemini(primaryModel, retryPrompt);
+      } catch (retryError) {
+        console.error(`[OpenRouter Image] Reference composition retry failed: ${retryError?.message || retryError}`);
+        throw error;
+      }
+    }
 
     // Attempt Flux Schnell via Images API
     try {

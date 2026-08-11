@@ -109,8 +109,14 @@ const generateImageSchema = {
   body: Joi.object({
     prompt: Joi.string().required(),
     aspectRatio: Joi.string().optional(),
-    modelName: Joi.string().optional(),
+    modelName: Joi.string().valid(
+      "gemini-banana-flash",
+      "gemini-banana-pro",
+      "google/gemini-3.1-flash-image",
+      "google/gemini-3-pro-image"
+    ).optional(),
     resolution: Joi.string().optional(),
+    negativePrompt: Joi.string().optional().allow(""),
     existingImageUris: Joi.array().items(Joi.string()).optional(),
   }),
 };

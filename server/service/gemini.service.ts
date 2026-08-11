@@ -2025,13 +2025,8 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
             if (imageResult.isMock) {
               post.imageUrl = imageResult.url;
             } else {
-              try {
-                const uploadedUrl = await cloudinaryService.uploadMedia(imageResult.url, "igen_erp");
-                post.imageUrl = uploadedUrl;
-              } catch (clErr) {
-                console.error("[developMarketingIdea] Cloudinary upload image failed, fallback to raw url:", clErr);
-                post.imageUrl = imageResult.url;
-              }
+              // generateImage already persists the result to Cloudinary.
+              post.imageUrl = imageResult.url;
             }
           } catch (err) {
             console.error(`[developMarketingIdea] Error generating image for post on ${post.channel}:`, err);
@@ -2080,7 +2075,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
    */
   async generateImage(
     prompt: string,
-    options?: { aspectRatio?: string; modelName?: string; resolution?: string; existingImageUris?: string[] }
+    options?: { aspectRatio?: string; modelName?: string; resolution?: string; negativePrompt?: string; existingImageUris?: string[] }
   ): Promise<{ url: string; isMock: boolean }> {
     if (!process.env.OPENROUTER_API_KEY) {
       throw new Error("OPENROUTER_API_KEY chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh trong file .env.");
@@ -2095,14 +2090,23 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
    */
   async _generateImageWithOpenRouter(
     prompt: string,
-    options?: { aspectRatio?: string; resolution?: string; existingImageUris?: string[]; modelName?: string }
+    options?: { aspectRatio?: string; resolution?: string; negativePrompt?: string; existingImageUris?: string[]; modelName?: string }
   ): Promise<{ url: string; isMock: boolean }> {
-    const model = process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-3.1-flash-image";
+    const requestedModel = String(options?.modelName || "").trim();
+    const model = requestedModel === "gemini-banana-pro"
+      ? "google/gemini-3-pro-image"
+      : requestedModel === "gemini-banana-flash"
+        ? "google/gemini-3.1-flash-image"
+        : requestedModel || (process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-3.1-flash-image");
+    const negativePrompt = String(options?.negativePrompt || "").trim();
+    const finalPrompt = negativePrompt
+      ? `${prompt}\n\nAvoid the following: ${negativePrompt}`
+      : prompt;
     console.log(`[OpenRouter Image] Generating | model=${model} | promptLen=${prompt.length}`);
 
     try {
       const result = await openrouterGenerateImage({
-        prompt,
+        prompt: finalPrompt,
         model,
         aspectRatio: options?.aspectRatio,
         resolution: options?.resolution,
@@ -2110,8 +2114,8 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
       });
       let imageUrl = result.url;
 
-      if (imageUrl.startsWith("data:")) {
-        console.log("[OpenRouter Image] Got base64, uploading to Cloudinary...");
+      if (!imageUrl.includes("res.cloudinary.com")) {
+        console.log("[OpenRouter Image] Persisting generated image to Cloudinary...");
         imageUrl = await cloudinaryService.uploadMedia(imageUrl, "igen_erp/generated_images");
       }
 
@@ -2379,7 +2383,10 @@ Do not include markdown blocks or any text other than the JSON object.`
       ];
 
       const systemMessage = optimizeMessages[0].content;
-      const userText = `Translate and optimize this media brief into English while preserving the exact topic, context, audience, business meaning, and factual constraints from the original input: ${normalizedDescription}`;
+      const referenceRoleInstruction = (imageUris?.length || 0) >= 2
+        ? " Unless the user's brief explicitly assigns roles differently, reference images are ordered: image 1 is the poster background/template, image 2 is the hero product or subject to preserve, and image 3 (if present) is a logo or secondary asset. Write an image-editing/composition prompt that keeps those roles distinct and makes the integration natural."
+        : "";
+      const userText = `Translate and optimize this media brief into English while preserving the exact topic, context, audience, business meaning, and factual constraints from the original input: ${normalizedDescription}.${referenceRoleInstruction}`;
       const result = await generateText(GEMINI_TEXT_MODEL, userText, {
         systemInstruction: systemMessage,
         responseMimeType: "application/json",
