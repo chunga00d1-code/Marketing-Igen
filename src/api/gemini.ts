@@ -323,7 +323,7 @@ export const geminiApi = {
    */
   async generateImage(
     prompt: string,
-    options?: { aspectRatio?: string; modelName?: string; resolution?: string; existingImageUris?: string[] }
+    options?: { aspectRatio?: string; modelName?: string; resolution?: string; negativePrompt?: string; existingImageUris?: string[] }
   ): Promise<{ url: string; isMock: boolean; record?: any }> {
     const headers = await getHeaders(true);
     const response = await fetch('/api/v1/gemini/generate-image', {
