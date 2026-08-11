@@ -890,13 +890,13 @@ export const geminiController = {
    */
   async generateImage(req: Request, res: Response) {
     try {
-      const { prompt, aspectRatio, modelName, resolution, existingImageUris } = req.body;
+      const { prompt, aspectRatio, modelName, resolution, negativePrompt, existingImageUris } = req.body;
       const userId = (req as any).user?.id;
       if (!userId) {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
 
-      const model = String(modelName || "gemini-3.1-flash-image-preview").toLowerCase();
+      const model = String(modelName || process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-3.1-flash-image").toLowerCase();
       const cost = model.includes("pro") ? 57 : 27.5;
 
       await walletService.checkBalance(userId, cost);
@@ -904,6 +904,7 @@ export const geminiController = {
         aspectRatio,
         modelName,
         resolution,
+        negativePrompt,
         existingImageUris,
       });
 
@@ -913,6 +914,7 @@ export const geminiController = {
           aspectRatio,
           resolution,
           modelName,
+          negativePrompt,
         });
       }
 

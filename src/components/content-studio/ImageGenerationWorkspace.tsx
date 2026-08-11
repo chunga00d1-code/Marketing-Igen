@@ -224,6 +224,17 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
     toast.success("Đã chọn ảnh làm ảnh tham chiếu đầu vào!");
   };
 
+  const moveReferenceImage = (index: number, direction: -1 | 1) => {
+    const destination = index + direction;
+    setInputImageUrls((current) => {
+      if (destination < 0 || destination >= current.length) return current;
+      const next = [...current];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      return next;
+    });
+    setIsPromptAnalyzed(false);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -300,6 +311,7 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
         aspectRatio,
         modelName: imageModel,
         resolution,
+        negativePrompt,
         existingImageUris: inputImageUrls,
       });
 
@@ -307,18 +319,15 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
         setGeneratedImageUrl(response.url);
 
         if (activeCardId) {
-          toast.success('Tạo ảnh AI thành công! Đang tải lên Cloudinary...');
           try {
-            const filename = `image_${Date.now()}.png`;
-            const cloudinaryUrl = await marketingService.uploadMediaToStorage(response.url, filename, 'image');
-            await marketingService.updateCardMedia(cloudinaryUrl, 'image', [activeCardId]);
+            await marketingService.updateCardMedia(response.url, 'image', [activeCardId]);
             if (onMediaSaved) {
-              onMediaSaved(activeCardId, cloudinaryUrl, 'image');
+              onMediaSaved(activeCardId, response.url, 'image');
             }
-            toast.success('Lưu ảnh lên Cloudinary và gắn link với content thành công!');
+            toast.success('Đã gắn ảnh AI vào content thành công!');
           } catch (uploadError: any) {
-            console.error('Lỗi upload Cloudinary:', uploadError);
-            toast.error('Tạo ảnh thành công nhưng không thể lưu lên Cloudinary hoặc gắn link.');
+            console.error('Lỗi gắn ảnh vào content:', uploadError);
+            toast.error('Tạo ảnh thành công nhưng không thể gắn link vào content.');
           }
         } else {
           toast.success('Tạo ảnh AI và đồng bộ hóa thành công!');
@@ -445,6 +454,9 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
                   {inputImageUrls.map((url, idx) => (
                     <div key={idx} className="relative aspect-square border border-slate-200 rounded-xl overflow-hidden bg-white group shadow-xs">
                       <img src={url} alt="Ref source" className="w-full h-full object-cover" />
+                      <span className="absolute bottom-1 left-1 right-1 rounded bg-slate-950/75 px-1.5 py-1 text-center text-[8px] font-bold text-white">
+                        {idx === 0 ? 'Nền / template' : idx === 1 ? 'Sản phẩm / chủ thể' : 'Logo / ảnh phụ'}
+                      </span>
                       <button
                         type="button"
                         onClick={() => setPreviewImageUrl(url)}
@@ -453,6 +465,26 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
                       >
                         <ZoomIn className="h-3 w-3" />
                       </button>
+                      {idx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => moveReferenceImage(idx, -1)}
+                          className="absolute bottom-7 left-1 p-1 bg-black/70 hover:bg-black text-white rounded-full transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                          title="Đưa ảnh lên trước"
+                        >
+                          <ChevronLeft className="h-3 w-3" />
+                        </button>
+                      )}
+                      {idx < inputImageUrls.length - 1 && (
+                        <button
+                          type="button"
+                          onClick={() => moveReferenceImage(idx, 1)}
+                          className="absolute bottom-7 right-1 p-1 bg-black/70 hover:bg-black text-white rounded-full transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+                          title="Đưa ảnh xuống sau"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {
