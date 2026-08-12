@@ -4,7 +4,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy package management files (only yarn.lock to avoid npm conflicts)
-COPY package.json yarn.lock ./
+COPY package.json yarn.lock .puppeteerrc.cjs ./
 
 # Install ALL dependencies (including devDependencies needed for build)
 # NODE_ENV must NOT be "production" here so devDeps are installed
@@ -38,10 +38,13 @@ ENV NODE_ENV=production
 ENV PORT=3005
 
 # Copy package files first to leverage Docker build cache for node_modules
-COPY --from=builder /app/package.json /app/yarn.lock ./
+COPY --from=builder /app/package.json /app/yarn.lock /app/.puppeteerrc.cjs ./
 
-# Install only production dependencies
-RUN yarn install --production --frozen-lockfile
+# Install only production dependencies and clean cache
+RUN yarn install --production --frozen-lockfile \
+    && yarn cache clean \
+    && rm -rf /usr/local/share/.cache/yarn \
+    && rm -rf /root/.cache/yarn
 
 # Fail the image build before deployment if Sharp or its bundled musl libvips is missing.
 RUN node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"

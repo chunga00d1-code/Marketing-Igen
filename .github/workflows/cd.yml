@@ -152,8 +152,9 @@ jobs:
             # Khởi động lại container mới (Docker compose tự động recreate và restart với downtime tối thiểu)
             IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose up -d --remove-orphans
 
-            # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ
+            # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ và build cache
             docker image prune -f
+            docker builder prune -f
 
       # --- Triển khai lên Production (nhánh production) ---
       - name: Copy docker-compose.yml to Production VPS
@@ -200,5 +201,6 @@ jobs:
             # Khởi động lại container mới
             IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose up -d --remove-orphans
 
-            # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ
+            # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ và build cache
             docker image prune -f
+            docker builder prune -f
