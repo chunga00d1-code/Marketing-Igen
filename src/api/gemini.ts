@@ -337,6 +337,34 @@ export const geminiApi = {
     return response.json();
   },
 
+  async editImage(input: {
+    sourceImageUrl: string;
+    sourceMediaId?: string;
+    instruction: string;
+    regionNote?: string;
+    region?: { x: number; y: number; width: number; height: number };
+    crop?: { x: number; y: number; width: number; height: number };
+    strokes?: Array<{ color?: string; width?: number; points: Array<{ x: number; y: number }> }>;
+    supportingImageUris?: string[];
+    annotationImageUrl?: string;
+    requestId?: string;
+    aspectRatio?: string;
+    modelName?: string;
+    resolution?: string;
+    preserveOutsideRegion?: boolean;
+  }): Promise<{ url: string; isMock: boolean; record?: any }> {
+    const headers = await getHeaders(true);
+    const response = await fetch('/api/v1/gemini/edit-image', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      await handleErrorResponse(response, 'Lỗi khi chỉnh sửa ảnh AI');
+    }
+    return response.json();
+  },
+
   async generateVideo(
     prompt: string,
     durationSeconds?: number,

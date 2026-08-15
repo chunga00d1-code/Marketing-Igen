@@ -21,6 +21,7 @@ import { editVideo as _editVideo, executeLocalRenderJob as _executeLocalRenderJo
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import sharp from "sharp";
 
 const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
@@ -470,7 +471,7 @@ async function generateText(
     const fallbackModel =
       config?.fallbackModel ||
       process.env.FALLBACK_MODEL ||
-      "qwen/qwen-3.6-flash";
+      "google/gemini-2.5-flash";
     console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
 
     try {
@@ -496,6 +497,46 @@ async function generateText(
       throw error; // Throw the original error
     }
   }
+}
+
+type NormalizedImageRegion = { x: number; y: number; width: number; height: number };
+
+const MAX_POSTPROCESS_IMAGE_BYTES = 20 * 1024 * 1024;
+
+async function readImageBuffer(source: string): Promise<Buffer> {
+  if (source.startsWith("data:")) {
+    const match = source.match(/^data:[^;]+;base64,(.+)$/s);
+    if (!match) throw new Error("Ảnh nguồn dạng data URL không hợp lệ.");
+    const buffer = Buffer.from(match[1], "base64");
+    if (buffer.length > MAX_POSTPROCESS_IMAGE_BYTES) throw new Error("Ảnh nguồn vượt quá giới hạn xử lý.");
+    return buffer;
+  }
+
+  const parsed = new URL(source);
+  const cloudName = String(process.env.CLOUDINARY_CLOUD_NAME || "").trim();
+  const isTrustedCloudinaryUrl = parsed.protocol === "https:"
+    && parsed.hostname === "res.cloudinary.com"
+    && cloudName
+    && parsed.pathname.startsWith(`/${cloudName}/`);
+  if (!isTrustedCloudinaryUrl) {
+    throw new Error("Chỉ cho phép xử lý pixel trên ảnh Cloudinary của hệ thống hoặc data URL.");
+  }
+
+  const response = await fetch(source, { signal: AbortSignal.timeout(60_000) });
+  if (!response.ok) throw new Error(`Không thể tải ảnh Cloudinary để xử lý (${response.status}).`);
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > MAX_POSTPROCESS_IMAGE_BYTES) throw new Error("Ảnh nguồn vượt quá giới hạn xử lý.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > MAX_POSTPROCESS_IMAGE_BYTES) throw new Error("Ảnh nguồn vượt quá giới hạn xử lý.");
+  return buffer;
+}
+
+function clampRegion(region: NormalizedImageRegion): NormalizedImageRegion {
+  const x = Math.max(0, Math.min(1, region.x));
+  const y = Math.max(0, Math.min(1, region.y));
+  const width = Math.max(0, Math.min(1 - x, region.width));
+  const height = Math.max(0, Math.min(1 - y, region.height));
+  return { x, y, width, height };
 }
 
 export const geminiService = {
@@ -2075,7 +2116,14 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
    */
   async generateImage(
     prompt: string,
-    options?: { aspectRatio?: string; modelName?: string; resolution?: string; negativePrompt?: string; existingImageUris?: string[] }
+    options?: {
+      aspectRatio?: string;
+      modelName?: string;
+      resolution?: string;
+      negativePrompt?: string;
+      existingImageUris?: string[];
+      referenceImageRoles?: Array<"source" | "supporting" | "annotation">;
+    }
   ): Promise<{ url: string; isMock: boolean }> {
     if (!process.env.OPENROUTER_API_KEY) {
       throw new Error("OPENROUTER_API_KEY chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh trong file .env.");
@@ -2090,7 +2138,14 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
    */
   async _generateImageWithOpenRouter(
     prompt: string,
-    options?: { aspectRatio?: string; resolution?: string; negativePrompt?: string; existingImageUris?: string[]; modelName?: string }
+    options?: {
+      aspectRatio?: string;
+      resolution?: string;
+      negativePrompt?: string;
+      existingImageUris?: string[];
+      referenceImageRoles?: Array<"source" | "supporting" | "annotation">;
+      modelName?: string;
+    }
   ): Promise<{ url: string; isMock: boolean }> {
     const requestedModel = String(options?.modelName || "").trim();
     const model = requestedModel === "gemini-banana-pro"
@@ -2111,6 +2166,7 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
         aspectRatio: options?.aspectRatio,
         resolution: options?.resolution,
         referenceImages: options?.existingImageUris,
+        referenceImageRoles: options?.referenceImageRoles,
       });
       let imageUrl = result.url;
 
@@ -2127,6 +2183,76 @@ Trả về kết quả ở định dạng JSON phù hợp chính xác với cấ
     }
   },
 
+  /**
+   * Composite only the selected edit region over the original source. This
+   * makes "preserve outside the marked area" deterministic after generation.
+   * If source/output aspect ratios differ, return the generated image unchanged
+   * instead of distorting the source image.
+   */
+  async compositeEditedRegion(
+    sourceUrl: string,
+    generatedUrl: string,
+    region: NormalizedImageRegion
+  ): Promise<string> {
+    const sourceBuffer = await readImageBuffer(sourceUrl);
+    const generatedBuffer = await readImageBuffer(generatedUrl);
+    const sourceImage = sharp(sourceBuffer).rotate();
+    const generatedImage = sharp(generatedBuffer).rotate();
+    const [sourceMetadata, generatedMetadata] = await Promise.all([
+      sourceImage.metadata(),
+      generatedImage.metadata(),
+    ]);
+    if (!sourceMetadata.width || !sourceMetadata.height || !generatedMetadata.width || !generatedMetadata.height) {
+      return generatedUrl;
+    }
+
+    const sourceRatio = sourceMetadata.width / sourceMetadata.height;
+    const generatedRatio = generatedMetadata.width / generatedMetadata.height;
+    if (Math.abs(sourceRatio - generatedRatio) > 0.02) {
+      console.warn("[geminiService.compositeEditedRegion] Skipping composite because source/output aspect ratios differ.");
+      return generatedUrl;
+    }
+
+    const width = generatedMetadata.width;
+    const height = generatedMetadata.height;
+    const bounded = clampRegion(region);
+    const left = Math.min(width - 1, Math.max(0, Math.round(bounded.x * width)));
+    const top = Math.min(height - 1, Math.max(0, Math.round(bounded.y * height)));
+    const patchWidth = Math.min(width - left, Math.max(1, Math.round(bounded.width * width)));
+    const patchHeight = Math.min(height - top, Math.max(1, Math.round(bounded.height * height)));
+    const patch = await generatedImage
+      .resize(width, height, { fit: "fill" })
+      .extract({ left, top, width: patchWidth, height: patchHeight })
+      .png()
+      .toBuffer();
+    const composed = await sourceImage
+      .resize(width, height, { fit: "fill" })
+      .composite([{ input: patch, left, top }])
+      .png()
+      .toBuffer();
+    return cloudinaryService.uploadMediaBuffer(composed, "igen_erp/generated_images");
+  },
+
+  /** Apply the requested normalized crop to the generated result with pixels. */
+  async cropImageToRegion(generatedUrl: string, region: NormalizedImageRegion): Promise<string> {
+    const generatedBuffer = await readImageBuffer(generatedUrl);
+    const generatedImage = sharp(generatedBuffer).rotate();
+    const metadata = await generatedImage.metadata();
+    if (!metadata.width || !metadata.height) return generatedUrl;
+
+    const width = metadata.width;
+    const height = metadata.height;
+    const bounded = clampRegion(region);
+    const left = Math.min(width - 1, Math.max(0, Math.round(bounded.x * width)));
+    const top = Math.min(height - 1, Math.max(0, Math.round(bounded.y * height)));
+    const cropWidth = Math.min(width - left, Math.max(1, Math.round(bounded.width * width)));
+    const cropHeight = Math.min(height - top, Math.max(1, Math.round(bounded.height * height)));
+    const cropped = await generatedImage
+      .extract({ left, top, width: cropWidth, height: cropHeight })
+      .png()
+      .toBuffer();
+    return cloudinaryService.uploadMediaBuffer(cropped, "igen_erp/generated_images");
+  },
 
   /**
    * Sinh video AI báº±ng model Veo3 hoáº·c Veo2
@@ -2342,6 +2468,7 @@ Hãy tối ưu hóa văn bản gốc của người dùng để biến nó thàn
         camera_parameters: "",
         optimized_english_prompt: optimizedPrompt,
         negative_prompt: "ugly, blurry, low quality",
+        isLocalFallback: true,
       };
     };
 
@@ -2368,6 +2495,7 @@ If the prompt is about software, ecommerce, omnichannel, logistics, operations, 
 Translate faithfully from Vietnamese to English when needed. Semantic fidelity is more important than creative embellishment.
 Do not introduce new objects, characters, industries, locations, demographics, props, outfits, or claims unless they are explicitly grounded in the source input or attached references.
 When source files or images are provided, use them as constraints and preserve the same meaning as closely as possible.
+Treat a request to rotate, change the camera angle/view, reposition, retouch, remove, or replace an element as a constrained image edit only when the user explicitly selects WORKFLOW MODE: IMAGE EDIT, or when no workflow mode is supplied. In IMAGE EDIT mode, keep every unmentioned element unchanged. Do not add text, a banner layout, logos, CTA buttons, accessories, props, or extra subjects. For example, a request for a side view must explicitly require a true direct side-profile view, not a three-quarter view.
 Output MUST be a valid JSON object matching this schema:
 {
   "subject": "string",
@@ -2383,16 +2511,42 @@ Do not include markdown blocks or any text other than the JSON object.`
       ];
 
       const systemMessage = optimizeMessages[0].content;
-      const referenceRoleInstruction = (imageUris?.length || 0) >= 2
-        ? " Unless the user's brief explicitly assigns roles differently, reference images are ordered: image 1 is the poster background/template, image 2 is the hero product or subject to preserve, and image 3 (if present) is a logo or secondary asset. Write an image-editing/composition prompt that keeps those roles distinct and makes the integration natural."
+      const workflowMode = /WORKFLOW MODE:\s*IMAGE EDIT/i.test(normalizedDescription)
+        ? "edit"
+        : /WORKFLOW MODE:\s*IMAGE COMPOSITION/i.test(normalizedDescription)
+          ? "compose"
+          : /WORKFLOW MODE:\s*CREATE FROM PROMPT/i.test(normalizedDescription)
+            ? "prompt"
+            : null;
+      const workflowInstruction = workflowMode === "edit"
+        ? " The selected workflow is IMAGE EDIT. Reference image 1 is the source image to preserve. Any later references are supporting examples for the requested angle, style, composition, or detail; use only relevant traits, never replace the source subject, and do not make a collage. Describe only the requested change."
+        : workflowMode === "compose"
+          ? " The selected workflow is IMAGE COMPOSITION. Combine the references according to the user's explicit prompt. Use displayed order only as a positional cue and infer each image's role from the prompt and visual content; do not impose fixed background, subject, or logo roles."
+          : workflowMode === "prompt"
+            ? " The selected workflow is CREATE FROM PROMPT. Create from the text; references are visual inspiration only and must not be treated as source assets to preserve or combine unless the user explicitly says so."
+            : "";
+      const referenceRoleInstruction = (workflowMode === "compose" || (!workflowMode && (imageUris?.length || 0) >= 2))
+        ? " Unless the user's brief explicitly assigns roles differently, reference images are ordered: image 1 is the background/template, image 2 is the hero product or subject to preserve, and image 3 (if present) is a logo or secondary asset. Write a composition prompt that keeps those roles distinct and makes the integration natural."
         : "";
-      const userText = `Translate and optimize this media brief into English while preserving the exact topic, context, audience, business meaning, and factual constraints from the original input: ${normalizedDescription}.${referenceRoleInstruction}`;
-      const result = await generateText(GEMINI_TEXT_MODEL, userText, {
+      const userText = `Translate and optimize this media brief into English while preserving the exact topic, context, audience, business meaning, and factual constraints from the original input: ${normalizedDescription}.${workflowInstruction}${referenceRoleInstruction}`;
+      const result = await generateText(modelName || GEMINI_TEXT_MODEL, userText, {
         systemInstruction: systemMessage,
         responseMimeType: "application/json",
         images: imageUris?.filter((u: string) => u && typeof u === "string"),
+        // Prompt optimization only needs a compact JSON object. Keeping this
+        // bounded prevents OpenRouter from reserving the global 65k-token
+        // budget and rejecting otherwise valid requests with HTTP 402.
+        maxTokens: 4_096,
+        maxRetries: 1,
+        fallbackMaxRetries: 1,
+        fallbackModel:
+          process.env.IMAGE_PROMPT_FALLBACK_MODEL ||
+          "google/gemini-2.5-flash",
       });
-      return safeParseJson(result.text);
+      const parsed = safeParseJson(result.text);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? { ...parsed, isLocalFallback: false }
+        : parsed;
     } catch (error: any) {
       console.error("[geminiService.optimizeImagePrompt] Gemini Error, fallback to local optimizer:", error);
       return getMockImagePrompt();

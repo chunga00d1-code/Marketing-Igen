@@ -107,7 +107,7 @@ const developSchema = {
 
 const generateImageSchema = {
   body: Joi.object({
-    prompt: Joi.string().required(),
+    prompt: Joi.string().trim().min(1).max(20_000).required(),
     aspectRatio: Joi.string().optional(),
     modelName: Joi.string().valid(
       "gemini-banana-flash",
@@ -117,7 +117,53 @@ const generateImageSchema = {
     ).optional(),
     resolution: Joi.string().optional(),
     negativePrompt: Joi.string().optional().allow(""),
-    existingImageUris: Joi.array().items(Joi.string()).optional(),
+    existingImageUris: Joi.array().items(Joi.string().max(2_000_000)).max(3).optional(),
+  }),
+};
+
+const normalizedImageRegionSchema = Joi.object({
+  x: Joi.number().min(0).max(1).required(),
+  y: Joi.number().min(0).max(1).required(),
+  width: Joi.number().greater(0).max(1).required(),
+  height: Joi.number().greater(0).max(1).required(),
+}).custom((value, helpers) => {
+  if (value.x + value.width > 1 || value.y + value.height > 1) {
+    return helpers.error("any.invalid");
+  }
+  return value;
+}).messages({ "any.invalid": "Vùng chọn phải nằm hoàn toàn trong ảnh." });
+
+const editImageSchema = {
+  body: Joi.object({
+    sourceImageUrl: Joi.string().max(2_000_000).required(),
+    sourceMediaId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional().messages({
+      "string.pattern.base": "Mã ảnh nguồn phải là định dạng MongoDB ObjectId hợp lệ.",
+    }),
+    annotationImageUrl: Joi.string().max(2_000_000).optional(),
+    requestId: Joi.string().trim().max(100).optional(),
+    instruction: Joi.string().trim().min(2).max(4_000).required(),
+    regionNote: Joi.string().trim().max(2_000).allow("").optional(),
+    region: normalizedImageRegionSchema.optional(),
+    crop: normalizedImageRegionSchema.optional(),
+    strokes: Joi.array().items(
+      Joi.object({
+        color: Joi.string().max(32).optional(),
+        width: Joi.number().min(0).max(1).optional(),
+        points: Joi.array().items(
+          Joi.object({ x: Joi.number().min(0).max(1).required(), y: Joi.number().min(0).max(1).required() })
+        ).min(1).max(500).required(),
+      })
+    ).max(20).optional(),
+    supportingImageUris: Joi.array().items(Joi.string().max(2_000_000)).max(2).optional(),
+    aspectRatio: Joi.string().optional(),
+    modelName: Joi.string().valid(
+      "gemini-banana-flash",
+      "gemini-banana-pro",
+      "google/gemini-3.1-flash-image",
+      "google/gemini-3-pro-image"
+    ).optional(),
+    resolution: Joi.string().optional(),
+    preserveOutsideRegion: Joi.boolean().default(true),
   }),
 };
 
@@ -188,8 +234,9 @@ const optimizeScriptSchema = {
 
 const optimizePromptSchema = {
   body: Joi.object({
-    description: Joi.string().required(),
-    imageUris: Joi.array().items(Joi.string()).optional(),
+    description: Joi.string().trim().min(1).max(30_000).required(),
+    imageUris: Joi.array().items(Joi.string().max(2_000_000)).max(3).optional(),
+    modelName: Joi.string().max(100).optional(),
   }),
 };
 
@@ -303,6 +350,7 @@ geminiRouter.post("/upload-document", requireAuth as any, requireKnowledgeManage
 
 // Xưởng nội dung APIs (requireAuth bảo vệ tài khoản lưu lịch sử)
 geminiRouter.post("/generate-image", requireAuth as any, validateRequest(generateImageSchema), geminiController.generateImage);
+geminiRouter.post("/edit-image", requireAuth as any, validateRequest(editImageSchema), geminiController.editImage);
 geminiRouter.post("/generate-video", requireAuth as any, validateRequest(generateVideoSchema), geminiController.generateVideo);
 geminiRouter.post("/edit-video", requireAuth as any, validateRequest(editVideoSchema), geminiController.editVideo);
 geminiRouter.post("/analyze-video-style", requireAuth as any, validateRequest(analyzeVideoStyleSchema), geminiController.analyzeVideoStyle);
