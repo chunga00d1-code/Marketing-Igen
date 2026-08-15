@@ -94,6 +94,25 @@ function handleGeminiError(res: Response, error: any, defaultMessage: string) {
 const DRIVE_PDF_PRIMARY_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 const DRIVE_PDF_FALLBACK_MODEL = "gemini-2.5-flash";
 
+const IMAGE_CROP_ASPECT_RATIOS = [
+  { key: "1:1", value: 1 },
+  { key: "16:9", value: 16 / 9 },
+  { key: "9:16", value: 9 / 16 },
+  { key: "4:3", value: 4 / 3 },
+  { key: "3:4", value: 3 / 4 },
+  { key: "3:2", value: 3 / 2 },
+  { key: "2:3", value: 2 / 3 },
+] as const;
+
+function getClosestImageAspectRatio(region: { width: number; height: number }): string {
+  const ratio = Math.max(0.01, region.width) / Math.max(0.01, region.height);
+  return IMAGE_CROP_ASPECT_RATIOS.reduce((closest, candidate) => {
+    const distance = Math.abs(Math.log(ratio / candidate.value));
+    const closestDistance = Math.abs(Math.log(ratio / closest.value));
+    return distance < closestDistance ? candidate : closest;
+  }).key;
+}
+
 function isGeminiModelNotFound(error: any): boolean {
   const errorMsg = error?.message || String(error);
   return error?.status === 404 || errorMsg.includes("is not found for API version") || errorMsg.includes("\"status\":\"NOT_FOUND\"");
@@ -931,6 +950,190 @@ export const geminiController = {
   },
 
   /**
+   * POST /api/v1/gemini/edit-image
+   * Region-aware image edit. Reference image 1 is always the authoritative source.
+   */
+  async editImage(req: Request, res: Response) {
+    try {
+      const {
+        sourceImageUrl,
+        sourceMediaId,
+        instruction,
+        regionNote,
+        region,
+        crop,
+        strokes,
+        supportingImageUris,
+        annotationImageUrl,
+        requestId,
+        aspectRatio,
+        modelName,
+        resolution,
+        preserveOutsideRegion = true,
+      } = req.body;
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
+      }
+
+      if (requestId) {
+        const existingRecord = await AIMediaModel.findOne({
+          userId,
+          mediaType: "image",
+          "metadata.requestId": requestId,
+        }).lean();
+        if (existingRecord) {
+          return res.status(200).json({
+            status: "success",
+            url: existingRecord.url,
+            isMock: false,
+            record: existingRecord,
+            replayed: true,
+          });
+        }
+      }
+
+      const sourceRecord = sourceMediaId
+        ? await AIMediaModel.findOne({ _id: sourceMediaId, userId, mediaType: "image" }).lean()
+        : null;
+      if (sourceMediaId && !sourceRecord) {
+        return res.status(404).json({ status: "error", message: "Không tìm thấy ảnh nguồn hoặc bạn không có quyền sử dụng ảnh này" });
+      }
+
+      const sourceUrl = sourceRecord?.url || sourceImageUrl;
+      const normalizedRegion = region
+        ? `TARGET REGION (normalized image coordinates): x=${region.x.toFixed(4)}, y=${region.y.toFixed(4)}, width=${region.width.toFixed(4)}, height=${region.height.toFixed(4)}.`
+        : "TARGET REGION: no selection; apply the requested edit to the full image.";
+      const annotationInstruction = annotationImageUrl
+        ? "ANNOTATED REFERENCE: reference image 2 is a marked copy of the source. Use its visible selection/crop/brush marks only as a location map; never reproduce any mark in the output."
+        : "";
+      const strokeInstruction = Array.isArray(strokes) && strokes.length > 0
+        ? `VISUAL MARK GUIDANCE: ${strokes.map((stroke: { points: Array<{ x: number; y: number }> }, index: number) => {
+          const xs = stroke.points.map((point) => point.x);
+          const ys = stroke.points.map((point) => point.y);
+          return `mark ${index + 1} near x=${Math.min(...xs).toFixed(4)}-${Math.max(...xs).toFixed(4)}, y=${Math.min(...ys).toFixed(4)}-${Math.max(...ys).toFixed(4)}`;
+        }).join("; ")}. Treat these locations as extra edit guidance and never render marks in the output.`
+        : "";
+      const model = String(modelName || process.env.OPENROUTER_IMAGE_MODEL || "google/gemini-3.1-flash-image").toLowerCase();
+      const cost = model.includes("pro") ? 57 : 27.5;
+      await walletService.checkBalance(userId, cost);
+
+      // A crop is a framing operation, not a coordinate to apply blindly to
+      // the newly rendered image. AI models can change the framing/aspect
+      // ratio, so crop the authoritative source first and render that crop as
+      // the complete output. This prevents the second pixel crop from cutting
+      // off the subject (the bug that produced partial scooter images).
+      let generationSourceUrl = sourceUrl;
+      let generationAnnotationUrl = annotationImageUrl;
+      let generationAspectRatio = aspectRatio;
+      let cropApplied = false;
+      if (crop) {
+        try {
+          generationSourceUrl = await geminiService.cropImageToRegion(sourceUrl, crop);
+          if (annotationImageUrl) {
+            generationAnnotationUrl = await geminiService.cropImageToRegion(annotationImageUrl, crop);
+          }
+          generationAspectRatio = getClosestImageAspectRatio(crop);
+          cropApplied = true;
+        } catch (cropError: any) {
+          console.warn("[geminiController.editImage] Source crop skipped; keeping original framing:", cropError?.message || cropError);
+        }
+      }
+
+      const cropInstruction = crop
+        ? cropApplied
+          ? `CROP MODE: reference image 1 is already cropped to the requested framing. Fill the complete output with this crop, keep the full visible subject, do not zoom further, and do not cut off any part of the visible source crop. Use output aspect ratio ${generationAspectRatio || "the crop framing"}.`
+          : "CROP MODE: preserve the complete source framing; do not zoom in or cut off the subject."
+        : "";
+
+      const editPrompt = [
+        "GENERATION MODE: IMAGE EDIT.",
+        "Reference image 1 is the authoritative source image. Preserve its identity, geometry, materials, lighting, background, and all unmentioned details.",
+        normalizedRegion,
+        preserveOutsideRegion ? "Preserve everything outside the target region as closely as possible." : "The requested edit may affect the wider image when necessary.",
+        `MAIN EDIT INSTRUCTION: ${instruction}`,
+        regionNote ? `REGION NOTE: ${regionNote}` : "",
+        strokeInstruction,
+        annotationInstruction,
+        cropInstruction,
+        "Do not reproduce any selection box, brush stroke, arrow, annotation, or note text in the generated image. Do not add unrelated subjects or make a collage.",
+      ].filter(Boolean).join("\n\n");
+
+      const references: string[] = [generationSourceUrl];
+      const referenceImageRoles: Array<"source" | "supporting" | "annotation"> = ["source"];
+      if (generationAnnotationUrl && generationAnnotationUrl !== generationSourceUrl) {
+        references.push(generationAnnotationUrl);
+        referenceImageRoles.push("annotation");
+      }
+      for (const url of (supportingImageUris || []).filter((value: string) => value && value !== generationSourceUrl && value !== generationAnnotationUrl)) {
+        if (references.length >= 4) break;
+        references.push(url);
+        referenceImageRoles.push("supporting");
+      }
+      const result = await geminiService.generateImage(editPrompt, {
+        aspectRatio: generationAspectRatio,
+        modelName,
+        resolution,
+        existingImageUris: references,
+        referenceImageRoles,
+      });
+
+      let outputUrl = result.url;
+      if (preserveOutsideRegion && region && !cropApplied) {
+        try {
+          outputUrl = await geminiService.compositeEditedRegion(sourceUrl, outputUrl, region);
+        } catch (compositeError: any) {
+          console.warn("[geminiController.editImage] Pixel composite skipped:", compositeError?.message || compositeError);
+        }
+      }
+
+      const parentMediaId = sourceRecord?._id?.toString();
+      const rootMediaId = sourceRecord?.metadata?.rootMediaId || parentMediaId;
+      const revision = Number(sourceRecord?.metadata?.revision || 0) + 1;
+      let record;
+      try {
+        record = await geminiService.saveGeneratedMediaRecord(userId, "image", outputUrl, editPrompt, {
+          aspectRatio: generationAspectRatio,
+          resolution,
+          modelName,
+          provider: "openrouter",
+          parentMediaId,
+          rootMediaId,
+          revision,
+          editType: crop ? "crop" : region ? "region" : "global",
+          sourceImageUrl: sourceUrl,
+          referenceImageUrls: (supportingImageUris || []).filter((url: string) => /^https?:\/\//i.test(url)).slice(0, 2),
+          editInstruction: instruction,
+          regionNote,
+          editStrokes: strokes,
+          editRegion: region,
+          cropRegion: crop,
+          preserveOutsideRegion,
+          requestId,
+        });
+      } catch (saveError: any) {
+        if (saveError?.code === 11000 && requestId) {
+          const existingRecord = await AIMediaModel.findOne({
+            userId,
+            mediaType: "image",
+            "metadata.requestId": requestId,
+          }).lean();
+          if (existingRecord) {
+            return res.status(200).json({ status: "success", url: existingRecord.url, isMock: false, record: existingRecord, replayed: true });
+          }
+        }
+        throw saveError;
+      }
+
+      await walletService.deductBalance(userId, cost, "Chi phí chỉnh sửa ảnh AI");
+      return res.status(200).json({ ...result, url: record.url, record });
+    } catch (error: any) {
+      console.error("[geminiController.editImage] Error:", error);
+      return handleGeminiError(res, error, "Lỗi chỉnh sửa ảnh AI");
+    }
+  },
+
+  /**
    * POST /api/v1/gemini/generate-video
    */
   async generateVideo(req: Request, res: Response) {
@@ -1349,7 +1552,11 @@ export const geminiController = {
 
       await walletService.checkBalance(userId, API_COSTS.GEMINI_OPTIMIZE);
       const result = await geminiService.optimizeImagePrompt(description, imageUris, modelName);
-      await walletService.deductBalance(userId, API_COSTS.GEMINI_OPTIMIZE, "Phí tối ưu prompt sinh ảnh AI");
+      // A local fallback keeps the editor usable when both providers fail,
+      // but it is not a billable AI generation.
+      if (result?.isLocalFallback !== true) {
+        await walletService.deductBalance(userId, API_COSTS.GEMINI_OPTIMIZE, "Phí tối ưu prompt sinh ảnh AI");
+      }
       return res.status(200).json(result);
     } catch (error: any) {
       console.error("[geminiController.optimizeImagePrompt] Error:", error);

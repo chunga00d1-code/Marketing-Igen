@@ -6,16 +6,25 @@ import { toast } from '../../pages/Toast';
 import {
   Loader2, ImageIcon, X, Wand2, UploadCloud, Download,
   Images, Check, Sparkles, Trash2,
-  ChevronLeft, ChevronRight, ZoomIn
+  ChevronLeft, ChevronRight, ZoomIn, SlidersHorizontal, ChevronDown
 } from 'lucide-react';
 import { formatAiModelName } from '../../utils/usage-tracker';
 import { marketingService } from '../../services/marketingService';
 import { getAccessToken } from '../../services/authService';
+import { ImageDetailEditor } from './ImageDetailEditor';
+
+type ImageCreationMode = 'prompt' | 'edit' | 'compose';
+
+const imageCreationModes: { value: ImageCreationMode; label: string; description: string }[] = [
+  { value: 'prompt', label: 'Tạo từ prompt', description: 'Tạo ảnh mới từ mô tả; ảnh tải lên chỉ là tham khảo.' },
+  { value: 'edit', label: 'Chỉnh sửa ảnh', description: 'Giữ ảnh nguồn và chỉ thay đổi đúng nội dung bạn yêu cầu.' },
+  { value: 'compose', label: 'Ghép ảnh', description: 'Kết hợp các ảnh theo yêu cầu trong prompt; thứ tự chỉ là gợi ý.' },
+];
 
 export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, initialImage, autoTrigger }: {
   initialPrompt?: string;
   cardId?: string;
-  onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void;
+  onMediaSaved?: (cardId: string, mediaUrl: string, type: 'image' | 'video' | 'audio') => void | Promise<void>;
   initialImage?: string;
   autoTrigger?: boolean;
 }) {
@@ -34,6 +43,8 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
   const [imageModel, setImageModel] = useState('gemini-banana-flash');
   const [resolution, setResolution] = useState('1K');
   const [optimizeModel, setOptimizeModel] = useState('gemini-3.5-flash');
+  const [creationMode, setCreationMode] = useState<ImageCreationMode>('prompt');
+  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
 
   // Input reference image list (base64 data URIs)
   const [inputImageUrls, setInputImageUrls] = useState<string[]>(initialImage ? [initialImage] : []);
@@ -52,7 +63,9 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
   const [isPromptAnalyzed, setIsPromptAnalyzed] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [generatedMediaId, setGeneratedMediaId] = useState<string | undefined>();
   const [showZoomModal, setShowZoomModal] = useState(false);
+  const [showImageDetailEditor, setShowImageDetailEditor] = useState(false);
 
   // History state
   const [history, setHistory] = useState<any[]>([]);
@@ -174,12 +187,19 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
   };
 
   const handleUploadedFiles = async (files: File[]) => {
+    const maxReferenceImages = 3;
+    const availableSlots = maxReferenceImages - inputImageUrls.length;
+    if (availableSlots <= 0) {
+      toast.warning('Bạn chỉ có thể tải tối đa 3 ảnh tham chiếu.');
+      return;
+    }
+    const filesToProcess = files.slice(0, availableSlots);
     setIsUploading(true);
     toast.info("Đang xử lý ảnh tải lên...");
 
     try {
       const newUrls: string[] = [];
-      for (const file of files) {
+      for (const file of filesToProcess) {
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
@@ -198,7 +218,7 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
         }
       }
 
-      setInputImageUrls((prev) => [...prev, ...newUrls].slice(0, 3));
+      setInputImageUrls((prev) => [...prev, ...newUrls].slice(0, maxReferenceImages));
       setIsPromptAnalyzed(false);
       toast.success("Đã tải ảnh lên thành công!");
     } catch (err) {
@@ -215,13 +235,29 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
   };
 
   const handleSelectLibraryImage = (url: string) => {
+    const maxReferenceImages = 3;
+    if (inputImageUrls.includes(url)) {
+      return;
+    }
+    if (inputImageUrls.length >= maxReferenceImages) {
+      toast.warning('Bạn chỉ có thể chọn tối đa 3 ảnh tham chiếu.');
+      return;
+    }
     setInputImageUrls((prev) => {
-      if (prev.includes(url)) return prev;
-      return [...prev, url].slice(0, 3);
+      return [...prev, url].slice(0, maxReferenceImages);
     });
     setIsPromptAnalyzed(false);
     setShowLibraryModal(false);
     toast.success("Đã chọn ảnh làm ảnh tham chiếu đầu vào!");
+  };
+
+  const syncImageToCard = async (mediaUrl: string) => {
+    if (!activeCardId) return;
+    if (onMediaSaved) {
+      await onMediaSaved(activeCardId, mediaUrl, 'image');
+      return;
+    }
+    await marketingService.updateCardMedia(mediaUrl, 'image', [activeCardId]);
   };
 
   const moveReferenceImage = (index: number, direction: -1 | 1) => {
@@ -262,6 +298,15 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
       return;
     }
 
+    if (creationMode === 'edit' && inputImageUrls.length === 0) {
+      toast.warning('Vui lòng tải ảnh nguồn trước khi chỉnh sửa.');
+      return;
+    }
+    if (creationMode === 'compose' && inputImageUrls.length < 2) {
+      toast.warning('Vui lòng tải ít nhất 2 ảnh để ghép ảnh.');
+      return;
+    }
+
     setIsGeneratingPrompt(true);
     try {
       const optimizationBrief = [
@@ -270,13 +315,16 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
         inputImageUrls.length > 0
           ? `Reference images attached: ${inputImageUrls.length}. Preserve the same subject, context, and meaning from the text and references.`
           : "No reference image attached.",
-        "Translate into English and enrich the prompt with appropriate visual details for image generation.",
-        "Infer the requested output format from the user's words. If the user asks for a banner, poster, ad creative, cover, thumbnail, flyer, or social post, the final prompt MUST describe a designed commercial graphic layout, not just a documentary/product photo.",
-        "For banner/ad/poster requests, include: clear hero product/subject, intentional composition, background design, headline area, subheadline area, CTA/button area, brand/logo placeholder if no brand name is provided, clean typography, safe margins, and enough negative space for readable Vietnamese text.",
-        "For product or shop introduction banners, show the product assortment as the hero visual but frame it as a promotional banner design with text zones, not a plain food/product photography scene.",
-        "Only use a purely realistic photo scene when the user explicitly asks for a photo, realistic scene, or lifestyle/workplace photo.",
-        "Preserve all core business details (company name, salary/numbers, location, products) and ensure they are explicitly described to be rendered as clear text in the image.",
-        "Make the final prompt highly descriptive, realistic, and contextually rich, matching the style of professional commercial photography or clean promotional layouts."
+        creationMode === 'edit'
+          ? "WORKFLOW MODE: IMAGE EDIT. Reference image 1 is the source image to preserve. Any later references are supporting examples for the requested angle, style, composition, or detail; use only the relevant traits and never replace the source subject."
+          : creationMode === 'compose'
+            ? "WORKFLOW MODE: IMAGE COMPOSITION. Combine the references according to the user's explicit prompt and the displayed order only as a positional cue. Infer each image's role from the prompt and image content; do not impose a fixed background, subject, or logo role."
+            : "WORKFLOW MODE: CREATE FROM PROMPT. Create a new image from the text; any references are visual inspiration only unless the user says otherwise.",
+        "Translate into English and enrich the prompt with only visual details that are consistent with the original request and references.",
+        "When a reference image is attached and the user asks to rotate, change the angle/view, reposition, retouch, remove, or replace something, this is an IMAGE EDIT request. Preserve the source subject, identity, design, colors, materials, background, and composition unless the user explicitly asks to change them. Describe only the requested edit; do not add a banner, text, logo, CTA, props, or other new elements.",
+        "Infer the requested output format from the user's words. Only if the user explicitly asks for a banner, poster, ad creative, cover, thumbnail, flyer, or social post, describe a designed commercial graphic layout.",
+        "For an explicitly requested banner/ad/poster, include the layout elements requested or necessary for that format. Do not add headline text, CTA, or logo placeholders to a normal image or image-edit request.",
+        "Preserve all explicit details such as company name, salary/numbers, location, and products. Only request readable rendered text when the user explicitly asks for text in the image."
       ].join("\n");
 
       const result = await geminiApi.optimizeImagePrompt(optimizationBrief, inputImageUrls, optimizeModel);
@@ -287,7 +335,11 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
       } else {
         setPrompt(JSON.stringify(result, null, 2));
       }
-      toast.success('Đã tối ưu hóa prompt bằng AI thành công!');
+      if (result.isLocalFallback) {
+        toast.warning('Không kết nối được AI tối ưu prompt; đã dùng bản tối ưu cục bộ và không trừ credit.');
+      } else {
+        toast.success('Đã tối ưu hóa prompt bằng AI thành công!');
+      }
       setIsPromptAnalyzed(true);
     } catch (e: any) {
       toast.error(`Lỗi tối ưu prompt: ${e.message}`);
@@ -301,6 +353,24 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
       toast.warning('Vui lòng nhập prompt hoặc tối ưu hóa prompt trước khi tạo ảnh.');
       return;
     }
+    if (creationMode === 'edit' && inputImageUrls.length === 0) {
+      toast.warning('Vui lòng tải ảnh nguồn trước khi chỉnh sửa.');
+      return;
+    }
+    if (creationMode === 'compose' && inputImageUrls.length < 2) {
+      toast.warning('Vui lòng tải ít nhất 2 ảnh để ghép ảnh.');
+      return;
+    }
+
+    const modeInstruction = creationMode === 'edit'
+      ? 'GENERATION MODE: IMAGE EDIT. Reference image 1 is the source image to preserve and change only as explicitly requested. Later references are supporting examples only; apply relevant visual traits without replacing the source subject or creating a collage.'
+      : creationMode === 'compose'
+        ? 'GENERATION MODE: IMAGE COMPOSITION. Combine the reference images according to the user prompt and their displayed order.'
+        : 'GENERATION MODE: CREATE FROM PROMPT. Create a new image from the prompt; references are inspiration only unless explicitly requested.';
+    const originalEditIntent = creationMode === 'edit' && simplePrompt.trim()
+      ? `\nORIGINAL USER INTENT (Vietnamese; preserve this instruction exactly): ${simplePrompt.trim()}`
+      : '';
+    finalPrompt = `${modeInstruction}${originalEditIntent}\n\n${finalPrompt}`;
 
     setIsGenerating(true);
     setGeneratedImageUrl(null);
@@ -317,13 +387,11 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
 
       if (response.url) {
         setGeneratedImageUrl(response.url);
+        setGeneratedMediaId(response.record?._id || response.record?.id);
 
         if (activeCardId) {
           try {
-            await marketingService.updateCardMedia(response.url, 'image', [activeCardId]);
-            if (onMediaSaved) {
-              onMediaSaved(activeCardId, response.url, 'image');
-            }
+            await syncImageToCard(response.url);
             toast.success('Đã gắn ảnh AI vào content thành công!');
           } catch (uploadError: any) {
             console.error('Lỗi gắn ảnh vào content:', uploadError);
@@ -428,6 +496,47 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
         {/* LEFT COLUMN: Configuration Form */}
         <div className="flex flex-col gap-4 bg-white border border-slate-200/80 p-4 md:p-5 rounded-3xl shadow-sm">
 
+          <div className="flex flex-col gap-1.5">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsModeMenuOpen((open) => !open)}
+                className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-semibold text-slate-700 transition-colors hover:border-cyan-300 hover:bg-cyan-50/40 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                aria-label="Tùy chỉnh chế độ tạo ảnh"
+                aria-expanded={isModeMenuOpen}
+              >
+                <SlidersHorizontal className="h-4 w-4 shrink-0 text-cyan-600" />
+                <span className="flex-1">{imageCreationModes.find((mode) => mode.value === creationMode)?.label}</span>
+                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${isModeMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isModeMenuOpen && (
+                <div className="absolute inset-x-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+                  {imageCreationModes.map((mode) => (
+                    <button
+                      key={mode.value}
+                      type="button"
+                      onClick={() => {
+                        setCreationMode(mode.value);
+                        setIsPromptAnalyzed(false);
+                        setIsModeMenuOpen(false);
+                      }}
+                      className={`w-full rounded-lg px-3 py-2 text-left text-xs transition-colors ${creationMode === mode.value
+                        ? 'bg-cyan-50 font-bold text-cyan-700'
+                        : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                    >
+                      <span className="block font-semibold">{mode.label}</span>
+                      <span className="mt-0.5 block text-[10px] font-normal leading-snug text-slate-400">{mode.description}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-[10px] leading-relaxed text-slate-400">
+              {imageCreationModes.find((mode) => mode.value === creationMode)?.description}
+            </p>
+          </div>
+
           {/* Section 1: Ảnh đầu vào */}
           <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
@@ -455,7 +564,11 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
                     <div key={idx} className="relative aspect-square border border-slate-200 rounded-xl overflow-hidden bg-white group shadow-xs">
                       <img src={url} alt="Ref source" className="w-full h-full object-cover" />
                       <span className="absolute bottom-1 left-1 right-1 rounded bg-slate-950/75 px-1.5 py-1 text-center text-[8px] font-bold text-white">
-                        {idx === 0 ? 'Nền / template' : idx === 1 ? 'Sản phẩm / chủ thể' : 'Logo / ảnh phụ'}
+                        {creationMode === 'edit'
+                          ? idx === 0 ? 'Ảnh nguồn chỉnh sửa' : 'Mẫu tham khảo'
+                          : creationMode === 'prompt'
+                            ? 'Ảnh tham khảo'
+                            : idx === 0 ? 'Nền / template' : idx === 1 ? 'Sản phẩm / chủ thể' : 'Logo / ảnh phụ'}
                       </span>
                       <button
                         type="button"
@@ -770,6 +883,7 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
                         className="relative flex-shrink-0 w-[160px] aspect-square rounded-2xl overflow-hidden border border-slate-150 shadow-xs hover:shadow-md transition-all bg-slate-100 group/card cursor-pointer"
                         onClick={() => {
                           setGeneratedImageUrl(record.url);
+                          setGeneratedMediaId(id);
                           if (record.metadata?.aspectRatio) {
                             setAspectRatio(record.metadata.aspectRatio);
                           }
@@ -843,8 +957,46 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
               <Download className="h-4 w-4" />
               <span>Tải ảnh về máy</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowImageDetailEditor(true)}
+              className="absolute bottom-4 left-4 bg-white/95 hover:bg-white text-slate-900 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md flex items-center gap-1.5 hover:scale-105 active:scale-95"
+              title="Khoanh vùng, phác họa và cải thiện ảnh"
+            >
+              <Wand2 className="h-4 w-4 text-cyan-600" />
+              <span>Chỉnh sửa chi tiết</span>
+            </button>
           </div>
         </div>
+      )}
+
+      {showImageDetailEditor && generatedImageUrl && (
+        <ImageDetailEditor
+          imageUrl={generatedImageUrl}
+          sourceMediaId={generatedMediaId}
+          aspectRatio={aspectRatio}
+          modelName={imageModel}
+          resolution={resolution}
+          supportingImageUris={inputImageUrls}
+          onClose={() => setShowImageDetailEditor(false)}
+          onEdited={async (result) => {
+            setGeneratedImageUrl(result.url);
+            setGeneratedMediaId(result.record?._id || result.record?.id);
+            setShowImageDetailEditor(false);
+            setShowZoomModal(false);
+            if (activeCardId) {
+              try {
+                await syncImageToCard(result.url);
+                toast.success('Đã cập nhật ảnh cải thiện vào content.');
+              } catch (error) {
+                console.error('Không thể đồng bộ ảnh cải thiện vào content:', error);
+                toast.error('Ảnh đã cải thiện nhưng chưa thể cập nhật vào content.');
+              }
+            }
+            void loadHistory();
+          }}
+        />
       )}
 
       {/* Image Library Modal */}

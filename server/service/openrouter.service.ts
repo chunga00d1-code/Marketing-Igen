@@ -160,6 +160,7 @@ export interface OpenRouterImageParams {
   resolution?: string;
   /** Reference images (base64 data URL hoặc https URL) cho image-to-image */
   referenceImages?: string[];
+  referenceImageRoles?: Array<"source" | "supporting" | "annotation">;
 }
 
 const REFERENCE_IMAGE_INSTRUCTIONS = [
@@ -168,10 +169,79 @@ const REFERENCE_IMAGE_INSTRUCTIONS = [
   "REFERENCE IMAGE 3 — DEFAULT LOGO OR SECONDARY ASSET: preserve this asset accurately and place it cleanly as a supporting element. Do not invent, distort, or turn it into unreadable text.",
 ] as const;
 
-function buildReferenceCompositionInstruction(referenceCount: number): string {
+function getGenerationMode(prompt: string): "prompt" | "edit" | "compose" | null {
+  if (/GENERATION MODE:\s*CREATE FROM PROMPT/i.test(prompt)) return "prompt";
+  if (/GENERATION MODE:\s*IMAGE EDIT/i.test(prompt)) return "edit";
+  if (/GENERATION MODE:\s*IMAGE COMPOSITION/i.test(prompt)) return "compose";
+  return null;
+}
+
+/**
+ * Detect a requested camera/viewpoint change without forcing every image edit
+ * into a side profile. This is intentionally based on the user's wording (and
+ * the optimized English prompt), not on the presence of a reference image.
+ */
+function hasCameraViewChangeRequest(prompt: string): boolean {
+  const normalized = prompt.replace(/[–—]/g, "-");
+  const englishViewTerms = /\b(?:side(?:[-\s]?profile)?(?:\s+view)?|profile\s+view|three[-\s]?quarter|front\s+view|rear\s+view|camera\s+(?:angle|viewpoint)|viewpoint|perspective|change\s+(?:the\s+)?(?:camera\s+)?(?:angle|view|perspective)|rotate\s+(?:the\s+)?(?:camera|viewpoint))\b/i;
+  const vietnameseViewTerms = /(?:xoay|đổi|thay|chuyển).{0,40}(?:góc|hướng|camera|máy ảnh|nhìn|ngang|dọc)|(?:góc|hướng|camera|nhìn|ngang|dọc).{0,40}(?:xoay|đổi|thay|chuyển)/i;
+  return englishViewTerms.test(normalized) || vietnameseViewTerms.test(normalized);
+}
+
+function buildReferenceCompositionInstruction(
+  referenceCount: number,
+  prompt: string,
+  referenceImageRoles: Array<"source" | "supporting" | "annotation"> = []
+): string {
+  const mode = getGenerationMode(prompt);
+  const cameraViewInstruction = hasCameraViewChangeRequest(prompt)
+    ? "\n\nCAMERA VIEW TRANSFORMATION (only because the user requested a view/angle change):\nTreat this as a change of camera viewpoint, not a 2D rotation of the image. Preserve the exact same subject and render the specifically requested viewpoint. If the request says side/horizontal view, use a true direct side-profile view with the full side silhouette visible; do not keep a three-quarter, front, or rear angle. Preserve identity, proportions, colors, materials, background, lighting, and every unmentioned detail."
+    : "";
+  if (mode === "prompt") {
+    return "\n\nPROMPT-CREATION MODE:\nCreate a new image from the user's text. Reference images are optional visual inspiration only; do not treat them as a source image, poster template, or assets to combine unless the user explicitly requests that.";
+  }
+  if (mode === "edit") {
+    const hasAnnotation = referenceImageRoles.includes("annotation");
+    return `\n\nIMAGE-EDIT WITH SUPPORTING REFERENCES MODE:\nUse REFERENCE IMAGE 1 as the source image to preserve. If an annotated reference is supplied, use its visible marks only as a location map for the requested edit and never reproduce those marks. Any other reference images are supporting examples only for the requested angle, style, composition, or detail. Do not replace the source subject, merge subjects, or create a collage. Change only what the user's prompt explicitly requests; preserve every unmentioned source-image element.${hasAnnotation ? " The annotated reference is not a second subject; align it to the source image and follow its marked region." : ""}${cameraViewInstruction}`;
+  }
+  if (referenceCount === 1) {
+    return "\n\nSINGLE-IMAGE EDIT MODE:\nUse REFERENCE IMAGE 1 as the source image, not as a poster template. The user's requested change is the only intended change. Preserve the exact subject identity, silhouette, colors, materials, background, lighting, and all unmentioned elements. Do not add text, a headline, CTA, logo, props, accessories, extra subjects, or a commercial layout unless the user's prompt explicitly asks for them. If the prompt requests a side view/profile, render a true direct side-profile view rather than a three-quarter angle.";
+  }
   if (referenceCount < 2) return "";
 
-  return `\n\nSMART POSTER COMPOSITION MODE:\nCreate one coherent commercial poster, not a collage of unrelated images. The user's explicit prompt is the source of truth: if it assigns a different role or order to a reference image, follow that instruction instead of the defaults below. Otherwise, use the supplied order and default roles. Keep the hero subject visually separate from the background, match its lighting, perspective, scale, contact shadow, and color grading to the poster, and preserve readable negative space for copy. Do not duplicate the hero subject. Do not recreate logos or product labels as AI text.\n\n${REFERENCE_IMAGE_INSTRUCTIONS.slice(0, referenceCount).join("\n")}`;
+  const referenceGuidance = mode === "compose"
+    ? Array.from({ length: referenceCount }, (_, index) => `REFERENCE IMAGE ${index + 1}: infer its role from the user's explicit prompt and the visual content; do not impose a fixed background/subject/logo role.`)
+    : REFERENCE_IMAGE_INSTRUCTIONS.slice(0, referenceCount);
+  return `\n\nMULTI-IMAGE COMPOSITION MODE:\nCreate one coherent image, not a collage of unrelated images. The user's explicit prompt is the source of truth and can assign any role or order to the references. Keep distinct subjects visually coherent, match lighting, perspective, scale, contact shadow, and color grading, and do not duplicate a subject or recreate logos as unreadable AI text.\n\n${referenceGuidance.join("\n")}`;
+}
+
+function getReferenceImageInstruction(
+  index: number,
+  referenceCount: number,
+  prompt: string,
+  referenceImageRoles: Array<"source" | "supporting" | "annotation"> = []
+): string {
+  const mode = getGenerationMode(prompt);
+  const role = referenceImageRoles[index];
+  if (role === "annotation") {
+    return `REFERENCE IMAGE ${index + 1} — ANNOTATED EDIT MAP: this is an annotated copy of the source image. Use the visible selection, crop frame, or brush marks only to locate the requested change. Do not copy, preserve, or render any colored marks, boxes, arrows, or annotations in the result.`;
+  }
+  if (role === "source") {
+    return "REFERENCE IMAGE 1 — SOURCE IMAGE FOR A CONSTRAINED EDIT: preserve this exact image and change only what the user's prompt explicitly requests.";
+  }
+  if (mode === "prompt") {
+    return `REFERENCE IMAGE ${index + 1} — OPTIONAL VISUAL INSPIRATION: use only visual traits explicitly requested by the user; do not treat this as an asset to preserve or combine.`;
+  }
+  if (mode === "edit" && index === 0) {
+    return "REFERENCE IMAGE 1 — SOURCE IMAGE FOR A CONSTRAINED EDIT: preserve this exact image and change only what the user's prompt explicitly requests.";
+  }
+  if (mode === "edit") {
+    return `REFERENCE IMAGE ${index + 1} — SUPPORTING EDIT REFERENCE: use only relevant visual traits requested by the user, such as angle, style, composition, or detail. Do not replace or merge the source subject.`;
+  }
+  if (mode === "compose") {
+    return `REFERENCE IMAGE ${index + 1} — COMPOSITION INPUT: infer this image's role from the user's explicit prompt and the image itself. Do not assume it is a background, product, or logo unless requested.`;
+  }
+  return REFERENCE_IMAGE_INSTRUCTIONS[index] || `REFERENCE IMAGE ${index + 1}: use this image as a supporting visual constraint.`;
 }
 
 function resolveReferenceImages(images: string[] | undefined): string[] {
@@ -247,7 +317,8 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
   const dimensions = ASPECT_RATIO_MAP[ratioKey] || ASPECT_RATIO_MAP["1:1"];
   const aspectRatioInstruction = `Generate the image with aspect ratio ${ratioKey} (${dimensions.width}x${dimensions.height} pixels).`;
   const referenceImages = resolveReferenceImages(params.referenceImages);
-  const finalPrompt = `${params.prompt}${buildReferenceCompositionInstruction(referenceImages.length)}\n\n${aspectRatioInstruction}`;
+  const referenceImageRoles = params.referenceImageRoles || [];
+  const finalPrompt = `${params.prompt}${buildReferenceCompositionInstruction(referenceImages.length, params.prompt, referenceImageRoles)}\n\n${aspectRatioInstruction}`;
 
   const tryFluxSchnell = async (prompt: string): Promise<{ url: string }> => {
     console.log("[OpenRouter Image] Trying fallback to black-forest-labs/flux-schnell via /api/v1/images...");
@@ -288,7 +359,8 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
 
     const content: any[] = [{ type: "text", text: prompt }];
     for (const [index, imageUrl] of referenceImages.entries()) {
-      content.push({ type: "text", text: REFERENCE_IMAGE_INSTRUCTIONS[index] || `REFERENCE IMAGE ${index + 1}: use this image as a supporting visual constraint.` });
+      const instruction = getReferenceImageInstruction(index, referenceImages.length, prompt, referenceImageRoles);
+      content.push({ type: "text", text: instruction });
       content.push({ type: "image_url", image_url: { url: imageUrl } });
     }
 
@@ -357,7 +429,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
 
     if (referenceImages.length > 0) {
       const retryPrompt = shouldSanitizePrompt(error)
-        ? `${sanitizePrompt(params.prompt)}${buildReferenceCompositionInstruction(referenceImages.length)}\n\n${aspectRatioInstruction}`
+        ? `${sanitizePrompt(params.prompt)}${buildReferenceCompositionInstruction(referenceImages.length, params.prompt, referenceImageRoles)}\n\n${aspectRatioInstruction}`
         : finalPrompt;
       console.log(`[OpenRouter Image] Retrying reference composition | sanitized=${retryPrompt !== finalPrompt}`);
       try {
