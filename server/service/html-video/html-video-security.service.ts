@@ -3,12 +3,24 @@ import sanitizeHtml from "sanitize-html";
 export type HtmlVideoAspectRatio = "16:9" | "9:16" | "1:1";
 export type HtmlVideoResolution = "720p" | "1080p";
 
+export type HtmlVideoAssetRole = "background" | "hero" | "logo" | "overlay";
+
+export type HtmlVideoAsset = {
+  id: string;
+  name: string;
+  kind: "image";
+  url: string;
+  role?: HtmlVideoAssetRole;
+  includeInVideo?: boolean;
+};
+
 export type HtmlVideoSource = {
   html: string;
   css: string;
   durationSeconds: number;
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
+  assets?: HtmlVideoAsset[];
 };
 
 export type SafeHtmlVideoComposition = {
@@ -20,6 +32,8 @@ export type SafeHtmlVideoComposition = {
 };
 
 const maximumSourceBytes = 100 * 1024;
+const maximumAssetCount = 6;
+const mediaSlotAttribute = "data-media-slot";
 const allowedTags = new Set([
   "article",
   "aside",
@@ -59,7 +73,7 @@ const allowedTags = new Set([
 const forbiddenAttributes =
   /\s(?:on[a-z0-9_-]*|style|href|src|srcset|poster|cite|action|formaction|background|xlink:href)\s*=/i;
 const allowedAttributes = {
-  "*": ["id", "class", "role", "title", "aria-label", "aria-hidden"],
+  "*": ["id", "class", "role", "title", "aria-label", "aria-hidden", mediaSlotAttribute],
 };
 const dimensions = {
   "16:9": { "720p": [1280, 720], "1080p": [1920, 1080] },
@@ -99,6 +113,86 @@ function normalizeHtml(value: string) {
   }).trim();
 }
 
+function escapeHtmlAttribute(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character] || character);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeAssets(value: unknown): HtmlVideoAsset[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > maximumAssetCount) {
+    throw new Error("Số lượng ảnh tham chiếu không hợp lệ.");
+  }
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new Error("Ảnh tham chiếu không hợp lệ.");
+    }
+    const asset = candidate as Partial<HtmlVideoAsset>;
+    const id = String(asset.id || "").trim();
+    const url = String(asset.url || "").trim();
+    if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id) || !url || url.length > 120_000) {
+      throw new Error("Ảnh tham chiếu không hợp lệ.");
+    }
+    const isInlineImage = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(url);
+    if (!isInlineImage) {
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        throw new Error("URL ảnh tham chiếu không hợp lệ.");
+      }
+      if (
+        parsedUrl.protocol !== "https:" ||
+        parsedUrl.hostname !== "res.cloudinary.com" ||
+        !parsedUrl.pathname.includes("/image/upload/") ||
+        !parsedUrl.pathname.includes("/igen_erp/html-video-references/")
+      ) {
+        throw new Error("Ảnh tham chiếu phải được lưu trong kho Cloudinary được phép.");
+      }
+    }
+    return {
+      id,
+      name: String(asset.name || "Ảnh tham chiếu").trim().slice(0, 180),
+      kind: "image",
+      url,
+      role: asset.role,
+      includeInVideo: asset.includeInVideo !== false,
+    };
+  });
+}
+
+function injectMediaAssets(html: string, assets: HtmlVideoAsset[]) {
+  let result = html;
+  for (const asset of assets.filter((item) => item.includeInVideo !== false)) {
+    const slotPattern = new RegExp(
+      `<([a-z][a-z0-9-]*)\\b[^>]*\\s${mediaSlotAttribute}=["']${escapeRegExp(asset.id)}["'][^>]*>\\s*<\\/\\1>`,
+      "gi"
+    );
+    const role = asset.role || "hero";
+    const image = `<div class="html-video-media-slot html-video-media-slot-${role}" ${mediaSlotAttribute}="${escapeHtmlAttribute(asset.id)}"><img src="${escapeHtmlAttribute(asset.url)}" alt="${escapeHtmlAttribute(asset.name)}" /></div>`;
+    const hadSlot = slotPattern.test(result);
+    slotPattern.lastIndex = 0;
+    result = result.replace(slotPattern, image);
+    if (!hadSlot) {
+      const fallbackSlot = `<div ${mediaSlotAttribute}="${escapeHtmlAttribute(asset.id)}"></div>`;
+      result = /<\/main\s*>/i.test(result)
+        ? result.replace(/<\/main\s*>/i, `${fallbackSlot}</main>`)
+        : `${fallbackSlot}${result}`;
+      result = result.replace(slotPattern, image);
+    }
+  }
+  return result;
+}
+
 function normalizeCss(value: string) {
   assertSourceSize(value, "CSS");
   const withoutComments = value.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -131,24 +225,35 @@ export function buildSafeHtmlVideoComposition(
   source: HtmlVideoSource
 ): SafeHtmlVideoComposition {
   assertSettings(source);
-  const sanitizedHtml = normalizeHtml(source.html);
+  const assets = normalizeAssets(source.assets);
+  const sanitizedHtml = injectMediaAssets(normalizeHtml(source.html), assets);
   const sanitizedCss = normalizeCss(source.css);
   const [width, height] = dimensions[source.aspectRatio][source.resolution];
+  const mediaCss = assets.length > 0
+    ? ".html-video-media-slot{position:relative;display:block;overflow:hidden;z-index:1}.html-video-media-slot img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.html-video-media-slot-background{position:absolute;inset:0;z-index:0}.html-video-media-slot-hero{max-height:48%;margin:4% auto}.html-video-media-slot-logo{position:absolute;top:6%;right:7%;width:28%;max-height:18%;z-index:3}.html-video-media-slot-overlay{position:absolute;inset:0;z-index:2;pointer-events:none}"
+    : "";
 
   const compositionHtml = `<!doctype html>
-<html data-composition-id="html-video" data-composition-duration="${source.durationSeconds}">
+<html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=${width},height=${height},initial-scale=1">
   <style>
-    html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#000}
+    html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f1f5f9}
     *{box-sizing:border-box}
-    #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden}
+    #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    ${mediaCss}
     ${sanitizedCss}
   </style>
 </head>
 <body>
-  <div id="html-video-root">${sanitizedHtml}</div>
+  <div id="html-video-root"
+    data-composition-id="html-video"
+    data-width="${width}"
+    data-height="${height}"
+    data-start="0"
+    data-duration="${source.durationSeconds}"
+    data-no-timeline>${sanitizedHtml}</div>
 </body>
 </html>`;
 

@@ -28,14 +28,15 @@ RUN yarn build
 # Step 2: Production runner stage (keeps the final image lightweight)
 FROM node:22-alpine AS runner
 
-# Runtime media pipeline: HTTPS downloads plus ffmpeg/ffprobe for video analysis and rendering.
-RUN apk add --no-cache ca-certificates ffmpeg font-dejavu
-RUN ffprobe -version && ffmpeg -version
+# Runtime media pipeline: HTTPS downloads plus FFmpeg/FFprobe and Chromium Headless Shell for Hyperframes rendering.
+RUN apk add --no-cache ca-certificates chromium-headless-shell ffmpeg font-dejavu
+RUN chromium-headless-shell --version && ffprobe -version && ffmpeg -version
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3005
+ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium-headless-shell
 
 # Copy package files first to leverage Docker build cache for node_modules
 COPY --from=builder /app/package.json /app/yarn.lock /app/.puppeteerrc.cjs ./

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-empty, prefer-const */
-import { resolveAutoReplyOwner } from "./ai-auto-reply.service";
+import { ensureFacebookAutoReplyEnabled, resolveAutoReplyOwner } from "./ai-auto-reply.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { geminiService } from "./gemini.service";
 import { fbMessengerService } from "./fb-messenger.service";
@@ -67,7 +67,9 @@ export const facebookCommentService = {
       console.log(`[FB Comment Webhook] Nhận bình luận mới: pageId=${pageId}, commentId=${commentId}, message="${message}"`);
 
       // Xác định Owner và kiểm tra cấu hình AI Auto-Reply
-      const ownerInfo = await resolveAutoReplyOwner("facebook", pageId);
+      const ownerInfo = await ensureFacebookAutoReplyEnabled(
+        await resolveAutoReplyOwner("facebook", pageId)
+      );
       companyCode = ownerInfo.companyCode;
       const selectedUser = ownerInfo.selectedUser;
       aiConfig = ownerInfo.aiConfig;
@@ -77,7 +79,7 @@ export const facebookCommentService = {
       }
 
       // Kiểm tra xem cấu hình tự động trả lời bình luận có được bật riêng không
-      if (!aiConfig.commentReplyEnabled) {
+      if (!aiConfig.enabled || !aiConfig.commentReplyEnabled) {
         return;
       }
 

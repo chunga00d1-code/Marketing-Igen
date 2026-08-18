@@ -29,9 +29,10 @@ test("builds a server-owned 9:16 1080p composition", () => {
   assert.equal(result.sanitizedCss, validSource.css);
   assert.match(
     result.compositionHtml,
-    /<html[^>]+data-composition-id="html-video"[^>]+data-composition-duration="5"/
+    /id="html-video-root"[\s\S]*data-composition-id="html-video"[\s\S]*data-width="1080"[\s\S]*data-height="1920"[\s\S]*data-duration="5"[\s\S]*data-no-timeline/
   );
   assert.match(result.compositionHtml, /width:1080px;height:1920px/);
+  assert.match(result.compositionHtml, /linear-gradient\(135deg,#e0f2fe/);
   assert.match(result.compositionHtml, /<main class="hero"/);
   assert.doesNotMatch(result.compositionHtml, /<script/i);
 });
@@ -54,6 +55,44 @@ test("maps every supported aspect ratio and resolution", () => {
     });
     assert.deepEqual([result.width, result.height], [width, height]);
   }
+});
+
+test("injects only explicitly supplied inline image slots into the server-owned composition", () => {
+  const source = {
+    ...validSource,
+    html: '<main><div data-media-slot="reference-1"></div></main>',
+    assets: [{
+      id: "reference-1",
+      name: "Logo",
+      kind: "image" as const,
+      url: "data:image/png;base64,AAAA",
+      role: "logo" as const,
+      includeInVideo: true,
+    }],
+  };
+  const result = buildSafeHtmlVideoComposition(source);
+
+  assert.match(result.sanitizedHtml, /<img src="data:image\/png;base64,AAAA" alt="Logo" \/>/);
+  assert.match(result.compositionHtml, /html-video-media-slot-logo/);
+  assert.doesNotMatch(result.compositionHtml, /data:image\/png;base64,AAAA.*<script/i);
+});
+
+test("adds a recommended image when the model forgets to emit its slot", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    html: "<main><h1>Khám phá ngay</h1></main>",
+    assets: [{
+      id: "reference-1",
+      name: "Logo",
+      kind: "image",
+      url: "data:image/png;base64,AAAA",
+      role: "logo",
+      includeInVideo: true,
+    }],
+  });
+
+  assert.match(result.sanitizedHtml, /html-video-media-slot-logo/);
+  assert.match(result.sanitizedHtml, /data:image\/png;base64,AAAA/);
 });
 
 test("rejects prohibited HTML elements", () => {

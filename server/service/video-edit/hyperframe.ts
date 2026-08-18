@@ -45,6 +45,9 @@ export const hyperframeService = {
     const motionGraphicElements = timeline.filter((item: any) => item.type === "motion_graphic");
     const gradientBgElements = timeline.filter((item: any) => item.type === "gradient_bg");
     const animatedSceneElements = timeline.filter((item: any) => item.type === "animated_scene");
+    const safeTop = aspect === "9:16" ? 80 : 40;
+    const safeSide = aspect === "9:16" ? 48 : 40;
+    const safeBottom = aspect === "9:16" ? 160 : 80;
 
     let currentTimelineOffset = 0;
     const videoClips = rawVideoClips.map((item: any) => {
@@ -66,10 +69,10 @@ export const hyperframeService = {
 
     const videoClipsWithTransitions = videoClips.map((clip: any, idx: number) => {
       const hasNextClip = idx < videoClips.length - 1;
-      const nextClip = hasNextClip ? videoClips[idx + 1] : null;
-      const isContinuous = nextClip && nextClip.src === clip.src && Math.abs((clip.end ?? 0) - (nextClip.start ?? 0)) < 0.1;
       const exitTransType: string = clip.effects?.transition || "none";
-      const hasExitTransition = hasNextClip && exitTransType !== "none" && !isContinuous;
+      // A transition selected in the script is intentional, even when two
+      // adjacent clips come from contiguous ranges of the same source video.
+      const hasExitTransition = hasNextClip && exitTransType !== "none";
       const baseDur = TRANS_DURATIONS[exitTransType] ?? 0.2667;
       const exitTransitionTime = hasExitTransition ? Math.min(baseDur, clip.duration / 3) : 0;
       return { ...clip, hasExitTransition, exitTransType, transTime: exitTransitionTime, renderDuration: clip.duration + exitTransitionTime, hasNextClip };
@@ -170,6 +173,7 @@ export const hyperframeService = {
 
       const speed = clip.playbackRate ?? 1.0;
       const clipVolume = clip.volume ?? 1.0;
+      const hasSeparateAudio = clipVolume <= 0;
 
       elementsHtml += `
     <video
@@ -179,6 +183,7 @@ export const hyperframeService = {
       data-media-start="${clip.start}"
       data-volume="${clipVolume}"
       data-track-index="${idx}"
+      ${hasSeparateAudio ? "muted" : 'data-has-audio="true"'}
       class="clip-anim-${idx}"
       onplay="this.playbackRate=${speed}"
       oncanplay="this.volume=${clipVolume}"
@@ -218,12 +223,12 @@ export const hyperframeService = {
           positionStyles += ` width: ${typeof style.width === "number" ? `${style.width}px` : style.width};`;
         }
       } else {
-        if (style.position?.startsWith("top-")) positionStyles += "top: 40px;";
+        if (style.position?.startsWith("top-")) positionStyles += `top: ${safeTop}px;`;
         else if (style.position === "center") positionStyles += "top: 0; bottom: 0; align-items: center;";
-        else positionStyles += "bottom: 80px;";
+        else positionStyles += `bottom: ${safeBottom}px;`;
 
-        if (style.position?.endsWith("-left")) positionStyles += "left: 40px;";
-        else if (style.position?.endsWith("-right")) positionStyles += "right: 40px;";
+        if (style.position?.endsWith("-left")) positionStyles += `left: ${safeSide}px;`;
+        else if (style.position?.endsWith("-right")) positionStyles += `right: ${safeSide}px;`;
         else positionStyles += "left: 0; right: 0; justify-content: center;";
 
         if (style.position === "center") positionStyles = "top: 0; bottom: 0; left: 0; right: 0; align-items: center; justify-content: center;";
@@ -265,7 +270,7 @@ export const hyperframeService = {
       elementsHtml += `
     <div data-start="${textItem.start}" data-duration="${duration}" data-track-index="10"
       style="position: absolute; display: flex; pointer-events: none; z-index: 10; ${positionStyles}">
-      <span style="background-color: ${bgColor}; padding: ${padding}; border-radius: ${borderRadius}; color: ${color}; font-size: ${fontSize}; font-weight: ${fontWeight}; font-family: ${fontFamily}; letter-spacing: ${letterSpacing}; text-transform: ${textTransform}; text-shadow: ${textShadow}; text-align: center; opacity: ${initialOpacity}; ${animStyle}">
+      <span style="box-sizing:border-box; max-width:82%; white-space:normal; overflow-wrap:anywhere; line-height:1.2; background-color: ${bgColor}; padding: ${padding}; border-radius: ${borderRadius}; color: ${color}; font-size: ${fontSize}; font-weight: ${fontWeight}; font-family: ${fontFamily}; letter-spacing: ${letterSpacing}; text-transform: ${textTransform}; text-shadow: ${textShadow}; text-align: center; opacity: ${initialOpacity}; ${animStyle}">
         ${safeContent}
       </span>
     </div>`;
@@ -308,7 +313,7 @@ export const hyperframeService = {
     audioElements.forEach((audioItem: any) => {
       const duration = (audioItem.end ?? 5) - (audioItem.start ?? 0);
       elementsHtml += `
-    <audio src="${resolveLocalPathForRender(audioItem.src)}" data-start="${audioItem.start}" data-duration="${duration}" data-volume="${audioItem.volume ?? 0.5}" data-track-index="5"></audio>`;
+    <audio src="${resolveLocalPathForRender(audioItem.src)}" data-start="${audioItem.start}" data-duration="${duration}" data-volume="${audioItem.volume ?? 0.5}" data-audio-role="${audioItem.role || "music"}" data-track-index="${audioItem.role === "voice" ? 6 : 5}"></audio>`;
     });
 
     // 5. Gradient Background / Overlay Elements (z-index: 3, above video, below text)
@@ -379,14 +384,14 @@ export const hyperframeService = {
       const duration = (captionItem.end ?? 3) - (captionItem.start ?? 0);
       const captionColor = captionItem.style?.color || "#FFFFFF";
       const captionFontSize = captionItem.style?.fontSize || "22px";
-      const captionBg = captionItem.style?.background || "rgba(0,0,0,0.78)";
+      const captionBg = captionItem.style?.background || captionItem.style?.bgColor || "rgba(0,0,0,0.78)";
       const safeContent = String(captionItem.content || "")
         .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
       elementsHtml += `
     <div data-start="${captionItem.start}" data-duration="${duration}" data-track-index="11"
-      style="position:absolute; bottom:28px; left:0; right:0; display:flex; justify-content:center; padding:0 60px; pointer-events:none; z-index:11;">
-      <span style="background:${captionBg}; color:${captionColor}; font-size:${captionFontSize}; font-weight:500; padding:7px 18px; border-radius:6px; text-align:center; line-height:1.45; max-width:82%; display:inline-block;">${safeContent}</span>
+      style="position:absolute; bottom:${aspect === "9:16" ? 150 : 42}px; left:0; right:0; display:flex; justify-content:center; padding:0 ${safeSide}px; pointer-events:none; z-index:11;">
+      <span style="box-sizing:border-box; background:${captionBg}; color:${captionColor}; font-size:${captionFontSize}; font-weight:500; padding:7px 18px; border-radius:6px; text-align:center; line-height:1.35; max-width:82%; white-space:normal; overflow-wrap:anywhere; display:inline-block;">${safeContent}</span>
     </div>`;
     });
 
