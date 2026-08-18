@@ -120,7 +120,12 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
 
       if (!response.ok) {
         const errText = await response.text();
-        const err = new Error(`OpenRouter API l�i ${response.status}: ${errText}`) as any;
+        const publicMessage =
+          response.status === 402
+            ? "Dịch vụ AI đang tạm thời không khả dụng. Vui lòng thử lại sau."
+            : `OpenRouter API lỗi ${response.status}: ${errText}`;
+        const err = new Error(publicMessage) as any;
+        err.providerMessage = errText;
         err.status = response.status;
         throw err;
       }

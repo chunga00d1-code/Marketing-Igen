@@ -269,6 +269,145 @@ test("renders 720p compositions at native dimensions without an upscale preset",
   ]);
 });
 
+test("muxes the local voice track into the final MP4 before upload", async () => {
+  const children: FakeRenderProcess[] = [];
+  const spawnCalls: Array<{ command: string; args: readonly string[] }> = [];
+  let readPath = "";
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    prepareRuntime: () => ({
+      environment: { HYPERFRAMES_FFMPEG_PATH: "C:/bin/ffmpeg.exe" },
+      missing: [],
+    }),
+    spawnProcess: (command, args) => {
+      const child = new FakeRenderProcess();
+      children.push(child);
+      spawnCalls.push({ command, args });
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+    fileSystem: {
+      access: async () => undefined,
+      mkdir: async () => undefined,
+      writeFile: async () => undefined,
+      readFile: async (path) => {
+        readPath = path;
+        return Buffer.from("muxed-video");
+      },
+      rm: async () => undefined,
+    },
+  }));
+
+  const result = await adapter.render(
+    {
+      jobId: "render-voice-1",
+      compositionHtml: '<!doctype html><html data-composition-id="html-video"></html>',
+      aspectRatio: "16:9",
+      resolution: "720p",
+      voiceAudioPath: "C:/tmp/render-voice-1/voice.mp3",
+      voiceDurationSeconds: 5,
+    },
+    {
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-voice-1",
+      onProgress: () => undefined,
+    }
+  );
+
+  assert.equal(result.outputUrl, "https://cdn.example/render-1.mp4");
+  assert.equal(children.length, 2);
+  assert.equal(spawnCalls[1]?.command, "C:/bin/ffmpeg.exe");
+  assert.deepEqual(spawnCalls[1]?.args, [
+    "-y",
+    "-i",
+    "C:\\tmp\\render-voice-1\\output.mp4",
+    "-i",
+    "C:/tmp/render-voice-1/voice.mp3",
+    "-filter_complex",
+    "[1:a]apad[voice]",
+    "-map",
+    "0:v:0",
+    "-map",
+    "[voice]",
+    "-c:v",
+    "copy",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "192k",
+    "-t",
+    "5",
+    "-movflags",
+    "+faststart",
+    "C:\\tmp\\render-voice-1\\output-with-voice.mp4",
+  ]);
+  assert.equal(readPath, "C:\\tmp\\render-voice-1\\output-with-voice.mp4");
+});
+
+test("passes Gemini PCM voice metadata to FFmpeg before muxing", async () => {
+  const children: FakeRenderProcess[] = [];
+  const spawnCalls: Array<{ command: string; args: readonly string[] }> = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    prepareRuntime: () => ({
+      environment: { HYPERFRAMES_FFMPEG_PATH: "C:/bin/ffmpeg.exe" },
+      missing: [],
+    }),
+    spawnProcess: (command, args) => {
+      const child = new FakeRenderProcess();
+      children.push(child);
+      spawnCalls.push({ command, args });
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+    fileSystem: {
+      access: async () => undefined,
+      mkdir: async () => undefined,
+      writeFile: async () => undefined,
+      readFile: async () => Buffer.from("muxed-video"),
+      rm: async () => undefined,
+    },
+  }));
+
+  await adapter.render(
+    {
+      jobId: "render-voice-pcm-1",
+      compositionHtml: '<!doctype html><html data-composition-id="html-video"></html>',
+      aspectRatio: "9:16",
+      resolution: "720p",
+      voiceAudioPath: "C:/tmp/render-voice-pcm-1/voice.pcm",
+      voiceAudioFormat: "pcm",
+      voiceAudioSampleRate: 24_000,
+      voiceAudioChannels: 1,
+      voiceDurationSeconds: 5,
+    },
+    {
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-voice-pcm-1",
+      onProgress: () => undefined,
+    }
+  );
+
+  assert.equal(children.length, 2);
+  assert.deepEqual(spawnCalls[1]?.args.slice(0, 15), [
+    "-y",
+    "-i",
+    "C:\\tmp\\render-voice-pcm-1\\output.mp4",
+    "-f",
+    "s16le",
+    "-ar",
+    "24000",
+    "-ac",
+    "1",
+    "-i",
+    "C:/tmp/render-voice-pcm-1/voice.pcm",
+    "-filter_complex",
+    "[1:a]apad[voice]",
+    "-map",
+    "0:v:0",
+  ]);
+});
+
 test("maps a non-zero renderer exit to a coded failure and cleans up", async () => {
   const child = new FakeRenderProcess();
   const removedDirectories: string[] = [];

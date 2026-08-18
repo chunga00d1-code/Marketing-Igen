@@ -277,6 +277,41 @@ test("lists prompt history through the authenticated user and company scope", as
   assert.deepEqual(state.body, { success: true, data: histories });
 });
 
+test("lists persisted renders through the authenticated user and company scope", async () => {
+  let received: unknown[] = [];
+  const renderPage = {
+    items: [{ id: new Types.ObjectId().toString(), status: "completed" }],
+    pagination: {
+      page: 1,
+      pageSize: 12,
+      total: 1,
+      totalPages: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+    },
+  };
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      service: {
+        listRenders: async (...args: unknown[]) => {
+          received = args;
+          return renderPage;
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request();
+
+  await controller.list(req as never, response as never);
+
+  assert.deepEqual(received, [
+    { id: req.user.id, companyCode: "ACME" },
+    {},
+  ]);
+  assert.deepEqual(state.body, { success: true, data: renderPage });
+});
+
 test("reads render status through the scoped service", async () => {
   const renderId = new Types.ObjectId().toString();
   let received: unknown[] = [];

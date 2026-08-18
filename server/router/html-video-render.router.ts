@@ -9,6 +9,7 @@ import {
   htmlVideoContextPreviewBodySchema,
   htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
+  htmlVideoRenderListQuerySchema,
   htmlVideoRenderParamsSchema,
 } from "./html-video-render.schemas";
 
@@ -42,6 +43,7 @@ htmlVideoRenderRouter.post(
 htmlVideoRenderRouter.get(
   "/html-video-renders",
   requireAuth as never,
+  validateRequest({ query: htmlVideoRenderListQuerySchema }),
   htmlVideoRenderController.list as never
 );
 htmlVideoRenderRouter.get(

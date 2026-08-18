@@ -1,5 +1,6 @@
 export type VideoRenderAspectRatio = "16:9" | "9:16" | "1:1";
 export type VideoRenderResolution = "720p" | "1080p";
+export type VideoRenderVoiceAudioFormat = "mp3" | "pcm";
 
 export type VideoRenderAdapterErrorCode =
   | "RENDER_ADAPTER_UNAVAILABLE"
@@ -34,6 +35,11 @@ export type VideoRenderInput = {
   aspectRatio: VideoRenderAspectRatio;
   resolution: VideoRenderResolution;
   sourceVideoUrl?: string;
+  voiceAudioPath?: string;
+  voiceAudioFormat?: VideoRenderVoiceAudioFormat;
+  voiceAudioSampleRate?: number;
+  voiceAudioChannels?: number;
+  voiceDurationSeconds?: number;
 } & (VideoRenderBlueprintSource | VideoRenderHtmlSource);
 
 export interface VideoRenderCapability {

@@ -63,7 +63,7 @@ export function AiCommentReplyManager({
   const [clearingKnowledge, setClearingKnowledge] = useState(false);
 
   // Cache of Facebook post detail info (message and picture URL)
-  const [postDetails, setPostDetails] = useState<{ [postId: string]: { message: string, full_picture?: string } }>({});
+  const [postDetails, setPostDetails] = useState<{ [postId: string]: { message: string, full_picture?: string | null } }>({});
 
   // Collapsible settings sections
   const [sectionsExpanded, setSectionsExpanded] = useState({
@@ -168,7 +168,7 @@ export function AiCommentReplyManager({
         setPostDetails(prev => ({
           ...prev,
           [postId]: {
-            message: result.data.message || `BÃ i viáº¿t ID: ${postId}`,
+            message: result.data.message || `Bài viết ID: ${postId}`,
             full_picture: result.data.full_picture
           }
         }));
@@ -176,7 +176,7 @@ export function AiCommentReplyManager({
         setPostDetails(prev => ({
           ...prev,
           [postId]: {
-            message: `BÃ i viáº¿t ID: ${postId}`,
+            message: `Bài viết ID: ${postId}`,
             full_picture: null
           }
         }));
@@ -720,7 +720,7 @@ export function AiCommentReplyManager({
             ) : (
               tiktokAccounts && tiktokAccounts.length > 0 && (
                 <div className="flex items-center gap-2 min-w-[180px]" id="comment_tiktok_switcher">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">KÃªnh:</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">Kênh:</span>
                   <div className="relative flex-1">
                     <select
                       value={selectedTiktokAccountId}

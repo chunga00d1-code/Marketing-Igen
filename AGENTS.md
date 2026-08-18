@@ -69,3 +69,8 @@ These rules apply whenever Codex adds, edits, fixes, reviews, or verifies code i
 - Persist state transitions, attempts, provider errors, wallet usage, selected candidate, platform post ID, and final URL for auditability.
 - Apply capped retries with explicit terminal states; never retry invalid content, missing permissions, or exhausted budgets indefinitely.
 - Implement the rollout phases and acceptance criteria in `.codex/skills/automated-marketing-campaign/references/architecture.md` in order unless the user explicitly changes priority.
+
+## HTML-to-Video Rules
+
+- Use `.codex/skills/html-to-video/SKILL.md` for every HTML-to-video prompt, context, scene/layout, preview, voice, render, worker, or output-quality change.
+- Read `.codex/skills/html-to-video/references/architecture.md` before changing data provenance, scene timing, audio muxing, render snapshots, or validation behavior.

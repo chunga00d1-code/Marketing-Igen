@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { cloudinaryService } from "../cloudinary.service";
 import { resolveMediaBinary } from "../media-binary.service";
 import { hyperframeService } from "./hyperframe";
@@ -195,6 +195,24 @@ function resolutionPresetFor(aspectRatio: VideoRenderInput["aspectRatio"]) {
   return "landscape";
 }
 
+function assertLocalVoicePath(input: VideoRenderInput, temporaryDirectory: string) {
+  if (!input.voiceAudioPath) return;
+  const root = resolve(temporaryDirectory);
+  const audioPath = resolve(input.voiceAudioPath);
+  const relativeAudioPath = relative(root, audioPath);
+  if (
+    !relativeAudioPath ||
+    relativeAudioPath === ".." ||
+    relativeAudioPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+    isAbsolute(relativeAudioPath)
+  ) {
+    throw new VideoRenderAdapterError(
+      "RENDER_INPUT_INVALID",
+      "Voice audio must be stored inside the temporary render directory."
+    );
+  }
+}
+
 function renderResolutionArgs(
   input: Pick<VideoRenderInput, "aspectRatio" | "resolution">
 ) {
@@ -309,6 +327,7 @@ export function createHyperframesRenderAdapter(
 
     async render(input, context) {
       assertValidInput(input);
+      assertLocalVoicePath(input, context.temporaryDirectory);
       await context.onProgress({
         stage: "runtime-check",
         progress: 5,
@@ -419,9 +438,101 @@ export function createHyperframesRenderAdapter(
           progress: 80,
           message: "Verifying rendered output.",
         });
+        let finalOutputPath = outputPath;
+        if ("voiceAudioPath" in input && input.voiceAudioPath) {
+          const voiceDuration = Math.max(
+            1,
+            Math.min(180, Number(input.voiceDurationSeconds) || 1)
+          );
+          const outputWithVoicePath = join(
+            context.temporaryDirectory,
+            "output-with-voice.mp4"
+          );
+          const ffmpegPath =
+            runtime?.environment.HYPERFRAMES_FFMPEG_PATH ||
+            runtime?.environment.VIDEO_CAPTION_FFMPEG_PATH ||
+            "ffmpeg";
+          const voiceInputArgs = input.voiceAudioFormat === "pcm"
+            ? [
+                "-f",
+                "s16le",
+                "-ar",
+                String(input.voiceAudioSampleRate || 24_000),
+                "-ac",
+                String(input.voiceAudioChannels || 1),
+                "-i",
+                input.voiceAudioPath,
+              ]
+            : ["-i", input.voiceAudioPath];
+          await context.onProgress({
+            stage: "output-verification",
+            progress: 84,
+            message: "Muxing voice into final MP4.",
+          });
+          let muxProcess: HyperframesRenderProcess;
+          try {
+            muxProcess = dependencies.spawnProcess(
+              ffmpegPath,
+              [
+                "-y",
+                "-i",
+                outputPath,
+                ...voiceInputArgs,
+                "-filter_complex",
+                "[1:a]apad[voice]",
+                "-map",
+                "0:v:0",
+                "-map",
+                "[voice]",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-t",
+                String(voiceDuration),
+                "-movflags",
+                "+faststart",
+                outputWithVoicePath,
+              ],
+              {
+                cwd: context.temporaryDirectory,
+                ...(runtime ? { env: runtime.environment } : {}),
+                shell: false,
+                windowsHide: true,
+              }
+            );
+          } catch (error) {
+            throw new VideoRenderAdapterError(
+              "RENDER_PROCESS_START_FAILED",
+              "FFmpeg voice mux could not start.",
+              {
+                reason: error instanceof Error
+                  ? error.message.slice(0, 512)
+                  : "Unknown process error.",
+              }
+            );
+          }
+          const muxResult = await waitForRenderer(
+            muxProcess,
+            context.signal,
+            context.timeoutMs,
+            [context.temporaryDirectory, process.cwd()],
+            () => undefined
+          );
+          if (muxResult.code !== 0) {
+            throw new VideoRenderAdapterError(
+              "RENDER_PROCESS_FAILED",
+              "FFmpeg voice mux failed.",
+              { exitCode: muxResult.code, stderr: muxResult.stderr }
+            );
+          }
+          finalOutputPath = outputWithVoicePath;
+        }
         let output: Buffer;
         try {
-          output = await dependencies.fileSystem.readFile(outputPath);
+          output = await dependencies.fileSystem.readFile(finalOutputPath);
         } catch {
           throw new VideoRenderAdapterError(
             "RENDER_OUTPUT_MISSING",
