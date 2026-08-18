@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
+import { existsSync } from "node:fs";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { cloudinaryService } from "../cloudinary.service";
+import { resolveMediaBinary } from "../media-binary.service";
 import { hyperframeService } from "./hyperframe";
 import {
   VideoRenderAdapterError,
@@ -27,6 +29,7 @@ export type HyperframesSpawnProcess = (
   args: readonly string[],
   options: {
     cwd: string;
+    env?: NodeJS.ProcessEnv;
     shell: false;
     windowsHide: true;
   }
@@ -47,11 +50,102 @@ export interface HyperframesRenderAdapterDependencies {
   spawnProcess: HyperframesSpawnProcess;
   fileSystem: HyperframesFileSystem;
   uploadOutput: (buffer: Buffer) => Promise<string>;
+  prepareRuntime?: () => HyperframesRuntimeConfiguration;
 }
+
+export type HyperframesRuntimeConfiguration = {
+  environment: NodeJS.ProcessEnv;
+  missing: string[];
+};
 
 const supportedAspectRatios = new Set(["16:9", "9:16", "1:1"]);
 const supportedResolutions = new Set(["720p", "1080p"]);
 const maximumDiagnosticLength = 8192;
+
+function isUsableBinary(value: string) {
+  return (
+    value.length > 0 &&
+    ((!value.includes("/") && !value.includes("\\")) || existsSync(value))
+  );
+}
+
+function resolveHyperframesBinary(
+  binaryName: "ffmpeg" | "ffprobe",
+  configuredPath?: string
+) {
+  const resolved = resolveMediaBinary(binaryName, configuredPath);
+  if (binaryName !== "ffprobe" || resolved !== binaryName || process.platform !== "win32") {
+    return resolved;
+  }
+
+  const bundled = join(
+    process.cwd(),
+    "node_modules",
+    "@remotion",
+    "compositor-win32-x64-msvc",
+    "ffprobe.exe"
+  );
+  return existsSync(bundled) ? bundled : resolved;
+}
+
+function findHeadlessShell() {
+  const configured = process.env.HYPERFRAMES_BROWSER_PATH?.trim();
+  const candidates = [
+    configured,
+    join(
+      process.cwd(),
+      "node_modules",
+      ".remotion",
+      "chrome-headless-shell",
+      "win64",
+      "chrome-headless-shell-win64",
+      "chrome-headless-shell.exe"
+    ),
+    join(
+      process.cwd(),
+      "node_modules",
+      ".remotion",
+      "chrome-headless-shell",
+      "linux64",
+      "chrome-headless-shell-linux64",
+      "chrome-headless-shell"
+    ),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+function createDefaultRuntimeConfiguration(): HyperframesRuntimeConfiguration {
+  const environment = { ...process.env };
+  const ffmpegPath = resolveHyperframesBinary(
+    "ffmpeg",
+    environment.HYPERFRAMES_FFMPEG_PATH || environment.VIDEO_CAPTION_FFMPEG_PATH
+  );
+  const ffprobePath = resolveHyperframesBinary(
+    "ffprobe",
+    environment.HYPERFRAMES_FFPROBE_PATH || environment.VIDEO_CAPTION_FFPROBE_PATH
+  );
+  const browserPath = findHeadlessShell();
+  const missing: string[] = [];
+
+  if (isUsableBinary(ffmpegPath)) {
+    environment.HYPERFRAMES_FFMPEG_PATH = ffmpegPath;
+  } else {
+    missing.push("FFmpeg");
+  }
+  if (isUsableBinary(ffprobePath)) {
+    environment.HYPERFRAMES_FFPROBE_PATH = ffprobePath;
+  } else {
+    missing.push("FFprobe");
+  }
+  if (browserPath) {
+    environment.HYPERFRAMES_BROWSER_PATH = browserPath;
+  } else if (process.platform === "win32") {
+    missing.push("Chrome Headless Shell");
+  }
+
+  return { environment, missing };
+}
 
 export function sanitizeRenderDiagnostic(
   value: string,
@@ -99,6 +193,17 @@ function resolutionPresetFor(aspectRatio: VideoRenderInput["aspectRatio"]) {
   if (aspectRatio === "9:16") return "portrait";
   if (aspectRatio === "1:1") return "square";
   return "landscape";
+}
+
+function renderResolutionArgs(
+  input: Pick<VideoRenderInput, "aspectRatio" | "resolution">
+) {
+  // Hyperframes presets target 1080p. Applying one to a 720p composition
+  // produces a non-integer device scale factor (for example 720 -> 1080),
+  // which the renderer rejects. A 720p composition should render natively.
+  return input.resolution === "1080p"
+    ? ["--resolution", resolutionPresetFor(input.aspectRatio)]
+    : [];
 }
 
 function waitForRenderer(
@@ -182,6 +287,13 @@ export function createHyperframesRenderAdapter(
     async checkCapability() {
       try {
         await dependencies.fileSystem.access(dependencies.cliPath);
+        const runtime = dependencies.prepareRuntime?.();
+        if (runtime?.missing.length) {
+          return {
+            available: false,
+            reason: `Hyperframes runtime is missing: ${runtime.missing.join(", ")}.`,
+          };
+        }
         return { available: true };
       } catch {
         return {
@@ -206,9 +318,10 @@ export function createHyperframesRenderAdapter(
       if (!capability.available) {
         throw new VideoRenderAdapterError(
           "RENDER_ADAPTER_UNAVAILABLE",
-          "Hyperframes runtime is unavailable."
+          capability.reason || "Hyperframes runtime is unavailable."
         );
       }
+      const runtime = dependencies.prepareRuntime?.();
 
       const htmlPath = join(context.temporaryDirectory, "composition.html");
       const outputPath = join(context.temporaryDirectory, "output.mp4");
@@ -227,6 +340,7 @@ export function createHyperframesRenderAdapter(
             ? input.compositionHtml
             : dependencies.compileBlueprintToHtml({
                 ...input.blueprint,
+                aspectRatio: input.aspectRatio,
                 resolution: input.resolution,
               });
         await dependencies.fileSystem.writeFile(htmlPath, html);
@@ -244,15 +358,15 @@ export function createHyperframesRenderAdapter(
               dependencies.cliPath,
               "render",
               "-c",
-              htmlPath,
+              "composition.html",
               "-o",
-              outputPath,
-              "--resolution",
-              resolutionPresetFor(input.aspectRatio),
+              "output.mp4",
+              ...renderResolutionArgs(input),
               "--strict",
             ],
             {
               cwd: context.temporaryDirectory,
+              ...(runtime ? { env: runtime.environment } : {}),
               shell: false,
               windowsHide: true,
             }
@@ -367,4 +481,5 @@ export const hyperframesRenderAdapter = createHyperframesRenderAdapter({
   },
   uploadOutput: (buffer) =>
     cloudinaryService.uploadMediaBuffer(buffer, "igen_erp/marketing/video"),
+  prepareRuntime: createDefaultRuntimeConfiguration,
 });

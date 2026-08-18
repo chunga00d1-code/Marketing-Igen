@@ -86,6 +86,16 @@ const draftErrorResponses: Record<
     status: 402,
     message: "Số dư ví không đủ. Vui lòng nạp thêm tiền để tiếp tục.",
   },
+  MODEL_ACCESS_DENIED: {
+    status: 503,
+    message:
+      "Model HTML-to-Video chưa được cấp quyền trên OpenRouter. Vui lòng kiểm tra OPENROUTER_API_KEY hoặc quyền truy cập model.",
+  },
+  MODEL_REQUEST_REJECTED: {
+    status: 422,
+    message:
+      "OpenRouter đã từ chối yêu cầu HTML-to-Video. Vui lòng thử lại với prompt ngắn hơn hoặc kiểm tra model đang cấu hình.",
+  },
   AI_UNAVAILABLE: {
     status: 503,
     message: "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",

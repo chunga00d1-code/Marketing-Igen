@@ -1575,7 +1575,10 @@ export const geminiController = {
       console.log(`[geminiController.optimizeVideoPrompt] Incoming description to optimize: "${description}"`);
       await walletService.checkBalance(userId, API_COSTS.GEMINI_OPTIMIZE);
       const result = await geminiService.optimizeVideoPrompt(description, imageUris);
-      await walletService.deductBalance(userId, API_COSTS.GEMINI_OPTIMIZE, "Phí tối ưu prompt sinh video AI");
+      // Local fallback keeps the prompt editor usable but is not a billable AI call.
+      if (result?.isLocalFallback !== true) {
+        await walletService.deductBalance(userId, API_COSTS.GEMINI_OPTIMIZE, "Phí tối ưu prompt sinh video AI");
+      }
       return res.status(200).json(result);
     } catch (error: any) {
       console.error("[geminiController.optimizeVideoPrompt] Error:", error);
@@ -1936,7 +1939,7 @@ export const geminiController = {
         blueprint,
         aspectRatio: finalScript.globalSettings.aspectRatio,
         resolution: finalScript.globalSettings.resolution,
-        duration: script.totalDuration,
+        duration: blueprint.duration || blueprint.settings?.duration || script.totalDuration,
         renderEngine: "hyperframe",
       });
 

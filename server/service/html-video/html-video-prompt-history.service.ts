@@ -25,6 +25,11 @@ export type HtmlVideoPromptHistoryPublic = {
   createdAt: string;
 };
 
+export type HtmlVideoPromptContextItem = Pick<
+  HtmlVideoPromptHistoryPublic,
+  "id" | "projectName" | "prompt" | "revision" | "createdAt"
+>;
+
 function serializeHistory(
   history: HtmlVideoPromptHistoryDocument
 ): HtmlVideoPromptHistoryPublic {
@@ -82,6 +87,47 @@ export const htmlVideoPromptHistoryService = {
       .sort({ createdAt: -1 })
       .limit(50);
     return histories.map(serializeHistory);
+  },
+
+  async getContextChain(
+    actor: HtmlVideoActor,
+    historyId: string,
+    limit = 8
+  ): Promise<HtmlVideoPromptContextItem[]> {
+    if (!mongoose.isValidObjectId(historyId)) {
+      throw new Error("Phiên bản prompt không hợp lệ.");
+    }
+
+    const chain: HtmlVideoPromptContextItem[] = [];
+    const visited = new Set<string>();
+    let currentId: string | null = historyId;
+
+    while (currentId && chain.length < Math.max(1, Math.min(limit, 12))) {
+      if (visited.has(currentId)) break;
+      visited.add(currentId);
+      const history = await HtmlVideoPromptHistoryModel.findOne({
+        _id: currentId,
+        userId: actor.id,
+        companyCode: actor.companyCode,
+      });
+      if (!history) {
+        if (chain.length === 0) {
+          throw new Error("Không tìm thấy lịch sử prompt hoặc bạn không có quyền truy cập.");
+        }
+        break;
+      }
+      const serialized = serializeHistory(history);
+      chain.push({
+        id: serialized.id,
+        projectName: serialized.projectName,
+        prompt: serialized.prompt,
+        revision: serialized.revision,
+        createdAt: serialized.createdAt,
+      });
+      currentId = serialized.parentHistoryId;
+    }
+
+    return chain.reverse();
   },
 
   async attachRender(actor: HtmlVideoActor, historyId: string, renderId: string) {

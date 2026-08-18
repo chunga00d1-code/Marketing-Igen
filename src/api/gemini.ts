@@ -488,12 +488,18 @@ export const geminiApi = {
     return response.json();
   },
 
-  async optimizeVideoPrompt(description: string, imageUris?: string[]): Promise<any> {
+  async optimizeVideoPrompt(
+    description: string,
+    imageUris?: string[]
+  ): Promise<any> {
     const headers = await getHeaders(true);
     const response = await fetch('/api/v1/gemini/optimize-video-prompt', {
       method: 'POST',
       headers,
-      body: JSON.stringify({ description, imageUris }),
+      body: JSON.stringify({
+        description,
+        imageUris,
+      }),
     });
     if (!response.ok) {
       await handleErrorResponse(response, 'Lỗi khi tối ưu prompt video');

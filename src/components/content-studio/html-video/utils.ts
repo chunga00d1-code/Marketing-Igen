@@ -8,9 +8,61 @@ export function seekableCompositionDocument(compositionHtml: string, frameSecond
 }
 
 export function automaticDuration(prompt: string) {
+  const normalized = prompt
+    .toLocaleLowerCase('vi-VN')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const explicit = normalized.match(/(?:^|[^\d])(\d{1,3})\s*(?:-\s*)?(?:giay|seconds?|secs?|sec|s)\b/i);
+  if (explicit) return Math.max(1, Math.min(180, Number(explicit[1])));
+
+  const contextual = normalized.match(/(?:duration|thoi luong|dai)\s*(?:la|:|=)?\s*(\d{1,3})\b/i);
+  if (contextual) return Math.max(1, Math.min(180, Number(contextual[1])));
+
+  const numberWords = '(?:khong|mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin|muoi|tram|linh|le)';
+  const written = normalized.match(new RegExp(`((?:${numberWords})(?:[\\s-]+${numberWords}){0,5})\\s*(?:giay|seconds?|secs?|sec)\\b`, 'i'));
+  if (written) {
+    const values: Record<string, number> = {
+      khong: 0,
+      mot: 1,
+      hai: 2,
+      ba: 3,
+      bon: 4,
+      tu: 4,
+      nam: 5,
+      lam: 5,
+      sau: 6,
+      bay: 7,
+      tam: 8,
+      chin: 9,
+    };
+    let total = 0;
+    let current = 0;
+    for (const word of written[1].split(/[\s-]+/)) {
+      if (word === 'tram') {
+        total += (current || 1) * 100;
+        current = 0;
+      } else if (word === 'muoi') {
+        current = (current || 1) * 10;
+      } else if (word !== 'linh' && word !== 'le' && word in values) {
+        current += values[word];
+      }
+    }
+    const parsed = total + current;
+    if (parsed > 0) return Math.max(1, Math.min(180, parsed));
+  }
+
   if (prompt.length > 420) return 30;
   if (prompt.length > 160) return 15;
   return 10;
+}
+
+export function formatVideoTime(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  return `${minutes}:${String(safeSeconds % 60).padStart(2, "0")}`;
 }
 
 export function errorMessage(error: unknown, fallback: string) {
@@ -29,7 +81,7 @@ export function parseAiComposition(text: string) {
 export function candidateStatusLabel(candidate: HtmlVideoCandidate) {
   if (candidate.promptHistoryId && !candidate.html && !candidate.render) return `Bấm để dùng lại prompt v${candidate.promptRevision || 1}`;
   if (candidate.status === 'generating') return 'Đang tạo bản dựng';
-  if (candidate.status === 'ready') return 'Sẵn sàng render';
+  if (candidate.status === 'ready') return candidate.preview ? 'Sẵn sàng render' : 'Chờ cập nhật preview';
   if (candidate.status === 'queued') return 'Đang xếp hàng';
   if (candidate.status === 'rendering') return 'Đang render';
   if (candidate.status === 'uploading') return 'Đang hoàn tất';

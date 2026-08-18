@@ -214,7 +214,7 @@ export function EditVideoWorkspace({
   const timelineItemRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioRefs = useRef<Record<number, HTMLAudioElement | null>>({});
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -890,7 +890,8 @@ export function EditVideoWorkspace({
     // Tính t�"ng thời gian cho timeline bar (dùng end time thực tế)
     const rawTotalDuration = timeline.reduce((max: number, t: any) => Math.max(max, t.end ?? 0), 0) || totalDuration || 10;
 
-    const activeAudio = timeline.find((t: any) => t.type === 'audio');
+    const shouldOverlayTimelineAudio = !resolvedOutputUrl;
+    const previewAudioTracks = shouldOverlayTimelineAudio ? audioTracks : [];
 
     // Hàm tính v�9 trí % trên timeline bar
     const getBarLeft = (start: number) => `${((start / rawTotalDuration) * 100).toFixed(2)}%`;
@@ -909,6 +910,7 @@ export function EditVideoWorkspace({
             key={videoUrl}
             ref={videoRef}
             src={videoUrl}
+            muted={shouldOverlayTimelineAudio && previewAudioTracks.some((t: any) => t.role === 'voice')}
             onTimeUpdate={() => { if (videoRef.current) setCurrentTime(videoRef.current.currentTime); }}
             onPlay={() => { setIsPlaying(true); }}
             onPause={() => { setIsPlaying(false); }}
@@ -1032,10 +1034,17 @@ export function EditVideoWorkspace({
               </div>
             )}
 
-            {activeAudio && (
-              <audio ref={audioRef} src={activeAudio.src} className="hidden" crossOrigin="anonymous" />
-            )}
-            <AudioSyncHook activeAudio={activeAudio} currentTime={currentTime} isPlaying={isPlaying} audioRef={audioRef} />
+            {previewAudioTracks.map((audioItem: any, index: number) => (
+              <audio
+                key={`preview-audio-${index}-${audioItem.src}`}
+                ref={(element) => { audioRefs.current[index] = element; }}
+                src={audioItem.src}
+                className="hidden"
+                crossOrigin="anonymous"
+                preload="auto"
+              />
+            ))}
+            <AudioSyncHook audios={previewAudioTracks} currentTime={currentTime} isPlaying={isPlaying} audioRefs={audioRefs} />
           </div>
         )}
 
@@ -2367,33 +2376,44 @@ export function EditVideoWorkspace({
 }
 
 function AudioSyncHook({
-  activeAudio,
+  audios,
   currentTime,
   isPlaying,
-  audioRef
+  audioRefs
 }: {
-  activeAudio: any;
+  audios: any[];
   currentTime: number;
   isPlaying: boolean;
-  audioRef: React.RefObject<HTMLAudioElement | null>;
+  audioRefs: React.MutableRefObject<Record<number, HTMLAudioElement | null>>;
 }) {
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !activeAudio) return;
+    audios.forEach((audioItem, index) => {
+      const audio = audioRefs.current[index];
+      if (!audio) return;
 
-    audio.volume = activeAudio.volume !== undefined ? activeAudio.volume : 0.5;
+      audio.volume = audioItem.volume !== undefined ? audioItem.volume : 0.5;
+      const start = Number(audioItem.start) || 0;
+      const end = Number(audioItem.end) || start;
+      const shouldPlay = isPlaying && currentTime >= start && currentTime < end;
+      const targetOffset = Math.max(0, currentTime - start);
 
-    const shouldPlay = isPlaying && currentTime >= activeAudio.start && currentTime <= activeAudio.end;
-    if (shouldPlay) {
-      if (audio.paused) {
-        audio.play().catch(e => console.log('Audio play failed:', e));
+      if (Math.abs(audio.currentTime - targetOffset) > 0.15) {
+        try {
+          audio.currentTime = targetOffset;
+        } catch {
+          // The media element may not have loaded metadata yet.
+        }
       }
-    } else {
-      if (!audio.paused) {
+
+      if (shouldPlay) {
+        if (audio.paused) {
+          audio.play().catch(e => console.log('Audio play failed:', e));
+        }
+      } else if (!audio.paused) {
         audio.pause();
       }
-    }
-  }, [currentTime, isPlaying, activeAudio, audioRef]);
+    });
+  }, [currentTime, isPlaying, audios, audioRefs]);
 
   return null;
 }

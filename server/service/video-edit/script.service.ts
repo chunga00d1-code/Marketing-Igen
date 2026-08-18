@@ -57,6 +57,13 @@ export interface SegmentEdit {
   endTime: number;
   contentSummary: string;
   transcriptText?: string;
+  voiceScript?: string;
+  voiceSource?: "original" | "tts";
+  voice?: {
+    audioUrl: string;
+    durationSeconds?: number;
+    voiceName?: string;
+  };
   keep: boolean;
   playbackRate: number;
   filters?: {
@@ -77,6 +84,13 @@ export interface SegmentEdit {
   editNotes: string;
 }
 
+export interface GlobalVoiceTrack {
+  audioUrl: string;
+  durationSeconds?: number;
+  voiceName: string;
+  scriptText: string;
+}
+
 export interface VideoEditScript {
   videoUrl: string;
   totalDuration: number;
@@ -88,6 +102,7 @@ export interface VideoEditScript {
     overallStyle: string;
   };
   segments: SegmentEdit[];
+  globalVoice?: GlobalVoiceTrack;
   analysisNotes: string;
   generatedAt: string;
 }
@@ -257,6 +272,7 @@ Trả về ĐÚNG một JSON object theo schema sau (KHÔNG markdown, KHÔNG gi�
       "endTime": <số giây kết thúc>,
       "contentSummary": "Mô tả nội dung đoạn này",
       "transcriptText": "Những gì được nói nếu có",
+      "voiceScript": "Lời thoại ngắn gọn, tự nhiên và phù hợp với ngữ cảnh của đoạn",
       "keep": true,
       "playbackRate": 1.0,
       "filters": { "brightness": 1.0, "contrast": 1.0, "saturate": 1.0 },
@@ -266,7 +282,7 @@ Trả về ĐÚNG một JSON object theo schema sau (KHÔNG markdown, KHÔNG gi�
         "objectFit": "contain"|"cover"
       },
       "textOverlays": [
-        { "content": "Text", "position": "bottom-center", "color": "#FFFFFF", "fontSize": "28px" }
+        { "content": "Text ngắn (tối đa 2 dòng)", "position": "bottom-center", "color": "#FFFFFF", "fontSize": "28px" }
       ],
       "captionText": "Phụ đề chính của đoạn (optional)",
       "motionGraphic": {
@@ -291,6 +307,8 @@ QUY TẮC BẮT BUỘC:
 - Nếu không cần motionGraphic → bỏ hoàn toàn trường đó
 - Nếu không cần insertAnimatedScene → bỏ hoàn toàn trường đó
 - Nếu không cần textOverlays → để mảng rỗng []
+- Text overlay phải ngắn, tối đa 42 ký tự mỗi dòng và 2 dòng; không viết nguyên đoạn dài trên màn hình
+- Caption phải dễ đọc, tối đa 2 dòng và ưu tiên 15-20 ký tự/giây
 - "keep": false = cắt bỏ đoạn này
 - editNotes PHẢI có cho mỗi đoạn
 - Chỉ trả về JSON, không có gì khác`;
@@ -308,6 +326,15 @@ function normalizeScript(parsed: any, videoUrl: string, duration: number): Video
     endTime: Number(seg.endTime ?? duration),
     contentSummary: seg.contentSummary || "",
     transcriptText: seg.transcriptText || undefined,
+    // Subtitle transcript is the canonical narration source. Keep it editable
+    // through voiceScript, but never replace it with an AI rewrite by default.
+    voiceScript: seg.transcriptText || seg.voiceScript || seg.contentSummary || undefined,
+    voiceSource: seg.voiceSource || (seg.voice?.audioUrl ? "tts" : seg.transcriptText ? "original" : undefined),
+    voice: seg.voice?.audioUrl ? {
+      audioUrl: seg.voice.audioUrl,
+      durationSeconds: Number(seg.voice.durationSeconds) || undefined,
+      voiceName: seg.voice.voiceName || undefined,
+    } : undefined,
     keep: seg.keep !== false,
     playbackRate: Number(seg.playbackRate || 1.0),
     filters: seg.filters || {},
@@ -510,22 +537,71 @@ export async function generateEditScript(
 // Convert VideoEditScript → Blueprint JSON
 // ─────────────────────────────────────────────
 
+function narrationTextForSegment(segment: SegmentEdit): string {
+  return (segment.voiceScript || segment.transcriptText || segment.contentSummary || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function narrationWeight(text: string, fallbackSeconds: number): number {
+  if (!text) return Math.max(0.7, fallbackSeconds);
+  return Math.max(0.7, text.length / 13);
+}
+
 export function blueprintFromEditScript(script: VideoEditScript): any {
   const timeline: any[] = [];
   let timelineOffset = 0;
+  const keptSegments = script.segments.filter((segment) => segment.keep);
+  const narrationWeights = new Map(
+    keptSegments.map((segment) => [
+      segment.segmentId,
+      narrationWeight(
+        narrationTextForSegment(segment),
+        Math.max(0, segment.endTime - segment.startTime) / Math.max(0.1, segment.playbackRate || 1),
+      ),
+    ]),
+  );
+  const totalNarrationWeight = Math.max(
+    0.7,
+    Array.from(narrationWeights.values()).reduce((sum, weight) => sum + weight, 0),
+  );
+  const requestedGlobalVoiceDuration = Number(script.globalVoice?.durationSeconds);
+  const globalVoiceDuration = Number.isFinite(requestedGlobalVoiceDuration) && requestedGlobalVoiceDuration > 0
+    ? requestedGlobalVoiceDuration
+    : totalNarrationWeight;
+  const hasGlobalVoice = Boolean(script.globalVoice?.audioUrl);
 
   for (const seg of script.segments) {
     if (!seg.keep) continue;
 
-    const sourceDuration = seg.endTime - seg.startTime;
-    const rate = Math.max(0.1, seg.playbackRate || 1.0);
-    const renderDuration = sourceDuration / rate;
+    const sourceDuration = Math.max(0, seg.endTime - seg.startTime);
+    const requestedRate = Math.max(0.1, seg.playbackRate || 1.0);
+    const segmentNarrationDuration = hasGlobalVoice
+      ? globalVoiceDuration * ((narrationWeights.get(seg.segmentId) || 0.7) / totalNarrationWeight)
+      : 0;
+    const measuredVoiceDuration = Number(seg.voice?.durationSeconds);
+    const hasVoice = Boolean(!hasGlobalVoice && seg.voiceSource !== "original" && seg.voice?.audioUrl && sourceDuration > 0);
+    const voiceDuration = hasVoice && Number.isFinite(measuredVoiceDuration) && measuredVoiceDuration > 0
+      ? measuredVoiceDuration
+      : sourceDuration / requestedRate;
+    // Keep narration intact when it is longer than the selected visual segment.
+    const alignedRate = hasGlobalVoice
+      ? sourceDuration / Math.max(0.7, segmentNarrationDuration)
+      : hasVoice
+      ? Math.min(requestedRate, sourceDuration / voiceDuration)
+      : requestedRate;
+    const rate = Math.max(0.05, alignedRate || requestedRate);
+    const renderDuration = hasGlobalVoice
+      ? Math.max(0.7, segmentNarrationDuration)
+      : sourceDuration / rate;
     const segStart = timelineOffset;
     const segEnd = timelineOffset + renderDuration;
 
     // Video clip
     timeline.push({
       type: "video",
+      slideId: seg.segmentId,
+      audioSource: hasGlobalVoice ? "tts" : hasVoice ? "tts" : (seg.transcriptText ? "original" : "none"),
       src: script.videoUrl,
       start: seg.startTime,
       end: seg.endTime,
@@ -536,8 +612,20 @@ export function blueprintFromEditScript(script: VideoEditScript): any {
         transition: seg.effects?.transition || "none",
         objectFit: seg.effects?.objectFit || "contain",
       },
-      volume: 1.0,
+      volume: hasGlobalVoice || hasVoice ? 0 : 1.0,
     });
+
+    if (hasVoice) {
+      timeline.push({
+        type: "audio",
+        role: "voice",
+        slideId: seg.segmentId,
+        src: seg.voice!.audioUrl,
+        start: segStart,
+        end: segStart + voiceDuration,
+        volume: 1.0,
+      });
+    }
 
     // Caption
     if (seg.captionText) {
@@ -546,7 +634,14 @@ export function blueprintFromEditScript(script: VideoEditScript): any {
         content: seg.captionText,
         start: segStart,
         end: segEnd,
-        style: { align: "center", color: "#FFFFFF", bgColor: "rgba(0,0,0,0.72)" },
+        style: {
+          position: "bottom-center",
+          align: "center",
+          color: "#FFFFFF",
+          background: "rgba(0,0,0,0.72)",
+          bgColor: "rgba(0,0,0,0.72)",
+          fontSize: "28px",
+        },
       });
     }
 
@@ -611,6 +706,20 @@ export function blueprintFromEditScript(script: VideoEditScript): any {
   }
 
   const totalDuration = timelineOffset;
+  if (hasGlobalVoice) {
+    timeline.push({
+      type: "audio",
+      role: "voice",
+      src: script.globalVoice!.audioUrl,
+      start: 0,
+      end: globalVoiceDuration,
+      volume: 1.0,
+    });
+  }
+  const hasNarration = timeline.some((item: any) =>
+    (item.type === "audio" && item.role === "voice") ||
+    (item.type === "video" && item.audioSource === "original")
+  );
 
   // Background music
   const musicGenre = script.globalSettings?.musicGenre;
@@ -620,12 +729,17 @@ export function blueprintFromEditScript(script: VideoEditScript): any {
       src: MUSIC_URL_MAP[musicGenre],
       start: 0,
       end: totalDuration,
-      volume: script.globalSettings?.musicVolume ?? 0.3,
+      role: "music",
+      volume: (script.globalSettings?.musicVolume ?? 0.3) *
+        (hasNarration ? 0.25 : 1),
     });
   }
 
   return {
     version: "2.0",
+    duration: totalDuration,
+    aspectRatio: script.globalSettings?.aspectRatio || "16:9",
+    resolution: script.globalSettings?.resolution || "720p",
     timeline,
     settings: {
       duration: totalDuration,

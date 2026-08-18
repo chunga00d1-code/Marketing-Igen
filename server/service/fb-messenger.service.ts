@@ -395,8 +395,15 @@ export const fbMessengerService = {
       isConnected: true,
     }).select("companyCode displayName username").lean();
     console.warn(`[FB Service Token] Khong tim thay config khop chinh xac cho Page ID=${pageId}. Cac company integration Facebook dang co: ${samePlatformIntegrations.map((item: any) => `${item.companyCode}:${item.displayName}:${item.username}`).join(" | ") || "none"}`);
-    console.log(`[FB Service Token] Không tìm thấy config của user nào cho Page ID: ${pageId}. Fallback về biến môi trường FB_PAGE_ACCESS_TOKEN.`);
-    return process.env.FB_PAGE_ACCESS_TOKEN || null;
+    const envPageId = normalizeFacebookId(process.env.FB_PAGE_ID);
+    const envToken = process.env.FB_PAGE_ACCESS_TOKEN || "";
+    if (envToken && envPageId && envPageId === resolvedPageId) {
+      console.log(`[FB Service Token] Dùng Page Access Token từ env vì FB_PAGE_ID khớp: pageId=${resolvedPageId}`);
+      return envToken;
+    }
+
+    console.warn(`[FB Service Token] Từ chối fallback token env vì không có FB_PAGE_ID khớp với Page ID=${resolvedPageId}.`);
+    return null;
   },
 
   async subscribePageWebhooks(pageId: string, token: string): Promise<any> {

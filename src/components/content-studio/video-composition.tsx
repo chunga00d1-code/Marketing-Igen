@@ -1,6 +1,8 @@
 import React from 'react';
 import { AbsoluteFill, Video, Audio, Img, Sequence, useCurrentFrame, useVideoConfig, staticFile } from 'remotion';
 
+type VideoTransition = 'fade' | 'none' | 'slide-left' | 'slide-right' | 'slide-up' | 'slide-down' | 'zoom-in' | 'zoom-out' | 'flash';
+
 const resolveSrc = (src: string) => {
   if (!src) return "";
   if (src.startsWith("http://") || src.startsWith("https://")) {
@@ -13,8 +15,10 @@ const resolveSrc = (src: string) => {
 
 export interface VideoCompositionProps {
   blueprint: {
+    aspectRatio?: string;
+    resolution?: string;
     timeline: Array<{
-      type: "video" | "text" | "image" | "audio";
+      type: "video" | "text" | "caption" | "image" | "audio";
       src?: string;
       content?: string;
       start: number; // in seconds
@@ -26,6 +30,8 @@ export interface VideoCompositionProps {
         fontSize?: string;
         opacity?: number;
         width?: number;
+        background?: string;
+        bgColor?: string;
       };
       filters?: {
         brightness?: number;
@@ -40,7 +46,7 @@ export interface VideoCompositionProps {
       effects?: {
         zoom?: "in" | "out" | "none";
         rotate?: number;
-        transition?: "fade" | "none";
+        transition?: VideoTransition;
       };
       volume?: number;
     }>;
@@ -52,10 +58,14 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
   const { fps } = useVideoConfig();
   
   const timeline = blueprint?.timeline || [];
+  const aspectRatio = blueprint?.aspectRatio || "16:9";
+  const safeTop = aspectRatio === "9:16" ? 80 : 40;
+  const safeSide = aspectRatio === "9:16" ? 48 : 40;
+  const safeBottom = aspectRatio === "9:16" ? 160 : 80;
   
   // 1. Tách các thành phần theo loại
   const rawVideoClips = timeline.filter(item => item.type === "video");
-  const textElements = timeline.filter(item => item.type === "text");
+  const textElements = timeline.filter(item => item.type === "text" || item.type === "caption");
   const imageElements = timeline.filter(item => item.type === "image");
   const audioElements = timeline.filter(item => item.type === "audio");
 
@@ -85,11 +95,11 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
   // 3. Tính toán các thuộc tính chuyển cảnh đồng bộ
   const videoClipsWithTransitions = videoClips.map((clip, idx) => {
     const hasNextClip = idx < videoClips.length - 1;
-    const nextClip = hasNextClip ? videoClips[idx + 1] : null;
     // Không chuyển tiếp (Clean Cut) nếu là các phân đoạn liên tục của cùng một video nguồn
-    const isContinuous = nextClip && nextClip.src === clip.src && Math.abs((clip.end ?? 0) - (nextClip.start ?? 0)) < 0.1;
-
-    const hasExitTransition = hasNextClip && clip.effects?.transition === "fade" && !isContinuous;
+    const transition = clip.effects?.transition || "none";
+    // A transition selected in the script is intentional, even for adjacent
+    // segments cut from the same source video.
+    const hasExitTransition = hasNextClip && transition !== "none";
     const durationFrames = Math.round(clip.duration * fps);
     const exitTransitionFrames = hasExitTransition ? Math.min(8, Math.floor(durationFrames / 3)) : 0;
 
@@ -97,6 +107,7 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
       ...clip,
       hasExitTransition,
       exitTransitionFrames,
+      exitTransitionType: hasExitTransition ? transition : "none",
     };
   });
 
@@ -127,23 +138,57 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
         let transitionOpacity = 1.0;
         let transitionBlur = 0;
         let transitionScaleMultiplier = 1.0;
+        let transitionX = 0;
+        let transitionY = 0;
 
         const localFrame = frame - startFrame;
+
+        const applyTransition = (type: VideoTransition, progress: number, phase: 'entry' | 'exit') => {
+          const direction = phase === 'entry' ? 1 - progress : progress;
+          switch (type) {
+            case 'slide-left':
+              transitionX = (phase === 'entry' ? 100 : -100) * direction;
+              break;
+            case 'slide-right':
+              transitionX = (phase === 'entry' ? -100 : 100) * direction;
+              break;
+            case 'slide-up':
+              transitionY = (phase === 'entry' ? 100 : -100) * direction;
+              break;
+            case 'slide-down':
+              transitionY = (phase === 'entry' ? -100 : 100) * direction;
+              break;
+            case 'zoom-in':
+              transitionScaleMultiplier = phase === 'entry' ? 1.3 - progress * 0.3 : 1 + progress * 0.3;
+              transitionOpacity = phase === 'entry' ? progress : 1 - progress;
+              break;
+            case 'zoom-out':
+              transitionScaleMultiplier = phase === 'entry' ? 0.7 + progress * 0.3 : 1 - progress * 0.3;
+              transitionOpacity = phase === 'entry' ? progress : 1 - progress;
+              break;
+            case 'flash':
+              transitionOpacity = phase === 'entry' ? progress : 1 - progress;
+              break;
+            case 'fade':
+              transitionOpacity = phase === 'entry' ? progress : 1 - progress;
+              transitionBlur = phase === 'entry' ? (1 - progress) * 12 : progress * 12;
+              transitionScaleMultiplier = phase === 'entry' ? 1.15 - progress * 0.15 : 1 + progress * 0.15;
+              break;
+            default:
+              break;
+          }
+        };
 
         if (durationFrames > 0) {
           // 1. Hiệu ứng vào (Entry transition): fade-in, thu nhỏ dần về bình thường & giảm mờ
           if (entryTransitionFrames > 0 && localFrame < entryTransitionFrames) {
             const progress = localFrame / entryTransitionFrames;
-            transitionOpacity = progress;
-            transitionBlur = (1 - progress) * 12; // Mờ giảm dần
-            transitionScaleMultiplier = 1.15 - progress * 0.15; // Thu nhỏ dần về bình thường
+            applyTransition((prevClip?.exitTransitionType || 'fade') as VideoTransition, progress, 'entry');
           }
           // 2. Hiệu ứng ra (Exit transition): fade-out, phóng to thêm một chút & tăng mờ
           else if (clip.exitTransitionFrames > 0 && localFrame >= durationFrames) {
             const progress = Math.min(1, Math.max(0, (localFrame - durationFrames) / clip.exitTransitionFrames));
-            transitionOpacity = 1 - progress;
-            transitionBlur = progress * 12; // Mờ tăng dần
-            transitionScaleMultiplier = 1.0 + progress * 0.15; // Phóng to dần
+            applyTransition((clip.exitTransitionType || 'fade') as VideoTransition, progress, 'exit');
           }
         }
 
@@ -181,6 +226,21 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
         // KHÔNG gán theo transitionOpacity vì opacity chỉ là hiệu ứng visual fade,
         // không nên ảnh hưởng đến âm thanh gốc của video.
         const clipVolume = clip.volume ?? 1.0;
+        const hasAudioTransition = entryTransitionFrames > 0 || clip.exitTransitionFrames > 0;
+        const renderedVolume = () => {
+          if (!hasAudioTransition) return clipVolume;
+
+          let transitionVolume = clipVolume;
+          if (entryTransitionFrames > 0 && localFrame < entryTransitionFrames) {
+            transitionVolume *= Math.min(1, Math.max(0, localFrame / entryTransitionFrames));
+          } else if (clip.exitTransitionFrames > 0 && localFrame >= durationFrames) {
+            transitionVolume *= Math.max(
+              0,
+              1 - Math.min(1, (localFrame - durationFrames) / clip.exitTransitionFrames),
+            );
+          }
+          return transitionVolume;
+        };
 
         return (
           <Sequence
@@ -194,14 +254,14 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
               playbackRate={clip.playbackRate ?? 1}
               preload="auto"
               crossOrigin="anonymous"
-              volume={clipVolume}
+              volume={hasAudioTransition ? renderedVolume : clipVolume}
               delayRenderTimeoutInMilliseconds={120000}
               style={{
                 width: '100%',
                 height: '100%',
                 objectFit: 'contain',
                 filter: filterString,
-                transform: `scale(${scale * transitionScaleMultiplier}) rotate(${rotate}deg)`,
+                transform: `translateX(${transitionX}%) translateY(${transitionY}%) scale(${scale * transitionScaleMultiplier}) rotate(${rotate}deg)`,
                 opacity: transitionOpacity
               }}
             />
@@ -267,22 +327,24 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
             zIndex: 10,
           };
           
-          // Vertically position
+          const isCaption = textItem.type === 'caption';
+
+          // Keep overlays away from platform UI safe areas.
           if (style.position?.startsWith('top-')) {
-            positionStyles.top = 40;
+            positionStyles.top = safeTop;
           } else if (style.position === 'center') {
             positionStyles.top = 0;
             positionStyles.bottom = 0;
             positionStyles.alignItems = 'center';
           } else {
-            positionStyles.bottom = 80; // default bottom-center
+            positionStyles.bottom = isCaption ? safeBottom : 80;
           }
           
           // Horizontally position
           if (style.position?.endsWith('-left')) {
-            positionStyles.left = 40;
+            positionStyles.left = safeSide;
           } else if (style.position?.endsWith('-right')) {
-            positionStyles.right = 40;
+            positionStyles.right = safeSide;
           } else {
             positionStyles.left = 0;
             positionStyles.right = 0;
@@ -293,7 +355,7 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
             <div key={`text-${idx}`} style={positionStyles}>
               <span
                 style={{
-                  backgroundColor: 'rgba(0,0,0,0.6)',
+                  backgroundColor: style.background || style.bgColor || 'rgba(0,0,0,0.6)',
                   padding: '8px 18px',
                   borderRadius: '12px',
                   color: style.color || 'white',
@@ -302,6 +364,10 @@ export const VideoComposition: React.FC<VideoCompositionProps> = ({ blueprint })
                   fontFamily: 'Arial, sans-serif',
                   textShadow: '2px 2px 8px rgba(0,0,0,0.8)',
                   textAlign: 'center',
+                  maxWidth: '82%',
+                  whiteSpace: 'normal',
+                  overflowWrap: 'anywhere',
+                  lineHeight: isCaption ? 1.35 : 1.2,
                 }}
               >
                 {textItem.content}

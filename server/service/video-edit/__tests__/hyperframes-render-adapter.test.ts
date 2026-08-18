@@ -149,6 +149,20 @@ test("reports missing Hyperframes CLI as unavailable", async () => {
   });
 });
 
+test("reports missing renderer binaries before starting a job", async () => {
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    prepareRuntime: () => ({
+      environment: {},
+      missing: ["FFmpeg", "Chrome Headless Shell"],
+    }),
+  }));
+
+  assert.deepEqual(await adapter.checkCapability(), {
+    available: false,
+    reason: "Hyperframes runtime is missing: FFmpeg, Chrome Headless Shell.",
+  });
+});
+
 test("renders with the local CLI argument array, uploads output, and cleans up", async () => {
   const child = new FakeRenderProcess();
   const spawnCalls: Array<{
@@ -193,16 +207,16 @@ test("renders with the local CLI argument array, uploads output, and cleans up",
   assert.equal(writes[0]?.content, "<html></html>");
   assert.deepEqual(spawnCalls, [{
     command: "C:/Program Files/nodejs/node.exe",
-    args: [
-      "C:/app/node_modules/hyperframes/dist/cli.js",
-      "render",
-      "-c",
-      "C:\\tmp\\render-1\\composition.html",
-      "-o",
-      "C:\\tmp\\render-1\\output.mp4",
-      "--resolution",
-      "portrait",
-      "--strict",
+      args: [
+        "C:/app/node_modules/hyperframes/dist/cli.js",
+        "render",
+        "-c",
+        "composition.html",
+        "-o",
+        "output.mp4",
+        "--resolution",
+        "portrait",
+        "--strict",
     ],
     options: {
       cwd: "C:/tmp/render-1",
@@ -217,6 +231,41 @@ test("renders with the local CLI argument array, uploads output, and cleans up",
     "renderer-start",
     "output-verification",
     "uploading",
+  ]);
+});
+
+test("renders 720p compositions at native dimensions without an upscale preset", async () => {
+  const child = new FakeRenderProcess();
+  let renderArgs: readonly string[] = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: (_command, args) => {
+      renderArgs = args;
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+  }));
+
+  await adapter.render(
+    {
+      ...validInput,
+      resolution: "720p",
+    },
+    {
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-720p",
+      onProgress: () => undefined,
+    }
+  );
+
+  assert.deepEqual(renderArgs, [
+    "C:/app/node_modules/hyperframes/dist/cli.js",
+    "render",
+    "-c",
+    "composition.html",
+    "-o",
+    "output.mp4",
+    "--strict",
   ]);
 });
 

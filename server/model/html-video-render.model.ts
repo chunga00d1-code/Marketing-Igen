@@ -75,7 +75,7 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
       type: Number,
       required: true,
       min: 1,
-      max: 60,
+      max: 180,
       immutable: true,
     },
     aspectRatio: {
