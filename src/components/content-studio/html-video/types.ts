@@ -6,6 +6,8 @@ export type HtmlVideoCandidate = {
   id: string;
   label: string;
   prompt: string;
+  generationPrompt?: string;
+  voiceScript?: string;
   html: string;
   css: string;
   durationSeconds: number;
@@ -22,6 +24,8 @@ export type HtmlVideoCandidate = {
   projectName?: string;
   referenceNames?: string[];
   referenceContext?: string;
+  primaryPromptContext?: string;
+  primaryPromptFileName?: string;
   referenceAssets?: HtmlVideoAsset[];
 };
 
@@ -34,6 +38,7 @@ export type HtmlVideoReference = {
   status: 'analyzing' | 'ready' | 'failed';
   context: string;
   error: string | null;
+  isPrimaryPrompt?: boolean;
   assetUrl?: string;
   role?: 'background' | 'hero' | 'logo' | 'overlay';
   includeInVideo?: boolean;

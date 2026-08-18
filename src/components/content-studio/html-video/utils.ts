@@ -1,5 +1,14 @@
 import type { CandidateStatus, HtmlVideoCandidate, HtmlVideoReference } from './types';
 
+export const MAX_DIRECT_PROMPT_LENGTH = 4_000;
+// Keep room for the primary-prompt wrapper sent with the separate context field.
+export const MAX_LONG_PROMPT_LENGTH = 23_000;
+export const PRIMARY_PROMPT_FILE_NAME = 'prompt-day-du.txt';
+
+export function isLongHtmlVideoPrompt(prompt: string) {
+  return prompt.trim().length > MAX_DIRECT_PROMPT_LENGTH;
+}
+
 export function seekableCompositionDocument(compositionHtml: string, frameSeconds: number, isPlaying: boolean) {
   const override = `<style data-preview-frame>*:not(svg):not(path),*:not(svg):not(path)::before,*:not(svg):not(path)::after{animation-delay:-${Math.max(0, frameSeconds).toFixed(3)}s !important;animation-play-state:${isPlaying ? 'running' : 'paused'} !important;animation-fill-mode:both !important}</style>`;
   return compositionHtml.includes('</head>')

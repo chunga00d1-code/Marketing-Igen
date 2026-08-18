@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Code2,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileText,
   Image as ImageIcon,
@@ -32,6 +34,7 @@ import {
   type HtmlVideoPromptHistory,
   type HtmlVideoReferenceSlot,
   type HtmlVideoRenderDetail,
+  type HtmlVideoRenderPagination,
 } from "../../services/htmlVideoRenderService";
 import { geminiApi } from "../../api/gemini";
 import { toast } from "../../pages/Toast";
@@ -48,7 +51,11 @@ import {
   errorMessage,
   fileAsDataUrl,
   formatVideoTime,
+  isLongHtmlVideoPrompt,
   isCandidateActive,
+  MAX_DIRECT_PROMPT_LENGTH,
+  MAX_LONG_PROMPT_LENGTH,
+  PRIMARY_PROMPT_FILE_NAME,
   referenceKind,
   seekableCompositionDocument,
 } from "./html-video/utils";
@@ -71,6 +78,7 @@ const DEFAULT_RESOLUTION = "1080p" as const;
 // One prompt should produce one usable video. Keeping this at one avoids
 // tripling LLM and render time for the primary HTML-to-video workflow.
 const DEFAULT_VARIATION_COUNT = 1;
+const HISTORY_PAGE_SIZE = 12;
 
 const HTML_VIDEO_TEMPLATES = [
   { id: "brand-intro", name: "Giới thiệu thương hiệu", description: "Mở đầu ấn tượng, logo, thông điệp và CTA.", ratio: "9:16" as HtmlVideoAspectRatio, prompt: "Tạo video giới thiệu thương hiệu với phần mở đầu ấn tượng, làm nổi bật tên thương hiệu, thông điệp chính và CTA cuối video." },
@@ -115,7 +123,7 @@ function escapeHtmlAttribute(value: string) {
 
 function buildReferenceContext(references: HtmlVideoReference[]) {
   return references
-    .filter((reference) => reference.status === "ready" && reference.context.trim())
+    .filter((reference) => !reference.isPrimaryPrompt && reference.status === "ready" && reference.context.trim())
     .map((reference) => [
       `--- BEGIN REFERENCE: ${reference.name} (${reference.kind}) ---`,
       reference.context.trim(),
@@ -128,6 +136,18 @@ function buildReferenceContext(references: HtmlVideoReference[]) {
     ].join("\n"))
     .join("\n\n")
     .slice(0, 24_000);
+}
+
+function createPrimaryPromptReference(name = PRIMARY_PROMPT_FILE_NAME): HtmlVideoReference {
+  return {
+    id: `primary-prompt-${crypto.randomUUID()}`,
+    name,
+    kind: "document",
+    status: "ready",
+    context: "",
+    error: null,
+    isPrimaryPrompt: true,
+  };
 }
 
 function imageDecision(analysis: unknown) {
@@ -323,6 +343,29 @@ function renderHistoryCandidate(
   };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- shared with deterministic history restoration tests
+export function mergePersistedHtmlVideoRenders(
+  current: HtmlVideoCandidate[],
+  renders: HtmlVideoRenderDetail[],
+  sessions: HtmlVideoPromptHistory[]
+) {
+  const localCandidates = current.filter(
+    (candidate) => !candidate.id.startsWith("html-video-render-history-")
+  );
+  const existingLocalRenderIds = new Set(
+    localCandidates.map((candidate) => candidate.render?.id).filter(Boolean)
+  );
+  const sessionByRenderId = new Map(
+    sessions
+      .filter((session) => session.renderId)
+      .map((session) => [session.renderId as string, session])
+  );
+  const restoredRenders = renders
+    .filter((render) => !existingLocalRenderIds.has(render.id))
+    .map((render) => renderHistoryCandidate(render, sessionByRenderId.get(render.id)));
+  return [...localCandidates, ...restoredRenders];
+}
+
 export function HtmlVideoBatchWorkspace({
   service = htmlVideoRenderService,
 }: {
@@ -341,6 +384,9 @@ export function HtmlVideoBatchWorkspace({
   const [candidates, setCandidates] = useState<HtmlVideoCandidate[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [filter, setFilter] = useState<CandidateFilter>("all");
+  const [historyPage, setHistoryPage] = useState(1);
+  const [historyPagination, setHistoryPagination] = useState<HtmlVideoRenderPagination | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTool, setActiveTool] = useState<"prompt" | "settings" | "templates" | "history">("prompt");
   const [hoveredTemplateId, setHoveredTemplateId] = useState<string | null>(null);
@@ -382,6 +428,13 @@ export function HtmlVideoBatchWorkspace({
 
   const updateReference = (referenceId: string, update: Partial<HtmlVideoReference>) => {
     setReferences((current) => current.map((reference) => reference.id === referenceId ? { ...reference, ...update } : reference));
+  };
+
+  const handlePromptChange = (nextPrompt: string) => {
+    setPrompt(nextPrompt);
+    if (references.some((reference) => reference.isPrimaryPrompt)) {
+      setReferences((current) => current.filter((reference) => !reference.isPrimaryPrompt));
+    }
   };
 
   const analyzeReference = async (file: File, reference: HtmlVideoReference) => {
@@ -461,34 +514,48 @@ export function HtmlVideoBatchWorkspace({
 
   useEffect(() => {
     let cancelled = false;
+    setHistoryLoading(true);
     void Promise.allSettled([
-      service.listRenders(),
+      service.listRenders({
+        page: historyPage,
+        pageSize: HISTORY_PAGE_SIZE,
+        filter,
+      }),
       service.listPromptHistory(),
     ])
       .then(([rendersResult, sessionsResult]) => {
         if (cancelled) return;
-        const renders = rendersResult.status === "fulfilled" ? rendersResult.value : [];
+        const renderPage = rendersResult.status === "fulfilled" ? rendersResult.value : null;
         const sessions = sessionsResult.status === "fulfilled" ? sessionsResult.value : [];
-        if (rendersResult.status === "rejected" && sessionsResult.status === "rejected") {
+        if (rendersResult.status === "rejected") {
           toast.warning("Không thể tải lịch sử video từ máy chủ.");
+          return;
         }
-        setCandidates((current) => {
-          const existingRenderIds = new Set(
-            current.map((candidate) => candidate.render?.id).filter(Boolean)
+        setHistoryPagination(renderPage.pagination);
+        setCandidates((current) =>
+          mergePersistedHtmlVideoRenders(current, renderPage.items, sessions)
+        );
+        if (renderPage.pagination.page !== historyPage) {
+          setHistoryPage(renderPage.pagination.page);
+        }
+        setSelectedCandidateId((current) => {
+          const isLocalCandidate = current && !current.startsWith("html-video-render-history-");
+          const isCurrentPageCandidate = current && renderPage.items.some(
+            (render) => `html-video-render-history-${render.id}` === current
           );
-          const sessionByRenderId = new Map(
-            sessions.filter((session) => session.renderId).map((session) => [session.renderId as string, session])
-          );
-          const restoredRenders = renders
-            .filter((render) => !existingRenderIds.has(render.id))
-            .map((render) => renderHistoryCandidate(render, sessionByRenderId.get(render.id)));
-          return [...current, ...restoredRenders];
+          if (isLocalCandidate || isCurrentPageCandidate) return current;
+          return renderPage.items[0]
+            ? `html-video-render-history-${renderPage.items[0].id}`
+            : null;
         });
       })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, [service]);
+  }, [filter, historyPage, service]);
 
   useEffect(
     () => () => {
@@ -569,6 +636,7 @@ export function HtmlVideoBatchWorkspace({
         aspectRatio: candidate.promptAspectRatio || aspectRatio,
         resolution: candidate.resolution,
         promptHistoryId: candidate.promptHistoryId,
+        voiceScript: (candidate.voiceScript || candidate.prompt).trim().slice(0, 8_000),
         assets: candidate.referenceAssets || buildReferenceAssets(references),
         idempotencyKey: createHtmlVideoIdempotencyKey(),
       });
@@ -595,13 +663,15 @@ export function HtmlVideoBatchWorkspace({
     try {
       const referenceAssets = candidate.referenceAssets || buildReferenceAssets(references);
       const composition = await service.generateDraft({
-        prompt: candidate.prompt,
+        prompt: candidate.generationPrompt || candidate.prompt,
         durationSeconds: candidate.durationSeconds,
         aspectRatio: candidate.promptAspectRatio || aspectRatio,
         resolution: candidate.resolution,
         promptHistoryId: candidate.promptHistoryId,
         referenceContext:
           candidate.referenceContext || buildReferenceContext(references) || undefined,
+        primaryPromptContext: candidate.primaryPromptContext,
+        primaryPromptFileName: candidate.primaryPromptFileName,
         referenceAssets: buildReferenceSlots(referenceAssets),
       });
       const preview = await service.preview({
@@ -616,6 +686,7 @@ export function HtmlVideoBatchWorkspace({
         ...candidate,
         html: composition.html,
         css: composition.css,
+        voiceScript: composition.voiceScript || candidate.voiceScript || candidate.prompt,
         preview,
         status: "ready",
       };
@@ -640,10 +711,24 @@ export function HtmlVideoBatchWorkspace({
   const handleCreateBatch = async () => {
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt || isCreating || referencesAnalyzing) return;
+    if (trimmedPrompt.length > MAX_LONG_PROMPT_LENGTH) {
+      toast.error(`Prompt quá dài. Vui lòng giữ dưới ${MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự để đảm bảo AI nhận đủ nội dung.`);
+      return;
+    }
     setIsCreating(true);
     const editingCandidate = selectedCandidate?.html ? selectedCandidate : null;
-    const readyReferences = references.filter((reference) => reference.status === "ready");
-    const referenceContext = buildReferenceContext(references);
+    const baseReferences = references.filter((reference) => !reference.isPrimaryPrompt);
+    const longPrompt = isLongHtmlVideoPrompt(trimmedPrompt);
+    const primaryPromptReference = longPrompt ? createPrimaryPromptReference() : null;
+    const effectiveReferences = primaryPromptReference
+      ? [primaryPromptReference, ...baseReferences]
+      : baseReferences;
+    const readyReferences = effectiveReferences.filter((reference) => reference.status === "ready");
+    const referenceNames = readyReferences.map((reference) => reference.name).slice(0, 7);
+    const referenceContext = buildReferenceContext(baseReferences);
+    const generationPrompt = longPrompt
+      ? `Hãy sử dụng toàn bộ nội dung trong tệp ${PRIMARY_PROMPT_FILE_NAME} làm yêu cầu chính để tạo video. Không được bỏ qua các yêu cầu về nội dung, timeline, voice, text, CTA hoặc bố cục.`
+      : trimmedPrompt;
     let promptHistoryId: string | undefined;
     let promptRevision: number | undefined;
     try {
@@ -651,12 +736,13 @@ export function HtmlVideoBatchWorkspace({
         projectName: projectName.trim() || DEFAULT_PROJECT_NAME,
         prompt: trimmedPrompt,
         aspectRatio,
-        referenceNames: readyReferences.map((reference) => reference.name),
+        referenceNames,
         parentHistoryId: parentPromptHistoryId || undefined,
       });
       promptHistoryId = history.id;
       promptRevision = history.revision;
       setParentPromptHistoryId(history.id);
+      setReferences(effectiveReferences);
     } catch (error) {
       setIsCreating(false);
       toast.error(errorMessage(error, "Không thể lưu lịch sử prompt trên máy chủ. Video chưa được tạo."));
@@ -667,6 +753,7 @@ export function HtmlVideoBatchWorkspace({
       id: `html-video-candidate-${crypto.randomUUID()}`,
       label: `${projectName.trim() || DEFAULT_PROJECT_NAME} · v${promptRevision || 1}`,
       prompt: trimmedPrompt,
+      generationPrompt,
       html: "",
       css: "",
       durationSeconds,
@@ -681,9 +768,11 @@ export function HtmlVideoBatchWorkspace({
       promptAspectRatio: aspectRatio,
       editMode: Boolean(editingCandidate),
       projectName: projectName.trim() || DEFAULT_PROJECT_NAME,
-      referenceNames: readyReferences.map((reference) => reference.name),
+      referenceNames,
       referenceContext: referenceContext || undefined,
-      referenceAssets: buildReferenceAssets(references),
+      primaryPromptContext: longPrompt ? trimmedPrompt : undefined,
+      primaryPromptFileName: longPrompt ? PRIMARY_PROMPT_FILE_NAME : undefined,
+      referenceAssets: buildReferenceAssets(effectiveReferences),
     }));
     setCandidates((current) => [...nextCandidates, ...current]);
     setSelectedCandidateId(nextCandidates[0]?.id || null);
@@ -816,6 +905,11 @@ export function HtmlVideoBatchWorkspace({
     [candidates]
   );
 
+  const handleHistoryFilterChange = (nextFilter: CandidateFilter) => {
+    setFilter(nextFilter);
+    setHistoryPage(1);
+  };
+
   const createNewProject = () => {
     setProjectName(DEFAULT_PROJECT_NAME);
     setPrompt("");
@@ -831,6 +925,7 @@ export function HtmlVideoBatchWorkspace({
 
   const handleUseTemplate = async (template: (typeof HTML_VIDEO_TEMPLATES)[number]) => {
     setPrompt(template.prompt);
+    setReferences((current) => current.filter((reference) => !reference.isPrimaryPrompt));
     setDurationOverrideSeconds(null);
     setDurationDraftSeconds(String(automaticDuration(template.prompt)));
     setAspectRatio(template.ratio);
@@ -841,6 +936,7 @@ export function HtmlVideoBatchWorkspace({
       id: candidateId,
       label: `${template.name} · Mẫu`,
       prompt: template.prompt,
+      voiceScript: template.prompt,
       html: source.html,
       css: source.css,
       durationSeconds: automaticDuration(template.prompt),
@@ -878,6 +974,14 @@ export function HtmlVideoBatchWorkspace({
     if (candidate.projectName) setProjectName(candidate.projectName);
     if (candidate.promptAspectRatio) setAspectRatio(candidate.promptAspectRatio);
     setParentPromptHistoryId(candidate.promptHistoryId || null);
+    const primaryPromptName = candidate.primaryPromptFileName ||
+      (candidate.referenceNames?.includes(PRIMARY_PROMPT_FILE_NAME) ? PRIMARY_PROMPT_FILE_NAME : undefined);
+    setReferences((current) => {
+      const withoutPrimaryPrompt = current.filter((reference) => !reference.isPrimaryPrompt);
+      return candidate.prompt.trim().length > MAX_DIRECT_PROMPT_LENGTH
+        ? [createPrimaryPromptReference(primaryPromptName || PRIMARY_PROMPT_FILE_NAME), ...withoutPrimaryPrompt]
+        : withoutPrimaryPrompt;
+    });
     if (isPromptHistory) {
       setActiveTool("prompt");
       requestAnimationFrame(() => document.getElementById("html-video-prompt")?.focus());
@@ -954,8 +1058,13 @@ export function HtmlVideoBatchWorkspace({
           <label className="block text-xs font-semibold text-slate-700">Bạn muốn video nói gì?</label>
           <div className="relative mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition focus-within:border-indigo-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-indigo-100">
             {references.length > 0 ? <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto border-b border-slate-200/80 bg-white/70 px-3 py-2">{references.map((reference) => <div key={reference.id} className="flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1 pl-1.5 pr-1 text-xs shadow-sm"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">{reference.kind === "image" ? <ImageIcon className="h-3 w-3" /> : reference.kind === "video" ? <MonitorPlay className="h-3 w-3" /> : <FileText className="h-3 w-3" />}</span><span className="max-w-28 truncate font-medium text-slate-700">{reference.name}</span>{reference.status === "analyzing" ? <LoaderCircle className="h-3 w-3 animate-spin text-indigo-500" /> : reference.status === "failed" ? <span className="text-[10px] text-rose-600">Lỗi</span> : reference.kind === "image" && reference.includeInVideo ? <span className="text-[10px] text-sky-600">Sẽ dùng ảnh</span> : <span className="text-[10px] text-emerald-600">Đã đọc</span>}<button type="button" onClick={() => setReferences((current) => current.filter((item) => item.id !== reference.id))} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600" title="Bỏ tài liệu"><X className="h-3 w-3" /></button></div>)}</div> : null}
-            <textarea id="html-video-prompt" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Ví dụ: Video 15 giây giới thiệu ưu đãi khai trương, nhấn mạnh giảm 30%, CTA đăng ký ngay..." className="min-h-36 w-full resize-y bg-transparent px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400" disabled={isCreating} maxLength={4_000} />
+            {references.some((reference) => reference.isPrimaryPrompt) ? <p className="border-b border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[10px] font-semibold text-indigo-700">Tệp prompt chính đã sẵn sàng: {PRIMARY_PROMPT_FILE_NAME}</p> : null}
+            <textarea id="html-video-prompt" value={prompt} onChange={(event) => handlePromptChange(event.target.value)} placeholder="Ví dụ: Video 15 giây giới thiệu ưu đãi khai trương, nhấn mạnh giảm 30%, CTA đăng ký ngay..." className="min-h-36 w-full resize-y bg-transparent px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400" disabled={isCreating} />
             <div className="flex h-10 items-center border-t border-slate-200/80 px-2"><label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-indigo-700" title="Đính kèm PDF, Word, Sheet, Markdown, ảnh hoặc video mẫu"><Paperclip className="h-4 w-4" /><input id="html-video-reference-input" key={referenceInputKey} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.md,.txt,.json,image/*,video/*" className="hidden" onChange={(event) => handleReferenceFiles(event.target.files)} /></label><span className="ml-1 text-[10px] font-normal text-slate-400">Tài liệu, ảnh hoặc video mẫu</span></div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+            <span className={prompt.length > MAX_LONG_PROMPT_LENGTH ? "font-semibold text-rose-600" : ""}>{prompt.length.toLocaleString("vi-VN")}/{MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>
+            {prompt.length > MAX_LONG_PROMPT_LENGTH ? <span className="font-semibold text-rose-600">Prompt vượt giới hạn, chưa thể tạo video</span> : isLongHtmlVideoPrompt(prompt) ? <span className="font-semibold text-indigo-600">Prompt dài sẽ tự chuyển thành {PRIMARY_PROMPT_FILE_NAME}</span> : <span>Prompt gửi trực tiếp khi không quá {MAX_DIRECT_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>}
           </div>
           <p className="mt-3 text-xs text-slate-500">{aspectRatio} · {durationSeconds} giây · {durationOverrideSeconds === null ? "AI tự chọn theo prompt" : "đã lưu theo lựa chọn của bạn"}</p>
           {parentPromptHistoryId ? <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-800"><span>AI sẽ tiếp tục ngữ cảnh từ tối đa 6 prompt trước trong cùng chuỗi phiên bản.</span><button type="button" onClick={() => setParentPromptHistoryId(null)} className="shrink-0 font-black text-indigo-700 hover:underline">Ngắt ngữ cảnh</button></div> : null}
@@ -967,7 +1076,9 @@ export function HtmlVideoBatchWorkspace({
             {isCreating ? "Đang tạo bản dựng..." : "Tạo video bằng AI"}
           </button>
           <p className="mt-3 text-center text-[11px] leading-4 text-slate-500">AI tự suy luận thời lượng từ prompt trong khoảng 1–180 giây · bạn có thể lưu số giây riêng · 0,5 credit/lần tạo.</p>
-          </> : activeTool === "settings" ? <div className="space-y-5"><div><h2 className="text-lg font-extrabold text-slate-900">Khung hình</h2><p className="mt-1 text-sm text-slate-500">Đây là thiết lập duy nhất bạn cần chọn trước khi tạo video.</p></div><div className="grid grid-cols-3 gap-2">{(["9:16", "1:1", "16:9"] as HtmlVideoAspectRatio[]).map((ratio) => <button key={ratio} type="button" onClick={() => setAspectRatio(ratio)} className={`rounded-xl border px-2 py-3 text-xs font-black ${aspectRatio === ratio ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-600"}`}>{ratio}</button>)}</div><div className="rounded-2xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-800">AI sẽ tự chọn thời lượng, phong cách, số phương án và chất lượng render phù hợp với prompt.</div></div> : <div><h2 className="text-lg font-extrabold text-slate-900">Lịch sử video</h2><p className="mt-1 text-sm text-slate-500">Rê chuột để xem, bấm để mở dự án.</p><div className="mt-4 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-[10px] font-bold">{(["all", "active", "completed", "failed"] as CandidateFilter[]).map((item) => <button key={item} type="button" onClick={() => setFilter(item)} className={`shrink-0 rounded-lg px-2 py-1.5 transition ${filter === item ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}>{item === "all" ? "Tất cả" : item === "active" ? "Đang xử lý" : item === "completed" ? "Hoàn tất" : "Cần xử lý"}</button>)}</div><div className="mt-4 grid grid-cols-2 gap-3">{filteredCandidates.length === 0 ? <p className="col-span-2 rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Chưa có video nào.</p> : filteredCandidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => openCandidateInEditor(candidate)} onMouseEnter={() => setHoveredHistoryCandidateId(candidate.id)} onMouseLeave={() => setHoveredHistoryCandidateId(null)} className={`group min-w-0 text-left ${selectedCandidateId === candidate.id ? "text-indigo-700" : "text-slate-700"}`} title={`Mở ${candidate.label}`}><div className={`relative aspect-video overflow-hidden rounded-xl border bg-slate-900 transition group-hover:-translate-y-0.5 group-hover:shadow-md ${selectedCandidateId === candidate.id ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200"}`}>{candidate.preview ? <iframe key={`${candidate.id}-${hoveredHistoryCandidateId === candidate.id ? "playing" : "paused"}`} title={`Preview ${candidate.label}`} sandbox="" srcDoc={seekableCompositionDocument(candidate.preview.compositionHtml, 0, hoveredHistoryCandidateId === candidate.id)} className="pointer-events-none absolute inset-0 h-full w-full border-0" /> : <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-sky-700" />}{isCandidateActive(candidate.status) ? <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40"><LoaderCircle className="h-5 w-5 animate-spin text-white" /></div> : null}</div><p className="mt-1.5 truncate text-xs font-bold">{candidate.label}</p><p className="truncate text-[10px] text-slate-500">{candidateStatusLabel(candidate)}</p></button>)}</div></div>}
+          </> : activeTool === "settings" ? <div className="space-y-5"><div><h2 className="text-lg font-extrabold text-slate-900">Khung hình</h2><p className="mt-1 text-sm text-slate-500">Đây là thiết lập duy nhất bạn cần chọn trước khi tạo video.</p></div><div className="grid grid-cols-3 gap-2">{(["9:16", "1:1", "16:9"] as HtmlVideoAspectRatio[]).map((ratio) => <button key={ratio} type="button" onClick={() => setAspectRatio(ratio)} className={`rounded-xl border px-2 py-3 text-xs font-black ${aspectRatio === ratio ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-600"}`}>{ratio}</button>)}</div><div className="rounded-2xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-800">AI sẽ tự chọn thời lượng, phong cách, số phương án và chất lượng render phù hợp với prompt.</div></div> : <div><h2 className="text-lg font-extrabold text-slate-900">Lịch sử video</h2><p className="mt-1 text-sm text-slate-500">Rê chuột để xem, bấm để mở dự án.</p><div className="mt-4 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-[10px] font-bold">{(["all", "active", "completed", "failed"] as CandidateFilter[]).map((item) => <button key={item} type="button" onClick={() => handleHistoryFilterChange(item)} className={`shrink-0 rounded-lg px-2 py-1.5 transition ${filter === item ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}>{item === "all" ? "Tất cả" : item === "active" ? "Đang xử lý" : item === "completed" ? "Hoàn tất" : "Cần xử lý"}</button>)}</div><div className="mt-4 grid grid-cols-2 gap-3">{filteredCandidates.length === 0 ? <p className="col-span-2 rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Chưa có video nào.</p> : filteredCandidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => openCandidateInEditor(candidate)} onMouseEnter={() => setHoveredHistoryCandidateId(candidate.id)} onMouseLeave={() => setHoveredHistoryCandidateId(null)} className={`group min-w-0 text-left ${selectedCandidateId === candidate.id ? "text-indigo-700" : "text-slate-700"}`} title={`Mở ${candidate.label}`}><div className={`relative aspect-video overflow-hidden rounded-xl border bg-slate-900 transition group-hover:-translate-y-0.5 group-hover:shadow-md ${selectedCandidateId === candidate.id ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200"}`}>{candidate.preview ? <iframe key={`${candidate.id}-${hoveredHistoryCandidateId === candidate.id ? "playing" : "paused"}`} title={`Preview ${candidate.label}`} sandbox="" srcDoc={seekableCompositionDocument(candidate.preview.compositionHtml, 0, hoveredHistoryCandidateId === candidate.id)} className="pointer-events-none absolute inset-0 h-full w-full border-0" /> : <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-sky-700" />}{isCandidateActive(candidate.status) ? <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40"><LoaderCircle className="h-5 w-5 animate-spin text-white" /></div> : null}</div><p className="mt-1.5 truncate text-xs font-bold">{candidate.label}</p><p className="truncate text-[10px] text-slate-500">{candidateStatusLabel(candidate)}</p></button>)}</div>
+              {historyLoading ? <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin text-indigo-500" />Đang tải lịch sử...</div> : null}
+              {historyPagination && historyPagination.total > 0 ? <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[10px] font-bold text-slate-500"><span>{historyPagination.total.toLocaleString("vi-VN")} video · Trang {historyPagination.page}/{historyPagination.totalPages}</span><span className="flex items-center gap-1"><button type="button" onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} disabled={historyLoading || !historyPagination.hasPreviousPage} className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Trang trước" title="Trang trước"><ChevronLeft className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setHistoryPage((page) => page + 1)} disabled={historyLoading || !historyPagination.hasNextPage} className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Trang sau" title="Trang sau"><ChevronRight className="h-3.5 w-3.5" /></button></span></div> : null}</div>}
           {activeTool === "settings" ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1011,7 +1122,8 @@ export function HtmlVideoBatchWorkspace({
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-black text-slate-900">{selectedCandidate.label}</h2><p className="text-[11px] text-slate-500">Canvas video · {selectedCandidate.promptAspectRatio || aspectRatio} · {selectedCandidate.durationSeconds} giây</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${candidateStatusClass(selectedCandidate.status)}`}>{candidateStatusLabel(selectedCandidate)}</span></div>
             {selectedCandidate.render && isActiveHtmlVideoStatus(selectedCandidate.render.status) ? <div className="border-b border-slate-100 bg-sky-50 px-4 py-2.5"><div className="flex items-center justify-between gap-3 text-[11px] font-semibold text-sky-800"><span>{selectedCandidate.render.stageMessage || "Đang xử lý video..."}</span><span>{Math.round(selectedCandidate.render.progress)}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-100"><div className="h-full rounded-full bg-sky-500 transition-[width]" style={{ width: `${Math.max(0, Math.min(100, selectedCandidate.render.progress))}%` }} /></div></div> : null}
             {selectedCandidate.status === "failed" && selectedCandidate.error ? <div role="alert" className="border-b border-rose-100 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-700">{selectedCandidate.error}</div> : null}
-            <div className="flex min-h-[280px] items-center justify-center bg-[#eef0f4] p-6">
+             {selectedCandidate.render?.voiceStatus === "ready" ? <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-[11px] font-semibold text-emerald-800">Gemini voice đã được ghép trực tiếp vào file MP4.</div> : null}
+             <div className="flex min-h-[280px] items-center justify-center bg-[#eef0f4] p-6">
               {selectedCandidate.status === "completed" && selectedCandidate.render?.outputUrl ? (
                 <video ref={previewVideoRef} controls playsInline preload="metadata" src={selectedCandidate.render.outputUrl} onTimeUpdate={(event) => { previewElapsedRef.current = event.currentTarget.currentTime; setPreviewElapsed(event.currentTarget.currentTime); }} onPlay={() => setIsPreviewPlaying(true)} onPause={() => setIsPreviewPlaying(false)} onEnded={() => { previewElapsedRef.current = activeDuration; setIsPreviewPlaying(false); setPreviewElapsed(activeDuration); }} className="max-h-[360px] max-w-full rounded-lg bg-black object-contain shadow-xl" />
               ) : selectedCandidate.preview ? (

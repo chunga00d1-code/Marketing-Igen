@@ -17,6 +17,7 @@ import {
   type HtmlVideoDraftWorkspaceSnapshot as DraftWorkspaceSnapshot,
   type HtmlVideoPendingDraftConflict as PendingDraftConflict,
 } from "../HtmlVideoWorkspace";
+import { mergePersistedHtmlVideoRenders } from "../HtmlVideoBatchWorkspace";
 import { automaticDuration } from "../html-video/utils";
 import type {
   HtmlVideoRenderDetail,
@@ -37,6 +38,8 @@ function render(status: HtmlVideoRenderStatus): HtmlVideoRenderDetail {
     error: status === "failed" ? "Render failed safely." : null,
     createdAt: "2026-07-29T00:00:00.000Z",
     updatedAt: "2026-07-29T00:01:00.000Z",
+    voiceEnabled: false,
+    voiceStatus: "disabled",
   };
 }
 
@@ -69,7 +72,9 @@ test("renders prompt generation controls and the exact wallet cost", () => {
   assert.match(source, /Bạn muốn video nói gì/);
   assert.match(source, /service\.generateDraft/);
   assert.match(source, /0,5 credit\/lần tạo/);
-  assert.match(source, /maxLength=\{4_000\}/);
+  assert.doesNotMatch(source, /maxLength=\{MAX_LONG_PROMPT_LENGTH\}/);
+  assert.match(source, /Prompt dài sẽ tự chuyển thành/);
+  assert.match(source, /Prompt vượt giới hạn, chưa thể tạo video/);
   assert.match(source, /inferredDurationSeconds/);
   assert.match(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration/);
   assert.match(source, /type="number"/);
@@ -308,6 +313,33 @@ test("uses server history instead of browser local storage for HTML video projec
   assert.match(source, /candidates\.filter\(\(candidate\) => Boolean\(candidate\.render\)\)/);
   assert.doesNotMatch(source, /function promptHistoryCandidate/);
   assert.doesNotMatch(source, /localStorage/);
+});
+
+test("restores completed server renders as playable history candidates", () => {
+  const persisted = Object.assign(render("completed"), {
+    voiceEnabled: false,
+    voiceStatus: "disabled" as const,
+  });
+  const restored = mergePersistedHtmlVideoRenders(
+    [],
+    [persisted],
+    [{
+      id: "prompt-history-1",
+      projectName: "Video giới thiệu",
+      prompt: "Giới thiệu sản phẩm",
+      aspectRatio: "16:9",
+      referenceNames: [],
+      parentHistoryId: null,
+      revision: 1,
+      createdAt: "2026-07-29T00:00:00.000Z",
+      renderId: "render-1",
+    }]
+  );
+
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].label, "Video giới thiệu");
+  assert.equal(restored[0].render?.outputUrl, "https://cdn.example/final.mp4");
+  assert.match(restored[0].preview?.compositionHtml || "", /<video/);
 });
 
 test("aborts AI generation on unmount and uses the overwrite confirmation copy", () => {

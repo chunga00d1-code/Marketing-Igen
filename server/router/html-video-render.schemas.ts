@@ -59,6 +59,8 @@ const htmlVideoDraftKeys = new Set([
   "resolution",
   "promptHistoryId",
   "referenceContext",
+  "primaryPromptContext",
+  "primaryPromptFileName",
   "referenceAssets",
 ]);
 
@@ -76,6 +78,8 @@ export const htmlVideoDraftBodySchema = Joi.object({
   prompt: Joi.string().trim().min(1).max(4_000).required(),
   promptHistoryId: Joi.string().hex().length(24).optional(),
   referenceContext: Joi.string().trim().max(24_000).optional(),
+  primaryPromptContext: Joi.string().trim().max(23_000).optional(),
+  primaryPromptFileName: Joi.string().trim().max(180).optional(),
   referenceAssets: Joi.array()
     .items(Joi.object(htmlVideoReferenceSlotFields))
     .max(6)
@@ -92,6 +96,7 @@ export const htmlVideoDraftBodySchema = Joi.object({
 
 export const createHtmlVideoRenderBodySchema = Joi.object({
   ...htmlVideoFields,
+  voiceScript: Joi.string().trim().max(8_000).allow("").optional(),
   idempotencyKey: Joi.string()
     .pattern(/^[a-zA-Z0-9_-]{12,100}$/)
     .required(),
@@ -102,10 +107,16 @@ export const htmlVideoRenderParamsSchema = Joi.object({
   renderId: Joi.string().hex().length(24).required(),
 });
 
+export const htmlVideoRenderListQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).max(10_000).default(1),
+  pageSize: Joi.number().integer().min(1).max(50).default(12),
+  filter: Joi.string().valid("all", "active", "completed", "failed").default("all"),
+});
+
 export const createHtmlVideoPromptHistoryBodySchema = Joi.object({
   projectName: Joi.string().trim().min(1).max(180).required(),
-  prompt: Joi.string().trim().min(3).max(10_000).required(),
+  prompt: Joi.string().trim().min(3).max(23_000).required(),
   aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
-  referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(6).default([]),
+  referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(7).default([]),
   parentHistoryId: Joi.string().hex().length(24).optional(),
 });

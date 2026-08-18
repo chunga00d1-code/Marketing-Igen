@@ -39,12 +39,15 @@ export type HtmlVideoDraftRequest = {
   resolution: HtmlVideoResolution;
   promptHistoryId?: string;
   referenceContext?: string;
+  primaryPromptContext?: string;
+  primaryPromptFileName?: string;
   referenceAssets?: HtmlVideoReferenceSlot[];
 };
 
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
   promptHistoryId?: string;
+  voiceScript?: string;
 };
 
 export type HtmlVideoPreview = {
@@ -56,6 +59,7 @@ export type HtmlVideoPreview = {
 export type HtmlVideoDraft = {
   html: string;
   css: string;
+  voiceScript?: string;
 };
 
 export type HtmlVideoRenderDetail = {
@@ -71,6 +75,30 @@ export type HtmlVideoRenderDetail = {
   createdAt: string;
   updatedAt: string;
   promptHistoryId?: string | null;
+  voiceEnabled: boolean;
+  voiceStatus: "disabled" | "queued" | "generating" | "ready" | "failed";
+};
+
+export type HtmlVideoRenderHistoryFilter = "all" | "active" | "completed" | "failed";
+
+export type HtmlVideoRenderListOptions = {
+  page?: number;
+  pageSize?: number;
+  filter?: HtmlVideoRenderHistoryFilter;
+};
+
+export type HtmlVideoRenderPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+export type HtmlVideoRenderListResult = {
+  items: HtmlVideoRenderDetail[];
+  pagination: HtmlVideoRenderPagination;
 };
 
 export type HtmlVideoPromptHistory = {
@@ -98,6 +126,13 @@ const validStatuses = new Set<HtmlVideoRenderStatus>([
   "rendering",
   "uploading",
   "completed",
+  "failed",
+]);
+const validVoiceStatuses = new Set<HtmlVideoRenderDetail["voiceStatus"]>([
+  "disabled",
+  "queued",
+  "generating",
+  "ready",
   "failed",
 ]);
 const validAspectRatios = new Set<HtmlVideoAspectRatio>([
@@ -181,7 +216,10 @@ export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
       !hasExactKeys(payload, ["success", "data"]) ||
       payload.success !== true ||
       !isRecord(payload.data) ||
-      !hasExactKeys(payload.data, ["html", "css"])
+       !(
+         hasExactKeys(payload.data, ["html", "css"]) ||
+         hasExactKeys(payload.data, ["html", "css", "voiceScript"])
+       )
     ) {
       throw new Error(invalidHtmlVideoDraftMessage);
     }
@@ -198,16 +236,21 @@ export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
     ) {
       throw new Error(invalidHtmlVideoDraftMessage);
     }
-    return { html, css };
+    if ("voiceScript" in raw && typeof raw.voiceScript !== "string") {
+      throw new Error(invalidHtmlVideoDraftMessage);
+    }
+    const voiceScript =
+      typeof raw.voiceScript === "string" ? raw.voiceScript.trim().slice(0, 8_000) : "";
+    return voiceScript ? { html, css, voiceScript } : { html, css };
   } catch {
     throw new Error(invalidHtmlVideoDraftMessage);
   }
 }
 
-export function parseHtmlVideoRenderResponse(
+function parseHtmlVideoRenderDetail(
   payload: unknown
 ): HtmlVideoRenderDetail {
-  const raw = envelopeData(payload);
+  const raw = payload;
   if (!isRecord(raw)) {
     throw new Error("Dữ liệu kết xuất HTML-to-video không hợp lệ.");
   }
@@ -217,6 +260,11 @@ export function parseHtmlVideoRenderResponse(
   const aspectRatio = raw.aspectRatio as HtmlVideoAspectRatio;
   const resolution = raw.resolution as HtmlVideoResolution;
   const durationSeconds = raw.durationSeconds;
+  const voiceStatus = validVoiceStatuses.has(
+    raw.voiceStatus as HtmlVideoRenderDetail["voiceStatus"]
+  )
+    ? (raw.voiceStatus as HtmlVideoRenderDetail["voiceStatus"])
+    : "disabled";
   if (
     !id ||
     !validStatuses.has(status) ||
@@ -262,7 +310,15 @@ export function parseHtmlVideoRenderResponse(
       typeof raw.promptHistoryId === "string" && raw.promptHistoryId.trim()
         ? raw.promptHistoryId.trim()
         : null,
+    voiceEnabled: raw.voiceEnabled === true || voiceStatus !== "disabled",
+    voiceStatus,
   };
+}
+
+export function parseHtmlVideoRenderResponse(
+  payload: unknown
+): HtmlVideoRenderDetail {
+  return parseHtmlVideoRenderDetail(envelopeData(payload));
 }
 
 function parseHtmlVideoPromptHistory(raw: unknown): HtmlVideoPromptHistory {
@@ -306,11 +362,71 @@ function requestError(payload: unknown, fallback: string) {
   );
 }
 
+export function parseHtmlVideoRenderListResponse(
+  payload: unknown,
+  options: HtmlVideoRenderListOptions = {}
+): HtmlVideoRenderListResult {
+  const raw = envelopeData(payload);
+  const requestedPage = Math.max(1, Math.floor(Number(options.page) || 1));
+  const requestedPageSize = Math.min(50, Math.max(1, Math.floor(Number(options.pageSize) || 12)));
+
+  if (Array.isArray(raw)) {
+    const items = raw.map(parseHtmlVideoRenderDetail);
+    return {
+      items,
+      pagination: {
+        page: requestedPage,
+        pageSize: requestedPageSize,
+        total: items.length,
+        totalPages: Math.max(1, Math.ceil(items.length / requestedPageSize)),
+        hasNextPage: false,
+        hasPreviousPage: requestedPage > 1,
+      },
+    };
+  }
+
+  if (!isRecord(raw) || !Array.isArray(raw.items) || !isRecord(raw.pagination)) {
+    throw new Error("Dữ liệu lịch sử video HTML-to-video không hợp lệ.");
+  }
+
+  const pagination = raw.pagination;
+  const paginationKeys = ["page", "pageSize", "total", "totalPages"];
+  if (
+    !paginationKeys.every((key) => Number.isInteger(pagination[key])) ||
+    Number(pagination.page) < 1 ||
+    Number(pagination.pageSize) < 1 ||
+    Number(pagination.total) < 0 ||
+    Number(pagination.totalPages) < 1 ||
+    typeof pagination.hasNextPage !== "boolean" ||
+    typeof pagination.hasPreviousPage !== "boolean"
+  ) {
+    throw new Error("Dữ liệu phân trang lịch sử video HTML-to-video không hợp lệ.");
+  }
+
+  return {
+    items: raw.items.map(parseHtmlVideoRenderDetail),
+    pagination: {
+      page: Number(pagination.page),
+      pageSize: Number(pagination.pageSize),
+      total: Number(pagination.total),
+      totalPages: Number(pagination.totalPages),
+      hasNextPage: pagination.hasNextPage,
+      hasPreviousPage: pagination.hasPreviousPage,
+    },
+  };
+}
+
 export const htmlVideoRenderService = {
   async listRenders(
+    options: HtmlVideoRenderListOptions = {},
     signal?: AbortSignal
-  ): Promise<HtmlVideoRenderDetail[]> {
-    const response = await fetch("/api/v1/html-video-renders", {
+  ): Promise<HtmlVideoRenderListResult> {
+    const params = new URLSearchParams({
+      page: String(options.page || 1),
+      pageSize: String(options.pageSize || 12),
+      filter: options.filter || "all",
+    });
+    const response = await fetch(`/api/v1/html-video-renders?${params.toString()}`, {
       headers: authHeaders(),
       signal,
     });
@@ -318,11 +434,7 @@ export const htmlVideoRenderService = {
     if (!response.ok) {
       throw requestError(payload, "Không thể tải lịch sử video HTML-to-video.");
     }
-    const raw = envelopeData(payload);
-    if (!Array.isArray(raw)) {
-      throw new Error("Dữ liệu lịch sử video HTML-to-video không hợp lệ.");
-    }
-    return raw.map(parseHtmlVideoRenderResponse);
+    return parseHtmlVideoRenderListResponse(payload, options);
   },
 
   async listPromptHistory(
@@ -376,6 +488,8 @@ export const htmlVideoRenderService = {
           resolution: input.resolution,
           promptHistoryId: input.promptHistoryId,
           referenceContext: input.referenceContext,
+          primaryPromptContext: input.primaryPromptContext,
+          primaryPromptFileName: input.primaryPromptFileName,
           referenceAssets: input.referenceAssets,
         }),
         signal,

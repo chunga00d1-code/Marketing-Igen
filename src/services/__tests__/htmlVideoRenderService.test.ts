@@ -83,6 +83,24 @@ test("accepts an empty CSS string in an HTML video draft response", () => {
   );
 });
 
+test("parses the single contextual voice script returned with a draft", () => {
+  assert.deepEqual(
+    parseHtmlVideoDraftResponse({
+      success: true,
+      data: {
+        html: "<main>AI</main>",
+        css: "",
+        voiceScript: "  Welcome to the product story.  ",
+      },
+    }),
+    {
+      html: "<main>AI</main>",
+      css: "",
+      voiceScript: "Welcome to the product story.",
+    }
+  );
+});
+
 test("rejects unknown keys in the HTML video draft envelope and data", () => {
   const invalidDraftMessage =
     "Dữ liệu bản nháp HTML-to-video không hợp lệ.";
@@ -295,6 +313,46 @@ test("create sends one idempotent render request", async () => {
     ...previewInput,
     idempotencyKey: "html_render_123456",
   });
+});
+
+test("listRenders restores completed output URLs from server history", async () => {
+  let requestedUrl = "";
+  let authorization = "";
+  globalThis.fetch = (async (input, init) => {
+    requestedUrl = String(input);
+    authorization = new Headers(init?.headers).get("Authorization") || "";
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          items: [{
+            ...activeRender,
+            status: "completed",
+            progress: 100,
+            outputUrl: "https://cdn.example/final.mp4",
+            voiceStatus: "disabled",
+          }],
+          pagination: {
+            page: 1,
+            pageSize: 12,
+            total: 1,
+            totalPages: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        },
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  const renderPage = await htmlVideoRenderService.listRenders();
+
+  assert.equal(requestedUrl, "/api/v1/html-video-renders?page=1&pageSize=12&filter=all");
+  assert.equal(authorization, "Bearer html-video-test-token");
+  assert.equal(renderPage.items[0].status, "completed");
+  assert.equal(renderPage.items[0].outputUrl, "https://cdn.example/final.mp4");
+  assert.equal(renderPage.pagination.total, 1);
 });
 
 test("get fetches one render with authentication", async () => {

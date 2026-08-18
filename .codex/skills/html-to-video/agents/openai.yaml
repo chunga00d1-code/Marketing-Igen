@@ -1,0 +1,4 @@
+interface:
+  display_name: "HTML to Video"
+  short_description: "Render production-ready prompt videos"
+  default_prompt: "Use $html-to-video to implement a production prompt-to-MP4 workflow with data-faithful scenes, synchronized voice, verified rendering, and provenance."

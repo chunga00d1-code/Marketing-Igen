@@ -12,14 +12,26 @@ import * as XLSX from "xlsx";
 import { openrouterChat } from "../service/openrouter.service";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
-  const isPiApiError = String(error.message || "").toUpperCase().includes("PIAPI");
-  const details = isPiApiError ? "Lỗi nội bộ dịch vụ tạo media AI." : error.message || String(error);
+  const rawMessage = String(error.message || "");
+  const normalizedMessage = rawMessage.toLowerCase();
+  const isPiApiError = normalizedMessage.includes("piapi");
+  const isWalletBalanceError =
+    normalizedMessage.includes("số dư ví không đủ") ||
+    normalizedMessage.includes("so du vi khong du") ||
+    normalizedMessage.includes("wallet balance");
+  const details = isPiApiError ? "Lỗi nội bộ dịch vụ tạo media AI." : rawMessage || String(error);
   const status = error.status || error.statusCode;
 
-  if (status === 402 && !String(error.message || "").toUpperCase().includes("PIAPI")) {
+  if (status === 402 && !isPiApiError) {
+    if (!isWalletBalanceError) {
+      return res.status(503).json({
+        status: "error",
+        message: "Dịch vụ AI đang tạm thời không khả dụng. Vui lòng thử lại sau.",
+      });
+    }
     return res.status(402).json({
       status: "error",
-      message: error.message || "Số dư ví không đủ. Vui lòng nạp thêm tiền.",
+      message: rawMessage || "Số dư ví không đủ. Vui lòng nạp thêm tiền.",
     });
   }
 

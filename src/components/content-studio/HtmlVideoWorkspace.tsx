@@ -571,7 +571,9 @@ export function LegacyHtmlVideoWorkspace({
       outputUrl: null,
       error: null,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      voiceEnabled: false,
+      voiceStatus: "disabled",
     };
     setRender(mockCreated);
     setSelectedRenderId(mockCreated.id);

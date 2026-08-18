@@ -128,6 +128,107 @@ test("reads a render only through user and company ownership scope", async (cont
   assert.equal("compositionHtml" in result, false);
 });
 
+test("lists persisted renders through the same user and company ownership scope", async (context) => {
+  let filter: Record<string, unknown> | undefined;
+  const completed = privateRecord({
+    _id: new Types.ObjectId(),
+    status: "completed",
+    progress: 100,
+    outputUrl: "https://cdn.example/final.mp4",
+    completedAt: now,
+  });
+  context.mock.method(HtmlVideoRenderModel, "countDocuments", async (received) => {
+    assert.deepEqual(received, {
+      userId: actor.id,
+      companyCode: actor.companyCode,
+    });
+    return 1;
+  });
+  context.mock.method(HtmlVideoRenderModel, "find", (received) => {
+    filter = received as Record<string, unknown>;
+    const query = {
+      sort() {
+        return query;
+      },
+      skip() {
+        return query;
+      },
+      limit() {
+        return query;
+      },
+      lean: async () => [completed],
+    };
+    return query;
+  });
+
+  const result = await htmlVideoRenderService.listRenders(actor, {
+    page: 1,
+    pageSize: 12,
+    filter: "all",
+  });
+
+  assert.deepEqual(filter, {
+    userId: actor.id,
+    companyCode: actor.companyCode,
+  });
+  assert.equal(result.items.length, 1);
+  assert.equal(result.items[0].status, "completed");
+  assert.equal(result.items[0].outputUrl, "https://cdn.example/final.mp4");
+  assert.deepEqual(result.pagination, {
+    page: 1,
+    pageSize: 12,
+    total: 1,
+    totalPages: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+  });
+});
+
+test("filters active renders and applies the requested page", async (context) => {
+  let capturedFilter: Record<string, unknown> | undefined;
+  let capturedSkip = -1;
+  context.mock.method(HtmlVideoRenderModel, "countDocuments", async (received) => {
+    capturedFilter = received as Record<string, unknown>;
+    return 25;
+  });
+  context.mock.method(HtmlVideoRenderModel, "find", () => {
+    const query = {
+      sort() {
+        return query;
+      },
+      skip(value: number) {
+        capturedSkip = value;
+        return query;
+      },
+      limit() {
+        return query;
+      },
+      lean: async () => [],
+    };
+    return query;
+  });
+
+  const result = await htmlVideoRenderService.listRenders(actor, {
+    page: 2,
+    pageSize: 12,
+    filter: "active",
+  });
+
+  assert.deepEqual(capturedFilter, {
+    userId: actor.id,
+    companyCode: actor.companyCode,
+    status: { $in: ["queued", "rendering", "uploading"] },
+  });
+  assert.equal(capturedSkip, 12);
+  assert.deepEqual(result.pagination, {
+    page: 2,
+    pageSize: 12,
+    total: 25,
+    totalPages: 3,
+    hasNextPage: true,
+    hasPreviousPage: true,
+  });
+});
 test("uses the same not-found error for missing and unauthorized renders", async (context) => {
   context.mock.method(HtmlVideoRenderModel, "findOne", () => ({
     lean: async () => null,

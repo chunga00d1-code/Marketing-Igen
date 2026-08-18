@@ -131,7 +131,7 @@ export function ToastContainer() {
               {t.message.includes("Số dư ví không đủ") && (
                 <button 
                   onClick={() => {
-                    document.getElementById("sidebar_menu_VÍ_&_NẠP_TIỀN")?.click();
+                    document.querySelector<HTMLButtonElement>('[data-navigation="wallet"]')?.click();
                   }}
                   className="mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 text-[10px] font-bold shadow-md cursor-pointer transition-all active:scale-95 pointer-events-auto font-sans"
                 >
