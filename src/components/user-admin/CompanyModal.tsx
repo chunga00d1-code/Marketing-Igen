@@ -184,7 +184,7 @@ export function CompanyModal({
           ) : (
             <div className="my-4 space-y-4 border-t border-gray-100 pt-4">
               <div className="text-left">
-                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-indigo-700">Tai khoan chu doanh nghiep (Admin Owner)</span>
+                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-indigo-700">Tài khoản chủ doanh nghiệp</span>
               </div>
               <div className="space-y-1.5 text-left">
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500">Tên chủ sở hữu *</label>

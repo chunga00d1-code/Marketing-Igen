@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import mongoose from "mongoose";
@@ -13,6 +14,7 @@ import {
 } from "./html-video-security.service";
 import { VideoRenderAdapterError } from "../video-edit/render-adapter";
 import { defaultVideoRenderAdapterRegistry } from "../video-edit/video-render-adapters";
+import { htmlVideoTtsService } from "./html-video-tts.service";
 
 export type HtmlVideoActor = {
   id: string;
@@ -22,7 +24,10 @@ export type HtmlVideoActor = {
 export type CreateHtmlVideoRenderInput = HtmlVideoSource & {
   idempotencyKey: string;
   promptHistoryId?: string;
+  voiceScript?: string;
 };
+
+const MAX_VOICE_SCRIPT_LENGTH = 8_000;
 
 export type HtmlVideoRenderPublic = {
   id: string;
@@ -37,6 +42,30 @@ export type HtmlVideoRenderPublic = {
   createdAt: string;
   updatedAt: string;
   promptHistoryId: string | null;
+  voiceEnabled: boolean;
+  voiceStatus: "disabled" | "queued" | "generating" | "ready" | "failed";
+};
+
+export type HtmlVideoRenderHistoryFilter = "all" | "active" | "completed" | "failed";
+
+export type HtmlVideoRenderListOptions = {
+  page?: number;
+  pageSize?: number;
+  filter?: HtmlVideoRenderHistoryFilter;
+};
+
+export type HtmlVideoRenderPagination = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+export type HtmlVideoRenderListResult = {
+  items: HtmlVideoRenderPublic[];
+  pagination: HtmlVideoRenderPagination;
 };
 
 type RenderRecord = Partial<HtmlVideoRenderDocument> & {
@@ -45,6 +74,8 @@ type RenderRecord = Partial<HtmlVideoRenderDocument> & {
   aspectRatio: HtmlVideoRenderDocument["aspectRatio"];
   resolution: HtmlVideoRenderDocument["resolution"];
   durationSeconds: number;
+  voiceScript?: string;
+  voiceStatus?: HtmlVideoRenderPublic["voiceStatus"];
 };
 
 function asPlainRecord(value: unknown): RenderRecord {
@@ -63,6 +94,12 @@ function serializeRender(value: unknown): HtmlVideoRenderPublic {
   const render = asPlainRecord(value);
   const createdAt = render.createdAt ?? new Date(0);
   const updatedAt = render.updatedAt ?? createdAt;
+  const voiceScript = String(render.voiceScript || "").trim();
+  const voiceStatus = ["disabled", "queued", "generating", "ready", "failed"].includes(
+    String(render.voiceStatus)
+  )
+    ? String(render.voiceStatus) as HtmlVideoRenderPublic["voiceStatus"]
+    : voiceScript ? "queued" : "disabled";
   return {
     id: String(render._id),
     promptHistoryId: render.promptHistoryId ? String(render.promptHistoryId) : null,
@@ -79,6 +116,8 @@ function serializeRender(value: unknown): HtmlVideoRenderPublic {
     error: render.status === "failed" && render.error ? String(render.error) : null,
     createdAt: new Date(createdAt).toISOString(),
     updatedAt: new Date(updatedAt).toISOString(),
+    voiceEnabled: Boolean(voiceScript),
+    voiceStatus,
   };
 }
 
@@ -117,6 +156,7 @@ export const htmlVideoRenderService = {
     input: CreateHtmlVideoRenderInput
   ): Promise<{ render: HtmlVideoRenderPublic; created: boolean }> {
     const safeComposition = buildSafeHtmlVideoComposition(input);
+    const voiceScript = String(input.voiceScript || "").trim().slice(0, MAX_VOICE_SCRIPT_LENGTH);
     const filter = scopedIdempotencyFilter(actor, input.idempotencyKey);
     const existing = await HtmlVideoRenderModel.findOne(filter).lean();
     if (existing) {
@@ -134,6 +174,8 @@ export const htmlVideoRenderService = {
         sanitizedHtml: safeComposition.sanitizedHtml,
         sanitizedCss: safeComposition.sanitizedCss,
         compositionHtml: safeComposition.compositionHtml,
+        voiceScript,
+        voiceStatus: voiceScript ? "queued" : "disabled",
         durationSeconds: input.durationSeconds,
         aspectRatio: input.aspectRatio,
         resolution: input.resolution,
@@ -173,15 +215,44 @@ export const htmlVideoRenderService = {
     return serializeRender(render);
   },
 
-  async listRenders(actor: HtmlVideoActor): Promise<HtmlVideoRenderPublic[]> {
-    const renders = await HtmlVideoRenderModel.find({
+  async listRenders(
+    actor: HtmlVideoActor,
+    options: HtmlVideoRenderListOptions = {}
+  ): Promise<HtmlVideoRenderListResult> {
+    const requestedPage = Math.max(1, Math.floor(Number(options.page) || 1));
+    const pageSize = Math.min(50, Math.max(1, Math.floor(Number(options.pageSize) || 12)));
+    const historyFilter = options.filter || "all";
+    const query: Record<string, unknown> = {
       userId: actor.id,
       companyCode: actor.companyCode,
-    })
-      .sort({ createdAt: -1 })
-      .limit(50)
+    };
+
+    if (historyFilter === "active") {
+      query.status = { $in: ["queued", "rendering", "uploading"] };
+    } else if (historyFilter !== "all") {
+      query.status = historyFilter;
+    }
+
+    const total = await HtmlVideoRenderModel.countDocuments(query);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const renders = await HtmlVideoRenderModel.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
       .lean();
-    return renders.map(serializeRender);
+
+    return {
+      items: renders.map(serializeRender),
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
+    };
   },
 
   async recoverPendingRenders(): Promise<string[]> {
@@ -225,26 +296,63 @@ export const htmlVideoRenderService = {
       },
       { new: true }
     )
-      .select("+compositionHtml")
+      .select("+compositionHtml +voiceScript")
       .lean();
     if (!render) return;
 
     const adapter = defaultVideoRenderAdapterRegistry.get("hyperframes");
+    const temporaryDirectory = join(
+      tmpdir(),
+      `igen-html-video-${renderId}-${randomUUID()}`
+    );
+    const voiceScript = String(render.voiceScript || "").trim();
     try {
+      let voiceAudioPath: string | undefined;
+      let voiceAudioFormat: "mp3" | "pcm" | undefined;
+      let voiceAudioSampleRate: number | undefined;
+      let voiceAudioChannels: number | undefined;
+      if (voiceScript) {
+        await mkdir(temporaryDirectory, { recursive: true });
+        await HtmlVideoRenderModel.updateOne(
+          { _id: renderId, status: "rendering" },
+          {
+            $set: {
+              voiceStatus: "generating",
+              progress: 5,
+              stageMessage: "Generating contextual voice audio.",
+            },
+          }
+        );
+        const voice = await htmlVideoTtsService.generate(voiceScript);
+        voiceAudioPath = join(
+          temporaryDirectory,
+          voice.format === "pcm" ? "voice.pcm" : "voice.mp3"
+        );
+        await writeFile(voiceAudioPath, voice.buffer);
+        voiceAudioFormat = voice.format;
+        voiceAudioSampleRate = voice.sampleRate;
+        voiceAudioChannels = voice.channels;
+      }
       const result = await adapter.render(
         {
           jobId: renderId,
           compositionHtml: render.compositionHtml,
           aspectRatio: render.aspectRatio,
           resolution: render.resolution,
+          ...(voiceAudioPath
+            ? {
+                voiceAudioPath,
+                ...(voiceAudioFormat ? { voiceAudioFormat } : {}),
+                ...(voiceAudioSampleRate ? { voiceAudioSampleRate } : {}),
+                ...(voiceAudioChannels ? { voiceAudioChannels } : {}),
+                voiceDurationSeconds: render.durationSeconds,
+              }
+            : {}),
         },
         {
           signal: new AbortController().signal,
           timeoutMs: htmlVideoRenderTimeoutMs,
-          temporaryDirectory: join(
-            tmpdir(),
-            `igen-html-video-${renderId}-${randomUUID()}`
-          ),
+          temporaryDirectory,
           onProgress: async ({ stage, progress, message }) => {
             const status = stage === "uploading" ? "uploading" : "rendering";
             await HtmlVideoRenderModel.updateOne(
@@ -268,6 +376,7 @@ export const htmlVideoRenderService = {
             progress: 100,
             stageMessage: "Kết xuất video HTML hoàn tất.",
             outputUrl: result.outputUrl,
+            voiceStatus: voiceScript ? "ready" : "disabled",
             errorCode: "",
             error: "",
             completedAt: new Date(),
@@ -283,11 +392,13 @@ export const htmlVideoRenderService = {
             status: "queued",
             progress: 0,
             stageMessage: "Tác vụ sẽ được thử lại.",
+            voiceStatus: voiceScript ? "failed" : "disabled",
             errorCode: safeFailure.code,
             error: safeFailure.message,
           },
         }
       );
+      await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
       throw error;
     }
   },

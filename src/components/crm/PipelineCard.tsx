@@ -10,6 +10,21 @@ type PipelineCardProps = {
   onGoToChat: (customerName: string) => void;
 };
 
+function getCustomerInitials(customerName: string) {
+  const parts = customerName.trim().split(/\s+/).filter(Boolean);
+  const initials = parts
+    .slice(-2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+  return initials || "KH";
+}
+
+function getSafeLeadAvatar(lead: ExtendedLeadCard) {
+  const avatar = String(lead.avatar || "").trim();
+  if (avatar && !/(?:Ã|Â|ðŸ|â€|�)/u.test(avatar)) return avatar;
+  return getCustomerInitials(lead.customerName);
+}
+
 export const PipelineCard: React.FC<PipelineCardProps> = ({
   lead,
   onMove,
@@ -35,7 +50,7 @@ export const PipelineCard: React.FC<PipelineCardProps> = ({
       {/* Badge & Avatar Header */}
       <div className="flex items-center gap-2.5">
         <div className="text-lg p-1 bg-slate-50 border border-slate-100 rounded-xl select-none shrink-0 shadow-xxs">
-          {lead.avatar}
+          {getSafeLeadAvatar(lead)}
         </div>
         <div className="flex-1 min-w-0">
           <h5 className="font-extrabold text-slate-800 text-xs leading-none truncate font-sans">{lead.customerName}</h5>

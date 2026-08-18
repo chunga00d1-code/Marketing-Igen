@@ -7,6 +7,13 @@ export type HtmlVideoRenderStatus =
   | "completed"
   | "failed";
 
+export type HtmlVideoVoiceStatus =
+  | "disabled"
+  | "queued"
+  | "generating"
+  | "ready"
+  | "failed";
+
 export type HtmlVideoRenderDocument = {
   _id: Types.ObjectId;
   userId: Types.ObjectId | string;
@@ -18,6 +25,8 @@ export type HtmlVideoRenderDocument = {
   sanitizedHtml: string;
   sanitizedCss: string;
   compositionHtml: string;
+  voiceScript: string;
+  voiceStatus: HtmlVideoVoiceStatus;
   durationSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   resolution: "720p" | "1080p";
@@ -70,6 +79,17 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
       required: true,
       immutable: true,
       select: false,
+    },
+    voiceScript: {
+      type: String,
+      default: "",
+      immutable: true,
+      select: false,
+    },
+    voiceStatus: {
+      type: String,
+      enum: ["disabled", "queued", "generating", "ready", "failed"],
+      default: "disabled",
     },
     durationSeconds: {
       type: Number,

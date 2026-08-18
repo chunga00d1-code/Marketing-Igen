@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../middleware/auth";
 import {
   htmlVideoRenderService,
   type HtmlVideoActor,
+  type HtmlVideoRenderListOptions,
 } from "../service/html-video/html-video-render.service";
 import { htmlVideoPromptHistoryService } from "../service/html-video/html-video-prompt-history.service";
 import {
@@ -197,7 +198,11 @@ export function createHtmlVideoRenderController(
 
     async list(req: AuthenticatedRequest, res: Response) {
       try {
-        const renders = await dependencies.service.listRenders(actorFrom(req));
+        const options = (req.query || {}) as unknown as HtmlVideoRenderListOptions;
+        const renders = await dependencies.service.listRenders(
+          actorFrom(req),
+          options
+        );
         return res.json({ success: true, data: renders });
       } catch (error) {
         return respondError(res, error);

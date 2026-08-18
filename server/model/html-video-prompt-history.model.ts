@@ -26,7 +26,7 @@ const HtmlVideoPromptHistorySchema = new Schema<HtmlVideoPromptHistoryDocument>(
     },
     companyCode: { type: String, required: true, index: true, immutable: true },
     projectName: { type: String, required: true, trim: true, maxlength: 180 },
-    prompt: { type: String, required: true, trim: true, maxlength: 10_000 },
+    prompt: { type: String, required: true, trim: true, maxlength: 23_000 },
     aspectRatio: {
       type: String,
       enum: ["16:9", "9:16", "1:1"],

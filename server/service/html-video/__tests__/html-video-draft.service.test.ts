@@ -126,7 +126,11 @@ test("sends the trimmed prompt and requested video settings to the model", async
   );
   assert.equal(params.temperature, 0.35);
   assert.equal(params.jsonMode, true);
-  assert.deepEqual(params.responseSchema, { html: "string", css: "string" });
+  assert.deepEqual(params.responseSchema, {
+    html: "string",
+    css: "string",
+    voiceScript: "string",
+  });
   assert.equal(params.maxRetries, 1);
   assert.equal(params.maxTokens, 16_384);
   assert.equal(params.timeoutMs, 120_000);
@@ -138,9 +142,101 @@ test("sends the trimmed prompt and requested video settings to the model", async
   assert.match(JSON.stringify(params.messages), /8\s*(giây|seconds)/);
   assert.match(JSON.stringify(params.messages), /animated video composition/i);
   assert.match(JSON.stringify(params.messages), /full requested duration/i);
+  assert.match(JSON.stringify(params.messages), /RUNTIME HTML-TO-VIDEO SKILL/);
+  assert.match(JSON.stringify(params.messages), /final deliverable is a rendered MP4/i);
+  assert.match(JSON.stringify(params.messages), /source facts, scene purposes, on-screen text, narration, and time ranges/i);
+  assert.match(JSON.stringify(params.messages), /visible text, narration, scene order, and duration semantically aligned/i);
   assert.match(JSON.stringify(params.messages), /premium and intentionally designed/i);
   assert.match(JSON.stringify(params.messages), /three coordinated visual layers/i);
   assert.match(JSON.stringify(params.messages), /no text or decorative layer overlaps another/i);
+  assert.match(JSON.stringify(params.messages), /SLIDE\/SCENE CONTRACT/);
+  assert.match(JSON.stringify(params.messages), /one scene element per item/i);
+  assert.match(JSON.stringify(params.messages), /never use vertical scrolling/i);
+  assert.match(JSON.stringify(params.messages), /one shared full-duration/i);
+  assert.match(JSON.stringify(params.messages), /class names scene-deck for the container/i);
+  assert.match(JSON.stringify(params.messages), /TYPOGRAPHY SCALE/);
+  assert.match(JSON.stringify(params.messages), /headline.*86px/i);
+  assert.match(JSON.stringify(params.messages), /coherent theme tied to the subject/i);
+});
+
+test("retries a scrollable page composition and accepts a fixed composition", async () => {
+  const harness = createHarness({
+    responses: [
+      JSON.stringify({
+        html: "<main>Scrollable</main>",
+        css: "main{overflow-y:auto}",
+      }),
+      JSON.stringify({
+        html: "<main>Fixed</main>",
+        css: "main{overflow:hidden}",
+      }),
+    ],
+  });
+
+  const result = await harness.service.generate(actor, validInput);
+
+  assert.deepEqual(result, {
+    html: "<main>Fixed</main>",
+    css: "main{overflow:hidden}",
+  });
+  assert.equal(harness.chatCalls(), 2);
+  assert.equal(harness.deductCalls(), 1);
+});
+
+test("retries a vertical movement composition and accepts a non-vertical transition", async () => {
+  const harness = createHarness({
+    responses: [
+      JSON.stringify({
+        html: "<main>Vertical</main>",
+        css: "@keyframes enter{from{transform:translateY(-20px)}}",
+      }),
+      JSON.stringify({
+        html: "<main>Fade</main>",
+        css: "@keyframes enter{from{opacity:0}to{opacity:1}}",
+      }),
+    ],
+  });
+
+  const result = await harness.service.generate(actor, validInput);
+
+  assert.deepEqual(result, {
+    html: "<main>Fade</main>",
+    css: "@keyframes enter{from{opacity:0}to{opacity:1}}",
+  });
+  assert.equal(harness.chatCalls(), 2);
+  assert.equal(harness.deductCalls(), 1);
+});
+
+test("retries an under-scaled flat scene deck and accepts a designed readable deck", async () => {
+  const harness = createHarness({
+    responses: [
+      JSON.stringify({
+        html: '<main class="scene-deck"><section class="scene">Small</section></main>',
+        css: ".scene{font-size:18px;background:#fff}",
+      }),
+      JSON.stringify({
+        html: '<main class="scene-deck"><section class="scene">Readable</section></main>',
+        css: [
+          ".scene-deck{background:linear-gradient(135deg,#172554,#0f766e);border-radius:48px;box-shadow:0 24px 80px #020617}",
+          ".scene{font-size:96px;border:2px solid #fbbf24}",
+          ".scene::before{content:'';filter:blur(20px)}",
+        ].join(""),
+      }),
+    ],
+  });
+
+  const result = await harness.service.generate(actor, validInput);
+
+  assert.deepEqual(result, {
+    html: '<main class="scene-deck"><section class="scene">Readable</section></main>',
+    css: [
+      ".scene-deck{background:linear-gradient(135deg,#172554,#0f766e);border-radius:48px;box-shadow:0 24px 80px #020617}",
+      ".scene{font-size:96px;border:2px solid #fbbf24}",
+      ".scene::before{content:'';filter:blur(20px)}",
+    ].join(""),
+  });
+  assert.equal(harness.chatCalls(), 2);
+  assert.equal(harness.deductCalls(), 1);
 });
 
 test("passes analyzed reference context to the model as a reusable template constraint", async () => {
@@ -157,6 +253,48 @@ test("passes analyzed reference context to the model as a reusable template cons
   assert.match(String(userMessage), /warm cream/);
   assert.match(String(userMessage), /reusable HTML\/CSS template/);
   assert.match(String(userMessage), /current user request control the new theme/);
+});
+
+test("passes a long prompt as an authoritative primary prompt file context", async () => {
+  const harness = createHarness();
+  const primaryPrompt = [
+    "30-second vertical product video.",
+    "Keep the Vietnamese narration continuous and preserve every scene requirement.",
+    "Do not invent product specifications.",
+  ].join("\n");
+
+  await harness.service.generate(actor, {
+    ...validInput,
+    prompt: "Hãy dùng toàn bộ nội dung trong tệp prompt-day-du.txt làm yêu cầu chính.",
+    primaryPromptContext: primaryPrompt,
+    primaryPromptFileName: "prompt-day-du.txt",
+  });
+
+  const userMessage = String(harness.chatParams[0].messages.at(-1)?.content);
+  assert.match(userMessage, /PRIMARY USER PROMPT FILE/);
+  assert.match(userMessage, /prompt-day-du\.txt/);
+  assert.match(userMessage, /continuous and preserve every scene requirement/);
+  assert.match(userMessage, /Do not summarize, omit/);
+});
+
+test("keeps the primary prompt within the generation budget before auxiliary context", async () => {
+  const harness = createHarness();
+  const primaryPrompt = "P".repeat(23_000);
+  const referenceContext = "R".repeat(24_000);
+
+  await harness.service.generate(actor, {
+    ...validInput,
+    prompt: "Hãy dùng toàn bộ nội dung trong tệp prompt-day-du.txt.",
+    primaryPromptContext: primaryPrompt,
+    primaryPromptFileName: "prompt-day-du.txt",
+    referenceContext,
+  });
+
+  const userMessage = String(harness.chatParams[0].messages.at(-1)?.content);
+  assert.ok(userMessage.length <= 42_000);
+  assert.match(userMessage, new RegExp(`P{${primaryPrompt.length}}`));
+  assert.match(userMessage, /CURRENT USER REQUEST/);
+  assert.ok(!userMessage.includes(referenceContext));
 });
 
 test("passes recommended image slots without exposing their asset data to the model", async () => {
@@ -216,7 +354,7 @@ test("includes the scoped parent prompt chain while keeping the current prompt h
 
   await service.generate(actor, {
     ...validInput,
-    prompt: "Đổi CTA cuối thành Đăng ký ngay.",
+    prompt: "Hãy dùng yêu cầu trong tệp prompt-day-du.txt.",
     promptHistoryId: "history-2",
   });
 
@@ -224,7 +362,8 @@ test("includes the scoped parent prompt chain while keeping the current prompt h
   assert.match(userMessage, /LỊCH SỬ PROMPT/);
   assert.match(userMessage, /Dùng tông xanh/);
   assert.match(userMessage, /YÊU CẦU HIỆN TẠI/);
-  assert.equal(userMessage.match(/Đổi CTA cuối thành Đăng ký ngay\./g)?.length, 1);
+  assert.match(userMessage, /Hãy dùng yêu cầu trong tệp prompt-day-du\.txt/);
+  assert.doesNotMatch(userMessage, /Đổi CTA cuối thành Đăng ký ngay\./);
 });
 
 test("rejects empty and overlong prompts before billing or provider calls", async () => {

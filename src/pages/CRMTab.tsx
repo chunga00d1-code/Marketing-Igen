@@ -12,6 +12,15 @@ import { socketService } from "../services/socketService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
 
+function getCustomerInitials(customerName: string) {
+  const parts = customerName.trim().split(/\s+/).filter(Boolean);
+  const initials = parts
+    .slice(-2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+  return initials || "KH";
+}
+
 // Lazy-loaded subcomponents
 const PipelineTab = lazy(() =>
   import("../components/crm/PipelineTab").then((module) => ({
@@ -680,7 +689,7 @@ export default function CRMTab() {
         id: c._id || c.recipientId || "",
         recipientId: c.recipientId || "",
         name: c.senderName || "Khách hàng Facebook",
-        avatar: c.avatarUrl || "ðŸ‘¤",
+        avatar: c.avatarUrl || getCustomerInitials(c.senderName || ""),
         avatarUrl: c.avatarUrl || "",
         lastMessage: c.lastMessageText || "[Đính kèm]",
         time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
@@ -697,7 +706,7 @@ export default function CRMTab() {
         id: c._id || c.recipientId || "",
         recipientId: c.recipientId || "",
         name: c.senderName || "Khách hàng Zalo",
-        avatar: c.avatarUrl || "ðŸ‘¤",
+        avatar: c.avatarUrl || getCustomerInitials(c.senderName || ""),
         avatarUrl: c.avatarUrl || "",
         lastMessage: c.lastMessageText || "[Đính kèm]",
         time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
@@ -714,7 +723,7 @@ export default function CRMTab() {
         id: c._id || c.openId || "",
         recipientId: c.openId || "",
         name: c.senderName || "Khách hàng TikTok",
-        avatar: c.avatarUrl || "ðŸ‘¤",
+        avatar: c.avatarUrl || getCustomerInitials(c.senderName || ""),
         avatarUrl: c.avatarUrl || "",
         lastMessage: c.lastMessageText || "[Đính kèm]",
         time: new Date(c.lastMessageAt || Date.now()).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
@@ -1124,9 +1133,7 @@ export default function CRMTab() {
 
     const val = parseFloat(newLeadValue) || 0;
     const selectedCust = inboxCustomers.find(c => c.id === selectedInboxCustId);
-    const avatarIcon = selectedCust
-      ? (selectedCust.name.split(" ").filter(Boolean).slice(0, 1).map(part => part[0]?.toUpperCase() || "").join("") || "ðŸ‘¤")
-      : ["ðŸ‘¤", "ðŸ‘¨â€ðŸ’¼", "ðŸ‘©â€ðŸ’¼", "ðŸ‘¨â€ðŸ’»", "ðŸ‘©â€ðŸ’»", "ðŸ§˜"][Math.floor(Math.random() * 6)];
+    const avatarIcon = getCustomerInitials(selectedCust?.name || newLeadName);
 
     const newLead: Omit<ExtendedLeadCard, "id"> = {
       customerName: newLeadName.trim(),
@@ -1383,7 +1390,7 @@ export default function CRMTab() {
       company: customer.channel === "zalo" ? "Khách hàng từ Zalo" : customer.channel === "tiktok" ? "Khách hàng từ TikTok" : "Khách hàng từ Facebook",
       value: 0,
       phone: "Chưa bổ sung",
-      avatar: customer.name.split(" ").filter(Boolean).slice(0, 1).map(part => part[0]?.toUpperCase() || "").join("") || "ðŸ‘¤",
+      avatar: getCustomerInitials(customer.name),
       email: "chua.co@igen.vn",
       productOfChoice: "",
       status: status,

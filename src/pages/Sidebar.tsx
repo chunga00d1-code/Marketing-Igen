@@ -205,6 +205,7 @@ export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
                 isActive ? `${tone.active} shadow-xs` : "border-transparent text-gray-600 hover:border-gray-100 hover:bg-gray-50 hover:text-gray-900"
               }`}
               id={`sidebar_menu_${item.label.replace(/\s+/g, "_")}`}
+              data-navigation={item.label === "VI & NAP TIEN" ? "wallet" : undefined}
               title={isCollapsed ? item.title : undefined}
             >
               <div className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3.5"}`}>
