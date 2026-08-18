@@ -118,19 +118,113 @@ test("sends the trimmed prompt and requested video settings to the model", async
   });
 
   const [params] = harness.chatParams;
-  assert.equal(params.model, process.env.AI_HTML_MODEL || "google/gemini-2.5-flash");
+  assert.equal(
+    params.model,
+    process.env.HTML_VIDEO_MODEL ||
+    process.env.GEMINI_MODEL ||
+    "google/gemini-2.5-flash"
+  );
   assert.equal(params.temperature, 0.35);
   assert.equal(params.jsonMode, true);
   assert.deepEqual(params.responseSchema, { html: "string", css: "string" });
   assert.equal(params.maxRetries, 1);
-  assert.equal(params.maxTokens, 10_000);
-  assert.equal(params.timeoutMs, 45_000);
+  assert.equal(params.maxTokens, 16_384);
+  assert.equal(params.timeoutMs, 120_000);
   assert.deepEqual(params.messages.at(-1), {
     role: "user",
     content: validInput.prompt.trim(),
   });
   assert.match(JSON.stringify(params.messages), /1080\s*(x|×)\s*1920/);
   assert.match(JSON.stringify(params.messages), /8\s*(giây|seconds)/);
+  assert.match(JSON.stringify(params.messages), /animated video composition/i);
+  assert.match(JSON.stringify(params.messages), /full requested duration/i);
+  assert.match(JSON.stringify(params.messages), /premium and intentionally designed/i);
+  assert.match(JSON.stringify(params.messages), /three coordinated visual layers/i);
+  assert.match(JSON.stringify(params.messages), /no text or decorative layer overlaps another/i);
+});
+
+test("passes analyzed reference context to the model as a reusable template constraint", async () => {
+  const harness = createHarness();
+
+  await harness.service.generate(actor, {
+    ...validInput,
+    referenceContext: "dominant background: warm cream; layout: centered card; avoid black background",
+  });
+
+  const userMessage = harness.chatParams[0].messages.at(-1)?.content;
+  assert.equal(typeof userMessage, "string");
+  assert.match(String(userMessage), /VISUAL\/DOCUMENT REFERENCE CONTEXT/);
+  assert.match(String(userMessage), /warm cream/);
+  assert.match(String(userMessage), /reusable HTML\/CSS template/);
+  assert.match(String(userMessage), /current user request control the new theme/);
+});
+
+test("passes recommended image slots without exposing their asset data to the model", async () => {
+  const harness = createHarness();
+
+  await harness.service.generate(actor, {
+    ...validInput,
+    referenceAssets: [{
+      id: "reference-1",
+      name: "Logo",
+      kind: "image",
+      role: "logo",
+      includeInVideo: true,
+    }],
+  });
+
+  const userMessage = String(harness.chatParams[0].messages.at(-1)?.content);
+  assert.match(userMessage, /slot=reference-1/);
+  assert.match(JSON.stringify(harness.chatParams[0].messages), /data-media-slot/);
+  assert.doesNotMatch(JSON.stringify(harness.chatParams[0].messages), /data:image|https:\/\//i);
+});
+
+test("includes the scoped parent prompt chain while keeping the current prompt highest priority", async () => {
+  let userMessage = "";
+  let receivedHistoryId = "";
+  const service = createHtmlVideoDraftService({
+    chat: async (params) => {
+      const message = params.messages.at(-1);
+      userMessage = message?.role === "user" && typeof message.content === "string"
+        ? message.content
+        : "";
+      return { text: JSON.stringify({ html: "<main>AI</main>", css: "" }) };
+    },
+    checkBalance: async () => undefined,
+    deductBalance: async () => undefined,
+    validateComposition: buildSafeHtmlVideoComposition,
+    loadPromptContext: async (_actor, historyId) => {
+      receivedHistoryId = historyId;
+      return [
+        {
+          id: "history-1",
+          projectName: "Chiến dịch hè",
+          prompt: "Dùng tông xanh và mở đầu bằng vấn đề của khách hàng.",
+          revision: 1,
+          createdAt: "2026-08-17T00:00:00.000Z",
+        },
+        {
+          id: "history-2",
+          projectName: "Chiến dịch hè",
+          prompt: "Đổi CTA cuối thành Đăng ký ngay.",
+          revision: 2,
+          createdAt: "2026-08-17T00:01:00.000Z",
+        },
+      ];
+    },
+  });
+
+  await service.generate(actor, {
+    ...validInput,
+    prompt: "Đổi CTA cuối thành Đăng ký ngay.",
+    promptHistoryId: "history-2",
+  });
+
+  assert.equal(receivedHistoryId, "history-2");
+  assert.match(userMessage, /LỊCH SỬ PROMPT/);
+  assert.match(userMessage, /Dùng tông xanh/);
+  assert.match(userMessage, /YÊU CẦU HIỆN TẠI/);
+  assert.equal(userMessage.match(/Đổi CTA cuối thành Đăng ký ngay\./g)?.length, 1);
 });
 
 test("rejects empty and overlong prompts before billing or provider calls", async () => {
@@ -170,6 +264,64 @@ test("strictly parses valid JSON and returns validator-sanitized source", async 
     html: "<main>Đã làm sạch</main>",
     css: "main{color:#fff}",
   });
+});
+
+test("accepts fenced or wrapped provider JSON while keeping the safe validator as the boundary", async () => {
+  const harness = createHarness({
+    responses: [
+      `Here is the composition:\n\`\`\`json\n${JSON.stringify({
+        result: {
+          html: "<main>Wrapped</main>",
+          css: "main{color:white}",
+        },
+        providerNote: "ignored",
+      })}\n\`\`\``,
+    ],
+  });
+
+  const result = await harness.service.generate(actor, validInput);
+
+  assert.deepEqual(result, {
+    html: "<main>Wrapped</main>",
+    css: "main{color:white}",
+  });
+});
+
+test("moves an accidental style block out of a complete document before validation", async () => {
+  const harness = createHarness({
+    responses: [
+      JSON.stringify({
+        html: "<!doctype html><html><head><style>main{color:white}</style></head><body><main>Document</main></body></html>",
+        css: "",
+      }),
+    ],
+  });
+
+  const result = await harness.service.generate(actor, validInput);
+
+  assert.deepEqual(result, {
+    html: "<main>Document</main>",
+    css: "main{color:white}",
+  });
+});
+
+test("repairs common model-only tags and attributes before the security boundary", async () => {
+  const service = createHtmlVideoDraftService({
+    chat: async () => ({
+      text: JSON.stringify({
+        html: '<main style="color:red"><button class="cta" onclick="alert(1)">Mua ngay</button><svg><path /></svg></main>',
+        css: ".cta{color:white}",
+      }),
+    }),
+    checkBalance: async () => undefined,
+    deductBalance: async () => undefined,
+    validateComposition: buildSafeHtmlVideoComposition,
+  });
+
+  const result = await service.generate(actor, validInput);
+
+  assert.equal(result.html, '<main><span class="cta">Mua ngay</span></main>');
+  assert.equal(result.css, ".cta{color:white}");
 });
 
 test("retries an empty sanitized draft once and never charges", async () => {
@@ -291,6 +443,30 @@ test("classifies a provider error without outer retrying, charging, or exposing 
   assert.equal(deductCalls, 0);
 });
 
+test("maps OpenRouter model permission failures to an actionable safe error", async () => {
+  const providerError = Object.assign(
+    new Error("OpenRouter request secret and provider payload"),
+    { status: 403 }
+  );
+  const service = createHtmlVideoDraftService({
+    chat: async () => {
+      throw providerError;
+    },
+    checkBalance: async () => undefined,
+    validateComposition: buildSafeHtmlVideoComposition,
+    deductBalance: async () => undefined,
+  });
+
+  await assert.rejects(
+    service.generate(actor, validInput),
+    (error: unknown) =>
+      error instanceof Error &&
+      (error as Error & { code?: string }).code === "MODEL_ACCESS_DENIED" &&
+      /chưa được cấp quyền trên OpenRouter/.test(error.message) &&
+      !error.message.includes("secret")
+  );
+});
+
 test("classifies wallet statusCode 402 with a stable safe balance message", async () => {
   const walletError = Object.assign(
     new Error("database payload with wallet-secret"),
@@ -380,7 +556,6 @@ test("does not charge when the validator rejects both attempts", async () => {
 });
 
 for (const text of [
-  '```json\n{"html":"<main>X</main>","css":""}\n```',
   '{"html":"","css":"main{}"}',
   '{"html":"<main>X</main>"}',
   JSON.stringify({ html: "<main>X</main>", css: 4 }),

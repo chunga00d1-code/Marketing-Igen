@@ -26,7 +26,7 @@ export async function runFFmpegFallback(
   const { targetWidth, targetHeight } = options;
   const timeline = blueprint?.timeline || [];
   const videoClips = timeline.filter((item: any) => item.type === "video");
-  const textElements = timeline.filter((item: any) => item.type === "text");
+  const textElements = timeline.filter((item: any) => item.type === "text" || item.type === "caption");
   const imageElements = timeline.filter((item: any) => item.type === "image");
   const audioElements = timeline.filter((item: any) => item.type === "audio");
 
@@ -204,7 +204,7 @@ export async function runFFmpegFallback(
       const rate = clip.playbackRate ?? 1;
       const clipDuration = (end - start) / rate;
       const inputIdx = urlToInputIdx[clip.src] ?? 0;
-      const hasAudio = hasAudioMap[inputIdx] ?? false;
+      const hasAudio = (hasAudioMap[inputIdx] ?? false) && (clip.volume ?? 1) > 0;
       const usesSplit = inputClipCounts[inputIdx] > 1;
 
       let vSrcLabel: string;
@@ -230,23 +230,23 @@ export async function runFFmpegFallback(
       filterComplex += vFilter;
       concatInputs += `[v_proc_${idx}]`;
 
-      if (hasAudio) {
-        const usesSplitA = inputClipCounts[inputIdx] > 1;
-        let aSrcLabel: string;
-        if (usesSplitA) {
+      const usesSplitA = inputClipCounts[inputIdx] > 1 && hasAudioMap[inputIdx];
+      let splitAudioLabel: string | undefined;
+      if (usesSplitA) {
           const splitAi = inputAudioSplitCounters[inputIdx];
-          aSrcLabel = `[asplit_${inputIdx}_${splitAi}]`;
+          splitAudioLabel = `[asplit_${inputIdx}_${splitAi}]`;
           inputAudioSplitCounters[inputIdx] = splitAi + 1;
-        } else {
-          aSrcLabel = `[${inputIdx}:a]`;
-        }
+      }
+
+      if (hasAudio) {
+        const aSrcLabel = splitAudioLabel || `[${inputIdx}:a]`;
         let aFilter = `${aSrcLabel}atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS`;
         if (rate !== 1) aFilter += `,atempo=${Math.max(0.5, Math.min(2.0, rate))}`;
         aFilter += `[a_proc_${idx}];`;
         filterComplex += aFilter;
         concatInputs += `[a_proc_${idx}]`;
       } else {
-        silenceInputIdxMap[idx] = currentInputIdx + silenceCount;
+        silenceInputIdxMap[idx] = videoTempPaths.length + silenceCount;
         silenceCount++;
         concatInputs += `[a_proc_${idx}]`;
       }
@@ -255,7 +255,7 @@ export async function runFFmpegFallback(
     const silenceInputArgs: string[] = [];
     videoClips.forEach((clip: any, idx: number) => {
       const inputIdx = urlToInputIdx[clip.src] ?? 0;
-      if (!hasAudioMap[inputIdx]) {
+      if (!hasAudioMap[inputIdx] || (clip.volume ?? 1) <= 0) {
         const start = clip.start ?? 0;
         const end = clip.end ?? 5;
         const rate = clip.playbackRate ?? 1;
@@ -332,12 +332,38 @@ export async function runFFmpegFallback(
         .trim();
     }
 
+    function wrapDrawtext(text: string, maxChars: number): string {
+      return text
+        .split(/\r?\n/)
+        .flatMap((line) => {
+          const words = line.trim().split(/\s+/).filter(Boolean);
+          const lines: string[] = [];
+          let current = "";
+          for (const word of words) {
+            if (!current) current = word;
+            else if (`${current} ${word}`.length <= maxChars) current += ` ${word}`;
+            else {
+              lines.push(current);
+              current = word;
+            }
+          }
+          if (current) lines.push(current);
+          return lines.length > 0 ? lines : [""];
+        })
+        .join("\n");
+    }
+
     textElements.forEach((textItem: any, idx: number) => {
       const start = textItem.start ?? 0;
       const end = textItem.end ?? 5;
-      const rawContent = stripEmoji(textItem.content || "");
-      const content = rawContent.replace(/'/g, "'\\\\''").replace(/:/g, "\\:");
       const style = textItem.style || {};
+      const isCaption = textItem.type === "caption";
+      const rawContent = wrapDrawtext(stripEmoji(textItem.content || ""), options.aspectRatio === "9:16" ? 28 : 42);
+      const content = rawContent
+        .replace(/\\/g, "\\\\")
+        .replace(/\r?\n/g, "\\n")
+        .replace(/'/g, "'\\\\''")
+        .replace(/:/g, "\\:");
       const color = style.color || "white";
       const opacity = style.opacity !== undefined ? style.opacity : undefined;
       const fontcolorArg = cssToFfmpegColor(color, opacity);
@@ -347,15 +373,20 @@ export async function runFFmpegFallback(
         if (matched) fontSizeNum = parseInt(matched[1]);
       }
       let x = "(w-text_w)/2";
-      let y = "h-text_h-80";
-      if (style.position?.startsWith("top-")) y = "40";
+      const safeSide = options.aspectRatio === "9:16" ? 48 : 40;
+      const safeBottom = options.aspectRatio === "9:16" ? 160 : 80;
+      let y = `h-text_h-${isCaption ? safeBottom : 80}`;
+      if (style.position?.startsWith("top-")) y = options.aspectRatio === "9:16" ? "80" : "40";
       else if (style.position === "center") y = "(h-text_h)/2";
-      if (style.position?.endsWith("-left")) x = "40";
-      else if (style.position?.endsWith("-right")) x = "w-text_w-40";
+      if (style.position?.endsWith("-left")) x = String(safeSide);
+      else if (style.position?.endsWith("-right")) x = `w-text_w-${safeSide}`;
       else if (style.position?.endsWith("-center") || style.position === "center") x = "(w-text_w)/2";
 
       // FFmpeg drawtext: fontcolor supports RRGGBBAA hex for opacity
-      const shadowArg = style.background === "none" ? ":shadowcolor=black@0.8:shadowx=2:shadowy=2" : ":box=1:boxcolor=black@0.6:boxborderw=8";
+      const background = style.background || style.bgColor || "rgba(0,0,0,0.6)";
+      const shadowArg = background === "none"
+        ? ":shadowcolor=black@0.8:shadowx=2:shadowy=2"
+        : `:box=1:boxcolor=0x${cssToFfmpegColor(background)}:boxborderw=8`;
       const nextVideoOut = `[textv_${idx}]`;
       filterComplex += `${currentVideoOut}drawtext=${fontfileArg}text='${content}':x=${x}:y=${y}:fontsize=${fontSizeNum}:fontcolor=0x${fontcolorArg}${shadowArg}:enable='between(t,${start},${end})'${nextVideoOut};`;
       currentVideoOut = nextVideoOut;

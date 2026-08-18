@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Film, Loader2, Sparkles, Play, ChevronDown, ChevronUp, Scissors, Zap,
   Settings2, Check, X, Video, MessageSquareText,
-  Layers, LayoutTemplate, UploadCloud, Link2, FileVideo
+  Layers, LayoutTemplate, UploadCloud, Link2, FileVideo, Download, ExternalLink, AlertTriangle
 } from 'lucide-react';
 import { geminiApi } from '../../api/gemini';
 import { toast } from '../../pages/Toast';
@@ -45,6 +45,9 @@ interface SegmentEdit {
   endTime: number;
   contentSummary: string;
   transcriptText?: string;
+  voiceScript?: string;
+  voiceSource?: 'original' | 'tts';
+  voice?: { audioUrl: string; durationSeconds?: number; voiceName?: string };
   keep: boolean;
   playbackRate: number;
   filters?: { brightness?: number; contrast?: number; saturate?: number; grayscale?: number };
@@ -54,6 +57,13 @@ interface SegmentEdit {
   motionGraphic?: MotionGraphicInsert;
   insertAnimatedScene?: AnimatedSceneInsert;
   editNotes: string;
+}
+
+interface GlobalVoiceTrack {
+  audioUrl: string;
+  durationSeconds?: number;
+  voiceName: string;
+  scriptText: string;
 }
 
 interface VideoEditScript {
@@ -67,6 +77,7 @@ interface VideoEditScript {
     overallStyle: string;
   };
   segments: SegmentEdit[];
+  globalVoice?: GlobalVoiceTrack;
   analysisNotes: string;
   generatedAt: string;
 }
@@ -123,16 +134,69 @@ const MUSIC_OPTS = [
   { value: 'acoustic', label: 'Acoustic' },
 ];
 
+const SOCIAL_PRESETS = [
+  { value: 'tiktok', label: 'TikTok / Reels', aspectRatio: '9:16', resolution: '1080p' },
+  { value: 'shorts', label: 'YouTube Shorts', aspectRatio: '9:16', resolution: '1080p' },
+  { value: 'square', label: 'Instagram vuông', aspectRatio: '1:1', resolution: '1080p' },
+  { value: 'landscape', label: 'YouTube ngang', aspectRatio: '16:9', resolution: '1080p' },
+];
+
+const STANDARD_NARRATION_PROFILE = {
+  voiceName: 'Aoede',
+  modelName: 'eleven_v3',
+  stability: 0.78,
+  similarityBoost: 0.88,
+  useSpeakerBoost: true,
+};
+
+const STANDARD_NARRATION_INSTRUCTIONS = [
+  'Một người đọc duy nhất từ đầu đến cuối video.',
+  'Giọng tiếng Việt chuẩn, rõ chữ, bình tĩnh và tự nhiên; không diễn nhiều phong cách.',
+  'Giữ cùng âm sắc, tốc độ, cao độ và cách phát âm giữa mọi đoạn.',
+  'Đọc đúng nội dung transcript, không tự thêm câu, không đổi ngôi, không lồng nhiều giọng.',
+  'Ngắt nhẹ ở xuống dòng để nối mạch giữa các slide.',
+].join(' ');
+
+function scriptWarnings(script: VideoEditScript): string[] {
+  const warnings: string[] = [];
+  script.segments.forEach((segment) => {
+    const texts = [
+      ...(segment.textOverlays || []).map((overlay) => overlay.content),
+      segment.captionText || '',
+    ].filter(Boolean);
+    texts.forEach((text) => {
+      const lines = text.split(/\r?\n/);
+      if (lines.length > 2 || lines.some((line) => line.trim().length > 42)) {
+        warnings.push(`${segment.label}: chữ dài, nên rút gọn còn tối đa 2 dòng để không che khung hình.`);
+      }
+    });
+    if (segment.voiceSource === 'original' && !segment.transcriptText?.trim()) {
+      warnings.push(`${segment.label}: đang chọn tiếng gốc nhưng chưa có transcript phụ đề.`);
+    }
+  });
+  return [...new Set(warnings)];
+}
+
+function buildGlobalNarrationText(script: VideoEditScript): string {
+  return script.segments
+    .filter(segment => segment.keep)
+    .map(segment => (segment.voiceScript || segment.transcriptText || segment.contentSummary || '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 // ─── Segment Card ──────────────────────────────────────────────────────────
 
 function SegmentCard({
   seg,
   idx,
   onChange,
+  globalVoiceActive,
 }: {
   seg: SegmentEdit;
   idx: number;
   onChange: (updated: SegmentEdit) => void;
+  globalVoiceActive: boolean;
   key?: React.Key;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -145,6 +209,24 @@ function SegmentCard({
     update({ effects: { ...seg.effects, ...patch } });
 
   const renderDuration = (seg.endTime - seg.startTime) / (seg.playbackRate || 1);
+  const usesOriginalAudio = seg.voiceSource === 'original' || (!seg.voice?.audioUrl && Boolean(seg.transcriptText));
+
+  const handleUseOriginalTranscript = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const transcript = (seg.transcriptText || '').trim();
+    if (!transcript) {
+      toast.warning('Slide này chưa có transcript từ phụ đề.');
+      return;
+    }
+
+    onChange({
+      ...seg,
+      voiceScript: transcript,
+      voiceSource: 'original',
+      voice: undefined,
+    });
+    toast.success(`Đã chọn tiếng gốc từ video cho slide ${idx + 1}.`);
+  };
 
   return (
     <div className={`border rounded-xl overflow-hidden transition-all ${seg.keep ? 'border-gray-200 bg-white' : 'border-dashed border-gray-300 bg-gray-50 opacity-60'}`}>
@@ -238,6 +320,46 @@ function SegmentCard({
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Voice narration text */}
+          <div className="rounded-lg border border-purple-100 bg-purple-50/60 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-purple-700">Nội dung lời đọc của slide</label>
+              <span className="text-[10px] text-purple-600">
+                {globalVoiceActive ? 'Đã nằm trong voice liền mạch' : usesOriginalAudio ? 'Tiếng gốc từ video' : 'Sẽ dùng khi tạo voice toàn video'}
+              </span>
+            </div>
+            <textarea
+              value={seg.voiceScript || ''}
+              onChange={e => onChange({
+                ...seg,
+                voiceScript: e.target.value || undefined,
+                voice: e.target.value === seg.voiceScript ? seg.voice : undefined,
+                voiceSource: e.target.value === seg.voiceScript ? seg.voiceSource : seg.transcriptText ? 'original' : undefined,
+              })}
+              placeholder={seg.transcriptText || seg.contentSummary || 'Nhập lời thoại tương ứng với slide này...'}
+              rows={3}
+              className="w-full resize-y text-sm border border-purple-200 rounded-md px-3 py-2 bg-white placeholder-gray-400"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              {seg.transcriptText ? (
+                <button
+                  type="button"
+                  onClick={handleUseOriginalTranscript}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${usesOriginalAudio ? 'border-green-300 bg-green-50 text-green-700' : 'border-green-200 bg-white text-green-700 hover:bg-green-50'}`}
+                >
+                  <Check size={12} />
+                  {usesOriginalAudio ? 'Đang dùng tiếng gốc' : 'Dùng tiếng gốc + transcript'}
+                </button>
+              ) : null}
+              {!globalVoiceActive && seg.voice?.audioUrl ? (
+                <audio controls preload="metadata" src={seg.voice.audioUrl} className="h-8 max-w-full" />
+              ) : null}
+              <span className="text-[11px] text-purple-700/80">
+                Voice được tạo một lần ở cấp toàn video để giữ cùng giọng đọc.
+              </span>
             </div>
           </div>
 
@@ -461,6 +583,7 @@ export function VideoEditScriptPanel({
   const [prompt, setPrompt] = useState('');
   const [script, setScript] = useState<VideoEditScript | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [voiceGenerating, setVoiceGenerating] = useState(false);
 
   // Render progress state
   const [rendering, setRendering] = useState(false);
@@ -478,6 +601,14 @@ export function VideoEditScriptPanel({
       if (initialDuration) setDuration(initialDuration);
     }
   }, [initialVideoUrl, initialDuration]);
+
+  useEffect(() => () => {
+    unsubRenderRef.current?.();
+  }, []);
+
+  useEffect(() => () => {
+    if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+  }, [localPreviewUrl]);
 
   // Drag & drop handlers
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -549,13 +680,66 @@ export function VideoEditScriptPanel({
       if (!prev) return prev;
       const segs = [...prev.segments];
       segs[idx] = updated;
-      return { ...prev, segments: segs };
+      return { ...prev, segments: segs, globalVoice: undefined };
     });
   }, []);
 
   const updateGlobal = useCallback((patch: Partial<VideoEditScript['globalSettings']>) => {
     setScript(prev => prev ? { ...prev, globalSettings: { ...prev.globalSettings, ...patch } } : prev);
   }, []);
+
+  const handleGenerateGlobalVoice = useCallback(async () => {
+    if (!script) return;
+    const scriptText = buildGlobalNarrationText(script);
+    if (!scriptText) {
+      toast.warning('Chưa có transcript hoặc nội dung lời đọc để tạo voice.');
+      return;
+    }
+
+    setVoiceGenerating(true);
+    try {
+      const response = await geminiApi.generateVoice({
+        textToSpeak: scriptText,
+        mode: 'single',
+        voiceName: STANDARD_NARRATION_PROFILE.voiceName,
+        modelName: STANDARD_NARRATION_PROFILE.modelName,
+        stability: STANDARD_NARRATION_PROFILE.stability,
+        similarityBoost: STANDARD_NARRATION_PROFILE.similarityBoost,
+        useSpeakerBoost: STANDARD_NARRATION_PROFILE.useSpeakerBoost,
+        styleInstructions: STANDARD_NARRATION_INSTRUCTIONS,
+        title: 'Narration liền mạch cho toàn video',
+        description: 'Một giọng đọc tiếng Việt thống nhất theo transcript phụ đề.',
+      });
+      const record = response.record;
+      if (!record?.url) throw new Error('API chưa trả về file voice hợp lệ.');
+      const durationSeconds = Number(record.metadata?.duration);
+      setScript(prev => prev ? {
+        ...prev,
+        globalVoice: {
+          audioUrl: record.url,
+          durationSeconds: Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : undefined,
+          voiceName: STANDARD_NARRATION_PROFILE.voiceName,
+          scriptText,
+        },
+      } : prev);
+      toast.success('Đã tạo một voice liền mạch cho toàn bộ video.');
+    } catch (error: any) {
+      toast.error(error?.message || 'Không thể tạo voice liền mạch cho video.');
+    } finally {
+      setVoiceGenerating(false);
+    }
+  }, [script]);
+
+  const clearGlobalVoice = useCallback(() => {
+    setScript(prev => prev ? { ...prev, globalVoice: undefined } : prev);
+    toast.info('Đã chuyển về tiếng gốc theo transcript của video.');
+  }, []);
+
+  const applySocialPreset = useCallback((presetValue: string) => {
+    const preset = SOCIAL_PRESETS.find(item => item.value === presetValue);
+    if (!preset) return;
+    updateGlobal({ aspectRatio: preset.aspectRatio, resolution: preset.resolution });
+  }, [updateGlobal]);
 
   const handleRender = useCallback(async () => {
     if (!script) return;
@@ -632,12 +816,23 @@ export function VideoEditScriptPanel({
   }, [script, onRenderStarted]);
 
   const keptCount = script?.segments.filter(s => s.keep).length ?? 0;
-  const totalRenderDuration = script?.segments
+  const insertedSceneDuration = script?.segments
+    .filter(s => s.keep)
+    .reduce((acc, s) => acc + (s.insertAnimatedScene?.duration || 0), 0) ?? 0;
+  const totalRenderDuration = script?.globalVoice
+    ? (script.globalVoice.durationSeconds || script.totalDuration) + insertedSceneDuration
+    : script?.segments
     .filter(s => s.keep)
     .reduce((acc, s) => acc + (s.endTime - s.startTime) / (s.playbackRate || 1) + (s.insertAnimatedScene?.duration || 0), 0) ?? 0;
 
   const hasSource = inputMode === 'file' ? !!localFile : !!videoUrl.trim();
   const isWorking = generating || uploading;
+  const warnings = script ? scriptWarnings(script) : [];
+  const previewAspectRatio = script?.globalSettings.aspectRatio === '9:16'
+    ? '9 / 16'
+    : script?.globalSettings.aspectRatio === '1:1'
+      ? '1 / 1'
+      : '16 / 9';
 
   return (
     <div className="flex flex-col h-full">
@@ -791,7 +986,18 @@ export function VideoEditScriptPanel({
               <Settings2 size={14} className="text-gray-400" />
               <span className="text-xs font-medium text-gray-600">Cài đặt toàn cục</span>
             </div>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              <div>
+                <label className="text-xs text-gray-400 block mb-1">Preset social</label>
+                <select
+                  value={SOCIAL_PRESETS.find(item => item.aspectRatio === script.globalSettings.aspectRatio && item.resolution === script.globalSettings.resolution)?.value || ''}
+                  onChange={e => applySocialPreset(e.target.value)}
+                  className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white"
+                >
+                  <option value="">Tùy chỉnh</option>
+                  {SOCIAL_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="text-xs text-gray-400 block mb-1">Tỉ lệ</label>
                 <select value={script.globalSettings.aspectRatio} onChange={e => updateGlobal({ aspectRatio: e.target.value })} className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 bg-white">
@@ -823,6 +1029,36 @@ export function VideoEditScriptPanel({
             )}
           </div>
 
+          <div className="rounded-xl border border-purple-100 bg-purple-50/60 p-3 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-purple-800">Voice toàn video</p>
+                <p className="text-[11px] leading-relaxed text-purple-700/80">
+                  {script.globalVoice
+                    ? `Một giọng ${script.globalVoice.voiceName} duy nhất · ${script.globalVoice.durationSeconds ? `${script.globalVoice.durationSeconds.toFixed(1)}s` : 'đã sẵn sàng'}`
+                    : 'Dùng transcript làm nội dung và tạo một track đọc liền mạch, không ghép nhiều voice.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleGenerateGlobalVoice}
+                disabled={voiceGenerating}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {voiceGenerating ? <Loader2 size={12} className="animate-spin" /> : <MessageSquareText size={12} />}
+                {voiceGenerating ? 'Đang tạo...' : script.globalVoice ? 'Tạo lại voice' : 'Tạo voice liền mạch'}
+              </button>
+            </div>
+            {script.globalVoice?.audioUrl && (
+              <div className="flex flex-wrap items-center gap-2">
+                <audio controls preload="metadata" src={script.globalVoice.audioUrl} className="h-8 max-w-full" />
+                <button type="button" onClick={clearGlobalVoice} className="text-[11px] font-medium text-purple-700 underline underline-offset-2">
+                  Dùng tiếng gốc
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Stats bar */}
           <div className="flex items-center gap-4 text-xs text-gray-500 px-1">
             <span className="flex items-center gap-1"><Video size={12} /> {script.segments.length} đoạn tổng</span>
@@ -831,6 +1067,18 @@ export function VideoEditScriptPanel({
             <span className="flex items-center gap-1 text-indigo-500"><Zap size={12} /> ~{totalRenderDuration.toFixed(1)}s kết xuất</span>
           </div>
 
+          {warnings.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+                <AlertTriangle size={14} /> Kiểm tra trước khi kết xuất
+              </div>
+              {warnings.slice(0, 4).map((warning) => (
+                <p key={warning} className="text-xs leading-relaxed text-amber-700">{warning}</p>
+              ))}
+              {warnings.length > 4 && <p className="text-xs text-amber-600">Còn {warnings.length - 4} cảnh báo khác.</p>}
+            </div>
+          )}
+
           {/* Segment list */}
           <div className="space-y-2">
             {script.segments.map((seg: SegmentEdit, idx: number) => (
@@ -838,6 +1086,7 @@ export function VideoEditScriptPanel({
                 key={seg.segmentId}
                 seg={seg}
                 idx={idx}
+                globalVoiceActive={Boolean(script.globalVoice?.audioUrl)}
                 onChange={(updated: SegmentEdit) => updateSegment(idx, updated)}
               />
             ))}
@@ -918,6 +1167,30 @@ export function VideoEditScriptPanel({
                 }`} title={renderLog}>
                   {renderLog}
                 </p>
+              )}
+
+              {renderStatus === 'completed' && outputVideoUrl && (
+                <div className="space-y-2">
+                  <video
+                    src={outputVideoUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full max-h-72 rounded-lg bg-black object-contain"
+                    style={{ aspectRatio: previewAspectRatio }}
+                  />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a href={outputVideoUrl} download className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 hover:text-green-900">
+                      <Download size={12} /> Tải video
+                    </a>
+                    <a href={outputVideoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 hover:text-green-900">
+                      <ExternalLink size={12} /> Mở bản đầy đủ
+                    </a>
+                    <span className="text-[11px] text-green-700/80">
+                      {script.globalSettings.aspectRatio} · {script.globalSettings.resolution} · kiểm tra xong rồi hãy đăng
+                    </span>
+                  </div>
+                </div>
               )}
 
               {/* Output video link when done */}

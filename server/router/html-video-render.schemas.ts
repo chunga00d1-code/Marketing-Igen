@@ -19,9 +19,36 @@ const htmlVideoSettingFields = {
   resolution: Joi.string().valid("720p", "1080p").required(),
 };
 
+const htmlVideoAssetFields = {
+  id: Joi.string().pattern(/^[a-zA-Z0-9_-]{1,80}$/).required(),
+  name: Joi.string().trim().max(180).required(),
+  kind: Joi.string().valid("image").required(),
+  url: Joi.string()
+    .max(120_000)
+    .custom((value: string, helpers) => {
+      const isCloudinary = /^https:\/\/res\.cloudinary\.com\//i.test(value);
+      const isInlineImage = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(value);
+      return isCloudinary || isInlineImage
+        ? value
+        : helpers.error("string.pattern.base");
+    })
+    .required(),
+  role: Joi.string().valid("background", "hero", "logo", "overlay").optional(),
+  includeInVideo: Joi.boolean().default(true),
+};
+
+const htmlVideoReferenceSlotFields = {
+  id: Joi.string().pattern(/^[a-zA-Z0-9_-]{1,80}$/).required(),
+  name: Joi.string().trim().max(180).required(),
+  kind: Joi.string().valid("image").required(),
+  role: Joi.string().valid("background", "hero", "logo", "overlay").optional(),
+  includeInVideo: Joi.boolean().default(true),
+};
+
 const htmlVideoFields = {
   html: byteLimitedString("HTML", false),
   css: byteLimitedString("CSS", true),
+  assets: Joi.array().items(Joi.object(htmlVideoAssetFields)).max(6).default([]),
   ...htmlVideoSettingFields,
 };
 
@@ -30,6 +57,9 @@ const htmlVideoDraftKeys = new Set([
   "durationSeconds",
   "aspectRatio",
   "resolution",
+  "promptHistoryId",
+  "referenceContext",
+  "referenceAssets",
 ]);
 
 export const htmlVideoPreviewBodySchema = Joi.object(htmlVideoFields);
@@ -44,6 +74,12 @@ export const htmlVideoContextPreviewBodySchema = Joi.object({
 
 export const htmlVideoDraftBodySchema = Joi.object({
   prompt: Joi.string().trim().min(1).max(4_000).required(),
+  promptHistoryId: Joi.string().hex().length(24).optional(),
+  referenceContext: Joi.string().trim().max(24_000).optional(),
+  referenceAssets: Joi.array()
+    .items(Joi.object(htmlVideoReferenceSlotFields))
+    .max(6)
+    .default([]),
   ...htmlVideoSettingFields,
 }).custom((value, helpers) => {
   const unknownKey = Object.keys(value).find(

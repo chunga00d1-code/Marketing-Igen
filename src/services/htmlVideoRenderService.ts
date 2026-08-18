@@ -9,12 +9,27 @@ export type HtmlVideoRenderStatus =
   | "completed"
   | "failed";
 
+export type HtmlVideoAssetRole = "background" | "hero" | "logo" | "overlay";
+
+export type HtmlVideoReferenceSlot = {
+  id: string;
+  name: string;
+  kind: "image";
+  role?: HtmlVideoAssetRole;
+  includeInVideo?: boolean;
+};
+
+export type HtmlVideoAsset = HtmlVideoReferenceSlot & {
+  url: string;
+};
+
 export type HtmlVideoPreviewRequest = {
   html: string;
   css: string;
   durationSeconds: number;
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
+  assets?: HtmlVideoAsset[];
 };
 
 export type HtmlVideoDraftRequest = {
@@ -22,6 +37,9 @@ export type HtmlVideoDraftRequest = {
   durationSeconds: number;
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
+  promptHistoryId?: string;
+  referenceContext?: string;
+  referenceAssets?: HtmlVideoReferenceSlot[];
 };
 
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
@@ -356,6 +374,9 @@ export const htmlVideoRenderService = {
           durationSeconds: input.durationSeconds,
           aspectRatio: input.aspectRatio,
           resolution: input.resolution,
+          promptHistoryId: input.promptHistoryId,
+          referenceContext: input.referenceContext,
+          referenceAssets: input.referenceAssets,
         }),
         signal,
       }

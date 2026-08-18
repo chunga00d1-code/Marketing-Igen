@@ -93,7 +93,10 @@ function scopedIdempotencyFilter(
   };
 }
 
-const htmlVideoRenderTimeoutMs = 15 * 60 * 1000;
+const htmlVideoRenderTimeoutMs = Math.max(
+  Number(process.env.HTML_VIDEO_RENDER_TIMEOUT_MS) || 30 * 60 * 1000,
+  60_000
+);
 
 function safeRenderFailure(error: unknown) {
   if (error instanceof VideoRenderAdapterError) {

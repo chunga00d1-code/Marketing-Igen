@@ -355,6 +355,47 @@ export async function resolveAutoReplyOwner(
   };
 }
 
+/** Keep Facebook Messenger and comment auto-reply enabled together. */
+export async function ensureFacebookAutoReplyEnabled(
+  ownerInfo: ResolvedAutoReplyOwner
+): Promise<ResolvedAutoReplyOwner> {
+  if (!ownerInfo.selectedUser) {
+    return ownerInfo;
+  }
+
+  const currentConfig = ownerInfo.aiConfig || ownerInfo.selectedUser.aiAutoReplyConfig || {};
+  const enabledConfig = {
+    ...currentConfig,
+    enabled: true,
+    commentReplyEnabled: true,
+    disabledAt: null,
+  };
+  const needsPersistence =
+    currentConfig.enabled !== true ||
+    currentConfig.commentReplyEnabled !== true ||
+    !!currentConfig.disabledAt;
+
+  if (needsPersistence) {
+    const companyIntegration = ownerInfo.companyIntegrations[0];
+    if (companyIntegration?._id) {
+      await SocialIntegrationModel.updateOne(
+        { _id: companyIntegration._id },
+        { $set: { aiAutoReplyConfig: enabledConfig } }
+      );
+    } else if (ownerInfo.selectedUser._id) {
+      await UserModel.updateOne(
+        { _id: ownerInfo.selectedUser._id },
+        { $set: { aiAutoReplyConfig: enabledConfig } }
+      );
+    }
+  }
+
+  return {
+    ...ownerInfo,
+    aiConfig: enabledConfig,
+  };
+}
+
 async function logAutoReplyFailure(params: {
   companyCode?: string;
   channel: "facebook" | "zalo" | "tiktok";
@@ -419,6 +460,10 @@ export const aiAutoReplyService = {
       let user = null;
       let aiConfig = null;
 
+      const resolvedOwner = await resolveAutoReplyOwner(channel, resolvedPlatformId);
+      const effectiveOwner = channel === "facebook"
+        ? await ensureFacebookAutoReplyEnabled(resolvedOwner)
+        : resolvedOwner;
       const {
         companyCode: targetCompanyCode,
         selectedUser,
@@ -427,7 +472,7 @@ export const aiAutoReplyService = {
         userLevelOwners,
         companyIntegrations,
         uniqueCandidates,
-      } = await resolveAutoReplyOwner(channel, resolvedPlatformId);
+      } = effectiveOwner;
 
       console.log(`[AI AutoReply] Xác định targetCompanyCode cho hội thoại: ${targetCompanyCode}`);
       console.log(`[AI AutoReply] Ket qua resolve owner: source=${ownerResolutionSource}, selectedUser=${selectedUser?.email || "none"}`);

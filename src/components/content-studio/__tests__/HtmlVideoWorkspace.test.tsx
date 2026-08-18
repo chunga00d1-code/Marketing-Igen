@@ -17,6 +17,7 @@ import {
   type HtmlVideoDraftWorkspaceSnapshot as DraftWorkspaceSnapshot,
   type HtmlVideoPendingDraftConflict as PendingDraftConflict,
 } from "../HtmlVideoWorkspace";
+import { automaticDuration } from "../html-video/utils";
 import type {
   HtmlVideoRenderDetail,
   HtmlVideoRenderStatus,
@@ -46,11 +47,8 @@ test("renders the prompt-first batch workspace and keeps its preview sandboxed",
     "utf8"
   );
 
-  assert.match(markup, /Cài đặt video/);
-  assert.match(markup, /Lưu cài đặt/);
-  assert.match(markup, /Thời lượng/);
-  assert.match(markup, /Khung hình/);
-  assert.match(markup, /Thiết lập khung hình, thời lượng và chất lượng trước khi nhập prompt/);
+  assert.match(markup, /Prompt AI/);
+  assert.match(markup, /Bạn muốn video nói gì/);
   assert.match(source, /sandbox=""/);
   assert.match(source, /seekableCompositionDocument\(selectedCandidate\.preview\.compositionHtml/);
   assert.doesNotMatch(source, /allow-scripts|allow-same-origin/);
@@ -58,17 +56,32 @@ test("renders the prompt-first batch workspace and keeps its preview sandboxed",
   assert.match(source, /\{!selectedCandidate \? <section/);
   assert.doesNotMatch(source, /selectedCandidate && activeTool === "prompt"/);
   assert.doesNotMatch(source, /\{activeTool === "history" \? <>/);
-  assert.match(markup, /Cài đặt video/);
+  assert.doesNotMatch(markup, /Cài đặt video/);
 });
 
 test("renders prompt generation controls and the exact wallet cost", () => {
-  const markup = renderToStaticMarkup(React.createElement(HtmlVideoWorkspace));
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
 
-  assert.match(markup, /Tạo thiết kế bằng AI/);
-  assert.match(markup, /Mô tả video/);
-  assert.match(markup, /Tạo HTML\/CSS bằng AI/);
-  assert.match(markup, /0,5 credit\/lần tạo/);
-  assert.match(markup, /maxlength="4000"/i);
+  assert.match(source, /Tạo video bằng AI/);
+  assert.match(source, /Bạn muốn video nói gì/);
+  assert.match(source, /service\.generateDraft/);
+  assert.match(source, /0,5 credit\/lần tạo/);
+  assert.match(source, /maxLength=\{4_000\}/);
+  assert.match(source, /inferredDurationSeconds/);
+  assert.match(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration/);
+  assert.match(source, /type="number"/);
+  assert.match(source, />Lưu</);
+  assert.doesNotMatch(source, /Tùy chỉnh cài đặt/);
+});
+
+test("recognizes explicit numeric and Vietnamese word durations", () => {
+  assert.equal(automaticDuration("Video 15 giây giới thiệu sản phẩm"), 15);
+  assert.equal(automaticDuration("Create a 20-second product teaser"), 20);
+  assert.equal(automaticDuration("Video dài mười lăm giây với CTA cuối"), 15);
+  assert.equal(automaticDuration("Thời lượng: 45 giây"), 45);
 });
 
 test("requires overwrite confirmation only for edited AI source", () => {
@@ -264,6 +277,37 @@ test("keeps AI generation separate from render submission", () => {
   assert.match(source, /service\.generateDraft/);
   assert.match(source, /prompt: normalizedPrompt,[\s\S]*durationSeconds,[\s\S]*aspectRatio,[\s\S]*resolution,/);
   assert.doesNotMatch(source, /generateDraft[\s\S]{0,300}service\.create/);
+});
+
+test("keeps HTML video reference assistance on the OpenRouter path", () => {
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+
+  assert.match(source, /optimizeVideoPrompt\([\s\S]{0,1600}\[dataUrl\]/);
+  assert.match(source, /extractVideoReferenceFrames\(file\)/);
+  assert.match(source, /frames\.length \? frames : undefined/);
+  assert.match(source, /HTML\/CSS/);
+  assert.match(source, /template/);
+  assert.match(source, /isLocalFallback/);
+  assert.doesNotMatch(source, /\/api\/v1\/media\/upload/);
+  assert.doesNotMatch(source, /analyzeVideoStyle\(/);
+  assert.match(source, /OpenRouter/);
+});
+
+test("uses server history instead of browser local storage for HTML video projects", () => {
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+
+  assert.match(source, /createPromptHistory/);
+  assert.match(source, /listPromptHistory/);
+  assert.match(source, /listRenders/);
+  assert.match(source, /candidates\.filter\(\(candidate\) => Boolean\(candidate\.render\)\)/);
+  assert.doesNotMatch(source, /function promptHistoryCandidate/);
+  assert.doesNotMatch(source, /localStorage/);
 });
 
 test("aborts AI generation on unmount and uses the overwrite confirmation copy", () => {
