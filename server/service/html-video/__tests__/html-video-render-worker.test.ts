@@ -8,6 +8,7 @@ import type {
   VideoRenderAdapter,
   VideoRenderInput,
 } from "../../video-edit/render-adapter";
+import { VideoRenderAdapterError } from "../../video-edit/render-adapter";
 import { htmlVideoRenderService } from "../html-video-render.service";
 
 const renderId = new Types.ObjectId().toString();
@@ -106,6 +107,7 @@ test("claims a queued job and renders its sanitized document directly", async (c
 
 test("returns an adapter failure to queued state for capped queue retry", async (context) => {
   mockClaim(context);
+  context.mock.method(console, "error", () => undefined);
   const updates: Array<Record<string, unknown>> = [];
   context.mock.method(HtmlVideoRenderModel, "updateOne", async (_filter, update) => {
     updates.push(update as Record<string, unknown>);
@@ -133,6 +135,44 @@ test("returns an adapter failure to queued state for capped queue retry", async 
   const serialized = JSON.stringify(updates);
   assert.match(serialized, /"status":"queued"/);
   assert.doesNotMatch(serialized, /C:\\\\private|SECRET=value/);
+});
+
+test("logs bounded sanitized Hyperframes diagnostics server-side", async (context) => {
+  mockClaim(context);
+  context.mock.method(HtmlVideoRenderModel, "updateOne", async () => ({
+    matchedCount: 1,
+  }));
+  const logged: unknown[][] = [];
+  context.mock.method(console, "error", (...values: unknown[]) => {
+    logged.push(values);
+  });
+  const adapter: VideoRenderAdapter = {
+    id: "hyperframes",
+    checkCapability: async () => ({ available: true }),
+    validateInput: () => undefined,
+    render: async () => {
+      throw new VideoRenderAdapterError(
+        "RENDER_PROCESS_FAILED",
+        "Hyperframes rendering failed.",
+        {
+          exitCode: 1,
+          stderr: "Chrome failed: API_KEY=private-value Bearer bearer-value",
+        }
+      );
+    },
+  };
+  context.mock.method(defaultVideoRenderAdapterRegistry, "get", () => adapter);
+
+  await assert.rejects(
+    htmlVideoRenderService.processRender(renderId),
+    /Hyperframes rendering failed/
+  );
+
+  const serializedLog = JSON.stringify(logged);
+  assert.match(serializedLog, /RENDER_PROCESS_FAILED/);
+  assert.match(serializedLog, /Chrome failed/);
+  assert.match(serializedLog, /\[redacted\]/);
+  assert.doesNotMatch(serializedLog, /private-value|bearer-value/);
 });
 
 test("persists a safe terminal failure", async (context) => {
