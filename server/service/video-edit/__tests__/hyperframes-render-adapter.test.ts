@@ -204,14 +204,13 @@ test("renders with the local CLI argument array, uploads output, and cleans up",
 
   assert.equal(result.outputUrl, "https://cdn.example/render-1.mp4");
   assert.equal(writes.length, 1);
+  assert.match(writes[0]?.path ?? "", /[\\/]index\.html$/);
   assert.equal(writes[0]?.content, "<html></html>");
   assert.deepEqual(spawnCalls, [{
     command: "C:/Program Files/nodejs/node.exe",
       args: [
         "C:/app/node_modules/hyperframes/dist/cli.js",
         "render",
-        "-c",
-        "composition.html",
         "-o",
         "output.mp4",
         "--resolution",
@@ -261,8 +260,6 @@ test("renders 720p compositions at native dimensions without an upscale preset",
   assert.deepEqual(renderArgs, [
     "C:/app/node_modules/hyperframes/dist/cli.js",
     "render",
-    "-c",
-    "composition.html",
     "-o",
     "output.mp4",
     "--strict",

@@ -342,7 +342,7 @@ export function createHyperframesRenderAdapter(
       }
       const runtime = dependencies.prepareRuntime?.();
 
-      const htmlPath = join(context.temporaryDirectory, "composition.html");
+      const htmlPath = join(context.temporaryDirectory, "index.html");
       const outputPath = join(context.temporaryDirectory, "output.mp4");
 
       try {
@@ -376,8 +376,6 @@ export function createHyperframesRenderAdapter(
             [
               dependencies.cliPath,
               "render",
-              "-c",
-              "composition.html",
               "-o",
               "output.mp4",
               ...renderResolutionArgs(input),
