@@ -444,6 +444,10 @@ export function createHyperframesRenderAdapter(
             1,
             Math.min(180, Number(input.voiceDurationSeconds) || 1)
           );
+          const voicePlaybackRate = Math.min(
+            2,
+            Math.max(0.5, Number(input.voicePlaybackRate) || 1)
+          );
           const outputWithVoicePath = join(
             context.temporaryDirectory,
             "output-with-voice.mp4"
@@ -471,6 +475,9 @@ export function createHyperframesRenderAdapter(
           });
           let muxProcess: HyperframesRenderProcess;
           try {
+            const voiceFilter = voicePlaybackRate === 1
+              ? '[1:a]apad[voice]'
+              : `[1:a]atempo=${voicePlaybackRate.toFixed(3)},apad[voice]`;
             muxProcess = dependencies.spawnProcess(
               ffmpegPath,
               [
@@ -479,7 +486,7 @@ export function createHyperframesRenderAdapter(
                 outputPath,
                 ...voiceInputArgs,
                 "-filter_complex",
-                "[1:a]apad[voice]",
+                voiceFilter,
                 "-map",
                 "0:v:0",
                 "-map",

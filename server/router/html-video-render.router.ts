@@ -63,3 +63,9 @@ htmlVideoRenderRouter.get(
   validateRequest({ params: htmlVideoRenderParamsSchema }),
   htmlVideoRenderController.get as never
 );
+htmlVideoRenderRouter.delete(
+  "/html-video-renders/:renderId",
+  requireAuth as never,
+  validateRequest({ params: htmlVideoRenderParamsSchema }),
+  htmlVideoRenderController.delete as never
+);

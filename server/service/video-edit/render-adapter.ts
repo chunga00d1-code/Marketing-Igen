@@ -40,6 +40,7 @@ export type VideoRenderInput = {
   voiceAudioSampleRate?: number;
   voiceAudioChannels?: number;
   voiceDurationSeconds?: number;
+  voicePlaybackRate?: number;
 } & (VideoRenderBlueprintSource | VideoRenderHtmlSource);
 
 export interface VideoRenderCapability {

@@ -32,8 +32,8 @@ test("renders and wires the HTML-to-video creation tool", () => {
   );
   const source = readFileSync("src/pages/VideoStudioPage.tsx", "utf8");
 
-  assert.match(markup, /Tạo video từ HTML/);
+  assert.match(markup, /Tạo video slide tự động/);
   assert.match(source, /HtmlVideoWorkspace/);
   assert.match(source, /tool === "html-video"/);
-  assert.match(source, /Đang mở công cụ HTML-to-video/);
+  assert.match(source, /Đang mở công cụ tạo video slide/);
 });
