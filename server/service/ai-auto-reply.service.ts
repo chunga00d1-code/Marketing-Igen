@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
-import mongoose from "mongoose";
 import { UserModel } from "../model/user.model";
 import { ZaloConversationModel, ZaloMessageModel } from "../model/zalo-messenger.model";
 import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model";
@@ -164,7 +163,7 @@ type ResolvedAutoReplyOwner = {
   companyCode: string;
   selectedUser: any | null;
   aiConfig: any | null;
-  source: "personal_enabled" | "personal_fallback" | "company_enabled" | "company_fallback" | "cross_company_fallback" | "company_integration_enabled" | "none";
+  source: "personal_enabled" | "personal_fallback" | "company_enabled" | "company_fallback" | "company_integration_fallback" | "company_integration_enabled" | "none";
   userLevelOwners: any[];
   companyIntegrations: any[];
   uniqueCandidates: any[];
@@ -175,6 +174,12 @@ async function collectCandidateUsers(
   resolvedPlatformId: string
 ) {
   const candidateUsers: any[] = [];
+
+  const companyIntegrations = await SocialIntegrationModel.find({
+    platform: channel === "zalo" ? "Zalo" : channel === "tiktok" ? "TikTok" : "Facebook",
+    username: resolvedPlatformId,
+    isConnected: true
+  }).lean();
 
   const userLevelQuery = channel === "zalo"
     ? { "zaloIntegration.isConnected": true, "zaloIntegration.oaId": resolvedPlatformId }
@@ -189,27 +194,14 @@ async function collectCandidateUsers(
     candidateUsers.push(...userLevelOwners);
   }
 
-  const companyIntegrations = await SocialIntegrationModel.find({
-    platform: channel === "zalo" ? "Zalo" : channel === "tiktok" ? "TikTok" : "Facebook",
-    username: resolvedPlatformId,
-    isConnected: true
-  }).lean();
-
   if (companyIntegrations.length > 0) {
     console.log(`[AI AutoReply] Tim thay ${companyIntegrations.length} tich hop doanh nghiep.`);
     for (const integration of companyIntegrations) {
-      if (integration.createdBy) {
-        const creator = mongoose.Types.ObjectId.isValid(integration.createdBy)
-          ? await UserModel.findById(integration.createdBy)
-          : await UserModel.findOne({ email: integration.createdBy });
-        if (creator) {
-          candidateUsers.push(creator);
+      if (integration.companyCode) {
+        const companyUsers = await UserModel.find({ companyCode: integration.companyCode.toUpperCase().trim() });
+        if (companyUsers.length > 0) {
+          candidateUsers.push(...companyUsers);
         }
-      }
-
-      const companyUsers = await UserModel.find({ companyCode: integration.companyCode });
-      if (companyUsers.length > 0) {
-        candidateUsers.push(...companyUsers);
       }
     }
   }
@@ -222,7 +214,7 @@ async function collectCandidateUsers(
   const uniqueCandidates = Array.from(uniqueCandidatesMap.values());
   console.log(
     `[AI AutoReply] Danh sach ung vien duy nhat:`,
-    uniqueCandidates.map((u) => `${u.email} (AIEnabled: ${!!u.aiAutoReplyConfig?.enabled})`)
+    uniqueCandidates.map((u) => `${u.email} (company: ${u.companyCode}, AIEnabled: ${!!u.aiAutoReplyConfig?.enabled})`)
   );
 
   return {
@@ -243,33 +235,91 @@ export async function resolveAutoReplyOwner(
   } = await collectCandidateUsers(channel, resolvedPlatformId);
 
   const companyIntegration = companyIntegrations[0] || null;
-  const companyCodeFromIntegration = companyIntegration?.companyCode || null;
+  const companyCodeFromIntegration = companyIntegration?.companyCode
+    ? companyIntegration.companyCode.trim().toUpperCase()
+    : null;
 
-  // 1. Prioritize page-specific integration custom configurations if enabled
-  if (companyIntegration && companyIntegration.aiAutoReplyConfig?.enabled === true) {
-    const representativeUser =
-      uniqueCandidates.find((candidate: any) => candidate?.companyCode === companyCodeFromIntegration) ||
-      uniqueCandidates[0] ||
-      null;
+  // RULE 1: Nếu kênh thuộc tích hợp doanh nghiệp (SocialIntegrationModel có companyCode),
+  // mã doanh nghiệp bắt buộc phải là companyCode của doanh nghiệp đó. Tuyệt đối không được fallback sang superadmin hay công ty khác.
+  if (companyCodeFromIntegration) {
+    const targetCompanyCode = companyCodeFromIntegration;
+
+    // 1a. Ưu tiên cấu hình AI riêng của Page nếu đã bật
+    if (companyIntegration.aiAutoReplyConfig?.enabled === true) {
+      const representativeUser =
+        uniqueCandidates.find((c: any) => c?.companyCode?.toUpperCase() === targetCompanyCode) || null;
+
+      return {
+        companyCode: targetCompanyCode,
+        selectedUser: representativeUser,
+        aiConfig: companyIntegration.aiAutoReplyConfig,
+        source: "company_integration_enabled",
+        userLevelOwners,
+        companyIntegrations,
+        uniqueCandidates,
+      };
+    }
+
+    // 1b. Tìm người dùng thuộc đúng doanh nghiệp này đang bật AI
+    const companyEnabledUser = uniqueCandidates.find(
+      (c: any) =>
+        c?.companyCode?.toUpperCase() === targetCompanyCode &&
+        c?.role !== "superadmin" &&
+        c?.aiAutoReplyConfig?.enabled === true
+    ) || null;
+
+    if (companyEnabledUser) {
+      return {
+        companyCode: targetCompanyCode,
+        selectedUser: companyEnabledUser,
+        aiConfig: companyEnabledUser.aiAutoReplyConfig || null,
+        source: "company_enabled",
+        userLevelOwners,
+        companyIntegrations,
+        uniqueCandidates,
+      };
+    }
+
+    // 1c. Nếu tích hợp doanh nghiệp có cấu hình AI (dù chưa bật hoặc đang chờ kích hoạt)
+    if (companyIntegration.aiAutoReplyConfig) {
+      const representativeUser =
+        uniqueCandidates.find((c: any) => c?.companyCode?.toUpperCase() === targetCompanyCode) || null;
+
+      return {
+        companyCode: targetCompanyCode,
+        selectedUser: representativeUser,
+        aiConfig: companyIntegration.aiAutoReplyConfig,
+        source: "company_integration_fallback",
+        userLevelOwners,
+        companyIntegrations,
+        uniqueCandidates,
+      };
+    }
+
+    // 1d. Fallback về tài khoản đại diện trong cùng doanh nghiệp
+    const companyFallbackUser =
+      uniqueCandidates.find((c: any) => c?.companyCode?.toUpperCase() === targetCompanyCode) || null;
 
     return {
-      companyCode: companyCodeFromIntegration || "SYSTEM",
-      selectedUser: representativeUser,
-      aiConfig: companyIntegration.aiAutoReplyConfig || null,
-      source: "company_integration_enabled",
+      companyCode: targetCompanyCode,
+      selectedUser: companyFallbackUser,
+      aiConfig: companyFallbackUser?.aiAutoReplyConfig || null,
+      source: "company_fallback",
       userLevelOwners,
       companyIntegrations,
       uniqueCandidates,
     };
   }
 
+  // RULE 2: Tích hợp ở cấp tài khoản cá nhân (Personal User Integration)
   const directEnabledUser =
-    userLevelOwners.find((candidate: any) => candidate?.aiAutoReplyConfig?.enabled === true) || null;
+    userLevelOwners.find((c: any) => c?.aiAutoReplyConfig?.enabled === true) || null;
   const directUserFallback = userLevelOwners[0] || null;
 
   if (directEnabledUser) {
+    const userCompanyCode = String(directEnabledUser.companyCode || (directEnabledUser.role === "superadmin" ? "SYSTEM" : "")).trim().toUpperCase();
     return {
-      companyCode: directEnabledUser.companyCode || companyCodeFromIntegration || "SYSTEM",
+      companyCode: userCompanyCode,
       selectedUser: directEnabledUser,
       aiConfig: directEnabledUser.aiAutoReplyConfig || null,
       source: "personal_enabled",
@@ -279,29 +329,10 @@ export async function resolveAutoReplyOwner(
     };
   }
 
-  const companyEnabledUser = companyCodeFromIntegration
-    ? uniqueCandidates.find(
-        (candidate: any) =>
-          candidate?.companyCode === companyCodeFromIntegration &&
-          candidate?.aiAutoReplyConfig?.enabled === true
-      ) || null
-    : null;
-
-  if (companyEnabledUser) {
-    return {
-      companyCode: companyCodeFromIntegration || companyEnabledUser.companyCode || "SYSTEM",
-      selectedUser: companyEnabledUser,
-      aiConfig: companyEnabledUser.aiAutoReplyConfig || null,
-      source: "company_enabled",
-      userLevelOwners,
-      companyIntegrations,
-      uniqueCandidates,
-    };
-  }
-
   if (directUserFallback) {
+    const userCompanyCode = String(directUserFallback.companyCode || (directUserFallback.role === "superadmin" ? "SYSTEM" : "")).trim().toUpperCase();
     return {
-      companyCode: directUserFallback.companyCode || companyCodeFromIntegration || "SYSTEM",
+      companyCode: userCompanyCode,
       selectedUser: directUserFallback,
       aiConfig: directUserFallback.aiAutoReplyConfig || null,
       source: "personal_fallback",
@@ -311,41 +342,8 @@ export async function resolveAutoReplyOwner(
     };
   }
 
-  const companyFallbackUser = companyCodeFromIntegration
-    ? uniqueCandidates.find((candidate: any) => candidate?.companyCode === companyCodeFromIntegration) || null
-    : null;
-
-  if (companyFallbackUser) {
-    return {
-      companyCode: companyCodeFromIntegration || companyFallbackUser.companyCode || "SYSTEM",
-      selectedUser: companyFallbackUser,
-      aiConfig: companyFallbackUser.aiAutoReplyConfig || null,
-      source: "company_fallback",
-      userLevelOwners,
-      companyIntegrations,
-      uniqueCandidates,
-    };
-  }
-
-  const crossCompanyFallback =
-    uniqueCandidates.find((candidate: any) => candidate?.aiAutoReplyConfig?.enabled === true) ||
-    uniqueCandidates[0] ||
-    null;
-
-  if (crossCompanyFallback) {
-    return {
-      companyCode: crossCompanyFallback.companyCode || companyCodeFromIntegration || "SYSTEM",
-      selectedUser: crossCompanyFallback,
-      aiConfig: crossCompanyFallback.aiAutoReplyConfig || null,
-      source: "cross_company_fallback",
-      userLevelOwners,
-      companyIntegrations,
-      uniqueCandidates,
-    };
-  }
-
   return {
-    companyCode: companyCodeFromIntegration || directUserFallback?.companyCode || "SYSTEM",
+    companyCode: "",
     selectedUser: null,
     aiConfig: null,
     source: "none",
@@ -359,11 +357,8 @@ export async function resolveAutoReplyOwner(
 export async function ensureFacebookAutoReplyEnabled(
   ownerInfo: ResolvedAutoReplyOwner
 ): Promise<ResolvedAutoReplyOwner> {
-  if (!ownerInfo.selectedUser) {
-    return ownerInfo;
-  }
-
-  const currentConfig = ownerInfo.aiConfig || ownerInfo.selectedUser.aiAutoReplyConfig || {};
+  const companyIntegration = ownerInfo.companyIntegrations[0];
+  const currentConfig = ownerInfo.aiConfig || companyIntegration?.aiAutoReplyConfig || ownerInfo.selectedUser?.aiAutoReplyConfig || {};
   const enabledConfig = {
     ...currentConfig,
     enabled: true,
@@ -376,13 +371,12 @@ export async function ensureFacebookAutoReplyEnabled(
     !!currentConfig.disabledAt;
 
   if (needsPersistence) {
-    const companyIntegration = ownerInfo.companyIntegrations[0];
     if (companyIntegration?._id) {
       await SocialIntegrationModel.updateOne(
         { _id: companyIntegration._id },
         { $set: { aiAutoReplyConfig: enabledConfig } }
       );
-    } else if (ownerInfo.selectedUser._id) {
+    } else if (ownerInfo.selectedUser?._id) {
       await UserModel.updateOne(
         { _id: ownerInfo.selectedUser._id },
         { $set: { aiAutoReplyConfig: enabledConfig } }
@@ -489,7 +483,7 @@ export const aiAutoReplyService = {
         console.log(`[AI AutoReply] Chọn được user thuộc công ty ${targetCompanyCode} đang BẬT AI: ${selectedUser.email}`);
       }
 
-      if (!selectedUser) {
+      if (!targetCompanyCode && !selectedUser) {
         await logAutoReplyFailure({
           channel,
           conversationId,
@@ -506,7 +500,7 @@ export const aiAutoReplyService = {
       }
 
       user = selectedUser;
-      aiConfig = resolvedAiConfig || selectedUser?.aiAutoReplyConfig;
+      aiConfig = resolvedAiConfig || selectedUser?.aiAutoReplyConfig || companyIntegrations[0]?.aiAutoReplyConfig || null;
 
       if (aiConfig && aiConfig.enabled === false && aiConfig.disabledAt) {
         const disabledTime = new Date(aiConfig.disabledAt).getTime();
@@ -514,7 +508,7 @@ export const aiAutoReplyService = {
         if (Date.now() - disabledTime > AUTO_RE_ENABLE_DELAY_MS) {
           console.log(`[AI AutoReply] 🤖 TỰ ĐỘNG BẬT LẠI AI: Cấu hình AI đã bị tắt quá 30 phút (từ ${new Date(disabledTime).toISOString()}). Tiến hành tự động bật lại.`);
           
-          if (resolvedAiConfig) {
+          if (resolvedAiConfig || companyIntegrations[0]) {
             // Cập nhật cho Social Integration
             const { SocialIntegrationModel } = require("../model/social-integration.model");
             const integration = await SocialIntegrationModel.findOne({
@@ -531,7 +525,7 @@ export const aiAutoReplyService = {
               });
               console.log(`[AI AutoReply] Đã cập nhật database bật lại AI cho Integration: ${integration.displayName}`);
             }
-          } else {
+          } else if (user) {
             // Cập nhật cho User
             await UserModel.findByIdAndUpdate(user._id, {
               $set: {
@@ -559,7 +553,7 @@ export const aiAutoReplyService = {
 
       console.log(
         `[AI AutoReply] Owner selected: channel=${channel}, platformId=${resolvedPlatformId}, ` +
-        `conversationId=${conversationId}, user=${user.email}, company=${targetCompanyCode} (userCompany=${user.companyCode || "SYSTEM"}), enabled=${!!aiConfig?.enabled}, source=${ownerResolutionSource}`
+        `conversationId=${conversationId}, user=${user?.email || "integration_level"}, company=${targetCompanyCode} (userCompany=${user?.companyCode || "N/A"}), enabled=${!!aiConfig?.enabled}, source=${ownerResolutionSource}`
       );
 
       if (!aiConfig || !aiConfig.enabled) {
@@ -568,9 +562,9 @@ export const aiAutoReplyService = {
           channel,
           conversationId,
           customerMessage: normalizedIncomingText,
-          reason: `AI auto-reply is disabled for selected user ${user.email}`,
+          reason: `AI auto-reply is disabled for ${user?.email || resolvedPlatformId}`,
           details: {
-            selectedUserEmail: user.email,
+            selectedUserEmail: user?.email || null,
             companyCode: targetCompanyCode,
             enabled: !!aiConfig?.enabled,
           },

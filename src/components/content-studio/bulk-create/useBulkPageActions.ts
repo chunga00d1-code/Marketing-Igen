@@ -39,21 +39,18 @@ export function useBulkPageActions({
     const layer = layers.find((item) => item.id === layerId);
     if (!layer) return;
     const bindingKey = layer.dataBinding?.columnKey;
-    if (!bindingKey) {
+    if (rows.length === 1 && !bindingKey) {
       setLayers((current) => current.map((item) =>
         item.id === layerId ? { ...item, defaultValue: value } : item
       ));
-      setRows((current) => current.map((row) => ({
-        ...row,
-        values: { ...row.values, [layerId]: value },
-      })));
-      return;
     }
     setRows((current) => current.map((row) => row.id === rowId
       ? {
           ...row,
           values: { ...row.values, [layerId]: value },
-          sourceCells: { ...row.sourceCells, [bindingKey]: value },
+          ...(bindingKey
+            ? { sourceCells: { ...(row.sourceCells || {}), [bindingKey]: value } }
+            : {}),
         }
       : row));
   };

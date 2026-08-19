@@ -91,7 +91,7 @@ const CANDIDATE_STOPWORDS = new Set([
 ]);
 
 function normalizeCompanyCode(companyCode?: string) {
-  return (companyCode || "SYSTEM").trim().toUpperCase();
+  return String(companyCode || "").trim().toUpperCase();
 }
 
 function normalizeText(text: string) {
@@ -448,6 +448,9 @@ export const aiKnowledgeService = {
     documentType?: KnowledgeDocumentType;
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
+    if (!companyCode) {
+      throw new Error("Mã doanh nghiệp (companyCode) không được để trống khi nạp tài liệu.");
+    }
     const text = normalizeText(params.text);
     const contentHash = crypto.createHash("sha256").update(text).digest("hex");
     const channelScope = params.channelScope?.length ? params.channelScope : ["all"];
@@ -537,6 +540,18 @@ export const aiKnowledgeService = {
     documentTypes?: KnowledgeDocumentType[];
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
+    if (!companyCode) {
+      return {
+        contextText: "",
+        matches: 0,
+        items: [],
+        bestScore: 0,
+        productCandidateNames: [],
+        shouldAskProductConfirmation: false,
+        debugQueryTokens: [],
+        debugRawQueryTokens: [],
+      };
+    }
     const normalizedQuery = normalizeText(params.query);
     const queryVector = embedText(normalizedQuery);
     const rawQueryTokens = tokenize(normalizedQuery);
@@ -687,6 +702,35 @@ export const aiKnowledgeService = {
       selected.push(labeledText);
       selectedItems.push(item);
       usedChars += labeledText.length;
+    }
+
+    // Nếu chưa tìm thấy chunk khớp trực tiếp (hoặc câu hỏi chào hỏi/tổng quan), tự động bổ sung hồ sơ công ty từ kho tri thức
+    if (selected.length === 0 && companyCode) {
+      const profileDocs = await AIKnowledgeDocumentModel.find({
+        companyCode,
+        documentType: { $in: ["company_profile", "general", "brand_guideline"] },
+        status: "active",
+      }).select("_id sourceTitle sourceUrl").lean();
+
+      if (profileDocs.length > 0) {
+        const profileDocIds = profileDocs.map((d) => d._id);
+        const profileDocMap = new Map(profileDocs.map((d) => [String(d._id), d]));
+        const profileChunks = await AIKnowledgeChunkModel.find({
+          companyCode,
+          documentId: { $in: profileDocIds },
+        })
+          .sort({ chunkIndex: 1 })
+          .limit(3)
+          .lean();
+
+        for (const pChunk of profileChunks) {
+          if (usedChars + pChunk.text.length > maxContextChars) break;
+          const doc = profileDocMap.get(String(pChunk.documentId));
+          const labeledText = `[Hồ sơ doanh nghiệp] ${doc?.sourceTitle || "Thông tin chung"}${doc?.sourceUrl ? `\n[Link] ${doc.sourceUrl}` : ""}\n${pChunk.text}`;
+          selected.push(labeledText);
+          usedChars += labeledText.length;
+        }
+      }
     }
 
     const bestScore = finalRanked[0]?.score || 0;
@@ -856,6 +900,12 @@ export const aiKnowledgeService = {
 
   async listKnowledgeDocuments(companyCode?: string) {
     const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode) {
+      return {
+        companyCode: "",
+        documents: [],
+      };
+    }
     const documents = await AIKnowledgeDocumentModel.find({
       companyCode: normalizedCompanyCode,
     })
@@ -958,6 +1008,7 @@ export const aiKnowledgeService = {
 
   async deleteKnowledgeDocument(companyCode: string | undefined, documentId: string) {
     const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode) return null;
     const document = await AIKnowledgeDocumentModel.findOne({
       _id: documentId,
       companyCode: normalizedCompanyCode,
@@ -980,6 +1031,7 @@ export const aiKnowledgeService = {
 
   async clearKnowledge(companyCode?: string) {
     const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode) return;
     await Promise.all([
       AIKnowledgeDocumentModel.deleteMany({ companyCode: normalizedCompanyCode }),
       AIKnowledgeChunkModel.deleteMany({ companyCode: normalizedCompanyCode }),

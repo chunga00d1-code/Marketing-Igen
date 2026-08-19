@@ -8,17 +8,17 @@ import { BULK_FONT_FAMILIES } from "../interface/bulk-create.interface";
 
 export const bulkCreateRouter = Router();
 
-const hexColor = Joi.string().pattern(/^#[0-9a-f]{6}$/i);
+const colorSchema = Joi.string().trim().max(100).allow("", null);
 const layerSchema = Joi.object({
   id: Joi.string().max(100).required(),
   type: Joi.string().valid("text", "image").required(),
-  layerKind: Joi.string().valid("text", "shape", "badge", "cta", "icon").optional(),
-  groupId: Joi.string().max(100).optional(),
+  layerKind: Joi.string().valid("text", "shape", "badge", "cta", "icon").optional().allow(null),
+  groupId: Joi.string().max(100).optional().allow("", null),
   fieldName: Joi.string().trim().max(100).required(),
-  x: Joi.number().min(0).max(100).required(),
-  y: Joi.number().min(0).max(100).required(),
-  width: Joi.number().min(1).max(100).required(),
-  height: Joi.number().min(1).max(100).required(),
+  x: Joi.number().min(-50).max(150).required(),
+  y: Joi.number().min(-50).max(150).required(),
+  width: Joi.number().min(0.1).max(300).required(),
+  height: Joi.number().min(0.1).max(300).required(),
   rotation: Joi.number().min(-360).max(360).default(0),
   zIndex: Joi.number().integer().min(0).max(1000).required(),
   locked: Joi.boolean().optional(),
@@ -27,7 +27,7 @@ const layerSchema = Joi.object({
   fontFamily: Joi.string().valid(...BULK_FONT_FAMILIES).optional(),
   fontWeight: Joi.number().valid(100, 200, 300, 400, 500, 600, 700, 800, 900).optional(),
   fontStyle: Joi.string().valid("normal", "italic").optional(),
-  color: hexColor.optional(),
+  color: colorSchema.optional(),
   textAlign: Joi.string().valid("left", "center", "right").optional(),
   textDecoration: Joi.string().valid("none", "underline", "line-through").optional(),
   textTransform: Joi.string().valid("none", "uppercase", "lowercase", "capitalize").optional(),
@@ -36,17 +36,17 @@ const layerSchema = Joi.object({
   autoFit: Joi.boolean().optional(),
   minFontSize: Joi.number().min(8).max(300).optional(),
   maxLines: Joi.number().integer().min(1).max(20).optional(),
-  fillColor: hexColor.optional(),
-  borderColor: hexColor.optional(),
-  borderWidth: Joi.number().min(0).max(30).optional(),
-  borderRadius: Joi.number().min(0).max(100).optional(),
-  opacity: Joi.number().min(0.05).max(1).optional(),
-  padding: Joi.number().min(0).max(80).optional(),
+  fillColor: colorSchema.optional(),
+  borderColor: colorSchema.optional(),
+  borderWidth: Joi.number().min(0).max(100).optional().allow(null),
+  borderRadius: Joi.number().min(0).max(9999).optional().allow(null),
+  opacity: Joi.number().min(0.01).max(1).optional().allow(null),
+  padding: Joi.number().min(0).max(500).optional().allow(null),
   defaultValue: Joi.string().max(14_000_000).allow("").optional(),
   dataBinding: Joi.object({
     columnKey: Joi.string().trim().min(1).max(120).required(),
     columnLabel: Joi.string().trim().min(1).max(120).required(),
-  }).optional(),
+  }).optional().allow(null),
 });
 const templateFields = {
   sceneVersion: Joi.number().integer().min(1).max(10).optional(),
@@ -54,8 +54,8 @@ const templateFields = {
   canvas: Joi.object({ width: Joi.number().integer().min(320).max(4096).required(), height: Joi.number().integer().min(320).max(4096).required() }).required(),
   background: Joi.object({
     type: Joi.string().valid("color", "gradient", "image").required(),
-    color: hexColor.optional(),
-    colors: Joi.array().items(hexColor).max(2).optional(),
+    color: colorSchema.optional(),
+    colors: Joi.array().items(colorSchema).max(5).optional(),
     imageUrl: Joi.string().max(14_000_000).optional(),
   }).required(),
   layers: Joi.array().items(layerSchema).min(1).max(20).required(),
