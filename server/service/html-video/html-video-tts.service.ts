@@ -4,6 +4,7 @@ const DEFAULT_TTS_VOICE = "Kore";
 const DEFAULT_TTS_FORMAT = "pcm" as const;
 const DEFAULT_TTS_SAMPLE_RATE = 24_000;
 const DEFAULT_TTS_CHANNELS = 1;
+const DEFAULT_TTS_PLAYBACK_RATE = 1.12;
 const MAX_TTS_INPUT_LENGTH = 8_000;
 const TTS_TIMEOUT_MS = 60_000;
 
@@ -14,6 +15,11 @@ export type HtmlVideoTtsResult = {
   format: "mp3" | "pcm";
   sampleRate?: number;
   channels?: number;
+  playbackRate: number;
+};
+
+export type HtmlVideoTtsOptions = {
+  durationSeconds?: number;
 };
 
 function configuredValue(name: string, fallback: string) {
@@ -25,9 +31,24 @@ function isRetryableStatus(status: number) {
   return [408, 429, 500, 502, 503, 504].includes(status);
 }
 
+function configuredPlaybackRate(text: string, targetDurationSeconds?: number) {
+  const configuredText = String(process.env.OPENROUTER_HTML_VIDEO_TTS_SPEED || "").trim();
+  const configured = Number(configuredText);
+  if (configuredText && Number.isFinite(configured)) return Math.min(1.35, Math.max(1, configured));
+  if (!Number.isFinite(targetDurationSeconds) || (targetDurationSeconds || 0) <= 0) return DEFAULT_TTS_PLAYBACK_RATE;
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  const naturalDurationSeconds = wordCount / (155 / 60);
+  const targetRate = naturalDurationSeconds / targetDurationSeconds!;
+  return Math.min(1.35, Math.max(1, targetRate));
+}
+
+function normalizeNarrationText(input: string) {
+  return input.replace(/\s+/g, ' ').trim().slice(0, MAX_TTS_INPUT_LENGTH);
+}
+
 export const htmlVideoTtsService = {
-  async generate(input: string): Promise<HtmlVideoTtsResult> {
-    const text = String(input || "").trim().slice(0, MAX_TTS_INPUT_LENGTH);
+  async generate(input: string, options: HtmlVideoTtsOptions = {}): Promise<HtmlVideoTtsResult> {
+    const text = normalizeNarrationText(String(input || ""));
     const apiKey = String(process.env.OPENROUTER_API_KEY || "").trim();
     if (!text) throw new Error("Voice script cannot be empty.");
     if (!apiKey) throw new Error("OPENROUTER_API_KEY is not configured for TTS.");
@@ -38,9 +59,13 @@ export const htmlVideoTtsService = {
       "OPENROUTER_HTML_VIDEO_TTS_FORMAT",
       DEFAULT_TTS_FORMAT
     ) === "mp3" ? "mp3" : "pcm";
+    const playbackRate = configuredPlaybackRate(text, options.durationSeconds);
     const ttsInput = [
-      "Speak as one consistent Vietnamese professional narrator.",
-      "Use a warm, clear, natural, confident delivery at a moderate pace. Do not act, switch speakers, add sound effects, or add words.",
+      '# AUDIO PROFILE',
+      'One consistent adult Vietnamese narrator with a natural native Vietnamese accent. Use neutral, standard Vietnamese pronunciation with no foreign accent and no English-style intonation.',
+      '# DIRECTOR\'S NOTES',
+      'Warm, clear, confident and professional delivery for a short social video. Speak briskly but comfortably, around 150-165 Vietnamese words per minute. Keep articulation crisp, connect phrases naturally, and use only short pauses required by punctuation. Avoid dead air, slow lecturing, exaggerated acting, or dramatic pauses.',
+      'Do not switch speakers, add sound effects, paraphrase, translate, or add any words.',
       `Read exactly this narration:\n${text}`,
     ].join("\n\n");
     let lastError: unknown;
@@ -61,6 +86,7 @@ export const htmlVideoTtsService = {
             input: ttsInput,
             voice,
             response_format: responseFormat,
+            speed: playbackRate,
           }),
         });
 
@@ -81,6 +107,7 @@ export const htmlVideoTtsService = {
           ...(responseFormat === "pcm"
             ? { sampleRate: DEFAULT_TTS_SAMPLE_RATE, channels: DEFAULT_TTS_CHANNELS }
             : {}),
+          playbackRate,
         };
       } catch (error) {
         lastError = error;

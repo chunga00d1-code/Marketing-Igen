@@ -337,9 +337,9 @@ export function LegacyHtmlVideoWorkspace({
   });
   const [templateName, setTemplateName] = useState(() => {
     if (typeof window !== "undefined") {
-      return window.localStorage.getItem("igen:html-video:name") || "Dự án video HTML";
+      return window.localStorage.getItem("igen:html-video:name") || "Dự án video Slide trượt";
     }
-    return "Dự án video HTML";
+    return "Dự án video Slide trượt";
   });
 
   const [durationSeconds, setDurationSeconds] = useState(5);
@@ -452,7 +452,7 @@ export function LegacyHtmlVideoWorkspace({
     if (window.confirm("Bạn có chắc chắn muốn tạo dự án mới? Mọi mã hiện tại sẽ được reset.")) {
       setHtml(defaultHtml);
       setCss(defaultCss);
-      setTemplateName("Dự án video HTML mới");
+      setTemplateName("Dự án video Slide trượt mới");
       setHistoryList([{ html: defaultHtml, css: defaultCss }]);
       setHistoryIndex(0);
       toast.success("Đã khởi tạo dự án mới.");
@@ -618,7 +618,7 @@ export function LegacyHtmlVideoWorkspace({
     } catch (error) {
       if (controller.signal.aborted) return;
       if (submissionGenerationRef.current === generation) {
-        const errorMsg = errorMessage(error, "Không thể kết xuất video HTML.");
+        const errorMsg = errorMessage(error, "Không thể kết xuất video Slide trượt.");
         setSubmitError(errorMsg);
         setRender((current) => {
           if (!current) return null;
@@ -1134,7 +1134,7 @@ export function LegacyHtmlVideoWorkspace({
               type="text"
               value={templateName}
               onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Dự án video HTML"
+              placeholder="Dự án video Slide trượt"
               className="w-full rounded-lg border-0 border-b border-transparent bg-transparent px-2 py-0.5 text-center text-sm font-extrabold text-white outline-none transition placeholder-white/50 hover:border-white/20 hover:bg-white/10 focus:border-white focus:bg-white/15"
               title="Đổi tên thiết kế"
             />
@@ -1189,7 +1189,7 @@ export function LegacyHtmlVideoWorkspace({
               </div>
             ) : preview ? (
               <iframe
-                title="Xem trước video HTML"
+                title="Xem trước video Slide trượt"
                 sandbox=""
                 srcDoc={preview.compositionHtml}
                 style={{

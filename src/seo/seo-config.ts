@@ -254,10 +254,10 @@ export const VIDEO_STUDIO_SEO_MAP: Record<VideoStudioTool, SeoMeta> = {
     changeFrequency: "weekly",
   },
   "html-video": {
-    title: "Tạo video từ HTML",
+    title: "Tạo video Slide trượt",
     description:
-      "Thiết kế video bằng HTML và CSS, xem trước an toàn và kết xuất MP4 trong Video Studio.",
-    keywords: "HTML to video, CSS animation, tạo video từ HTML, video marketing",
+      "Tạo video dạng slide trượt tự động từ ý tưởng hoặc nội dung, xem trước mượt mà và kết xuất MP4 trong Video Studio.",
+    keywords: "video slide trượt, slide trình chiếu video, tạo video slide, video marketing, HTML to video",
     path: "/video-studio/html-to-video",
     priority: "0.8",
     changeFrequency: "weekly",

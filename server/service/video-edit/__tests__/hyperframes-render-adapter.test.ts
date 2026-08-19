@@ -305,6 +305,7 @@ test("muxes the local voice track into the final MP4 before upload", async () =>
       resolution: "720p",
       voiceAudioPath: "C:/tmp/render-voice-1/voice.mp3",
       voiceDurationSeconds: 5,
+      voicePlaybackRate: 1.12,
     },
     {
       signal: new AbortController().signal,
@@ -324,7 +325,7 @@ test("muxes the local voice track into the final MP4 before upload", async () =>
     "-i",
     "C:/tmp/render-voice-1/voice.mp3",
     "-filter_complex",
-    "[1:a]apad[voice]",
+    "[1:a]atempo=1.120,apad[voice]",
     "-map",
     "0:v:0",
     "-map",
@@ -379,6 +380,7 @@ test("passes Gemini PCM voice metadata to FFmpeg before muxing", async () => {
       voiceAudioSampleRate: 24_000,
       voiceAudioChannels: 1,
       voiceDurationSeconds: 5,
+      voicePlaybackRate: 1.12,
     },
     {
       signal: new AbortController().signal,
@@ -402,7 +404,7 @@ test("passes Gemini PCM voice metadata to FFmpeg before muxing", async () => {
     "-i",
     "C:/tmp/render-voice-pcm-1/voice.pcm",
     "-filter_complex",
-    "[1:a]apad[voice]",
+    "[1:a]atempo=1.120,apad[voice]",
     "-map",
     "0:v:0",
   ]);

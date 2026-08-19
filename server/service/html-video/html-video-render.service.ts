@@ -215,6 +215,26 @@ export const htmlVideoRenderService = {
     return serializeRender(render);
   },
 
+  async deleteRender(
+    actor: HtmlVideoActor,
+    renderId: string
+  ): Promise<{ success: boolean; id: string }> {
+    if (!mongoose.isValidObjectId(renderId)) {
+      throw new Error("Mã lần kết xuất video không hợp lệ.");
+    }
+    const result = await HtmlVideoRenderModel.findOneAndDelete({
+      _id: renderId,
+      userId: actor.id,
+      companyCode: actor.companyCode,
+    }).lean();
+    if (!result) {
+      throw new Error(
+        "Không tìm thấy lần kết xuất video hoặc bạn không có quyền truy cập."
+      );
+    }
+    return { success: true, id: renderId };
+  },
+
   async listRenders(
     actor: HtmlVideoActor,
     options: HtmlVideoRenderListOptions = {}
@@ -323,7 +343,7 @@ export const htmlVideoRenderService = {
             },
           }
         );
-        const voice = await htmlVideoTtsService.generate(voiceScript);
+        const voice = await htmlVideoTtsService.generate(voiceScript, { durationSeconds: render.durationSeconds });
         voiceAudioPath = join(
           temporaryDirectory,
           voice.format === "pcm" ? "voice.pcm" : "voice.mp3"

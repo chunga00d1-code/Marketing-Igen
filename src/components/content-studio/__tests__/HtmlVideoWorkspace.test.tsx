@@ -18,7 +18,13 @@ import {
   type HtmlVideoPendingDraftConflict as PendingDraftConflict,
 } from "../HtmlVideoWorkspace";
 import { mergePersistedHtmlVideoRenders } from "../HtmlVideoBatchWorkspace";
-import { automaticDuration } from "../html-video/utils";
+import {
+  inferHtmlVideoAspectRatio,
+  automaticDuration,
+  estimateHtmlVideoGenerationProgress,
+  formatHtmlVideoElapsedTime,
+  getHtmlVideoGenerationStage,
+} from "../html-video/utils";
 import type {
   HtmlVideoRenderDetail,
   HtmlVideoRenderStatus,
@@ -75,6 +81,10 @@ test("renders prompt generation controls and the exact wallet cost", () => {
   assert.doesNotMatch(source, /maxLength=\{MAX_LONG_PROMPT_LENGTH\}/);
   assert.match(source, /Prompt dài sẽ tự chuyển thành/);
   assert.match(source, /Prompt vượt giới hạn, chưa thể tạo video/);
+  assert.match(
+    source,
+    /if \(!aspectRatioLocked && effectiveAspectRatio !== aspectRatio\)[\s\S]*?setAspectRatioState\(effectiveAspectRatio\);\s*}\s*if \(!trimmedPrompt \|\| isCreating \|\| referencesAnalyzing\) return;/
+  );
   assert.match(source, /inferredDurationSeconds/);
   assert.match(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration/);
   assert.match(source, /type="number"/);
@@ -82,6 +92,22 @@ test("renders prompt generation controls and the exact wallet cost", () => {
   assert.doesNotMatch(source, /Tùy chỉnh cài đặt/);
 });
 
+test("keeps loading numbers moving while HTML-to-video is processing", () => {
+  assert.equal(formatHtmlVideoElapsedTime(0), "00:00");
+  assert.equal(formatHtmlVideoElapsedTime(65), "01:05");
+  assert.ok(estimateHtmlVideoGenerationProgress(10) > estimateHtmlVideoGenerationProgress(0));
+  assert.ok(estimateHtmlVideoGenerationProgress(120) <= 96);
+  assert.equal(getHtmlVideoGenerationStage(0), "Đang đọc nội dung và chuẩn bị slide");
+  assert.equal(getHtmlVideoGenerationStage(30), "Đang kiểm tra bản dựng trước khi render");
+
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+  assert.match(source, /LoaderCircle/);
+  assert.match(source, /Đang tạo bản dựng/);
+  assert.match(source, /Đang tạo lại/);
+});
 test("recognizes explicit numeric and Vietnamese word durations", () => {
   assert.equal(automaticDuration("Video 15 giây giới thiệu sản phẩm"), 15);
   assert.equal(automaticDuration("Create a 20-second product teaser"), 20);
@@ -89,6 +115,28 @@ test("recognizes explicit numeric and Vietnamese word durations", () => {
   assert.equal(automaticDuration("Thời lượng: 45 giây"), 45);
 });
 
+
+test("infers an explicit landscape storyboard ratio without treating vertical motion as portrait", () => {
+  assert.equal(inferHtmlVideoAspectRatio("20 giây · 16:9 · 1920x1080 · translateY only in a scene note"), "16:9");
+  assert.equal(inferHtmlVideoAspectRatio("Video dọc 9:16, 1080 x 1920"), "9:16");
+  assert.equal(inferHtmlVideoAspectRatio("Video TikTok giới thiệu xe máy điện"), "9:16");
+  assert.equal(inferHtmlVideoAspectRatio("Instagram Reels ra mắt sản phẩm"), "9:16");
+  assert.equal(inferHtmlVideoAspectRatio("TikTok campaign; tài liệu mẫu có nhắc 16:9"), "9:16");
+  assert.equal(inferHtmlVideoAspectRatio("Square 1:1 product card"), "1:1");
+  assert.equal(inferHtmlVideoAspectRatio("Use a horizontal transition"), null);
+});
+
+test("exposes automatic and manual aspect-ratio controls in the batch workspace", () => {
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+
+  assert.match(source, /TikTok, Reels và Shorts được tự động dựng dọc 9:16/);
+  assert.match(source, /\["9:16", "1:1", "16:9"\]/);
+  assert.match(source, /useAutomaticAspectRatio/);
+  assert.match(source, /promptAspectRatio \|\| effectiveAspectRatio/);
+});
 test("requires overwrite confirmation only for edited AI source", () => {
   assert.equal(
     shouldConfirmHtmlVideoDraftOverwrite({

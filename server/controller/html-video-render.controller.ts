@@ -26,6 +26,9 @@ type HtmlVideoRenderServiceContract = {
   listRenders(
     ...args: Parameters<typeof htmlVideoRenderService.listRenders>
   ): Promise<unknown>;
+  deleteRender?: (
+    ...args: Parameters<typeof htmlVideoRenderService.deleteRender>
+  ) => Promise<unknown>;
 };
 
 type HtmlVideoPromptHistoryServiceContract = {
@@ -191,6 +194,21 @@ export function createHtmlVideoRenderController(
           req.params.renderId
         );
         return res.json({ success: true, data: render });
+      } catch (error) {
+        return respondError(res, error);
+      }
+    },
+
+    async delete(req: AuthenticatedRequest, res: Response) {
+      try {
+        if (!dependencies.service.deleteRender) {
+          return res.status(501).json({ success: false, message: "Chức năng xóa video chưa được cấu hình." });
+        }
+        const result = await dependencies.service.deleteRender(
+          actorFrom(req),
+          req.params.renderId
+        );
+        return res.json({ success: true, data: result });
       } catch (error) {
         return respondError(res, error);
       }

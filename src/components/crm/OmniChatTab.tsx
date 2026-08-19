@@ -73,6 +73,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   const [filterInbox, setFilterInbox] = useState("");
   const [showConfig, setShowConfig] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const latestInboundMessage = [...chatHistory].reverse().find((message) => message.sender === "user");
+  const isFacebookReplyWindowExpired = activeCustomer?.channel === "facebook" && !!latestInboundMessage &&
+    Date.now() - latestInboundMessage.timestamp.getTime() > 24 * 60 * 60 * 1000;
 
   // Drag to scroll refs & state for the channel selector
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1047,6 +1050,14 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
 
             {/* Chat Send Input Box area */}
             <form onSubmit={handleSendChatMessage} className="p-4 border-t border-slate-100 bg-white shrink-0" id="chat_input_section">
+              {isFacebookReplyWindowExpired && (
+                <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-medium text-amber-900">
+                  <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    Theo lịch sử hiện có, đã quá 24 giờ kể từ tin nhắn gần nhất của khách. Facebook có thể từ chối phản hồi; hệ thống sẽ kiểm tra lại khi gửi và hướng dẫn bạn nếu cần khách nhắn lại.
+                  </span>
+                </div>
+              )}
               <div className="flex gap-3">
                 <input
                   type="text"

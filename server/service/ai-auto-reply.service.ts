@@ -7,7 +7,7 @@ import { TikTokConversationModel, TikTokMessageModel } from "../model/tiktok-mes
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { geminiService } from "./gemini.service";
 import { zaloMessengerService } from "./zalo-messenger.service";
-import { fbMessengerService } from "./fb-messenger.service";
+import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.service";
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 
@@ -473,6 +473,13 @@ export const aiAutoReplyService = {
         companyIntegrations,
         uniqueCandidates,
       } = effectiveOwner;
+      const facebookTokenContext: FacebookTokenContext | undefined = channel === "facebook"
+        ? {
+            companyCode: targetCompanyCode,
+            userId: selectedUser?._id?.toString(),
+            source: ownerResolutionSource.startsWith("personal") ? "personal" : "company",
+          }
+        : undefined;
 
       console.log(`[AI AutoReply] Xác định targetCompanyCode cho hội thoại: ${targetCompanyCode}`);
       console.log(`[AI AutoReply] Ket qua resolve owner: source=${ownerResolutionSource}, selectedUser=${selectedUser?.email || "none"}`);
@@ -813,7 +820,7 @@ export const aiAutoReplyService = {
           generatingReplies.add(conversationId);
 
           if (channel === "facebook") {
-            await fbMessengerService.sendSenderAction(resolvedPlatformId, conversationId, "typing_on").catch(() => {});
+            await fbMessengerService.sendSenderAction(resolvedPlatformId, conversationId, "typing_on", facebookTokenContext).catch(() => {});
           }
 
           try {
@@ -921,12 +928,12 @@ export const aiAutoReplyService = {
                 } else if (channel === "tiktok") {
                   await tiktokMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai");
                 } else {
-                  await fbMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai");
+                  await fbMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai", facebookTokenContext);
                 }
 
                 if (index < messagesToSend.length - 1) {
                   if (channel === "facebook") {
-                    await fbMessengerService.sendSenderAction(resolvedPlatformId, conversationId, "typing_on").catch(() => {});
+                    await fbMessengerService.sendSenderAction(resolvedPlatformId, conversationId, "typing_on", facebookTokenContext).catch(() => {});
                   }
                   await new Promise((resolve) => setTimeout(resolve, getBubbleDelayMs()));
                 }

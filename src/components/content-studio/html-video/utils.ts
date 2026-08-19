@@ -9,6 +9,24 @@ export function isLongHtmlVideoPrompt(prompt: string) {
   return prompt.trim().length > MAX_DIRECT_PROMPT_LENGTH;
 }
 
+export function inferHtmlVideoAspectRatio(prompt: string): '9:16' | '1:1' | '16:9' | null {
+  const normalized = prompt
+    .toLocaleLowerCase('vi-VN')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u00d7x]/g, 'x')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const portraitPlatform =
+    /(?:tik\s*tok|instagram\s*reels?|facebook\s*reels?|youtube\s*shorts?|social\s*(?:story|stories)|video\s*(?:dang\s*)?doc|khung\s*doc)/i;
+  if (portraitPlatform.test(normalized)) return '9:16';
+  if (/(?:9\s*:\s*16|1080\s*x\s*1920|portrait|vertical video|video doc|dang doc|khung doc)/i.test(normalized)) return '9:16';
+  if (/(?:1\s*:\s*1|square|khung vuong)/i.test(normalized)) return '1:1';
+  if (/(?:16\s*:\s*9|1920\s*x\s*1080|landscape|horizontal video|video ngang|dang ngang|khung ngang)/i.test(normalized)) return '16:9';
+  return null;
+}
+
 export function seekableCompositionDocument(compositionHtml: string, frameSeconds: number, isPlaying: boolean) {
   const override = `<style data-preview-frame>*:not(svg):not(path),*:not(svg):not(path)::before,*:not(svg):not(path)::after{animation-delay:-${Math.max(0, frameSeconds).toFixed(3)}s !important;animation-play-state:${isPlaying ? 'running' : 'paused'} !important;animation-fill-mode:both !important}</style>`;
   return compositionHtml.includes('</head>')
@@ -74,6 +92,24 @@ export function formatVideoTime(seconds: number) {
   return `${minutes}:${String(safeSeconds % 60).padStart(2, "0")}`;
 }
 
+export function estimateHtmlVideoGenerationProgress(elapsedSeconds: number) {
+  const seconds = Math.max(0, elapsedSeconds);
+  return Math.min(96, Math.max(4, Math.round(96 * (1 - Math.exp(-seconds / 18)))));
+}
+
+export function formatHtmlVideoElapsedTime(elapsedSeconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(elapsedSeconds));
+  const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  return minutes + ":" + seconds;
+}
+
+export function getHtmlVideoGenerationStage(elapsedSeconds: number) {
+  if (elapsedSeconds < 5) return "Đang đọc nội dung và chuẩn bị slide";
+  if (elapsedSeconds < 15) return "Đang chia bố cục và sắp xếp từng slide";
+  if (elapsedSeconds < 30) return "Đang tối ưu chữ, chuyển cảnh và giọng đọc";
+  return "Đang kiểm tra bản dựng trước khi render";
+}
 export function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
 }

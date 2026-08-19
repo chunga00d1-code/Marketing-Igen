@@ -386,7 +386,7 @@ export function parseHtmlVideoRenderListResponse(
   }
 
   if (!isRecord(raw) || !Array.isArray(raw.items) || !isRecord(raw.pagination)) {
-    throw new Error("Dữ liệu lịch sử video HTML-to-video không hợp lệ.");
+    throw new Error("Dữ liệu lịch sử video Slide trượt không hợp lệ.");
   }
 
   const pagination = raw.pagination;
@@ -400,7 +400,7 @@ export function parseHtmlVideoRenderListResponse(
     typeof pagination.hasNextPage !== "boolean" ||
     typeof pagination.hasPreviousPage !== "boolean"
   ) {
-    throw new Error("Dữ liệu phân trang lịch sử video HTML-to-video không hợp lệ.");
+    throw new Error("Dữ liệu phân trang lịch sử video Slide trượt không hợp lệ.");
   }
 
   return {
@@ -432,7 +432,7 @@ export const htmlVideoRenderService = {
     });
     const payload = await readPayload(response);
     if (!response.ok) {
-      throw requestError(payload, "Không thể tải lịch sử video HTML-to-video.");
+      throw requestError(payload, "Không thể tải lịch sử video Slide trượt.");
     }
     return parseHtmlVideoRenderListResponse(payload, options);
   },
@@ -552,6 +552,25 @@ export const htmlVideoRenderService = {
       throw requestError(payload, "Không thể tải trạng thái kết xuất video.");
     }
     return parseHtmlVideoRenderResponse(payload);
+  },
+
+  async delete(
+    renderId: string,
+    signal?: AbortSignal
+  ): Promise<{ success: boolean; id: string }> {
+    const response = await fetch(
+      `/api/v1/html-video-renders/${encodeURIComponent(renderId)}`,
+      {
+        method: "DELETE",
+        headers: authHeaders(),
+        signal,
+      }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể xóa video khỏi lịch sử.");
+    }
+    return { success: true, id: renderId };
   },
 };
 

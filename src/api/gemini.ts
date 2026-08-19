@@ -258,7 +258,7 @@ export const geminiApi = {
       body: JSON.stringify({ prompt, systemInstruction }),
     });
     if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi tạo bản dựng video HTML bằng AI');
+      await handleErrorResponse(response, 'Lỗi tạo bản dựng video Slide trượt bằng AI');
     }
     return response.json();
   },

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  Code2,
   ChevronLeft,
   ChevronRight,
   Download,
@@ -9,7 +8,6 @@ import {
   Image as ImageIcon,
   LoaderCircle,
   History,
-  LayoutTemplate,
   MonitorPlay,
   Pause,
   PanelLeftClose,
@@ -18,9 +16,9 @@ import {
   Paperclip,
   RefreshCcw,
   Save,
-  Settings2,
   Sliders,
   Sparkles,
+  Trash2,
   WandSparkles,
   X,
 } from "lucide-react";
@@ -46,6 +44,7 @@ import type {
 } from "./html-video/types";
 import {
   automaticDuration,
+  inferHtmlVideoAspectRatio,
   candidateStatusClass,
   candidateStatusLabel,
   errorMessage,
@@ -69,6 +68,7 @@ type HtmlVideoBatchService = Pick<
   | "listPromptHistory"
   | "listRenders"
   | "preview"
+  | "delete"
 >;
 
 
@@ -78,37 +78,19 @@ const DEFAULT_RESOLUTION = "1080p" as const;
 // One prompt should produce one usable video. Keeping this at one avoids
 // tripling LLM and render time for the primary HTML-to-video workflow.
 const DEFAULT_VARIATION_COUNT = 1;
-const HISTORY_PAGE_SIZE = 12;
+const HISTORY_PAGE_SIZE = 6;
 
-const HTML_VIDEO_TEMPLATES = [
-  { id: "brand-intro", name: "Giới thiệu thương hiệu", description: "Mở đầu ấn tượng, logo, thông điệp và CTA.", ratio: "9:16" as HtmlVideoAspectRatio, prompt: "Tạo video giới thiệu thương hiệu với phần mở đầu ấn tượng, làm nổi bật tên thương hiệu, thông điệp chính và CTA cuối video." },
-  { id: "product-sale", name: "Ra mắt sản phẩm", description: "Tập trung sản phẩm, ưu đãi và nút hành động.", ratio: "9:16" as HtmlVideoAspectRatio, prompt: "Tạo video giới thiệu sản phẩm mới, làm nổi bật 3 lợi ích chính, ưu đãi nổi bật và CTA mua ngay." },
-  { id: "education", name: "Video giải thích", description: "Trình bày vấn đề, giải pháp và kết luận rõ ràng.", ratio: "16:9" as HtmlVideoAspectRatio, prompt: "Tạo video giải thích ngắn gọn một chủ đề giáo dục, chia nội dung thành các bước trực quan, dễ hiểu và có phần tóm tắt cuối." },
-  { id: "event-teaser", name: "Teaser sự kiện", description: "Nhịp nhanh, tạo sự mong đợi và ghi nhớ thời gian.", ratio: "1:1" as HtmlVideoAspectRatio, prompt: "Tạo teaser sự kiện với nhịp chuyển cảnh năng động, tên sự kiện, thời gian, địa điểm và CTA đăng ký tham dự." },
-] as const;
-
-function templateComposition(templateId: string) {
-  const source = templateThumbnailPreview(templateId);
-  const match = source.match(/^<style>([\s\S]*)<\/style>([\s\S]*)$/);
-  return { css: match?.[1] || "", html: match?.[2] || source };
-}
-
-function templateThumbnailPreview(templateId: string) {
-  const backgrounds: Record<string, string> = {
-    "brand-intro": "linear-gradient(135deg,#020617,#1e3a8a 55%,#0ea5e9)",
-    "product-sale": "linear-gradient(135deg,#9f1239,#f97316 58%,#fde68a)",
-    education: "linear-gradient(135deg,#0c4a6e,#0f766e 55%,#5eead4)",
-    "event-teaser": "linear-gradient(135deg,#3b0764,#c026d3 52%,#f9a8d4)",
-  };
-  const background = backgrounds[templateId] || backgrounds["brand-intro"];
-  const copy: Record<string, { eyebrow: string; title: string; caption: string; cta: string; layout: string }> = {
-    "brand-intro": { eyebrow: "THƯƠNG HIỆU", title: "Bứt phá khác biệt", caption: "Kể câu chuyện thương hiệu bằng chuyển động", cta: "Khám phá ngay", layout: "brand" },
-    "product-sale": { eyebrow: "RA MẮT MỚI", title: "Ưu đãi 30%", caption: "Sản phẩm bạn chờ đợi đã xuất hiện", cta: "Mua ngay", layout: "sale" },
-    education: { eyebrow: "GIẢI THÍCH NHANH", title: "3 bước dễ hiểu", caption: "Kiến thức ngắn gọn, trực quan và dễ nhớ", cta: "Xem bài học", layout: "education" },
-    "event-teaser": { eyebrow: "SAVE THE DATE", title: "Sự kiện 2025", caption: "Một trải nghiệm đáng mong đợi đang đến", cta: "Đăng ký tham dự", layout: "event" },
-  };
-  const selectedCopy = copy[templateId] || copy["brand-intro"];
-  return `<style>html,body{width:100%;height:100%;margin:0;overflow:hidden}body{background:${background};font-family:Inter,system-ui,sans-serif}.thumb{position:relative;width:100%;height:100%;overflow:hidden;color:white}.content{position:absolute;z-index:2;display:flex;flex-direction:column;gap:8px;max-width:78%;animation:enter .7s ease-out both}.brand .content{inset:22% 10%;justify-content:center;text-align:center;align-items:center}.sale .content{left:9%;top:18%;align-items:flex-start}.education .content{left:9%;bottom:14%;align-items:flex-start}.event .content{left:9%;right:9%;bottom:14%;align-items:flex-start}.eyebrow{margin:0;color:rgba(255,255,255,.72);font-size:9px;letter-spacing:.18em;font-weight:800}.title{margin:0;font-size:clamp(20px,5.2vw,44px);line-height:1.02;font-weight:900;letter-spacing:-.04em}.caption{margin:0;max-width:31ch;color:rgba(255,255,255,.76);font-size:clamp(9px,1.7vw,15px);line-height:1.35}.cta{margin-top:4px;border-radius:999px;background:rgba(255,255,255,.92);padding:6px 12px;color:#172554;font-size:10px;font-weight:800}.orb{position:absolute;border-radius:999px;filter:blur(1px);opacity:.72;animation:float 3.2s ease-in-out infinite alternate}.orb-a{width:48%;height:70%;left:-12%;top:35%;background:rgba(255,255,255,.24)}.orb-b{width:38%;height:56%;right:-10%;top:-20%;background:rgba(255,255,255,.18);animation-delay:-1.5s}.line{position:absolute;left:-10%;right:-10%;top:54%;height:2px;background:rgba(255,255,255,.42);transform:rotate(-18deg);box-shadow:0 14px 0 rgba(255,255,255,.18),0 -14px 0 rgba(255,255,255,.12);animation:sweep 2.8s ease-in-out infinite alternate}.frame{position:absolute;inset:16%;border:1px solid rgba(255,255,255,.36);border-radius:12px;transform:rotate(-7deg);animation:tilt 3s ease-in-out infinite alternate}.sale .frame{inset:12% 8% 12% 44%;border-color:rgba(255,255,255,.28);transform:rotate(8deg)}.education .frame{inset:12% 8% 32% 42%;border-radius:40% 12% 40% 12%;transform:rotate(6deg)}.event .frame{inset:10%;border-style:dashed;transform:rotate(0)}@keyframes enter{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}@keyframes float{to{transform:translate(16px,-12px) scale(1.12)}}@keyframes sweep{to{transform:translateX(22px) rotate(-18deg)}}@keyframes tilt{to{transform:rotate(7deg) scale(1.06)}}</style><main class="thumb ${selectedCopy.layout}"><i class="orb orb-a"></i><i class="orb orb-b"></i><i class="line"></i><i class="frame"></i><section class="content"><p class="eyebrow">${selectedCopy.eyebrow}</p><h1 class="title">${selectedCopy.title}</h1><p class="caption">${selectedCopy.caption}</p><span class="cta">${selectedCopy.cta}</span></section></main>`;
+function getPaginationPages(currentPage: number, totalPages: number): (number | "...")[] {
+  if (totalPages <= 5) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+  if (currentPage <= 3) {
+    return [1, 2, 3, 4, "...", totalPages];
+  }
+  if (currentPage >= totalPages - 2) {
+    return [1, "...", totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+  }
+  return [1, "...", currentPage - 1, currentPage, currentPage + 1, "...", totalPages];
 }
 
 function escapeHtmlAttribute(value: string) {
@@ -366,6 +348,143 @@ export function mergePersistedHtmlVideoRenders(
   return [...localCandidates, ...restoredRenders];
 }
 
+function HistoryCandidateCard({
+  candidate,
+  isSelected,
+  onRequestDelete,
+  onSelect,
+}: {
+  candidate: HtmlVideoCandidate;
+  isSelected: boolean;
+  onRequestDelete: (candidate: HtmlVideoCandidate) => void;
+  onSelect: (candidate: HtmlVideoCandidate) => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: "150px" }
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+    if (videoRef.current) {
+      void videoRef.current.play().catch(() => {});
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className={`group relative min-w-0 text-left ${isSelected ? "text-indigo-700" : "text-slate-700"}`}
+    >
+      <div className={`relative aspect-video overflow-hidden rounded-xl border bg-slate-950 transition hover:shadow-md ${isSelected ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+        <div
+          onClick={() => onSelect(candidate)}
+          className="absolute inset-0 cursor-pointer"
+          title={`Mở ${candidate.label}`}
+        >
+          {isVisible ? (
+            candidate.render?.outputUrl ? (
+              <video
+                ref={videoRef}
+                src={candidate.render.outputUrl}
+                muted
+                playsInline
+                loop
+                preload="none"
+                className="pointer-events-none absolute inset-0 h-full w-full object-contain bg-slate-950"
+              />
+            ) : candidate.preview && isHovered ? (
+              <iframe
+                key={candidate.id}
+                title={`Preview ${candidate.label}`}
+                sandbox=""
+                scrolling="no"
+                loading="lazy"
+                srcDoc={seekableCompositionDocument(
+                  candidate.preview.compositionHtml,
+                  0,
+                  true
+                )}
+                className="pointer-events-none absolute inset-0 h-full w-full border-0 overflow-hidden bg-slate-950"
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-indigo-950 to-sky-900 p-2 text-center">
+                <MonitorPlay className="h-6 w-6 text-white/40 mb-1" />
+                <span className="text-[10px] font-semibold text-white/70 line-clamp-1">{candidate.label}</span>
+              </div>
+            )
+          ) : (
+            <div className="absolute inset-0 bg-slate-900 animate-pulse" />
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onRequestDelete(candidate);
+          }}
+          className="absolute right-2 top-2 z-30 flex h-7 w-7 items-center justify-center rounded-lg bg-slate-950/70 text-white/90 backdrop-blur-sm transition opacity-0 group-hover:opacity-100 hover:bg-rose-600 hover:text-white"
+          title="Xóa video khỏi lịch sử"
+          aria-label="Xóa video khỏi lịch sử"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+
+        {isCandidateActive(candidate.status) ? (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-slate-950/40">
+            <LoaderCircle className="h-5 w-5 animate-spin text-white" />
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-1.5 flex items-center justify-between gap-1">
+        <button
+          type="button"
+          onClick={() => onSelect(candidate)}
+          className="truncate text-left text-xs font-bold hover:underline"
+          title={`Mở ${candidate.label}`}
+        >
+          {candidate.label}
+        </button>
+      </div>
+      <p className="truncate text-[10px] text-slate-500">{candidateStatusLabel(candidate)}</p>
+    </div>
+  );
+}
+
 export function HtmlVideoBatchWorkspace({
   service = htmlVideoRenderService,
 }: {
@@ -373,8 +492,21 @@ export function HtmlVideoBatchWorkspace({
 }) {
   const [projectName, setProjectName] = useState(DEFAULT_PROJECT_NAME);
   const [prompt, setPrompt] = useState("");
-  const [aspectRatio, setAspectRatio] = useState<HtmlVideoAspectRatio>("9:16");
+  const [aspectRatioLocked, setAspectRatioLocked] = useState(false);
+  const [aspectRatio, setAspectRatioState] = useState<HtmlVideoAspectRatio>("9:16");
   const resolution = DEFAULT_RESOLUTION;
+  const handleAspectRatioChange = (nextAspectRatio: HtmlVideoAspectRatio) => {
+    setAspectRatioState(nextAspectRatio);
+    setAspectRatioLocked(true);
+  };
+  const inferredAspectRatio = useMemo(() => inferHtmlVideoAspectRatio(prompt), [prompt]);
+  const effectiveAspectRatio = aspectRatioLocked ? aspectRatio : inferredAspectRatio || "9:16";
+  const useAutomaticAspectRatio = () => {
+    const nextAspectRatio = inferredAspectRatio || "9:16";
+    setAspectRatioLocked(false);
+    setAspectRatioState(nextAspectRatio);
+    toast.success(`Đã chuyển tỷ lệ về tự động: ${nextAspectRatio}.`);
+  };
   const inferredDurationSeconds = useMemo(() => automaticDuration(prompt), [prompt]);
   const [durationOverrideSeconds, setDurationOverrideSeconds] = useState<number | null>(null);
   const [durationDraftSeconds, setDurationDraftSeconds] = useState(String(inferredDurationSeconds));
@@ -388,9 +520,7 @@ export function HtmlVideoBatchWorkspace({
   const [historyPagination, setHistoryPagination] = useState<HtmlVideoRenderPagination | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeTool, setActiveTool] = useState<"prompt" | "settings" | "templates" | "history">("prompt");
-  const [hoveredTemplateId, setHoveredTemplateId] = useState<string | null>(null);
-  const [hoveredHistoryCandidateId, setHoveredHistoryCandidateId] = useState<string | null>(null);
+  const [activeTool, setActiveTool] = useState<"prompt" | "settings" | "history">("prompt");
   const [references, setReferences] = useState<HtmlVideoReference[]>([]);
   const [parentPromptHistoryId, setParentPromptHistoryId] = useState<string | null>(null);
   const [referenceInputKey, setReferenceInputKey] = useState(0);
@@ -538,16 +668,7 @@ export function HtmlVideoBatchWorkspace({
         if (renderPage.pagination.page !== historyPage) {
           setHistoryPage(renderPage.pagination.page);
         }
-        setSelectedCandidateId((current) => {
-          const isLocalCandidate = current && !current.startsWith("html-video-render-history-");
-          const isCurrentPageCandidate = current && renderPage.items.some(
-            (render) => `html-video-render-history-${render.id}` === current
-          );
-          if (isLocalCandidate || isCurrentPageCandidate) return current;
-          return renderPage.items[0]
-            ? `html-video-render-history-${renderPage.items[0].id}`
-            : null;
-        });
+
       })
       .finally(() => {
         if (!cancelled) setHistoryLoading(false);
@@ -636,7 +757,7 @@ export function HtmlVideoBatchWorkspace({
         aspectRatio: candidate.promptAspectRatio || aspectRatio,
         resolution: candidate.resolution,
         promptHistoryId: candidate.promptHistoryId,
-        voiceScript: (candidate.voiceScript || candidate.prompt).trim().slice(0, 8_000),
+        voiceScript: (candidate.voiceScript || "").trim().slice(0, 8_000),
         assets: candidate.referenceAssets || buildReferenceAssets(references),
         idempotencyKey: createHtmlVideoIdempotencyKey(),
       });
@@ -660,6 +781,10 @@ export function HtmlVideoBatchWorkspace({
     candidate: HtmlVideoCandidate,
     _position: number
   ) => {
+    updateCandidate(candidate.id, {
+      status: "generating",
+      error: null,
+    });
     try {
       const referenceAssets = candidate.referenceAssets || buildReferenceAssets(references);
       const composition = await service.generateDraft({
@@ -686,7 +811,7 @@ export function HtmlVideoBatchWorkspace({
         ...candidate,
         html: composition.html,
         css: composition.css,
-        voiceScript: composition.voiceScript || candidate.voiceScript || candidate.prompt,
+        voiceScript: composition.voiceScript || candidate.voiceScript || "",
         preview,
         status: "ready",
       };
@@ -710,6 +835,9 @@ export function HtmlVideoBatchWorkspace({
 
   const handleCreateBatch = async () => {
     const trimmedPrompt = prompt.trim();
+    if (!aspectRatioLocked && effectiveAspectRatio !== aspectRatio) {
+      setAspectRatioState(effectiveAspectRatio);
+    }
     if (!trimmedPrompt || isCreating || referencesAnalyzing) return;
     if (trimmedPrompt.length > MAX_LONG_PROMPT_LENGTH) {
       toast.error(`Prompt quá dài. Vui lòng giữ dưới ${MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự để đảm bảo AI nhận đủ nội dung.`);
@@ -735,7 +863,7 @@ export function HtmlVideoBatchWorkspace({
       const history = await service.createPromptHistory({
         projectName: projectName.trim() || DEFAULT_PROJECT_NAME,
         prompt: trimmedPrompt,
-        aspectRatio,
+        aspectRatio: effectiveAspectRatio,
         referenceNames,
         parentHistoryId: parentPromptHistoryId || undefined,
       });
@@ -765,7 +893,7 @@ export function HtmlVideoBatchWorkspace({
       createdAt,
       promptHistoryId,
       promptRevision,
-      promptAspectRatio: aspectRatio,
+      promptAspectRatio: effectiveAspectRatio,
       editMode: Boolean(editingCandidate),
       projectName: projectName.trim() || DEFAULT_PROJECT_NAME,
       referenceNames,
@@ -913,6 +1041,8 @@ export function HtmlVideoBatchWorkspace({
   const createNewProject = () => {
     setProjectName(DEFAULT_PROJECT_NAME);
     setPrompt("");
+    setAspectRatioState("9:16");
+    setAspectRatioLocked(false);
     setDurationOverrideSeconds(null);
     setDurationDraftSeconds("10");
     setSelectedCandidateId(null);
@@ -923,48 +1053,6 @@ export function HtmlVideoBatchWorkspace({
     setIsPreviewPlaying(false);
   };
 
-  const handleUseTemplate = async (template: (typeof HTML_VIDEO_TEMPLATES)[number]) => {
-    setPrompt(template.prompt);
-    setReferences((current) => current.filter((reference) => !reference.isPrimaryPrompt));
-    setDurationOverrideSeconds(null);
-    setDurationDraftSeconds(String(automaticDuration(template.prompt)));
-    setAspectRatio(template.ratio);
-    setActiveTool("prompt");
-    const source = templateComposition(template.id);
-    const candidateId = `html-video-template-${crypto.randomUUID()}`;
-    const draft: HtmlVideoCandidate = {
-      id: candidateId,
-      label: `${template.name} · Mẫu`,
-      prompt: template.prompt,
-      voiceScript: template.prompt,
-      html: source.html,
-      css: source.css,
-      durationSeconds: automaticDuration(template.prompt),
-      resolution,
-      status: "generating",
-      preview: null,
-      render: null,
-      error: null,
-      createdAt: new Date().toISOString(),
-      promptAspectRatio: template.ratio,
-    };
-    setCandidates((current) => [draft, ...current]);
-    setSelectedCandidateId(candidateId);
-    try {
-      const preview = await service.preview({
-        html: source.html,
-        css: source.css,
-        durationSeconds: automaticDuration(template.prompt),
-        aspectRatio: template.ratio,
-        resolution: draft.resolution,
-      });
-      updateCandidate(candidateId, { preview, status: "ready" });
-      toast.success(`Đã mở màn hình preview: ${template.name}`);
-    } catch (error) {
-      updateCandidate(candidateId, { status: "failed", error: errorMessage(error, "Không thể mở preview mẫu.") });
-    }
-  };
-
   const openCandidateInEditor = (candidate: HtmlVideoCandidate) => {
     const isPromptHistory = Boolean(candidate.promptHistoryId && !candidate.html && !candidate.render);
     setSelectedCandidateId(isPromptHistory ? null : candidate.id);
@@ -972,7 +1060,7 @@ export function HtmlVideoBatchWorkspace({
     setDurationOverrideSeconds(null);
     setDurationDraftSeconds(String(automaticDuration(candidate.prompt)));
     if (candidate.projectName) setProjectName(candidate.projectName);
-    if (candidate.promptAspectRatio) setAspectRatio(candidate.promptAspectRatio);
+    if (candidate.promptAspectRatio) handleAspectRatioChange(candidate.promptAspectRatio);
     setParentPromptHistoryId(candidate.promptHistoryId || null);
     const primaryPromptName = candidate.primaryPromptFileName ||
       (candidate.referenceNames?.includes(PRIMARY_PROMPT_FILE_NAME) ? PRIMARY_PROMPT_FILE_NAME : undefined);
@@ -989,25 +1077,42 @@ export function HtmlVideoBatchWorkspace({
     setSidebarOpen(true);
   };
 
-  const handleRefreshPreview = async () => {
-    if (!selectedCandidate?.html) return;
-    updateCandidate(selectedCandidate.id, { status: "generating", error: null });
+  const [candidatePendingDelete, setCandidatePendingDelete] = useState<HtmlVideoCandidate | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const deletingLocksRef = useRef<Set<string>>(new Set());
+
+  const handleDeleteCandidate = async (candidateToDelete: HtmlVideoCandidate) => {
+    const isPersisted =
+      candidateToDelete.id.startsWith("html-video-render-history-") ||
+      Boolean(candidateToDelete.render?.id);
+    const renderId =
+      candidateToDelete.render?.id ||
+      (candidateToDelete.id.startsWith("html-video-render-history-")
+        ? candidateToDelete.id.replace("html-video-render-history-", "")
+        : null);
+
+    const lockKey = renderId || candidateToDelete.id;
+    if (deletingLocksRef.current.has(lockKey)) {
+      return;
+    }
+    deletingLocksRef.current.add(lockKey);
+    setIsDeleting(true);
+
     try {
-      const preview = await service.preview({
-        html: selectedCandidate.html,
-        css: selectedCandidate.css,
-        durationSeconds: selectedCandidate.durationSeconds,
-        aspectRatio: selectedCandidate.promptAspectRatio || aspectRatio,
-        resolution: selectedCandidate.resolution,
-        assets: selectedCandidate.referenceAssets || buildReferenceAssets(references),
-      });
-      updateCandidate(selectedCandidate.id, { preview, status: "ready" });
-      toast.success("Đã cập nhật bản dựng an toàn.");
+      if (isPersisted && renderId) {
+        await service.delete(renderId);
+      }
+      setCandidates((current) => current.filter((item) => item.id !== candidateToDelete.id));
+      if (selectedCandidateId === candidateToDelete.id) {
+        setSelectedCandidateId(null);
+      }
+      toast.success("Đã xóa video khỏi lịch sử.");
+      setCandidatePendingDelete(null);
     } catch (error) {
-      updateCandidate(selectedCandidate.id, {
-        status: "failed",
-        error: errorMessage(error, "Không thể cập nhật bản dựng."),
-      });
+      toast.error(errorMessage(error, "Không thể xóa video trên máy chủ."));
+    } finally {
+      deletingLocksRef.current.delete(lockKey);
+      setIsDeleting(false);
     }
   };
 
@@ -1020,7 +1125,6 @@ export function HtmlVideoBatchWorkspace({
         {[
           { id: "prompt" as const, label: "Prompt AI", icon: WandSparkles },
           { id: "settings" as const, label: "Cài đặt", icon: Sliders },
-          { id: "templates" as const, label: "Mẫu", icon: LayoutTemplate },
           { id: "history" as const, label: "Lịch sử", icon: History },
         ].map((tool) => {
           const Icon = tool.icon;
@@ -1050,7 +1154,7 @@ export function HtmlVideoBatchWorkspace({
         style={{ gridTemplateColumns: sidebarOpen ? "320px minmax(0,1fr)" : "0 minmax(0,1fr)" }}
       >
         <aside className={`relative min-h-0 border-b border-slate-200 bg-white transition-[width] duration-200 lg:border-b-0 ${sidebarOpen ? "w-[320px] overflow-y-auto border-r p-5" : "w-0 overflow-hidden border-r-0 p-0"}`}>
-          {activeTool === "templates" ? <div><h2 className="mb-4 text-lg font-extrabold text-slate-900">Mẫu video</h2><div className="grid grid-cols-2 gap-3">{HTML_VIDEO_TEMPLATES.map((template) => <button key={template.id} type="button" onClick={() => void handleUseTemplate(template)} onMouseEnter={() => setHoveredTemplateId(template.id)} onMouseLeave={() => setHoveredTemplateId(null)} className="group overflow-hidden rounded-xl border border-slate-200 text-left transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md" title={template.name}><div className={`relative aspect-video overflow-hidden ${template.id === "brand-intro" ? "bg-gradient-to-br from-slate-950 via-indigo-900 to-sky-500" : template.id === "product-sale" ? "bg-gradient-to-br from-rose-700 via-orange-500 to-amber-300" : template.id === "education" ? "bg-gradient-to-br from-sky-900 via-cyan-700 to-emerald-400" : "bg-gradient-to-br from-violet-950 via-fuchsia-700 to-pink-400"}`}>{hoveredTemplateId === template.id ? <iframe title={`Video preview ${template.name}`} sandbox="" srcDoc={templateThumbnailPreview(template.id)} className="pointer-events-none absolute inset-0 h-full w-full border-0" /> : <><span className="absolute -bottom-5 -left-5 h-20 w-20 rounded-full bg-white/20 blur-sm" /><span className="absolute -right-5 -top-5 h-16 w-16 rounded-full bg-white/15 blur-sm" /><span className="absolute left-[-10%] top-1/2 h-px w-[120%] -rotate-12 bg-white/35 shadow-[0_14px_0_rgba(255,255,255,0.18),0_-14px_0_rgba(255,255,255,0.12)]" /><span className="absolute inset-[18%] rounded-xl border border-white/35 -rotate-6" /></>}</div></button>)}</div></div> : activeTool === "prompt" ? <>
+          {activeTool === "prompt" ? <>
           <div className="mb-5 flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><WandSparkles className="h-5 w-5" /></span>
             <div><h2 className="text-sm font-black text-slate-900">Tạo video bằng AI</h2><p className="text-xs text-slate-500">Prompt-first, không cần viết code.</p></div>
@@ -1066,7 +1170,7 @@ export function HtmlVideoBatchWorkspace({
             <span className={prompt.length > MAX_LONG_PROMPT_LENGTH ? "font-semibold text-rose-600" : ""}>{prompt.length.toLocaleString("vi-VN")}/{MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>
             {prompt.length > MAX_LONG_PROMPT_LENGTH ? <span className="font-semibold text-rose-600">Prompt vượt giới hạn, chưa thể tạo video</span> : isLongHtmlVideoPrompt(prompt) ? <span className="font-semibold text-indigo-600">Prompt dài sẽ tự chuyển thành {PRIMARY_PROMPT_FILE_NAME}</span> : <span>Prompt gửi trực tiếp khi không quá {MAX_DIRECT_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>}
           </div>
-          <p className="mt-3 text-xs text-slate-500">{aspectRatio} · {durationSeconds} giây · {durationOverrideSeconds === null ? "AI tự chọn theo prompt" : "đã lưu theo lựa chọn của bạn"}</p>
+          <p className="mt-3 text-xs text-slate-500">{effectiveAspectRatio} · {durationSeconds} giây · {aspectRatioLocked ? "đã cố định tỷ lệ" : "AI tự chọn tỷ lệ theo prompt/nền tảng"} · {durationOverrideSeconds === null ? "thời lượng tự động" : "thời lượng đã lưu"}</p>
           {parentPromptHistoryId ? <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-800"><span>AI sẽ tiếp tục ngữ cảnh từ tối đa 6 prompt trước trong cùng chuỗi phiên bản.</span><button type="button" onClick={() => setParentPromptHistoryId(null)} className="shrink-0 font-black text-indigo-700 hover:underline">Ngắt ngữ cảnh</button></div> : null}
           {references.some((reference) => reference.status === "ready" && reference.kind === "image") ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">AI sẽ tự quyết định ảnh tham chiếu nên xuất hiện trong video hay chỉ dùng để học phong cách. Nếu ảnh được chọn, ảnh sẽ được chèn qua một vùng an toàn trong composition.</p> : null}
           {references.some((reference) => reference.status === "ready" && reference.kind === "video") ? <p className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-800">Video mẫu được dùng như template HTML/CSS: AI giữ bố cục, nhịp, chuyển động và vùng an toàn, rồi thay theme và nội dung theo prompt mới.</p> : null}
@@ -1076,10 +1180,90 @@ export function HtmlVideoBatchWorkspace({
             {isCreating ? "Đang tạo bản dựng..." : "Tạo video bằng AI"}
           </button>
           <p className="mt-3 text-center text-[11px] leading-4 text-slate-500">AI tự suy luận thời lượng từ prompt trong khoảng 1–180 giây · bạn có thể lưu số giây riêng · 0,5 credit/lần tạo.</p>
-          </> : activeTool === "settings" ? <div className="space-y-5"><div><h2 className="text-lg font-extrabold text-slate-900">Khung hình</h2><p className="mt-1 text-sm text-slate-500">Đây là thiết lập duy nhất bạn cần chọn trước khi tạo video.</p></div><div className="grid grid-cols-3 gap-2">{(["9:16", "1:1", "16:9"] as HtmlVideoAspectRatio[]).map((ratio) => <button key={ratio} type="button" onClick={() => setAspectRatio(ratio)} className={`rounded-xl border px-2 py-3 text-xs font-black ${aspectRatio === ratio ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-600"}`}>{ratio}</button>)}</div><div className="rounded-2xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-800">AI sẽ tự chọn thời lượng, phong cách, số phương án và chất lượng render phù hợp với prompt.</div></div> : <div><h2 className="text-lg font-extrabold text-slate-900">Lịch sử video</h2><p className="mt-1 text-sm text-slate-500">Rê chuột để xem, bấm để mở dự án.</p><div className="mt-4 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-[10px] font-bold">{(["all", "active", "completed", "failed"] as CandidateFilter[]).map((item) => <button key={item} type="button" onClick={() => handleHistoryFilterChange(item)} className={`shrink-0 rounded-lg px-2 py-1.5 transition ${filter === item ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}>{item === "all" ? "Tất cả" : item === "active" ? "Đang xử lý" : item === "completed" ? "Hoàn tất" : "Cần xử lý"}</button>)}</div><div className="mt-4 grid grid-cols-2 gap-3">{filteredCandidates.length === 0 ? <p className="col-span-2 rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Chưa có video nào.</p> : filteredCandidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => openCandidateInEditor(candidate)} onMouseEnter={() => setHoveredHistoryCandidateId(candidate.id)} onMouseLeave={() => setHoveredHistoryCandidateId(null)} className={`group min-w-0 text-left ${selectedCandidateId === candidate.id ? "text-indigo-700" : "text-slate-700"}`} title={`Mở ${candidate.label}`}><div className={`relative aspect-video overflow-hidden rounded-xl border bg-slate-900 transition group-hover:-translate-y-0.5 group-hover:shadow-md ${selectedCandidateId === candidate.id ? "border-indigo-500 ring-2 ring-indigo-100" : "border-slate-200"}`}>{candidate.preview ? <iframe key={`${candidate.id}-${hoveredHistoryCandidateId === candidate.id ? "playing" : "paused"}`} title={`Preview ${candidate.label}`} sandbox="" srcDoc={seekableCompositionDocument(candidate.preview.compositionHtml, 0, hoveredHistoryCandidateId === candidate.id)} className="pointer-events-none absolute inset-0 h-full w-full border-0" /> : <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-sky-700" />}{isCandidateActive(candidate.status) ? <div className="absolute inset-0 flex items-center justify-center bg-slate-950/40"><LoaderCircle className="h-5 w-5 animate-spin text-white" /></div> : null}</div><p className="mt-1.5 truncate text-xs font-bold">{candidate.label}</p><p className="truncate text-[10px] text-slate-500">{candidateStatusLabel(candidate)}</p></button>)}</div>
+          </> : activeTool === "settings" ? <div className="space-y-5"><div><h2 className="text-lg font-extrabold text-slate-900">Khung hình</h2><p className="mt-1 text-sm text-slate-500">TikTok, Reels và Shorts tự động dùng 9:16; bạn có thể cố định tỷ lệ tại đây.</p></div><div className="grid grid-cols-3 gap-2">{(["9:16", "1:1", "16:9"] as HtmlVideoAspectRatio[]).map((ratio) => <button key={ratio} type="button" onClick={() => handleAspectRatioChange(ratio)} className={`rounded-xl border px-2 py-3 text-xs font-black ${effectiveAspectRatio === ratio ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-600"}`}>{ratio}</button>)}</div>{aspectRatioLocked ? <button type="button" onClick={useAutomaticAspectRatio} className="text-xs font-bold text-indigo-700 hover:underline">Để AI tự chọn tỷ lệ</button> : null}<div className="rounded-2xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-800">AI sẽ tự chọn thời lượng, phong cách, số phương án và chất lượng render phù hợp với prompt.</div></div> : <div><h2 className="text-lg font-extrabold text-slate-900">Lịch sử video</h2><p className="mt-1 text-sm text-slate-500">Rê chuột để xem, bấm để mở dự án.</p><div className="mt-4 flex gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1 text-[10px] font-bold">{(["all", "active", "completed", "failed"] as CandidateFilter[]).map((item) => <button key={item} type="button" onClick={() => handleHistoryFilterChange(item)} className={`shrink-0 rounded-lg px-2 py-1.5 transition ${filter === item ? "bg-white text-sky-700 shadow-sm" : "text-slate-500"}`}>{item === "all" ? "Tất cả" : item === "active" ? "Đang xử lý" : item === "completed" ? "Hoàn tất" : "Cần xử lý"}</button>)}</div><div className="mt-4 grid grid-cols-1 gap-4">{filteredCandidates.length === 0 ? <p className="col-span-1 rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-500">Chưa có video nào.</p> : filteredCandidates.map((candidate) => <HistoryCandidateCard key={candidate.id} candidate={candidate} isSelected={selectedCandidateId === candidate.id} onSelect={openCandidateInEditor} onRequestDelete={(toDelete) => setCandidatePendingDelete(toDelete)} />)}</div>
               {historyLoading ? <div className="mt-3 flex items-center justify-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin text-indigo-500" />Đang tải lịch sử...</div> : null}
-              {historyPagination && historyPagination.total > 0 ? <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[10px] font-bold text-slate-500"><span>{historyPagination.total.toLocaleString("vi-VN")} video · Trang {historyPagination.page}/{historyPagination.totalPages}</span><span className="flex items-center gap-1"><button type="button" onClick={() => setHistoryPage((page) => Math.max(1, page - 1))} disabled={historyLoading || !historyPagination.hasPreviousPage} className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Trang trước" title="Trang trước"><ChevronLeft className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setHistoryPage((page) => page + 1)} disabled={historyLoading || !historyPagination.hasNextPage} className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40" aria-label="Trang sau" title="Trang sau"><ChevronRight className="h-3.5 w-3.5" /></button></span></div> : null}</div>}
+              {historyPagination && historyPagination.total > 0 ? (
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <div className="mb-2.5 flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                    <span>
+                      {((historyPagination.page - 1) * historyPagination.pageSize) + 1}–{Math.min(historyPagination.total, historyPagination.page * historyPagination.pageSize)} / {historyPagination.total.toLocaleString("vi-VN")} video
+                    </span>
+                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                      Trang {historyPagination.page}/{historyPagination.totalPages}
+                    </span>
+                  </div>
+
+                  {historyPagination.totalPages > 1 ? (
+                    <div className="flex flex-wrap items-center justify-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                        disabled={historyLoading || !historyPagination.hasPreviousPage}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Trang trước"
+                        title="Trang trước"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+
+                      {getPaginationPages(historyPagination.page, historyPagination.totalPages).map((item, idx) =>
+                        item === "..." ? (
+                          <span key={`dots-${idx}`} className="px-1 text-xs text-slate-400">
+                            ...
+                          </span>
+                        ) : (
+                          <button
+                            key={`page-${item}`}
+                            type="button"
+                            onClick={() => setHistoryPage(item)}
+                            disabled={historyLoading}
+                            className={`flex h-7 min-w-[28px] items-center justify-center rounded-lg px-2 text-xs font-bold transition ${
+                              historyPagination.page === item
+                                ? "bg-indigo-600 text-white shadow-sm"
+                                : "border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-700"
+                            }`}
+                          >
+                            {item}
+                          </button>
+                        )
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPage((page) => page + 1)}
+                        disabled={historyLoading || !historyPagination.hasNextPage}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Trang sau"
+                        title="Trang sau"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}</div>}
           {activeTool === "settings" ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-extrabold text-slate-900">Tỷ lệ khung hình</p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">TikTok, Reels và Shorts được tự động dựng dọc 9:16. Chọn một tỷ lệ bên dưới nếu bạn muốn cố định.</p>
+              </div>
+              {aspectRatioLocked ? <button type="button" onClick={useAutomaticAspectRatio} className="shrink-0 text-[11px] font-bold text-indigo-700 hover:underline">AI tự chọn</button> : null}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {(["9:16", "1:1", "16:9"] as HtmlVideoAspectRatio[]).map((ratio) => (
+                <button
+                  key={ratio}
+                  type="button"
+                  onClick={() => handleAspectRatioChange(ratio)}
+                  className={`h-10 rounded-xl border text-xs font-black transition ${effectiveAspectRatio === ratio ? "border-indigo-600 bg-indigo-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-700 hover:border-indigo-300"}`}
+                >
+                  {ratio}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[10px] text-slate-400">{aspectRatioLocked ? "Tỷ lệ này sẽ áp dụng cho lần tạo video tiếp theo." : `Đang tự nhận diện: ${effectiveAspectRatio}.`}</p>
+            <div className="my-4 border-t border-slate-200" />
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-sm font-extrabold text-slate-900">Thời lượng video</p>
@@ -1119,7 +1303,7 @@ export function HtmlVideoBatchWorkspace({
 
         <main className="min-w-0 overflow-y-auto bg-[#f4f5f7] p-5 sm:p-6">
           {selectedCandidate ? <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-black text-slate-900">{selectedCandidate.label}</h2><p className="text-[11px] text-slate-500">Canvas video · {selectedCandidate.promptAspectRatio || aspectRatio} · {selectedCandidate.durationSeconds} giây</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${candidateStatusClass(selectedCandidate.status)}`}>{candidateStatusLabel(selectedCandidate)}</span></div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-black text-slate-900">{selectedCandidate.label}</h2><p className="text-[11px] text-slate-500">Canvas video · {selectedCandidate.promptAspectRatio || effectiveAspectRatio} · {selectedCandidate.durationSeconds} giây</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${candidateStatusClass(selectedCandidate.status)}`}>{candidateStatusLabel(selectedCandidate)}</span></div>
             {selectedCandidate.render && isActiveHtmlVideoStatus(selectedCandidate.render.status) ? <div className="border-b border-slate-100 bg-sky-50 px-4 py-2.5"><div className="flex items-center justify-between gap-3 text-[11px] font-semibold text-sky-800"><span>{selectedCandidate.render.stageMessage || "Đang xử lý video..."}</span><span>{Math.round(selectedCandidate.render.progress)}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-100"><div className="h-full rounded-full bg-sky-500 transition-[width]" style={{ width: `${Math.max(0, Math.min(100, selectedCandidate.render.progress))}%` }} /></div></div> : null}
             {selectedCandidate.status === "failed" && selectedCandidate.error ? <div role="alert" className="border-b border-rose-100 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-700">{selectedCandidate.error}</div> : null}
              {selectedCandidate.render?.voiceStatus === "ready" ? <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-[11px] font-semibold text-emerald-800">Gemini voice đã được ghép trực tiếp vào file MP4.</div> : null}
@@ -1132,7 +1316,24 @@ export function HtmlVideoBatchWorkspace({
                 <div role="alert" className="max-w-md rounded-2xl border border-rose-200 bg-white p-5 text-center shadow-sm">
                   <p className="text-sm font-black text-rose-700">Chưa thể hiển thị bản dựng</p>
                   <p className="mt-2 text-xs leading-5 text-slate-600">{selectedCandidate.error || "Quá trình tạo HTML/CSS hoặc render đã thất bại."}</p>
-                  <button type="button" onClick={() => void generateCandidate({ ...selectedCandidate, status: "generating", error: null }, 1)} className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-rose-600 px-4 text-xs font-black text-white hover:bg-rose-700"><RefreshCcw className="h-3.5 w-3.5" />Thử tạo lại</button>
+                  <button
+                    type="button"
+                    onClick={() => void generateCandidate(selectedCandidate, 1)}
+                    disabled={isCandidateActive(selectedCandidate.status)}
+                    className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition-all hover:bg-rose-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isCandidateActive(selectedCandidate.status) ? (
+                      <>
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        Đang tạo lại...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCcw className="h-3.5 w-3.5 transition-transform group-hover:rotate-180" />
+                        Thử tạo lại
+                      </>
+                    )}
+                  </button>
                 </div>
               ) : selectedCandidate.status === "ready" ? (
                 <div className="max-w-md rounded-2xl border border-sky-200 bg-white p-5 text-center shadow-sm"><p className="text-sm font-black text-sky-800">Bản mã đang chờ cập nhật preview</p><p className="mt-2 text-xs leading-5 text-slate-600">Mở phần HTML/CSS nâng cao bên dưới và bấm “Cập nhật bản dựng” để kiểm tra an toàn trước khi render.</p></div>
@@ -1153,11 +1354,50 @@ export function HtmlVideoBatchWorkspace({
               </div>
             </div>
             <div className="border-t border-slate-100 bg-white p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><h3 className="text-sm font-black text-slate-900">Tinh chỉnh bản dựng <span className="font-semibold text-slate-400">(tuỳ chọn)</span></h3><p className="mt-0.5 text-[11px] text-slate-500">AI tự render sau khi tạo. Chỉ cần cập nhật HTML/CSS nếu bạn muốn chỉnh tay.</p></div>
-                <div className="flex flex-wrap gap-2">{canManuallyRender ? <button type="button" onClick={() => void enqueueRender(selectedCandidate)} className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-black text-white transition hover:bg-sky-700"><Play className="h-3.5 w-3.5" />{selectedCandidate.status === "failed" ? "Render lại" : "Render video"}</button> : null}<button type="button" onClick={() => void generateCandidate({ ...selectedCandidate, status: "generating", error: null }, 1)} disabled={isCandidateActive(selectedCandidate.status)} className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><RefreshCcw className="h-3.5 w-3.5" />Tạo lại</button>{selectedCandidate.render?.outputUrl ? <a href={selectedCandidate.render.outputUrl} target="_blank" rel="noreferrer" download className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700"><Download className="h-3.5 w-3.5" />Tải video</a> : null}</div>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <div className="flex flex-wrap gap-2">
+                  {canManuallyRender ? (
+                    <button
+                      type="button"
+                      onClick={() => void enqueueRender(selectedCandidate)}
+                      className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-3 text-xs font-black text-white transition-all hover:bg-sky-700 active:scale-95"
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      {selectedCandidate.status === "failed" ? "Render lại" : "Render video"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void generateCandidate(selectedCandidate, 1)}
+                    disabled={isCandidateActive(selectedCandidate.status)}
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 transition-all hover:bg-slate-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isCandidateActive(selectedCandidate.status) ? (
+                      <>
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin text-indigo-500" />
+                        Đang tạo lại...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCcw className="h-3.5 w-3.5" />
+                        Tạo lại
+                      </>
+                    )}
+                  </button>
+                  {selectedCandidate.render?.outputUrl ? (
+                    <a
+                      href={selectedCandidate.render.outputUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      download
+                      className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition-all hover:bg-emerald-100 active:scale-95"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Tải video
+                    </a>
+                  ) : null}
+                </div>
               </div>
-              <details className="mt-3 rounded-xl border border-slate-200"><summary className="flex cursor-pointer list-none items-center gap-2 p-3 text-xs font-black text-slate-700"><Code2 className="h-4 w-4 text-sky-600" />Tinh chỉnh HTML/CSS (tuỳ chọn)</summary><div className="grid gap-3 border-t border-slate-100 p-3 lg:grid-cols-2"><label className="block text-[11px] font-bold text-slate-600">Nội dung HTML<textarea value={selectedCandidate.html} onChange={(event) => updateCandidate(selectedCandidate.id, { html: event.target.value, status: "ready", preview: null, render: null, error: null })} className="mt-1 h-32 w-full resize-y rounded-lg border border-slate-200 bg-slate-950 p-2 font-mono text-[11px] text-sky-100 outline-none focus:border-sky-400" spellCheck={false} /></label><label className="block text-[11px] font-bold text-slate-600">CSS & animation<textarea value={selectedCandidate.css} onChange={(event) => updateCandidate(selectedCandidate.id, { css: event.target.value, status: "ready", preview: null, render: null, error: null })} className="mt-1 h-32 w-full resize-y rounded-lg border border-slate-200 bg-slate-950 p-2 font-mono text-[11px] text-emerald-100 outline-none focus:border-sky-400" spellCheck={false} /></label><button type="button" onClick={() => void handleRefreshPreview()} className="lg:col-span-2 flex h-9 items-center justify-center gap-2 rounded-lg border border-sky-200 bg-sky-50 text-xs font-black text-sky-700"><Settings2 className="h-3.5 w-3.5" />Cập nhật bản dựng</button></div></details>
             </div>
           </section> : null}
           {!selectedCandidate ? <section className="mb-5 overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-white shadow-sm">
@@ -1172,6 +1412,57 @@ export function HtmlVideoBatchWorkspace({
             </section> : null}
         </main>
       </div>
+
+      {candidatePendingDelete ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start gap-4">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+                <Trash2 className="h-6 w-6" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-base font-extrabold text-slate-900">Xác nhận xóa video</h3>
+                <p className="mt-1.5 text-xs leading-5 text-slate-500">
+                  Bạn có chắc chắn muốn xóa video <strong className="text-slate-800">"{candidatePendingDelete.label}"</strong> khỏi lịch sử không? Hành động này không thể hoàn tác.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setCandidatePendingDelete(null)}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  if (candidatePendingDelete) {
+                    void handleDeleteCandidate(candidatePendingDelete);
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-rose-700 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    Đang xóa...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Xác nhận xóa
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       </div>
     </div>
