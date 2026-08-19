@@ -206,7 +206,6 @@ function validateTemplateInput(input: Pick<TemplateInput, "canvas" | "background
     if (ids.has(layer.id)) throw new Error(`Trùng mã layer '${layer.id}'.`);
     const normalizedName = layer.fieldName.trim().toLocaleLowerCase("vi-VN");
     if (fieldNames.has(normalizedName)) throw new Error(`Trùng tên trường '${layer.fieldName}'.`);
-    if (layer.x + layer.width > 100.01 || layer.y + layer.height > 100.01) throw new Error(`Layer '${layer.fieldName}' nằm ngoài canvas.`);
     ids.add(layer.id);
     fieldNames.add(normalizedName);
   }
@@ -215,7 +214,14 @@ function validateTemplateInput(input: Pick<TemplateInput, "canvas" | "background
 
 async function getTemplate(actor: Actor, templateId: string) {
   if (!mongoose.isValidObjectId(templateId)) throw new Error("Template không hợp lệ.");
-  const template = await BulkTemplateModel.findOne({ _id: templateId, ...scope(actor), status: "active" });
+  const template = await BulkTemplateModel.findOne({
+    _id: templateId,
+    $or: [
+      { companyCode: actor.companyCode },
+      { visibility: "public" },
+    ],
+    status: "active",
+  });
   if (!template) throw new Error("Không tìm thấy template hoặc bạn không có quyền truy cập.");
   return template;
 }
@@ -384,9 +390,33 @@ export const bulkCreateService = {
 
   async updateTemplate(actor: Actor, templateId: string, input: Partial<TemplateInput>) {
     const template = await getTemplate(actor, templateId);
-    if (template.visibility === "public" && String(template.createdBy) !== actor.id && actor.role !== "superadmin") {
-      throw new Error("Chỉ người tạo template mới có thể chỉnh sửa mẫu đang được chia sẻ.");
+
+    // Nếu template thuộc doanh nghiệp khác (ví dụ: mở từ link chia sẻ công khai),
+    // tự động tạo bản sao cho doanh nghiệp của người dùng hiện tại để họ có thể chỉnh sửa tự do
+    if (template.companyCode !== actor.companyCode) {
+      validateTemplateInput({
+        canvas: input.canvas || template.canvas,
+        background: input.background || template.background,
+        layers: input.layers || template.layers,
+      });
+      const forked = await BulkTemplateModel.create({
+        companyCode: actor.companyCode,
+        createdBy: actor.id,
+        sceneVersion: input.sceneVersion || template.sceneVersion || 1,
+        name: input.name || `${template.name} - bản sao`,
+        canvas: input.canvas || template.canvas,
+        background: input.background || template.background,
+        layers: input.layers || template.layers,
+        thumbnailUrl: input.thumbnailUrl || template.thumbnailUrl,
+        visibility: "private",
+        useCount: 0,
+        version: 1,
+        status: "active",
+      });
+      await BulkTemplateModel.updateOne({ _id: template._id }, { $inc: { useCount: 1 } });
+      return forked;
     }
+
     validateTemplateInput({
       canvas: input.canvas || template.canvas,
       background: input.background || template.background,
@@ -399,8 +429,8 @@ export const bulkCreateService = {
 
   async archiveTemplate(actor: Actor, templateId: string) {
     const template = await getTemplate(actor, templateId);
-    if (template.visibility === "public" && String(template.createdBy) !== actor.id && actor.role !== "superadmin") {
-      throw new Error("Chỉ người tạo template mới có thể lưu trữ mẫu đang được chia sẻ.");
+    if (template.companyCode !== actor.companyCode && actor.role !== "superadmin") {
+      throw new Error("Không thể xóa mẫu thiết kế thuộc doanh nghiệp khác.");
     }
     template.status = "archived";
     await template.save();
@@ -435,10 +465,18 @@ export const bulkCreateService = {
     const normalizedRows = input.rows.map((row, rowIndex) => {
       const normalizedRow = { ...row };
       for (const layer of template.layers) {
+        const isShape = layer.layerKind === "shape";
+        const fallbackDefault = isShape
+          ? ""
+          : layer.layerKind === "icon"
+            ? (layer.defaultValue || "★")
+            : (layer.defaultValue ?? layer.fieldName);
         const value = String(
-          row[layer.id] ?? row[layer.fieldName] ?? layer.defaultValue ?? ""
+          row[layer.id] ?? row[layer.fieldName] ?? fallbackDefault ?? ""
         ).trim();
-        if (!value) throw new Error(`Dòng ${rowIndex + 1} thiếu dữ liệu '${layer.fieldName}'.`);
+        if (!value && !isShape) {
+          throw new Error(`Dòng ${rowIndex + 1} thiếu dữ liệu '${layer.fieldName}'.`);
+        }
         normalizedRow[layer.id] = value;
       }
       return normalizedRow;

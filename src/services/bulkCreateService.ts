@@ -306,6 +306,11 @@ export const bulkCreateService = {
     return (await parse<{ data: BulkTemplate }>(response, 'Không thể cập nhật template.')).data;
   },
 
+  async getTemplate(id: string) {
+    const response = await fetch(`/api/v1/bulk-create/templates/${id}`, { headers: headers(false) });
+    return (await parse<{ data: BulkTemplate }>(response, 'Không thể tải mẫu thiết kế.')).data;
+  },
+
   async listTemplates() {
     const response = await fetch('/api/v1/bulk-create/templates', { headers: headers(false) });
     return (await parse<{ data: BulkTemplate[] }>(response, 'Không thể tải danh sách template.')).data;

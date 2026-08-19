@@ -37,12 +37,14 @@ import { TemplatePreview } from './TemplatePreview';
 import { DataPanel } from './DataPanel';
 import { JobPanel } from './JobPanel';
 import type { BulkMarketingPreset } from './systemTemplates';
+import { toast } from '../../../pages/Toast';
 
 export interface EditorPanelProps {
   activeTool: EditorTool;
   backgroundImage: string;
   backgroundColor: string;
   layers: TemplateLayer[];
+  selectedLayerId?: string;
   rows: DataRow[];
   dataColumns: BulkDataColumn[];
   dataStep: 1 | 2 | 3;
@@ -656,37 +658,55 @@ export function EditorPanel(props: EditorPanelProps) {
               <div>
                 <p className="mb-2 text-sm font-bold text-slate-600">Lịch sử ảnh tải lên</p>
                 <div className="grid grid-cols-3 gap-2">
-                  {uploadedImages.map((asset, idx) => (
-                    <div
-                      key={asset._id}
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = 'copy';
-                        event.dataTransfer.setData('application/x-igen-bulk-asset', asset.url);
-                        event.dataTransfer.setData('text/uri-list', asset.url);
-                      }}
-                      className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-indigo-500 hover:ring-2 hover:ring-indigo-100 transition cursor-pointer"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => props.onAddLayer('image', asset.url)}
-                        className="h-full w-full p-0"
-                      >
-                        <img src={asset.url} alt={asset.originalName || `Upload ${idx}`} className="h-full w-full object-cover" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteUploadedImage(asset._id);
+                  {uploadedImages.map((asset, idx) => {
+                    const selectedImageLayer = layers.find(
+                      (l) => l.id === props.selectedLayerId && l.type === 'image'
+                    );
+                    return (
+                      <div
+                        key={asset._id}
+                        draggable
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = 'copy';
+                          event.dataTransfer.setData('application/x-igen-bulk-asset', asset.url);
+                          event.dataTransfer.setData('text/uri-list', asset.url);
                         }}
-                        className="absolute right-1 top-1 hidden rounded-full bg-slate-900/60 p-1 text-white hover:bg-slate-900 group-hover:block"
-                        title="Xóa khỏi lịch sử"
+                        className="group relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-indigo-500 hover:ring-2 hover:ring-indigo-100 transition cursor-pointer"
                       >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedImageLayer && !selectedImageLayer.locked && props.activeRowId) {
+                              props.onUpdateCell(props.activeRowId, selectedImageLayer.id, asset.url);
+                              toast.success(`Đã thay ảnh cho “${selectedImageLayer.fieldName}”.`);
+                            } else {
+                              props.onAddLayer('image', asset.url);
+                            }
+                          }}
+                          className="relative h-full w-full p-0"
+                          title={selectedImageLayer ? `Thay ảnh cho ${selectedImageLayer.fieldName}` : 'Thêm khung ảnh này'}
+                        >
+                          <img src={asset.url} alt={asset.originalName || `Upload ${idx}`} className="h-full w-full object-cover" />
+                          {selectedImageLayer && (
+                            <span className="absolute inset-x-1 bottom-1 rounded-md bg-indigo-600/80 px-1 py-0.5 text-[9px] font-extrabold text-white opacity-0 transition group-hover:opacity-100">
+                              Thay vào layer
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteUploadedImage(asset._id);
+                          }}
+                          className="absolute right-1 top-1 hidden rounded-full bg-slate-900/60 p-1 text-white hover:bg-slate-900 group-hover:block"
+                          title="Xóa khỏi lịch sử"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
