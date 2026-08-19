@@ -28,6 +28,7 @@ export type CreateHtmlVideoRenderInput = HtmlVideoSource & {
 };
 
 const MAX_VOICE_SCRIPT_LENGTH = 8_000;
+const MAX_RENDER_DIAGNOSTIC_LENGTH = 4_096;
 
 export type HtmlVideoRenderPublic = {
   id: string;
@@ -148,6 +149,39 @@ function safeRenderFailure(error: unknown) {
     code: "RENDER_PROCESS_FAILED",
     message: "Không thể kết xuất video HTML.",
   };
+}
+
+function sanitizeServerRenderDiagnostic(value: unknown) {
+  return String(value ?? "")
+    .slice(-MAX_RENDER_DIAGNOSTIC_LENGTH)
+    .replace(/\b(Bearer)\s+\S+/gi, "$1 [redacted]")
+    .replace(
+      /\b([A-Z0-9_]*(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*)\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[redacted]"
+    )
+    .replace(/(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[redacted]@");
+}
+
+function logRenderFailure(renderId: string, error: unknown) {
+  const failure = safeRenderFailure(error);
+  const diagnostic: Record<string, string | number | boolean | null> = {
+    renderId,
+    code: failure.code,
+    message: failure.message,
+  };
+
+  if (error instanceof VideoRenderAdapterError && error.diagnostics) {
+    for (const key of ["exitCode", "reason", "stderr"] as const) {
+      const value = error.diagnostics[key];
+      if (value === undefined || value === null || value === "") continue;
+      diagnostic[key] =
+        typeof value === "string"
+          ? sanitizeServerRenderDiagnostic(value)
+          : value;
+    }
+  }
+
+  console.error("[HTML Video] Render attempt failed", diagnostic);
 }
 
 export const htmlVideoRenderService = {
@@ -405,6 +439,7 @@ export const htmlVideoRenderService = {
       );
     } catch (error) {
       const safeFailure = safeRenderFailure(error);
+      logRenderFailure(renderId, error);
       await HtmlVideoRenderModel.updateOne(
         { _id: renderId, status: { $in: ["rendering", "uploading"] } },
         {
