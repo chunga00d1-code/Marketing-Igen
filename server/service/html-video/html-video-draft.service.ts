@@ -628,16 +628,16 @@ export function createHtmlVideoDraftService(
         const attemptPrompt = attempt === 0
           ? generationPrompt
           : [
-              generationPrompt,
-              `RETRY CORRECTION: Your previous response was rejected${lastRejectionReason ? `: "${lastRejectionReason}"` : ""}.`,
-              "Return one valid JSON object with exactly html, css, and voiceScript.",
-              "- Raw CSS only in the 'css' field: DO NOT include <style> tags, @media queries, @import, url(), or backslashes.",
-              "- Use width:100% and height:100% inside the fixed canvas; never use vw, vh, dvw, dvh, svw, svh, lvw, or lvh units.",
-              "- Never use translateY(...) anywhere in your CSS: use only horizontal translateX(...) or opacity crossfade for animations.",
-              "- Keep html as a safe fragment with only semantic tags such as main, section, div, span, p, h1-h6.",
-              "- Keep voiceScript as one concise spoken narration.",
-              "- If the request contains multiple items, use one full-canvas scene per item with class scene inside a fixed position:absolute scene-deck and overflow:hidden; do not create a scrollable column or vertical movement.",
-            ].join("\n\n");
+            generationPrompt,
+            `RETRY CORRECTION: Your previous response was rejected${lastRejectionReason ? `: "${lastRejectionReason}"` : ""}.`,
+            "Return one valid JSON object with exactly html, css, and voiceScript.",
+            "- Raw CSS only in the 'css' field: DO NOT include <style> tags, @media queries, @import, url(), or backslashes.",
+            "- Use width:100% and height:100% inside the fixed canvas; never use vw, vh, dvw, dvh, svw, svh, lvw, or lvh units.",
+            "- Never use translateY(...) anywhere in your CSS: use only horizontal translateX(...) or opacity crossfade for animations.",
+            "- Keep html as a safe fragment with only semantic tags such as main, section, div, span, p, h1-h6.",
+            "- Keep voiceScript as one concise spoken narration.",
+            "- If the request contains multiple items, use one full-canvas scene per item with class scene inside a fixed position:absolute scene-deck and overflow:hidden; do not create a scrollable column or vertical movement.",
+          ].join("\n\n");
         try {
           response = await dependencies.chat({
             model:

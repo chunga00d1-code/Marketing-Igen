@@ -627,7 +627,9 @@ export const geminiController = {
    */
   async clearKnowledge(req: AuthenticatedRequest, res: Response) {
     try {
-      const companyCode = req.user?.companyCode || "SYSTEM";
+      const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
+        ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
+        : String(req.user?.companyCode || "").trim().toUpperCase();
       await aiKnowledgeService.clearKnowledge(companyCode);
       return res.status(200).json({
         status: "success",
@@ -649,7 +651,9 @@ export const geminiController = {
   async testReply(req: AuthenticatedRequest, res: Response) {
     try {
       const { message, aiConfig } = req.body;
-      const companyCode = req.user?.companyCode || "SYSTEM";
+      const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
+        ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
+        : String(req.user?.companyCode || "").trim().toUpperCase();
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
@@ -1331,7 +1335,9 @@ export const geminiController = {
         });
       }
 
-      const companyCode = req.user?.companyCode || "SYSTEM";
+      const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
+        ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
+        : String(req.user?.companyCode || "").trim().toUpperCase();
       const sourceUrl = `uploaded://${fileName}_${Date.now()}`;
 
       const syncResult = await aiKnowledgeService.upsertKnowledgeFromText({
@@ -1416,7 +1422,9 @@ export const geminiController = {
       let extractedText = "";
       let isMocked = true;
       let docTitle = isFolder ? "Thu muc Google Drive" : "Tai lieu Google Drive";
-      const companyCode = req.user?.companyCode || "SYSTEM";
+      const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
+        ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
+        : String(req.user?.companyCode || "").trim().toUpperCase();
       const syncedDocuments: Array<{ title: string; fileId: string; chars: number; chunksCount: number }> = [];
 
       if (docIds.length > 0) {

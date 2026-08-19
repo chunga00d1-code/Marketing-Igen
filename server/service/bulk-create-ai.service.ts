@@ -254,10 +254,10 @@ function normalizeLayer(
     } : {}),
     fillColor: optionalColorValue(candidate.fillColor, current?.fillColor),
     borderColor: optionalColorValue(candidate.borderColor, current?.borderColor),
-    borderWidth: clamp(candidate.borderWidth, 0, 30, current?.borderWidth || 0),
-    borderRadius: clamp(candidate.borderRadius, 0, 100, current?.borderRadius || 0),
-    opacity: clamp(candidate.opacity, 0.05, 1, current?.opacity || 1),
-    padding: clamp(candidate.padding, 0, 80, current?.padding || 0),
+    borderWidth: clamp(candidate.borderWidth, 0, 100, current?.borderWidth || 0),
+    borderRadius: clamp(candidate.borderRadius, 0, 9999, current?.borderRadius || 0),
+    opacity: clamp(candidate.opacity, 0.01, 1, current?.opacity || 1),
+    padding: clamp(candidate.padding, 0, 500, current?.padding || 0),
     defaultValue: safeDefaultValue,
   };
 }

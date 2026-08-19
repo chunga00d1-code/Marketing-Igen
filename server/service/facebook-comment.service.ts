@@ -12,7 +12,7 @@ export const facebookCommentService = {
    * Xử lý bình luận mới từ Facebook Webhook và tự động trả lời bằng AI
    */
   async handleIncomingComment(pageId: string, commentData: any) {
-    let companyCode = "SYSTEM";
+    let companyCode = "";
     let commentId = "";
     let postId = "";
     let messageText = "";
@@ -71,10 +71,9 @@ export const facebookCommentService = {
         await resolveAutoReplyOwner("facebook", pageId)
       );
       companyCode = ownerInfo.companyCode;
-      const selectedUser = ownerInfo.selectedUser;
       aiConfig = ownerInfo.aiConfig;
 
-      if (!selectedUser || !aiConfig) {
+      if (!companyCode || !aiConfig) {
         return;
       }
 

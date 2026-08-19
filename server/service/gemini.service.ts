@@ -662,37 +662,6 @@ Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, 
       autoFeedback: true
     };
 
-    const getMockResponse = () => {
-      return new Promise<{ text: string; isMock: boolean }>((resolve) => {
-        setTimeout(() => {
-          let replyText = `[Giả lập Trợ lý AI] Cảm ơn bạn đã phản hồi! Với cấu hình Trợ lý AI (Cấu hình: ${aiConfig.autoClassify ? "Tự phân loại" : "Thường"
-            }), tôi đề xuất phương án tối ưu cho bạn.`;
-
-          const msgLower = message.toLowerCase();
-          if (msgLower.includes("giá") || msgLower.includes("bao nhiêu")) {
-            replyText =
-              "Chào bạn! Hiện tại dòng sản phẩm Thiết bị đeo thông minh X1 đang có giá ưu đãi là 1.890.000đ (giảm từ 2.450.000đ). Trợ lý AI có thể hỗ trợ tạo đơn hàng ngay lập tức nếu bạn sẵn sàng!";
-          } else if (msgLower.includes("khuyến mãi") || msgLower.includes("ưu đãi")) {
-            replyText =
-              "Dạ, bên mình đang có chương trình khuyến mãi 'SIÊU ƯU ĐÃI THÁNG 10': giảm giá lên đến 30% cho toàn bộ linh kiện robot và tặng voucher 200k cho đơn hàng sau đó. Bạn có muốn nhận mã voucher không ạ?";
-          } else if (msgLower.includes("vận chuyển") || msgLower.includes("ship")) {
-            replyText =
-              "Đơn hàng của bạn sẽ được hỗ trợ Freeship toàn quốc cho các hóa đơn từ 500k trở lên. Thời gian giao hàng dự kiến là từ 2-3 ngày làm việc đối với khu vực tỉnh thành khác, Hà Nội/HCM sẽ nhận hàng trong ngày ạ!";
-          }
-          resolve({ text: replyText, isMock: true });
-        }, 800);
-      });
-    };
-
-    if (!process.env.OPENROUTER_API_KEY) {
-      return getMockResponse();
-    }
-
-    const detectedIntent = detectChatIntent(message, history);
-    const shouldRequireStrictKnowledge = detectedIntent === "product_pricing_policy" || detectedIntent === "company_faq";
-    const hasCompanyKnowledge = !!ragContext?.contextText;
-    const assistantMode = hasCompanyKnowledge ? "COMPANY_TRAINED_MODE" : "DEFAULT_ASSISTANT_MODE";
-
     // Resolve companyName dynamically
     const companyCode = ragContext?.companyCode || aiConfig?.companyCode;
     let companyName = aiConfig?.companyName || "";
@@ -708,8 +677,38 @@ Hãy viết báo cáo bằng tiếng Việt, định dạng Markdown rõ ràng, 
       }
     }
     if (!companyName) {
-      companyName = "doanh nghiệp";
+      companyName = "doanh nghiệp";
     }
+
+    const getMockResponse = () => {
+      return new Promise<{ text: string; isMock: boolean }>((resolve) => {
+        setTimeout(() => {
+          let replyText = `[Giả lập Trợ lý AI] Dạ, ${companyName} xin cảm ơn bạn đã liên hệ! Bên em đã ghi nhận thông tin và sẽ hỗ trợ giải đáp chi tiết ngay ạ.`;
+
+          const msgLower = message.toLowerCase();
+          if (msgLower.includes("giá") || msgLower.includes("bao nhiêu")) {
+            replyText =
+              `Dạ, em xin phép kiểm tra bảng giá chính xác nhất của ${companyName} và gửi thông tin chi tiết ngay cho mình nhé ạ!`;
+          } else if (msgLower.includes("khuyến mãi") || msgLower.includes("ưu đãi")) {
+            replyText =
+              `Dạ, hiện tại ${companyName} đang có các chương trình ưu đãi hấp dẫn dành cho khách hàng. Anh/Chị quan tâm đến dòng sản phẩm hoặc dịch vụ nào để em tư vấn ưu đãi phù hợp nhất ạ?`;
+          } else if (msgLower.includes("vận chuyển") || msgLower.includes("ship")) {
+            replyText =
+              `Dạ, bên em có hỗ trợ giao hàng tận nơi. Thời gian và phí vận chuyển sẽ được xác nhận cụ thể theo địa chỉ nhận hàng của mình ạ!`;
+          }
+          resolve({ text: replyText, isMock: true });
+        }, 800);
+      });
+    };
+
+    if (!process.env.OPENROUTER_API_KEY) {
+      return getMockResponse();
+    }
+
+    const detectedIntent = detectChatIntent(message, history);
+    const shouldRequireStrictKnowledge = detectedIntent === "product_pricing_policy" || detectedIntent === "company_faq";
+    const hasCompanyKnowledge = !!ragContext?.contextText;
+    const assistantMode = hasCompanyKnowledge ? "COMPANY_TRAINED_MODE" : "DEFAULT_ASSISTANT_MODE";
 
     const conversationPlaybook = `
 QUY TẮC CHĂM SÓC KHÁCH HÀNG THÔNG MINH VÀ KHÉO LÉO:
@@ -725,7 +724,7 @@ QUY TẮC CHĂM SÓC KHÁCH HÀNG THÔNG MINH VÀ KHÉO LÉO:
 QUY TẮC UPSELL VÀ CROSS-SELL:
 - Upsell phải khéo, đúng ngữ cảnh và chỉ dựa trên knowledge của doanh nghiệp.
 - Chỉ upsell khi khách đã thể hiện nhu cầu tương đối rõ hoặc đang quan tâm tới một sản phẩm/dịch vụ cụ thể.
-- Ưu tiên upsell theo hướng giá trị: phiên bản phù hợp hơn, gói đầy đủ hơn, dung tích lớn hơn, giải pháp tiết kiệm hơn, hoặc sản phẩm bổ trợ hợp lý.
+- Ưu tiên upsell theo hướng giá trị: phiên bản phù hợp hơn, gói đầy đủ hơn, quy cách/kích thước tối ưu hơn, giải pháp tiết kiệm hơn, hoặc sản phẩm bổ trợ hợp lý.
 - Không ép bán, không upsell quá sớm ngay ở lượt đầu.
 - Nếu cross-sell, chỉ gợi ý thêm tối đa 1-2 sản phẩm bổ trợ thực sự liên quan trực tiếp.
 - Không tự bịa combo, quà tặng hay ưu đãi nếu knowledge không có.
@@ -737,7 +736,7 @@ QUY TẮC CHỐT ĐƠN:
 
 QUY TẮC TÍNH TIỀN VÀ BÁO GIÁ:
 - Khi khách hàng hỏi giá của một sản phẩm, hãy báo giá đơn vị chính xác theo thông tin sản phẩm (VND).
-- Nếu khách hàng muốn mua sản phẩm với số lượng nhiều hơn 1 (ví dụ: "lấy 2 chai", "mua 3 cái", v.v.), hãy lấy giá đơn vị nhân với số lượng để tính toán tổng số tiền thanh toán thực tế và báo cho khách hàng tổng số tiền cụ thể đó kèm theo phép tính rõ ràng (ví dụ: 2 cái * 320.000đ = 640.000đ).
+- Nếu khách hàng muốn mua sản phẩm với số lượng nhiều hơn 1 (ví dụ: lấy số lượng 2, 3, v.v.), hãy lấy giá đơn vị nhân với số lượng để tính toán tổng số tiền thanh toán thực tế và báo cho khách hàng tổng số tiền cụ thể đó kèm theo phép tính rõ ràng (ví dụ: số lượng * đơn giá = tổng tiền).
 - Không đoán hoặc tự bịa đặt giá/chương trình ưu đãi nếu không có trong dữ liệu sản phẩm của doanh nghiệp.
 
 QUY TẮC TƯ VẤN SẢN PHẨM KHI ĐÃ CÓ KNOWLEDGE:
@@ -754,9 +753,10 @@ Bạn đang hỗ trợ khách hàng trong khung chat của chính doanh nghiệp
 
 NGUYÊN TẮC NHẬN DIỆN DOANH NGHIỆP:
 - Chỉ trả lời như đại diện của ${companyName}.
+- Lĩnh vực kinh doanh, ngành hàng, mô hình hoạt động, sản phẩm và dịch vụ của ${companyName} được xác định hoàn toàn và trực tiếp từ dữ liệu kho tri thức nội bộ được cung cấp bên dưới.
+- Tuyệt đối không tự suy diễn, không gán ghép bất kỳ ngành nghề hoặc sản phẩm nào không có trong kho tri thức của doanh nghiệp.
 - Không tự giới thiệu, chào bán, hay mô tả iGen Marketing, nền tảng quản trị, phần mềm CRM/ERP hoặc hệ thống vận hành, trừ khi dữ liệu tri thức của ${companyName} thật sự nói rõ về các nội dung đó.
-- Nếu knowledge của doanh nghiệp là về mỹ phẩm, spa, cửa hàng, thực phẩm, dịch vụ hoặc lĩnh vực cụ thể khác, hãy bám đúng lĩnh vực đó.
-- Nếu không có đủ dữ liệu để xác nhận, hãy trả lời trung tính theo doanh nghiệp hiện tại thay vì suy diễn sang sản phẩm/dịch vụ mặc định của hệ thống.
+- Nếu không có đủ dữ liệu để xác nhận thông tin cụ thể, hãy trả lời trung tính theo dữ liệu hiện có và hướng dẫn khách nhắn lại để nhân viên hỗ trợ trực tiếp.
 
 QUY CHUẨN XƯNG HÔ VÀ CHÀO HỎI CHUYÊN NGHIỆP:
 - Luôn mở đầu câu trả lời bằng lời chào lịch sự như: "Dạ, ${companyName} xin chào anh/chị ạ!" hoặc "Dạ, em chào anh/chị ạ!" hoặc "Dạ xin kính chào Quý khách!".
@@ -818,10 +818,9 @@ STYLE OVERRIDE - ƯU TIÊN CAO NHẤT:
 - Nếu có thể trả lời trực tiếp thì trả lời trực tiếp. Không giải thích dài dòng.
 - Nếu cần hỏi thêm, chỉ hỏi 1 câu quan trọng nhất.
 - Mẫu giống mong muốn:
-  "Dạ, em cảm ơn anh."
-  "Sản phẩm này bên em đang có anh nha."
-  "Giá hiện tại là 320.000đ anh nhé."
-  "Nếu anh lấy 2 chai em gợi ý thêm bản 500ml sẽ tiết kiệm hơn."
+  "Dạ, em cảm ơn anh/chị ạ."
+  "Dạ sản phẩm này bên em hiện đang có sẵn ạ."
+  "Dạ để em kiểm tra thông tin chi tiết và phản hồi ngay cho mình nhé ạ."
 `;
 
     const finalSystemInstruction = `${systemInstruction}\n${humanStyleOverride}`;
@@ -989,8 +988,8 @@ ${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- Khô
 Q: Tài liệu này nói về chủ đề gì?
 A: Tài liệu giới thiệu thông tin vận hành, chính sách bán hàng của doanh nghiệp.
 
-Q: Làm thế nào để liên hệ hỗ trợ kỹ thuật?
-A: Vui lòng liên hệ số hotline 1900xxxx hoặc email support@igen.com.
+Q: Làm thế nào để liên hệ hỗ trợ?
+A: Vui lòng liên hệ hotline hoặc email hỗ trợ được công bố của doanh nghiệp.
 
 Q: Chính sách vận chuyển của chúng tôi là gì?
 A: Giao hàng toàn quốc. Miễn phí vận chuyển cho đơn hàng trị giá từ 500k trở lên.`;

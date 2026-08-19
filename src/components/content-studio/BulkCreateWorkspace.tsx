@@ -204,9 +204,11 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     (row: DataRow) => {
       if (row.selected === false) return 'Trang này đang bị bỏ chọn.';
       if (layers.length === 0) return 'Thiết kế chưa có trường nội dung.';
-      const missingLayers = layers.filter((layer) => (
-        layer.layerKind !== 'shape' && !row.values[layer.id]?.trim()
-      ));
+      const missingLayers = layers.filter((layer) => {
+        if (layer.layerKind === 'shape') return false;
+        const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? layer.defaultValue;
+        return !val?.trim();
+      });
       if (missingLayers.length === 0) return null;
       return `Thiếu dữ liệu: ${missingLayers.map((layer) => layer.fieldName).join(', ')}`;
     },
@@ -1309,17 +1311,19 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       });
     }
       const uploaded = readyRows.map((row) => ({
-      ...row.values,
-      ...Object.fromEntries(layers
-        .filter((layer) => layer.type === 'image')
-        .map((layer) => {
-          const source = row.values[layer.id] || '';
-          return [layer.id, uploadedImageUrls.get(source) || source];
+        ...row.values,
+        ...Object.fromEntries(layers.map((layer) => {
+          if (layer.type === 'image') {
+            const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
+            return [layer.id, uploadedImageUrls.get(source) || source];
+          }
+          const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.layerKind === 'shape' ? '' : (layer.defaultValue || layer.fieldName));
+          return [layer.id, val];
         })),
-      ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
-      ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
-      __source_row_id: row.id,
-    }));
+        ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
+        ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
+        __source_row_id: row.id,
+      }));
     setRows((current) => current.map((row) => {
       const index = readyRows.findIndex((ready) => ready.id === row.id);
       return index >= 0 ? { ...row, values: uploaded[index] } : row;
@@ -1486,6 +1490,32 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       void loadCampaignContext(selectedCampaign._id);
     })();
   }, [initialCampaignId, loadCampaignContext, loadCampaignsForImport]);
+
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const templateIdFromUrl = searchParams.get('template');
+      if (templateIdFromUrl && /^[0-9a-fA-F]{24}$/.test(templateIdFromUrl)) {
+        void (async () => {
+          try {
+            setBusy(true);
+            const template = await bulkCreateService.getTemplate(templateIdFromUrl);
+            if (template) {
+              loadTemplate(template);
+              toast.success(`Đã mở mẫu thiết kế “${template.name}”.`);
+            }
+          } catch (err) {
+            console.error('Không thể tải mẫu thiết kế từ liên kết:', err);
+            toast.error('Không thể tải mẫu thiết kế từ liên kết chia sẻ.');
+          } finally {
+            setBusy(false);
+          }
+        })();
+      }
+    } catch {
+      // Ignored if window.location is unavailable
+    }
+  }, []);
 
   const importCampaignOrders = async () => {
     if (!selectedCampaignId) return;

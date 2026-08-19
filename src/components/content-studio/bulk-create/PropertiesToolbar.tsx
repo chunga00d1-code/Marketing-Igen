@@ -21,9 +21,10 @@ import {
   Unlock,
   Trash2,
   MousePointer2,
+  Upload,
 } from 'lucide-react';
 import type { TemplateLayer } from './types';
-import { clamp } from './utils';
+import { clamp, readImage } from './utils';
 
 const COLOR_SWATCHES = [
   '#111827', '#475569', '#64748b', '#94a3b8', '#e2e8f0', '#ffffff',
@@ -73,6 +74,7 @@ interface PropertiesToolbarProps {
   onRemoveImageBackground: () => void;
   removingBackground: boolean;
   onOptimizeReadability: () => void;
+  onReplaceImage?: (layerId: string, value: string) => void;
 }
 
 export function PropertiesToolbar({
@@ -86,6 +88,7 @@ export function PropertiesToolbar({
   onRemoveImageBackground,
   removingBackground,
   onOptimizeReadability,
+  onReplaceImage,
 }: PropertiesToolbarProps) {
   const [alignmentMenu, setAlignmentMenu] = useState<'horizontal' | 'vertical' | null>(null);
   const [alignmentMenuPosition, setAlignmentMenuPosition] = useState({ left: 0, top: 0 });
@@ -413,6 +416,29 @@ export function PropertiesToolbar({
             )}
             {selectedLayer.type === 'image' && (
               <>
+                {onReplaceImage && (
+                  <label
+                    className="inline-flex h-10 cursor-pointer shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-xs"
+                    title="Tải ảnh mới thay thế cho layer này trên trang hiện tại"
+                  >
+                    <Upload className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Thay ảnh</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          readImage(file, (value) => {
+                            onReplaceImage(selectedLayer.id, value);
+                          });
+                        }
+                        event.currentTarget.value = '';
+                      }}
+                    />
+                  </label>
+                )}
                 <select
                   value={selectedLayer.fit || 'contain'}
                   onChange={(event) =>

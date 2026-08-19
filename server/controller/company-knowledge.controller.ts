@@ -2,12 +2,18 @@ import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { aiKnowledgeService } from "../service/ai-knowledge.service";
 
+function getTargetCompanyCode(req: AuthenticatedRequest) {
+  if (req.user?.role === "superadmin" && (req.query?.companyCode || req.headers["x-company-code"] || req.body?.companyCode)) {
+    return String(req.query?.companyCode || req.headers["x-company-code"] || req.body?.companyCode).trim().toUpperCase();
+  }
+  return req.user?.companyCode;
+}
+
 export const companyKnowledgeController = {
   async listDocuments(req: AuthenticatedRequest, res: Response) {
     try {
-      const result = await aiKnowledgeService.listKnowledgeDocuments(
-        req.user?.companyCode
-      );
+      const companyCode = getTargetCompanyCode(req);
+      const result = await aiKnowledgeService.listKnowledgeDocuments(companyCode);
       return res.status(200).json(result);
     } catch (error: unknown) {
       console.error("[CompanyKnowledge] listDocuments error:", error);
@@ -20,8 +26,9 @@ export const companyKnowledgeController = {
 
   async updateScopes(req: AuthenticatedRequest, res: Response) {
     try {
+      const companyCode = getTargetCompanyCode(req);
       const result = await aiKnowledgeService.updateKnowledgeDocumentScopes({
-        companyCode: req.user?.companyCode,
+        companyCode,
         documentId: req.params.id,
         channelScope: req.body.channelScope,
         purposeScope: req.body.purposeScope,
@@ -52,8 +59,9 @@ export const companyKnowledgeController = {
 
   async deleteDocument(req: AuthenticatedRequest, res: Response) {
     try {
+      const companyCode = getTargetCompanyCode(req);
       const result = await aiKnowledgeService.deleteKnowledgeDocument(
-        req.user?.companyCode,
+        companyCode,
         req.params.id
       );
       if (!result) {
