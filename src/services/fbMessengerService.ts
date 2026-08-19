@@ -3,6 +3,17 @@ import { getAccessToken } from "./authService";
 type MessengerRecord = Record<string, unknown>;
 type MessengerPagination = { limit: number; hasMore: boolean; nextBefore: string | null };
 
+export class FacebookMessengerClientError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "FacebookMessengerClientError";
+  }
+}
+
 export const fbMessengerService = {
   /**
    * Lay danh sach cuoc hoi thoai cua Page Facebook da lien ket
@@ -133,7 +144,11 @@ export const fbMessengerService = {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       console.error(`[FE FB Service] API sendReply toi conversation ${conversationId} that bai:`, res.status, data);
-      throw new Error(data.message || "Gửi tin nhắn thất bại.");
+      throw new FacebookMessengerClientError(
+        data.message || "Không thể gửi tin nhắn Facebook lúc này. Vui lòng thử lại.",
+        data.code || "FB_SEND_FAILED",
+        res.status,
+      );
     }
 
     const result = await res.json();

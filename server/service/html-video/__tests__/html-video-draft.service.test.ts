@@ -183,16 +183,12 @@ test("retries a scrollable page composition and accepts a fixed composition", as
   assert.equal(harness.deductCalls(), 1);
 });
 
-test("retries a vertical movement composition and accepts a non-vertical transition", async () => {
+test("repairs model vertical movement into a horizontal transition before validation", async () => {
   const harness = createHarness({
     responses: [
       JSON.stringify({
         html: "<main>Vertical</main>",
         css: "@keyframes enter{from{transform:translateY(-20px)}}",
-      }),
-      JSON.stringify({
-        html: "<main>Fade</main>",
-        css: "@keyframes enter{from{opacity:0}to{opacity:1}}",
       }),
     ],
   });
@@ -200,10 +196,54 @@ test("retries a vertical movement composition and accepts a non-vertical transit
   const result = await harness.service.generate(actor, validInput);
 
   assert.deepEqual(result, {
-    html: "<main>Fade</main>",
-    css: "@keyframes enter{from{opacity:0}to{opacity:1}}",
+    html: "<main>Vertical</main>",
+    css: "@keyframes enter{from{transform:translateX(-20px)}}",
   });
-  assert.equal(harness.chatCalls(), 2);
+  assert.equal(harness.chatCalls(), 1);
+  assert.equal(harness.deductCalls(), 1);
+});
+
+test("repairs viewport-sized model CSS to the fixed composition canvas", async () => {
+  const harness = createHarness({
+    responses: [
+      JSON.stringify({
+        html: "<main>Fixed canvas</main>",
+        css: "main{width:100dvw;height:100vh;min-height:100dvh;max-width:100vw}",
+      }),
+    ],
+  });
+  const result = await harness.service.generate(actor, validInput);
+  assert.deepEqual(result, {
+    html: "<main>Fixed canvas</main>",
+    css: "main{width:100%;height:100%;min-height:100%;max-width:100%}",
+  });
+  assert.equal(harness.chatCalls(), 1);
+  assert.equal(harness.deductCalls(), 1);
+});
+
+test("accepts small decorative labels when the scene deck has readable hierarchy", async () => {
+  const harness = createHarness({
+    responses: [JSON.stringify({
+      html: '<main class="scene-deck"><section class="scene">Readable <small>Label</small></section></main>',
+      css: ".scene-deck{background:linear-gradient(135deg,#172554,#0f766e);box-shadow:0 24px 80px #020617}.scene{font-size:96px}.scene small{font-size:18px}",
+    })],
+  });
+  const result = await harness.service.generate(actor, validInput);
+  assert.match(result.css, /font-size:18px/);
+  assert.equal(harness.chatCalls(), 1);
+  assert.equal(harness.deductCalls(), 1);
+});
+
+test("accepts a full-height white scene when the deck still has an intentional theme", async () => {
+  const harness = createHarness({
+    responses: [JSON.stringify({
+      html: '<main class="scene-deck"><section class="scene">White scene</section></main>',
+      css: ".scene-deck{background:linear-gradient(135deg,#172554,#0f766e);box-shadow:0 24px 80px #020617}.scene{height:100%;background:white;font-size:96px}",
+    })],
+  });
+  const result = await harness.service.generate(actor, validInput);
+  assert.match(result.css, /height:100%;background:white/);
+  assert.equal(harness.chatCalls(), 1);
   assert.equal(harness.deductCalls(), 1);
 });
 
@@ -239,6 +279,37 @@ test("retries an under-scaled flat scene deck and accepts a designed readable de
   assert.equal(harness.deductCalls(), 1);
 });
 
+
+test("enforces the explicit storyboard scene count and continuous narration", async () => {
+  const harness = createHarness({
+    responses: [
+      JSON.stringify({
+        html: '<main class="scene-deck"><section class="scene">One</section></main>',
+        css: ".scene{font-size:96px}",
+      }),
+      JSON.stringify({
+        html: '<main class="scene-deck"><section class="scene">One</section><section class="scene">Two</section></main>',
+        css: ".scene-deck{background:linear-gradient(135deg,#172554,#0f766e);border-radius:48px;box-shadow:0 24px 80px #020617}.scene{font-size:96px;border:2px solid #fbbf24}.scene::before{content:'';filter:blur(20px)}",
+        voiceScript: "Một câu chuyện ngắn nối hai cảnh một cách tự nhiên.",
+      }),
+    ],
+  });
+
+  const result = await harness.service.generate(actor, {
+    ...validInput,
+    durationSeconds: 5,
+    primaryPromptContext: "SCENE 01 — Opening\nSCENE 02 — Closing",
+  });
+
+  assert.deepEqual(result, {
+    html: '<main class="scene-deck"><section class="scene">One</section><section class="scene">Two</section></main>',
+    css: ".scene-deck{background:linear-gradient(135deg,#172554,#0f766e);border-radius:48px;box-shadow:0 24px 80px #020617}.scene{font-size:96px;border:2px solid #fbbf24}.scene::before{content:'';filter:blur(20px)}",
+    voiceScript: "Một câu chuyện ngắn nối hai cảnh một cách tự nhiên.",
+  });
+
+  assert.equal(harness.chatCalls(), 2);
+  assert.equal(harness.deductCalls(), 1);
+});
 test("passes analyzed reference context to the model as a reusable template constraint", async () => {
   const harness = createHarness();
 

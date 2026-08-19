@@ -230,7 +230,7 @@ export function buildSafeHtmlVideoComposition(
   const sanitizedCss = normalizeCss(source.css);
   const [width, height] = dimensions[source.aspectRatio][source.resolution];
   const mediaCss = assets.length > 0
-    ? ".html-video-media-slot{position:relative;display:block;overflow:hidden;z-index:1}.html-video-media-slot img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.html-video-media-slot-background{position:absolute;inset:0;z-index:0}.html-video-media-slot-hero{max-height:48%;margin:4% auto}.html-video-media-slot-logo{position:absolute;top:6%;right:7%;width:28%;max-height:18%;z-index:3}.html-video-media-slot-overlay{position:absolute;inset:0;z-index:2;pointer-events:none}"
+    ? ".html-video-media-slot{position:relative;display:block;overflow:hidden;z-index:0;pointer-events:none}.html-video-media-slot img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.html-video-media-slot.html-video-media-slot-background{position:absolute;inset:0;width:100%;height:100%;z-index:0}.html-video-media-slot.html-video-media-slot-hero{position:relative!important;inset:auto!important;width:72%!important;height:46%!important;max-width:78%!important;max-height:48%!important;margin:3% auto!important;z-index:0;flex:0 0 auto}.html-video-media-slot-hero img{filter:drop-shadow(0 24px 28px rgba(15,23,42,.2))}.html-video-media-slot.html-video-media-slot-logo{position:absolute;top:6%;right:7%;width:28%;height:14%;max-height:18%;z-index:3}.html-video-media-slot.html-video-media-slot-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:2}"
     : "";
 
   const compositionHtml = `<!doctype html>
@@ -242,8 +242,8 @@ export function buildSafeHtmlVideoComposition(
     html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f1f5f9}
     *{box-sizing:border-box}
     #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    ${mediaCss}
     ${sanitizedCss}
+    ${mediaCss}
   </style>
 </head>
 <body>

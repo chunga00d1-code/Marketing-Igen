@@ -221,6 +221,24 @@ function stripCodeFence(value: string) {
     .trim();
 }
 
+function repairModelCss(css: string): string {
+  let styles = css
+    .replace(/<\/?style\b[^>]*>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/@import\b[^;]*;/gi, "")
+    .replace(/url\s*\([^)]*\)/gi, "none")
+    .replace(/\btranslateY\s*\(/gi, "translateX(")
+    .replace(/\b((?:min-|max-)?height)\s*:\s*100(?:d|s|l)?vh\b/gi, "$1:100%")
+    .replace(/\b((?:min-|max-)?width)\s*:\s*100(?:d|s|l)?vw\b/gi, "$1:100%")
+    .replace(/\\/g, "");
+
+  styles = styles.replace(/@(media|supports|property|container|scope|layer)\b[^{]*\{([\s\S]*?\})\s*\}/gi, "$2");
+  styles = styles.replace(/@(media|supports|property|container|scope|layer)\b[^{]*\{/gi, "");
+
+  return styles.trim();
+}
+
 function normalizeDraftSources(html: string, css: string) {
   let fragment = stripCodeFence(html);
   let styles = stripCodeFence(css);
@@ -237,10 +255,7 @@ function normalizeDraftSources(html: string, css: string) {
     .replace(/<!doctype\b[^>]*>/gi, "")
     .replace(/<\/?(?:html|head|body)\b[^>]*>/gi, "")
     .trim();
-  styles = styles
-    .replace(/^<style\b[^>]*>/i, "")
-    .replace(/<\/style>$/i, "")
-    .trim();
+  styles = repairModelCss(styles);
   return { html: fragment, css: styles };
 }
 
@@ -293,6 +308,38 @@ function repairModelHtml(html: string) {
   return fragment.trim();
 }
 
+function explicitStoryboardSceneCount(context: string) {
+  return [...context.matchAll(/(?:^|\n)\s*(?:#{1,6}\s*)?SCENE\s+\d{1,3}\b/gi)].length;
+}
+
+function storyboardSceneElements(html: string) {
+  return [...html.matchAll(/<[a-z][^>]*\bclass=["']([^"']*)["'][^>]*>/gi)]
+    .filter((match) => match[1].split(/\s+/).includes("scene"));
+}
+
+function assertStoryboardQuality(
+  html: string,
+  voiceScript: string,
+  primaryPromptContext: string,
+  durationSeconds: number
+) {
+  const expectedSceneCount = explicitStoryboardSceneCount(primaryPromptContext);
+  if (expectedSceneCount < 2) return;
+  if (!/\bscene-deck\b/i.test(html)) {
+    throw new Error("Generated storyboard must use a fixed scene deck.");
+  }
+  const actualSceneCount = storyboardSceneElements(html).length;
+  if (actualSceneCount !== expectedSceneCount) {
+    throw new Error(`Generated storyboard must contain exactly ${expectedSceneCount} scenes.`);
+  }
+  if (!voiceScript.trim()) {
+    throw new Error("Generated storyboard must include one continuous voiceScript.");
+  }
+  const wordCount = voiceScript.trim().split(/\s+/).filter(Boolean).length;
+  if (wordCount > Math.ceil(durationSeconds * 3.2)) {
+    throw new Error("Generated voiceScript is too long for the requested duration.");
+  }
+}
 function assertVisualQuality(
   html: string,
   css: string,
@@ -305,9 +352,6 @@ function assertVisualQuality(
     .trim();
   if (!visibleText) {
     throw new Error("Generated composition has no visible text.");
-  }
-  if (/\bheight\s*:\s*(?:100vh|100dvh)\b/i.test(css)) {
-    throw new Error("Generated composition uses a viewport-sized inner panel.");
   }
   if (
     /\boverflow(?:-x|-y)?\s*:\s*(?:auto|scroll)\b/i.test(css) ||
@@ -327,10 +371,13 @@ function assertVisualQuality(
       .map((match) => Number(match[1]));
     if (
       fontSizes.length === 0 ||
-      Math.max(...fontSizes) < headlineMinimum ||
-      fontSizes.some((size) => size < readableMinimum)
+      Math.max(...fontSizes) < headlineMinimum
     ) {
       throw new Error("Generated scene deck uses typography that is too small for the target canvas.");
+    }
+    const hasReadableSupportingText = fontSizes.some((size) => size >= readableMinimum);
+    if (!hasReadableSupportingText) {
+      throw new Error("Generated scene deck has no readable supporting typography.");
     }
     const visualSignals = [
       /(?:linear|radial|conic)-gradient\s*\(/i,
@@ -340,17 +387,8 @@ function assertVisualQuality(
       /border\s*:/i,
       /filter\s*:/i,
     ].filter((pattern) => pattern.test(css)).length;
-    if (visualSignals < 3) {
+    if (visualSignals < 2) {
       throw new Error("Generated scene deck needs a richer theme and background treatment.");
-    }
-  }
-  for (const match of css.matchAll(/[^{}]+\{([^{}]*)\}/g)) {
-    const declarations = match[1];
-    if (
-      /(?:min-)?height\s*:\s*100%\b/i.test(declarations) &&
-      /background(?:-color)?\s*:\s*(?:white|#fff(?:fff)?)\b/i.test(declarations)
-    ) {
-      throw new Error("Generated composition contains a full-height blank white panel.");
     }
   }
 }
@@ -409,10 +447,15 @@ function buildRuntimeVideoContract(input: HtmlVideoDraftInput) {
 
 function buildSystemPrompt(input: HtmlVideoDraftInput) {
   const [width, height] = videoDimensions[input.aspectRatio][input.resolution];
+  const explicitSceneCount = explicitStoryboardSceneCount(normalizePrimaryPromptContext(input.primaryPromptContext));
   return [
     buildRuntimeVideoContract(input),
     "Generate a single safe, editable HTML/CSS video composition.",
     `Target canvas: ${width}x${height}px (${input.aspectRatio}, ${input.resolution}); duration: ${input.durationSeconds} seconds.`,
+    `VOICE LENGTH: Write approximately ${Math.max(1, Math.round(input.durationSeconds * 2.5))} spoken words for this ${input.durationSeconds}-second video at a natural pace; never narrate the full production prompt or add stage directions.`,
+    explicitSceneCount >= 2
+      ? `EXPLICIT STORYBOARD CONTRACT: The authoritative request contains exactly ${explicitSceneCount} explicit SCENE headings. Create exactly ${explicitSceneCount} elements whose class list contains the token scene inside one scene-deck, in the exact source order. Do not add an extra intro, outro, or summary scene. Preserve the requested scene timing and use the same product/reference slot inside each scene that needs the product; never turn the product into a small standalone card.`
+      : "",
     "Return only a JSON object with exactly the html, css, and voiceScript string fields. The html value must be an HTML fragment only (no doctype, html, head, body, style, or markdown fences); css must contain the styles separately. Use supported HTML and CSS only; do not include JavaScript.",
     "voiceScript is the single continuous narration for the final video. Derive it from the user's request and the visual story you create. Keep it concise enough to fit the requested duration at a natural speaking pace, preserve factual details, and keep the same language as the request while preserving important English phrases exactly.",
     "voiceScript must contain spoken words only: no labels such as Voice or Narrator, no timestamps, no scene directions, no markdown, no multiple speakers, and no sound effects. Use one consistent narrator throughout the video.",
@@ -421,6 +464,7 @@ function buildSystemPrompt(input: HtmlVideoDraftInput) {
     "Keep the HTML/CSS concise and self-contained so the complete JSON response fits comfortably within the model output limit.",
     "Make the layout fill the target canvas, keep overflow controlled, and ensure text remains readable at the requested aspect ratio.",
     "SLIDE/SCENE CONTRACT: Treat every distinct item, sentence, lesson point, product feature, step, or story beat as its own full-canvas slide when the request contains more than one item. Build a fixed scene deck inside the root using class names scene-deck for the container and scene for every slide: one scene element per item, with the scene deck and every scene using position:relative/absolute, inset:0 or an equivalent full-canvas layout, overflow:hidden, and no page scroll. Show scenes one at a time in the user's order with a short horizontal slide or opacity crossfade; never use vertical scrolling, a tall column of scenes, top-to-bottom page flow, or translateY as the main scene transition. Each scene may use normal flex/grid flow internally for its own text, but the deck must never stack scenes in normal document flow.",
+    "TRANSITION QUALITY: Use only a short horizontal translateX(...) motion or opacity crossfade with ease-out/cubic-bezier timing; keep a readable hold interval before and after each transition, and use one shared keyframes timeline rather than independent delays. Never use translateY, scrolling, or a vertical page transition.",
     "For multi-item educational content, use a compact sequence such as opening/title scene, one dedicated scene per item, then an optional closing/CTA scene. Keep each scene visually complete and balanced within the safe frame; do not squeeze multiple item cards into one long poster. Use one shared full-duration @keyframes timeline for all scenes so preview seeking and final rendering agree. Give each scene a visible hold interval and calculate non-overlapping percentage ranges across the requested duration; avoid per-element animation-delay.",
     "Use one stable root scene that fills the canvas with a safe padding of 8% to 12%. Normal flow applies to the content inside one scene only. Decorative shapes may be position:absolute, while scene containers must be isolated full-canvas layers.",
     "Use a clear visual hierarchy with separate regions for eyebrow, headline, supporting copy, and CTA. Never place two text blocks in the same position or let text overlap; use normal flow, flex, or grid with explicit gaps and safe margins.",
@@ -433,8 +477,9 @@ function buildSystemPrompt(input: HtmlVideoDraftInput) {
     "Use one focal headline of no more than two lines, one short supporting message, and one clear CTA. For teaching slides, make the phrase the largest element, pronunciation clearly secondary, meaning prominent, and explanation concise. Keep typography strongly scaled, readable, and balanced with generous padding; never render every text block at the same small size, use giant all-caps text, default browser styles, or a stack of competing headlines.",
     "Build the scene inside a centered safe frame with 8–12% outer padding. Make the final composition feel complete at the requested aspect ratio: no empty black canvas, no clipped text, no accidental horizontal overflow, and no element that depends on a missing external asset.",
     "Before returning the JSON, silently self-check visual quality: the background is intentional, the text hierarchy is legible, every scene has a clear focal point, the CTA has enough contrast, and no text or decorative layer overlaps another.",
-    "Banned constructs: scripts, event handlers, inline styles, URLs, external assets, external fonts, direct image tags, SVG, MathML, iframes, forms, style tags, doctype, html/head/body wrappers, @import, url(...), and CSS expressions.",
-    "When image reference slots are supplied, use a slot only when the reference recommendation says it should appear in the video. Insert it exactly once as <div data-media-slot=\"slot-id\"></div>; never invent slot IDs and never write an img tag or URL yourself.",
+    "Banned constructs: scripts, event handlers, inline styles, URLs, external assets, external fonts, direct image tags, SVG, MathML, iframes, forms, style tags, doctype, html/head/body wrappers, @import, @media, url(...), translateY(...), and CSS expressions.",
+    "TRANSITIONS & MOVEMENT: For scene transitions and element movement, use only horizontal translateX(...) or opacity crossfade. Never use translateY(...) anywhere in your CSS.",
+    "When image reference slots are supplied, use a slot only when the reference recommendation says it should appear in the video. For a storyboard, insert the same slot once inside each scene that needs the product, using <div data-media-slot=\"slot-id\"></div>; otherwise insert it once. Never invent slot IDs and never write an img tag or URL yourself. Give hero media its own bounded, non-overlapping visual region in normal scene flow; never stretch it across the canvas or place headline, supporting text, or CTA on top of the product.",
     "Keep essential text and logos inside a safe margin, use high contrast and readable font sizes, and keep the final intended state visible for the end of the video.",
     "Do not invent prices, discounts, factual claims, guarantees, contact details, or URLs that are not present in the user request.",
   ].join("\n");
@@ -487,7 +532,7 @@ function buildGenerationPromptWithContext(
       referenceAssets.map((asset) =>
         `slot=${asset.id}; name=${asset.name}; role=${asset.role || "hero"}; recommended_include=${asset.includeInVideo !== false ? "yes" : "no"}`
       ).join("\n"),
-      "For recommended_include=no, keep the image as style/content reference only and do not add its slot. For recommended_include=yes, add the slot once in the most useful, non-overlapping region of the composition.",
+      "For recommended_include=no, keep the image as style/content reference only and do not add its slot. For recommended_include=yes, add the slot inside every storyboard scene that needs it, or once in the most useful non-overlapping region for a non-storyboard composition.",
     ].join("\n")
     : "";
   const currentRequestSection = [
@@ -576,6 +621,7 @@ export function createHtmlVideoDraftService(
         primaryPromptFileName
       );
 
+      let lastRejectionReason = "";
       for (let attempt = 0; attempt < 2; attempt += 1) {
         let safe: ReturnType<HtmlVideoDraftDependencies["validateComposition"]>;
         let response: Awaited<ReturnType<HtmlVideoDraftDependencies["chat"]>>;
@@ -583,7 +629,14 @@ export function createHtmlVideoDraftService(
           ? generationPrompt
           : [
               generationPrompt,
-              "RETRY CORRECTION: Your previous response was rejected. Return one valid JSON object with exactly html, css, and voiceScript. Keep html as a safe fragment with only semantic tags such as main, section, div, span, p, h1-h6, and no markdown, wrappers, style attributes, style tags, scripts, buttons, links, images, SVG, URLs, or unsupported tags; put all styling in css. Keep voiceScript as one concise spoken narration. If the request contains multiple items, use one full-canvas scene per item with class scene inside a fixed position:absolute scene-deck and overflow:hidden; do not create a scrollable column, vertical movement, or a top-to-bottom page layout.",
+              `RETRY CORRECTION: Your previous response was rejected${lastRejectionReason ? `: "${lastRejectionReason}"` : ""}.`,
+              "Return one valid JSON object with exactly html, css, and voiceScript.",
+              "- Raw CSS only in the 'css' field: DO NOT include <style> tags, @media queries, @import, url(), or backslashes.",
+              "- Use width:100% and height:100% inside the fixed canvas; never use vw, vh, dvw, dvh, svw, svh, lvw, or lvh units.",
+              "- Never use translateY(...) anywhere in your CSS: use only horizontal translateX(...) or opacity crossfade for animations.",
+              "- Keep html as a safe fragment with only semantic tags such as main, section, div, span, p, h1-h6.",
+              "- Keep voiceScript as one concise spoken narration.",
+              "- If the request contains multiple items, use one full-canvas scene per item with class scene inside a fixed position:absolute scene-deck and overflow:hidden; do not create a scrollable column or vertical movement.",
             ].join("\n\n");
         try {
           response = await dependencies.chat({
@@ -633,13 +686,15 @@ export function createHtmlVideoDraftService(
             resolution: input.resolution,
           });
           assertVisualQuality(safe.sanitizedHtml, safe.sanitizedCss, input);
+          assertStoryboardQuality(safe.sanitizedHtml, voiceScript, primaryPromptContext, input.durationSeconds);
           if (!safe.sanitizedHtml.trim()) {
             throw new Error(INVALID_DRAFT_MESSAGE);
           }
         } catch (error) {
+          lastRejectionReason = error instanceof Error ? error.message : "invalid_output";
           console.warn("[HTML Video] Draft output rejected", {
             attempt: attempt + 1,
-            reason: error instanceof Error ? error.message : "invalid_output",
+            reason: lastRejectionReason,
           });
           continue;
         }

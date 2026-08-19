@@ -1,11 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Request, Response } from "express";
-import { fbMessengerService } from "../service/fb-messenger.service";
+import { fbMessengerService, type FacebookTokenContext } from "../service/fb-messenger.service";
+import { FacebookMessengerError } from "../service/fb-messenger-error";
 import { UserModel } from "../model/user.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 
-async function getFacebookPageConfig(userId: string, requestedPageId?: string): Promise<{ isConnected: boolean; pageId?: string }> {
+async function getFacebookPageConfig(userId: string, requestedPageId?: string): Promise<{
+  isConnected: boolean;
+  pageId?: string;
+  tokenContext?: FacebookTokenContext;
+}> {
   const dbUser = await UserModel.findById(userId).lean();
   if (!dbUser) {
     console.warn(`[FB Config] Khong tim thay user voi userId=${userId}`);
@@ -13,6 +18,7 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
   }
 
   const cleanRequestedPageId = requestedPageId ? String(requestedPageId).trim() : "";
+  const companyCode = String(dbUser.companyCode || "").trim();
 
   if (cleanRequestedPageId) {
     // 1. Check user's personal integration
@@ -21,40 +27,60 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
       dbUser.facebookIntegration.pageId === cleanRequestedPageId
     ) {
       console.log(`[FB Config] Dung Facebook integration ca nhan theo yeu cau cua user=${dbUser.email}, pageId=${cleanRequestedPageId}`);
-      return { isConnected: true, pageId: cleanRequestedPageId };
+      return {
+        isConnected: true,
+        pageId: cleanRequestedPageId,
+        tokenContext: { companyCode, userId, source: "personal" },
+      };
     }
 
     // 2. Check company integrations
 
-    const companyIntegration = await SocialIntegrationModel.findOne({
-      companyCode: dbUser.companyCode,
-      platform: "Facebook",
-      username: cleanRequestedPageId,
-      isConnected: true
-    }).lean();
+    const companyIntegration = companyCode
+      ? await SocialIntegrationModel.findOne({
+          companyCode,
+          platform: "Facebook",
+          username: cleanRequestedPageId,
+          isConnected: true,
+        }).lean()
+      : null;
 
     if (companyIntegration) {
       console.log(`[FB Config] Dung Facebook integration doanh nghiep theo yeu cau cua company=${dbUser.companyCode}, pageId=${cleanRequestedPageId}`);
-      return { isConnected: true, pageId: cleanRequestedPageId };
+      return {
+        isConnected: true,
+        pageId: cleanRequestedPageId,
+        tokenContext: { companyCode, userId, source: "company" },
+      };
     }
   }
 
   // Fallback: original logic
   if (dbUser.facebookIntegration?.isConnected && dbUser.facebookIntegration.pageId) {
     console.log(`[FB Config] Dung Facebook integration ca nhan cua user=${dbUser.email}, pageId=${dbUser.facebookIntegration.pageId}`);
-    return { isConnected: true, pageId: dbUser.facebookIntegration.pageId };
+    return {
+      isConnected: true,
+      pageId: dbUser.facebookIntegration.pageId,
+      tokenContext: { companyCode, userId, source: "personal" },
+    };
   }
 
 
-  const companyIntegration = await SocialIntegrationModel.findOne({
-    companyCode: dbUser.companyCode,
-    platform: "Facebook",
-    isConnected: true
-  }).lean();
+  const companyIntegration = companyCode
+    ? await SocialIntegrationModel.findOne({
+        companyCode,
+        platform: "Facebook",
+        isConnected: true,
+      }).lean()
+    : null;
 
   if (companyIntegration && companyIntegration.username) {
     console.log(`[FB Config] Fallback Facebook company integration cua company=${dbUser.companyCode}, pageId=${companyIntegration.username}, displayName=${companyIntegration.displayName}`);
-    return { isConnected: true, pageId: companyIntegration.username };
+    return {
+      isConnected: true,
+      pageId: companyIntegration.username,
+      tokenContext: { companyCode, userId, source: "company" },
+    };
   }
 
   console.warn(`[FB Config] Khong tim thay Facebook integration hoat dong cho user=${dbUser.email}, company=${dbUser.companyCode}`);
@@ -124,7 +150,7 @@ export const fbMessengerController = {
         });
       }
 
-      const { isConnected, pageId } = await getFacebookPageConfig(userId, requestedPageId);
+      const { isConnected, pageId, tokenContext } = await getFacebookPageConfig(userId, requestedPageId);
 
       // Nếu người dùng hiện tại chưa kết nối Facebook Page, trả về mảng rỗng ngay lập tức
       if (!isConnected || !pageId) {
@@ -141,7 +167,8 @@ export const fbMessengerController = {
       const conversations = await fbMessengerService.getConversations(pageId, { 
         sync: shouldSync,
         limit,
-        skip
+        skip,
+        tokenContext,
       });
       
       res.status(200).json({
@@ -177,7 +204,7 @@ export const fbMessengerController = {
         });
       }
 
-      const { isConnected, pageId } = await getFacebookPageConfig(userId, requestedPageId);
+      const { isConnected, pageId, tokenContext } = await getFacebookPageConfig(userId, requestedPageId);
 
       // Bảo vệ: Đảm bảo khách hàng này thuộc về Page ID của người dùng hiện tại
       if (!isConnected || !pageId) {
@@ -187,7 +214,12 @@ export const fbMessengerController = {
         });
       }
 
-      const result = await fbMessengerService.getMessages(pageId, conversationId, { limit, before, sync: shouldSync });
+      const result = await fbMessengerService.getMessages(pageId, conversationId, {
+        limit,
+        before,
+        sync: shouldSync,
+        tokenContext,
+      });
 
       res.status(200).json({
         success: true,
@@ -295,7 +327,7 @@ export const fbMessengerController = {
         });
       }
 
-      const { isConnected, pageId } = await getFacebookPageConfig(userId, requestedPageId);
+      const { isConnected, pageId, tokenContext } = await getFacebookPageConfig(userId, requestedPageId);
 
       if (!isConnected || !pageId) {
         return res.status(403).json({
@@ -311,7 +343,7 @@ export const fbMessengerController = {
         });
       }
 
-      const result = await fbMessengerService.sendReply(pageId, conversationId, text);
+      const result = await fbMessengerService.sendReply(pageId, conversationId, text, "human", tokenContext);
 
       res.status(200).json({
         success: true,
@@ -320,8 +352,11 @@ export const fbMessengerController = {
       });
     } catch (error: any) {
       console.error("[FB Controller sendReply] Gửi tin nhắn thất bại:", error);
-      res.status(500).json({
+      const statusCode = error instanceof FacebookMessengerError ? error.statusCode : 500;
+      const code = error instanceof FacebookMessengerError ? error.code : "FB_SEND_FAILED";
+      res.status(statusCode).json({
         success: false,
+        code,
         message: error.message || "Gửi tin nhắn thất bại."
       });
     }
@@ -340,12 +375,12 @@ export const fbMessengerController = {
         return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      const { isConnected, pageId } = await getFacebookPageConfig(userId, requestedPageId);
+      const { isConnected, pageId, tokenContext } = await getFacebookPageConfig(userId, requestedPageId);
       if (!isConnected || !pageId) {
         return res.status(403).json({ success: false, message: "Bạn chưa cấu hình tích hợp Facebook." });
       }
 
-      const diagnostic = await fbMessengerService.diagnoseConversation(pageId, conversationId);
+      const diagnostic = await fbMessengerService.diagnoseConversation(pageId, conversationId, tokenContext);
       return res.status(200).json({ success: true, data: diagnostic });
     } catch (error: any) {
       console.error("[FB Controller diagnoseConversation] Lỗi:", error);
@@ -466,21 +501,23 @@ export const fbMessengerController = {
     const { postId } = req.params;
     try {
       const { pageId } = req.query;
+      const userId = req.user?.id;
 
       if (!postId) {
         return res.status(400).json({ success: false, message: "Thiếu Post ID." });
       }
 
-      // Resolve the page access token
-      let token: string | null = null;
-      if (pageId) {
-        token = await fbMessengerService.getPageAccessTokenByPageId(String(pageId));
+      if (!userId) {
+        return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      if (!token && postId.includes("_")) {
-        const extractedPageId = postId.split("_")[0];
-        token = await fbMessengerService.getPageAccessTokenByPageId(extractedPageId);
-      }
+      // Resolve the page access token
+      const extractedPageId = postId.includes("_") ? postId.split("_")[0] : undefined;
+      const requestedPageId = pageId ? String(pageId) : extractedPageId;
+      const pageConfig = await getFacebookPageConfig(userId, requestedPageId);
+      const token = pageConfig.isConnected && pageConfig.pageId
+        ? await fbMessengerService.getPageAccessTokenByPageId(pageConfig.pageId, pageConfig.tokenContext)
+        : null;
 
       if (!token) {
         return res.status(400).json({

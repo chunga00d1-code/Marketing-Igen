@@ -2,12 +2,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import {
   ArrowLeft,
   Captions,
-  ChevronRight,
   Clapperboard,
-  Code2,
   Film,
   LayoutTemplate,
   Mic,
+  Presentation,
   Scissors,
   Sparkles,
   Wand2,
@@ -108,11 +107,11 @@ const VIDEO_TOOLS: ToolDefinition[] = [
   },
   {
     id: "html-video",
-    title: "Tạo video từ HTML",
-    description: "Dùng HTML và CSS để thiết kế, xem trước và kết xuất video.",
-    requirement: "Cần: Nội dung HTML và CSS",
+    title: "Tạo video slide tự động",
+    description: "Nhập nội dung, AI tự chia thành từng slide, chuyển cảnh mượt và lồng giọng đọc.",
+    requirement: "Cần: Một chủ đề hoặc dàn ý ngắn",
     group: "create",
-    icon: Code2,
+    icon: Presentation,
     tone: "from-sky-50 to-white hover:border-sky-300",
     iconTone: "bg-sky-600 text-white",
   },
@@ -347,9 +346,9 @@ function ToolGroup({
   onSelect: (tool: VideoStudioTool) => void;
 }) {
   return (
-    <section className="mt-6">
-      <h3 className="text-sm font-extrabold text-slate-900">{title}</h3>
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+    <section className="mt-8">
+      <h3 className="text-base font-extrabold text-slate-900">{title}</h3>
+      <div className="mt-4 grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {tools.map((tool) => {
           const Icon = tool.icon;
           return (
@@ -357,20 +356,22 @@ function ToolGroup({
               key={tool.id}
               type="button"
               onClick={() => onSelect(tool.id)}
-              className={`group flex min-h-24 items-center gap-3 rounded-2xl border border-slate-200 bg-gradient-to-br ${tool.tone} p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-100`}
+              className="group relative flex aspect-square flex-col items-center justify-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm transition-all hover:scale-[1.02] hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-100"
             >
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm ${tool.iconTone}`}>
-                <Icon className="h-[18px] w-[18px]" />
+              <div
+                className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${tool.tone} opacity-0 transition-opacity group-hover:opacity-100`}
+                aria-hidden="true"
+              />
+              <span
+                className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm ${tool.iconTone} transition-transform group-hover:scale-110`}
+              >
+                <Icon className="h-7 w-7" />
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-extrabold text-slate-900">
+              <span className="relative w-full px-2">
+                <span className="block text-sm font-bold text-slate-800 transition-colors group-hover:text-indigo-900">
                   {tool.title}
                 </span>
-                <span className="mt-1 line-clamp-2 block text-xs leading-5 text-slate-500">
-                  {tool.description}
-                </span>
               </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-indigo-600" />
             </button>
           );
         })}
@@ -466,7 +467,7 @@ function VideoToolContent({
 
   if (tool === "html-video") {
     return (
-      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ HTML-to-video..." />}>
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo video slide..." />}>
         <HtmlVideoWorkspace />
       </Suspense>
     );

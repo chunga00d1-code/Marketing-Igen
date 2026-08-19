@@ -95,6 +95,31 @@ test("adds a recommended image when the model forgets to emit its slot", () => {
   assert.match(result.sanitizedHtml, /data:image\/png;base64,AAAA/);
 });
 
+test("injects the same product asset into every explicit scene slot", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    html: '<main><section class="scene"><div data-media-slot="reference-1"></div></section><section class="scene"><div data-media-slot="reference-1"></div></section></main>',
+    css: '[data-media-slot="reference-1"]{position:absolute;inset:0}.scene{display:flex;flex-direction:column}',
+    assets: [{
+      id: "reference-1",
+      name: "Product",
+      kind: "image",
+      url: "data:image/png;base64,AAAA",
+      role: "hero",
+      includeInVideo: true,
+    }],
+  });
+
+  assert.equal((result.sanitizedHtml.match(/html-video-media-slot-hero/g) || []).length, 2);
+  assert.match(result.compositionHtml, /html-video-media-slot\.html-video-media-slot-hero\{position:relative!important;inset:auto!important;width:72%!important;height:46%!important/);
+  assert.doesNotMatch(result.compositionHtml, /html-video-media-slot-hero\{position:absolute;inset:8% 4% 8%/);
+  assert.ok(
+    result.compositionHtml.indexOf(".html-video-media-slot.html-video-media-slot-hero") >
+      result.compositionHtml.indexOf('[data-media-slot="reference-1"]'),
+    "server-owned media safety CSS must override model-generated slot positioning"
+  );
+});
+
 test("rejects prohibited HTML elements", () => {
   const prohibited = [
     "<script>alert(1)</script>",
