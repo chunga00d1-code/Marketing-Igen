@@ -76,7 +76,8 @@ test("renders prompt generation controls and the exact wallet cost", () => {
 
   assert.match(source, /Tạo video bằng AI/);
   assert.match(source, /Bạn muốn video nói gì/);
-  assert.match(source, /service\.generateDraft/);
+  assert.match(source, /service\.createGeneration/);
+  assert.match(source, /pollHtmlVideoGeneration/);
   assert.match(source, /0,5 credit\/lần tạo/);
   assert.doesNotMatch(source, /maxLength=\{MAX_LONG_PROMPT_LENGTH\}/);
   assert.match(source, /Prompt dài sẽ tự chuyển thành/);

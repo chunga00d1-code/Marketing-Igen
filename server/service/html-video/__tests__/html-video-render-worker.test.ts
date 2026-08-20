@@ -89,6 +89,7 @@ test("claims a queued job and renders its sanitized document directly", async (c
     compositionHtml,
     aspectRatio: "16:9",
     resolution: "720p",
+    durationSeconds: 5,
   });
   assert.ok(
     updates.some(({ update }) =>

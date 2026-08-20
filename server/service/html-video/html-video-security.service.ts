@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import type { HtmlVideoScenePlanItem } from "../../interface/html-video-pipeline.interface";
 
 export type HtmlVideoAspectRatio = "16:9" | "9:16" | "1:1";
 export type HtmlVideoResolution = "720p" | "1080p";
@@ -21,6 +22,7 @@ export type HtmlVideoSource = {
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
   assets?: HtmlVideoAsset[];
+  scenePlan?: HtmlVideoScenePlanItem[];
 };
 
 export type SafeHtmlVideoComposition = {
@@ -223,18 +225,68 @@ function annotateVideoScenes(html: string) {
   return { annotatedHtml, sceneCount };
 }
 
-function buildSceneIsolationCss(sceneCount: number, durationSeconds: number) {
+function normalizeSceneRanges(
+  sceneCount: number,
+  durationSeconds: number,
+  scenePlan?: HtmlVideoScenePlanItem[]
+) {
+  if (!scenePlan) {
+    const interval = durationSeconds / Math.max(1, sceneCount);
+    return Array.from({ length: sceneCount }, (_, index) => ({
+      startSeconds: index * interval,
+      endSeconds: (index + 1) * interval,
+    }));
+  }
+  if (scenePlan.length !== sceneCount) {
+    throw new Error("Scene plan does not match the generated scene count.");
+  }
+  let previousEnd = 0;
+  const ids = new Set<string>();
+  const ranges = scenePlan.map((scene, index) => {
+    if (
+      !scene ||
+      typeof scene.id !== "string" ||
+      !scene.id ||
+      ids.has(scene.id) ||
+      scene.order !== index ||
+      !Number.isFinite(scene.startSeconds) ||
+      !Number.isFinite(scene.endSeconds) ||
+      Math.abs(scene.startSeconds - previousEnd) > 0.05 ||
+      scene.endSeconds <= scene.startSeconds ||
+      scene.endSeconds > durationSeconds + 0.05
+    ) {
+      throw new Error("Scene plan timing is invalid.");
+    }
+    ids.add(scene.id);
+    previousEnd = scene.endSeconds;
+    return {
+      startSeconds: scene.startSeconds,
+      endSeconds: scene.endSeconds,
+    };
+  });
+  if (Math.abs(previousEnd - durationSeconds) > 0.05) {
+    throw new Error("Scene plan does not cover the complete video duration.");
+  }
+  return ranges;
+}
+
+function buildSceneIsolationCss(
+  sceneCount: number,
+  durationSeconds: number,
+  scenePlan?: HtmlVideoScenePlanItem[]
+) {
   if (sceneCount < 2) return "";
-  const interval = 100 / sceneCount;
-  const epsilon = Math.min(0.01, interval / 100);
+  const ranges = normalizeSceneRanges(sceneCount, durationSeconds, scenePlan);
   const rules = [
     ".scene-deck{position:relative!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important}",
     `[data-html-video-scene]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important;opacity:0;visibility:hidden;pointer-events:none!important;animation-duration:${durationSeconds}s!important;animation-delay:0s!important;animation-direction:normal!important;animation-play-state:running!important;animation-timing-function:linear!important;animation-iteration-count:1!important;animation-fill-mode:both!important}`,
   ];
 
   for (let index = 0; index < sceneCount; index += 1) {
-    const start = index * interval;
-    const end = (index + 1) * interval;
+    const start = ranges[index].startSeconds / durationSeconds * 100;
+    const end = ranges[index].endSeconds / durationSeconds * 100;
+    const interval = end - start;
+    const epsilon = Math.min(0.01, interval / 100);
     const startBefore = Math.max(0, start - epsilon);
     const endBefore = Math.max(start, end - epsilon);
     const frames = index === 0
@@ -280,7 +332,8 @@ export function buildSafeHtmlVideoComposition(
     : "";
   const sceneIsolationCss = buildSceneIsolationCss(
     sceneCount,
-    source.durationSeconds
+    source.durationSeconds,
+    source.scenePlan
   );
 
   const compositionHtml = `<!doctype html>

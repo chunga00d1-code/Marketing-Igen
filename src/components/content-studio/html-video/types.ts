@@ -1,4 +1,4 @@
-import type { HtmlVideoAspectRatio, HtmlVideoAsset, HtmlVideoPreview, HtmlVideoRenderDetail, HtmlVideoResolution } from '../../../services/htmlVideoRenderService';
+import type { HtmlVideoAspectRatio, HtmlVideoAsset, HtmlVideoGenerationDetail, HtmlVideoPipelineMetadata, HtmlVideoPreview, HtmlVideoRenderDetail, HtmlVideoResolution } from '../../../services/htmlVideoRenderService';
 
 export type CandidateStatus = 'generating' | 'ready' | 'queued' | 'rendering' | 'uploading' | 'completed' | 'failed';
 
@@ -8,6 +8,7 @@ export type HtmlVideoCandidate = {
   prompt: string;
   generationPrompt?: string;
   voiceScript?: string;
+  pipeline?: HtmlVideoPipelineMetadata;
   html: string;
   css: string;
   durationSeconds: number;
@@ -15,6 +16,7 @@ export type HtmlVideoCandidate = {
   status: CandidateStatus;
   preview: HtmlVideoPreview | null;
   render: HtmlVideoRenderDetail | null;
+  generation?: HtmlVideoGenerationDetail | null;
   error: string | null;
   createdAt: string;
   promptHistoryId?: string;

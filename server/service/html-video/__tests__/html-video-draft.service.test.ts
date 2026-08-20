@@ -124,39 +124,35 @@ test("sends the trimmed prompt and requested video settings to the model", async
     process.env.GEMINI_MODEL ||
     "google/gemini-2.5-flash"
   );
-  assert.equal(params.temperature, 0.35);
+  assert.equal(params.temperature, 0.2);
   assert.equal(params.jsonMode, true);
   assert.deepEqual(params.responseSchema, {
-    html: "string",
-    css: "string",
-    voiceScript: "string",
+    videoBrief: {
+      objective: "string", tone: "string", visualStyle: "string", voiceRequired: "boolean",
+      language: "string", audience: "string", cta: "string", exactPhrases: ["string"],
+    },
+    scenePlan: [{
+      id: "string", purpose: "opening|content|closing", sourceUnitIds: ["unit-id"],
+      onScreenText: ["string"], narration: "string", startSeconds: "number",
+      endSeconds: "number", transition: "crossfade|slide-left|slide-right", assetIds: ["asset-id"],
+    }],
   });
   assert.equal(params.maxRetries, 1);
-  assert.equal(params.maxTokens, 16_384);
+  assert.equal(params.maxTokens, 8_192);
   assert.equal(params.timeoutMs, 120_000);
-  assert.deepEqual(params.messages.at(-1), {
-    role: "user",
-    content: validInput.prompt.trim(),
-  });
+  assert.equal(params.messages.at(-1)?.role, "user");
+  assert.match(String(params.messages.at(-1)?.content), new RegExp(validInput.prompt.trim()));
   assert.match(JSON.stringify(params.messages), /1080\s*(x|×)\s*1920/);
   assert.match(JSON.stringify(params.messages), /8\s*(giây|seconds)/);
-  assert.match(JSON.stringify(params.messages), /animated video composition/i);
-  assert.match(JSON.stringify(params.messages), /full requested duration/i);
+  assert.match(JSON.stringify(params.messages), /Requirement and Storyboard Planner/i);
+  assert.match(JSON.stringify(params.messages), /structured plan only/i);
+  assert.match(JSON.stringify(params.messages), /exactly once and in order/i);
+  assert.match(JSON.stringify(params.messages), /contiguous without overlap/i);
   assert.match(JSON.stringify(params.messages), /RUNTIME HTML-TO-VIDEO SKILL/);
   assert.match(JSON.stringify(params.messages), /final deliverable is a rendered MP4/i);
   assert.match(JSON.stringify(params.messages), /source facts, scene purposes, on-screen text, narration, and time ranges/i);
   assert.match(JSON.stringify(params.messages), /visible text, narration, scene order, and duration semantically aligned/i);
-  assert.match(JSON.stringify(params.messages), /premium and intentionally designed/i);
-  assert.match(JSON.stringify(params.messages), /three coordinated visual layers/i);
-  assert.match(JSON.stringify(params.messages), /no text or decorative layer overlaps another/i);
-  assert.match(JSON.stringify(params.messages), /SLIDE\/SCENE CONTRACT/);
-  assert.match(JSON.stringify(params.messages), /one scene element per item/i);
-  assert.match(JSON.stringify(params.messages), /never use vertical scrolling/i);
-  assert.match(JSON.stringify(params.messages), /one shared full-duration/i);
-  assert.match(JSON.stringify(params.messages), /class names scene-deck for the container/i);
-  assert.match(JSON.stringify(params.messages), /TYPOGRAPHY SCALE/);
-  assert.match(JSON.stringify(params.messages), /headline.*86px/i);
-  assert.match(JSON.stringify(params.messages), /coherent theme tied to the subject/i);
+  assert.match(JSON.stringify(params.messages), /AUTHORITATIVE CONTENT UNITS/i);
 });
 
 test("retries a scrollable page composition and accepts a fixed composition", async () => {
@@ -384,7 +380,7 @@ test("passes recommended image slots without exposing their asset data to the mo
 
   const userMessage = String(harness.chatParams[0].messages.at(-1)?.content);
   assert.match(userMessage, /slot=reference-1/);
-  assert.match(JSON.stringify(harness.chatParams[0].messages), /data-media-slot/);
+  assert.match(JSON.stringify(harness.chatParams[0].messages), /APPROVED ASSET IDS/);
   assert.doesNotMatch(JSON.stringify(harness.chatParams[0].messages), /data:image|https:\/\//i);
 });
 

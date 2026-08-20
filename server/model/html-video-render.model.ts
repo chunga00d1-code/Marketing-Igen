@@ -1,4 +1,5 @@
 import { model, Schema, type Types } from "mongoose";
+import type { HtmlVideoPipelineMetadata } from "../interface/html-video-pipeline.interface";
 
 export type HtmlVideoRenderStatus =
   | "queued"
@@ -25,6 +26,7 @@ export type HtmlVideoRenderDocument = {
   sanitizedHtml: string;
   sanitizedCss: string;
   compositionHtml: string;
+  pipelineSnapshot?: HtmlVideoPipelineMetadata;
   voiceScript: string;
   voiceStatus: HtmlVideoVoiceStatus;
   durationSeconds: number;
@@ -77,6 +79,11 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
     compositionHtml: {
       type: String,
       required: true,
+      immutable: true,
+      select: false,
+    },
+    pipelineSnapshot: {
+      type: Schema.Types.Mixed,
       immutable: true,
       select: false,
     },
