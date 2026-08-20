@@ -413,6 +413,7 @@ test("maps a non-zero renderer exit to a coded failure and cleans up", async () 
   const adapter = createHyperframesRenderAdapter(createDependencies({
     spawnProcess: () => {
       queueMicrotask(() => {
+        child.stdout.write("lint failed for C:/tmp/render-1/index.html");
         child.stderr.write("renderer failed at C:/tmp/render-1/output.mp4");
         child.emit("close", 1);
       });
@@ -433,9 +434,18 @@ test("maps a non-zero renderer exit to a coded failure and cleans up", async () 
       temporaryDirectory: "C:/tmp/render-1",
       onProgress: () => undefined,
     }),
-    (error: unknown) =>
-      error instanceof VideoRenderAdapterError &&
-      error.code === "RENDER_PROCESS_FAILED"
+    (error: unknown) => {
+      if (
+        !(error instanceof VideoRenderAdapterError) ||
+        error.code !== "RENDER_PROCESS_FAILED"
+      ) {
+        return false;
+      }
+      assert.match(String(error.diagnostics?.stdout), /lint failed/);
+      assert.match(String(error.diagnostics?.stderr), /renderer failed/);
+      assert.doesNotMatch(JSON.stringify(error.diagnostics), /C:\/tmp\/render-1/);
+      return true;
+    }
   );
   assert.deepEqual(removedDirectories, ["C:/tmp/render-1"]);
 });
