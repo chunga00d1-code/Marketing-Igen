@@ -64,7 +64,7 @@ test("isolates multi-scene compositions on one server-owned timeline", () => {
   const result = buildSafeHtmlVideoComposition({
     ...validSource,
     html: '<main class="scene-deck"><section class="scene">One</section><section class="scene">Two</section><section class="scene">Three</section></main>',
-    css: ".scene{position:relative;opacity:1;animation:model-scene 1s infinite}@keyframes model-scene{to{opacity:1}}",
+    css: ".scene{position:relative;opacity:1;animation:model-scene 1s 60s reverse paused infinite}@keyframes model-scene{to{opacity:1}}",
     durationSeconds: 30,
   });
 
@@ -74,6 +74,9 @@ test("isolates multi-scene compositions on one server-owned timeline", () => {
   );
   assert.match(result.compositionHtml, /\[data-html-video-scene\]\{position:absolute!important/);
   assert.match(result.compositionHtml, /animation-duration:30s!important/);
+  assert.match(result.compositionHtml, /animation-delay:0s!important/);
+  assert.match(result.compositionHtml, /animation-direction:normal!important/);
+  assert.match(result.compositionHtml, /animation-play-state:running!important/);
   assert.match(result.compositionHtml, /animation-name:html-video-scene-0!important/);
   assert.match(result.compositionHtml, /@keyframes html-video-scene-2/);
 });
