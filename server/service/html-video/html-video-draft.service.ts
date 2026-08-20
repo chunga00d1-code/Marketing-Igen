@@ -1,6 +1,13 @@
 import { openrouterChat } from "../openrouter.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { htmlVideoPromptHistoryService } from "./html-video-prompt-history.service";
+import type { HtmlVideoPipelineMetadata } from "../../interface/html-video-pipeline.interface";
+import {
+  HtmlVideoPipelineProviderError,
+  runHtmlVideoStructuredPipeline,
+  type HtmlVideoPipelineCheckpoint,
+  type HtmlVideoPipelineStage,
+} from "./html-video-pipeline.service";
 import {
   buildSafeHtmlVideoComposition,
   type HtmlVideoAspectRatio,
@@ -13,19 +20,6 @@ const MAX_REFERENCE_CONTEXT_LENGTH = 24_000;
 const MAX_GENERATION_CONTEXT_LENGTH = 42_000;
 const MAX_HISTORY_CONTEXT_LENGTH = 6_000;
 const MAX_SOURCE_BYTES = 100 * 1024;
-const HTML_VIDEO_DRAFT_TIMEOUT_MS = Math.max(
-  Number(process.env.HTML_VIDEO_DRAFT_TIMEOUT_MS) || 120_000,
-  30_000
-);
-const HTML_VIDEO_DRAFT_MAX_TOKENS = Math.max(
-  Number(process.env.HTML_VIDEO_DRAFT_MAX_TOKENS) || 16_384,
-  4_096
-);
-const HTML_VIDEO_DRAFT_MAX_RETRIES = Math.max(
-  Number(process.env.HTML_VIDEO_DRAFT_MAX_RETRIES) || 1,
-  1
-);
-
 export type HtmlVideoDraftErrorCode =
   | "INSUFFICIENT_BALANCE"
   | "MODEL_ACCESS_DENIED"
@@ -96,6 +90,7 @@ export type HtmlVideoDraft = {
   html: string;
   css: string;
   voiceScript?: string;
+  pipeline?: HtmlVideoPipelineMetadata;
 };
 
 export type HtmlVideoDraftDependencies = {
@@ -104,6 +99,19 @@ export type HtmlVideoDraftDependencies = {
   deductBalance: typeof walletService.deductBalance;
   validateComposition: typeof buildSafeHtmlVideoComposition;
   loadPromptContext?: typeof htmlVideoPromptHistoryService.getContextChain;
+};
+
+export type HtmlVideoDraftGenerateOptions = {
+  billingIdempotencyKey?: string;
+  checkpoint?: HtmlVideoPipelineCheckpoint;
+  onPipelineStage?: (stage: HtmlVideoPipelineStage) => void | Promise<void>;
+  onPipelineCheckpoint?: <K extends keyof HtmlVideoPipelineCheckpoint>(
+    key: K,
+    value: NonNullable<HtmlVideoPipelineCheckpoint[K]>
+  ) => void | Promise<void>;
+  onPipelineCheckpointReset?: (
+    keys: Array<keyof HtmlVideoPipelineCheckpoint>
+  ) => void | Promise<void>;
 };
 
 function walletError(error: unknown) {
@@ -445,7 +453,7 @@ function buildRuntimeVideoContract(input: HtmlVideoDraftInput) {
   ].join("\n");
 }
 
-function buildSystemPrompt(input: HtmlVideoDraftInput) {
+export function buildSystemPrompt(input: HtmlVideoDraftInput) {
   const [width, height] = videoDimensions[input.aspectRatio][input.resolution];
   const explicitSceneCount = explicitStoryboardSceneCount(normalizePrimaryPromptContext(input.primaryPromptContext));
   return [
@@ -576,14 +584,15 @@ export function createHtmlVideoDraftService(
   return {
     async generate(
       actor: HtmlVideoDraftActor,
-      input: HtmlVideoDraftInput
+      input: HtmlVideoDraftInput,
+      options: HtmlVideoDraftGenerateOptions = {}
     ): Promise<HtmlVideoDraft> {
       const prompt = normalizePrompt(input.prompt);
       const primaryPromptContext = normalizePrimaryPromptContext(input.primaryPromptContext);
       const primaryPromptFileName = String(input.primaryPromptFileName || "prompt-day-du.txt")
         .trim()
         .slice(0, 180) || "prompt-day-du.txt";
-      const systemPrompt = buildSystemPrompt(input);
+      const systemPrompt = buildRuntimeVideoContract(input);
 
       try {
         await dependencies.checkBalance(actor.id, API_COSTS.AI_HTML_CHAT);
@@ -622,9 +631,12 @@ export function createHtmlVideoDraftService(
       );
 
       let lastRejectionReason = "";
+      const pipelineCheckpoint: HtmlVideoPipelineCheckpoint = {
+        ...(options.checkpoint || {}),
+      };
       for (let attempt = 0; attempt < 2; attempt += 1) {
         let safe: ReturnType<HtmlVideoDraftDependencies["validateComposition"]>;
-        let response: Awaited<ReturnType<HtmlVideoDraftDependencies["chat"]>>;
+        let generatedDraft: HtmlVideoDraft;
         const attemptPrompt = attempt === 0
           ? generationPrompt
           : [
@@ -639,51 +651,66 @@ export function createHtmlVideoDraftService(
             "- If the request contains multiple items, use one full-canvas scene per item with class scene inside a fixed position:absolute scene-deck and overflow:hidden; do not create a scrollable column or vertical movement.",
           ].join("\n\n");
         try {
-          response = await dependencies.chat({
-            model:
-              process.env.HTML_VIDEO_MODEL ||
-              process.env.GEMINI_MODEL ||
-              "google/gemini-2.5-flash",
-            temperature: 0.35,
-            jsonMode: true,
-            responseSchema: { html: "string", css: "string", voiceScript: "string" },
-            maxRetries: HTML_VIDEO_DRAFT_MAX_RETRIES,
-            maxTokens: HTML_VIDEO_DRAFT_MAX_TOKENS,
-            timeoutMs: HTML_VIDEO_DRAFT_TIMEOUT_MS,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: attemptPrompt },
-            ],
+          const pipelineResult = await runHtmlVideoStructuredPipeline({
+            chat: dependencies.chat,
+            draftInput: input,
+            generationPrompt: [systemPrompt, attemptPrompt].join("\n\n"),
+            referenceAssets,
+            checkpoint: pipelineCheckpoint,
+            onStage: options.onPipelineStage,
+            onCheckpoint: async (key, value) => {
+              Object.assign(pipelineCheckpoint, { [key]: value });
+              await options.onPipelineCheckpoint?.(key, value);
+            },
           });
+          generatedDraft = pipelineResult.kind === "legacy"
+            ? parseDraft(pipelineResult.responseText)
+            : {
+                html: pipelineResult.html,
+                css: pipelineResult.css,
+                voiceScript: pipelineResult.voiceScript,
+                pipeline: pipelineResult.pipeline,
+              };
         } catch (error) {
+          if (!(error instanceof HtmlVideoPipelineProviderError)) {
+            lastRejectionReason = error instanceof Error ? error.message : "invalid_output";
+            console.warn("[HTML Video] Pipeline stage rejected", {
+              attempt: attempt + 1,
+              reason: lastRejectionReason,
+            });
+            continue;
+          }
+          const providerError = error.providerCause;
           const providerStatus =
-            typeof error === "object" && error !== null
-              ? Number((error as { status?: unknown }).status)
+            typeof providerError === "object" && providerError !== null
+              ? Number((providerError as { status?: unknown }).status)
               : 0;
           console.error("[HTML Video] OpenRouter draft request failed", {
             status: providerStatus || undefined,
-            reason: providerFailureLabel(error),
+            reason: providerFailureLabel(providerError),
           });
-          if (providerFailureLabel(error) === "missing_api_key") {
-            throw new HtmlVideoDraftError("MODEL_ACCESS_DENIED", error);
+          if (providerFailureLabel(providerError) === "missing_api_key") {
+            throw new HtmlVideoDraftError("MODEL_ACCESS_DENIED", providerError);
           }
           if (providerStatus === 401 || providerStatus === 403) {
-            throw new HtmlVideoDraftError("MODEL_ACCESS_DENIED", error);
+            throw new HtmlVideoDraftError("MODEL_ACCESS_DENIED", providerError);
           }
           if (providerStatus === 400) {
-            throw new HtmlVideoDraftError("MODEL_REQUEST_REJECTED", error);
+            throw new HtmlVideoDraftError("MODEL_REQUEST_REJECTED", providerError);
           }
-          throw new HtmlVideoDraftError("AI_UNAVAILABLE", error);
+          throw new HtmlVideoDraftError("AI_UNAVAILABLE", providerError);
         }
         let voiceScript = "";
         try {
-          const draft = parseDraft(response.text);
-          voiceScript = draft.voiceScript || "";
+          voiceScript = generatedDraft.voiceScript || "";
           safe = dependencies.validateComposition({
-            ...draft,
+            ...generatedDraft,
             durationSeconds: input.durationSeconds,
             aspectRatio: input.aspectRatio,
             resolution: input.resolution,
+            ...(generatedDraft.pipeline
+              ? { scenePlan: generatedDraft.pipeline.scenePlan }
+              : {}),
           });
           assertVisualQuality(safe.sanitizedHtml, safe.sanitizedCss, input);
           assertStoryboardQuality(safe.sanitizedHtml, voiceScript, primaryPromptContext, input.durationSeconds);
@@ -692,6 +719,10 @@ export function createHtmlVideoDraftService(
           }
         } catch (error) {
           lastRejectionReason = error instanceof Error ? error.message : "invalid_output";
+          if (pipelineCheckpoint.visual) {
+            delete pipelineCheckpoint.visual;
+            await options.onPipelineCheckpointReset?.(["visual"]);
+          }
           console.warn("[HTML Video] Draft output rejected", {
             attempt: attempt + 1,
             reason: lastRejectionReason,
@@ -703,7 +734,8 @@ export function createHtmlVideoDraftService(
           await dependencies.deductBalance(
             actor.id,
             API_COSTS.AI_HTML_CHAT,
-            "Chi phí tạo HTML/CSS video bằng AI"
+            "Chi phí tạo HTML/CSS video bằng AI",
+            options.billingIdempotencyKey
           );
         } catch (error) {
           throw walletError(error);
@@ -712,6 +744,7 @@ export function createHtmlVideoDraftService(
           html: safe.sanitizedHtml,
           css: safe.sanitizedCss,
           ...(voiceScript ? { voiceScript } : {}),
+          ...(generatedDraft.pipeline ? { pipeline: generatedDraft.pipeline } : {}),
         };
       }
 

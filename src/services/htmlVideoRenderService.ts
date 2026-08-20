@@ -23,6 +23,62 @@ export type HtmlVideoAsset = HtmlVideoReferenceSlot & {
   url: string;
 };
 
+export type HtmlVideoScenePlanItem = {
+  id: string;
+  order: number;
+  purpose: "opening" | "content" | "closing";
+  sourceUnitIds: string[];
+  onScreenText: string[];
+  narration: string;
+  startSeconds: number;
+  endSeconds: number;
+  transition: "crossfade" | "slide-left" | "slide-right";
+  assetIds: string[];
+};
+
+export type HtmlVideoPipelineMetadata = {
+  version: "2.0";
+  sourceText: string;
+  sourceContextRefs: Array<{
+    id: string;
+    type: "prompt" | "prompt_file" | "reference" | "asset" | "history";
+    label: string;
+  }>;
+  videoBrief: {
+    objective: string;
+    tone: string;
+    visualStyle: string;
+    voiceRequired: boolean;
+    exactPhrases: string[];
+    videoSpec: {
+      aspectRatio: HtmlVideoAspectRatio;
+      resolution: HtmlVideoResolution;
+      durationSeconds: number;
+      language: string;
+      audience: string;
+      platform: "tiktok" | "reels" | "shorts" | "facebook" | "generic";
+      cta: string;
+    };
+  };
+  contentUnits: Array<{
+    id: string;
+    order: number;
+    sourceText: string;
+    normalizedText: string;
+    sourceRefs: string[];
+    required: boolean;
+    requiredVerbatim: boolean;
+  }>;
+  scenePlan: HtmlVideoScenePlanItem[];
+  findings: Array<{
+    stage: "grounding" | "planning" | "visual" | "voice" | "validation";
+    code: string;
+    severity: "info" | "warning" | "error";
+    message: string;
+    sceneId?: string;
+  }>;
+};
+
 export type HtmlVideoPreviewRequest = {
   html: string;
   css: string;
@@ -30,6 +86,7 @@ export type HtmlVideoPreviewRequest = {
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
   assets?: HtmlVideoAsset[];
+  scenePlan?: HtmlVideoScenePlanItem[];
 };
 
 export type HtmlVideoDraftRequest = {
@@ -44,10 +101,36 @@ export type HtmlVideoDraftRequest = {
   referenceAssets?: HtmlVideoReferenceSlot[];
 };
 
+export type HtmlVideoGenerationStatus =
+  | "queued"
+  | "grounding"
+  | "planning"
+  | "composing"
+  | "validating"
+  | "ready"
+  | "failed";
+
+export type CreateHtmlVideoGenerationRequest = HtmlVideoDraftRequest & {
+  idempotencyKey: string;
+};
+
+export type HtmlVideoGenerationDetail = {
+  id: string;
+  status: HtmlVideoGenerationStatus;
+  currentStage: HtmlVideoGenerationStatus;
+  progress: number;
+  stageMessage: string;
+  error: string | null;
+  draft?: HtmlVideoDraft;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
   promptHistoryId?: string;
   voiceScript?: string;
+  pipeline?: HtmlVideoPipelineMetadata;
 };
 
 export type HtmlVideoPreview = {
@@ -60,6 +143,7 @@ export type HtmlVideoDraft = {
   html: string;
   css: string;
   voiceScript?: string;
+  pipeline?: HtmlVideoPipelineMetadata;
 };
 
 export type HtmlVideoRenderDetail = {
@@ -218,7 +302,8 @@ export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
       !isRecord(payload.data) ||
        !(
          hasExactKeys(payload.data, ["html", "css"]) ||
-         hasExactKeys(payload.data, ["html", "css", "voiceScript"])
+         hasExactKeys(payload.data, ["html", "css", "voiceScript"]) ||
+         hasExactKeys(payload.data, ["html", "css", "voiceScript", "pipeline"])
        )
     ) {
       throw new Error(invalidHtmlVideoDraftMessage);
@@ -241,7 +326,13 @@ export function parseHtmlVideoDraftResponse(payload: unknown): HtmlVideoDraft {
     }
     const voiceScript =
       typeof raw.voiceScript === "string" ? raw.voiceScript.trim().slice(0, 8_000) : "";
-    return voiceScript ? { html, css, voiceScript } : { html, css };
+    const pipeline = parseHtmlVideoPipeline(raw.pipeline);
+    return {
+      html,
+      css,
+      ...(voiceScript ? { voiceScript } : {}),
+      ...(pipeline ? { pipeline } : {}),
+    };
   } catch {
     throw new Error(invalidHtmlVideoDraftMessage);
   }
@@ -313,6 +404,71 @@ function parseHtmlVideoRenderDetail(
     voiceEnabled: raw.voiceEnabled === true || voiceStatus !== "disabled",
     voiceStatus,
   };
+}
+
+export function parseHtmlVideoGenerationResponse(
+  payload: unknown
+): HtmlVideoGenerationDetail {
+  const raw = envelopeData(payload);
+  const statuses = new Set<HtmlVideoGenerationStatus>([
+    "queued",
+    "grounding",
+    "planning",
+    "composing",
+    "validating",
+    "ready",
+    "failed",
+  ]);
+  if (
+    !isRecord(raw) ||
+    typeof raw.id !== "string" ||
+    !raw.id.trim() ||
+    !statuses.has(raw.status as HtmlVideoGenerationStatus) ||
+    !statuses.has(raw.currentStage as HtmlVideoGenerationStatus) ||
+    typeof raw.progress !== "number" ||
+    raw.progress < 0 ||
+    raw.progress > 100 ||
+    typeof raw.stageMessage !== "string" ||
+    typeof raw.createdAt !== "string" ||
+    typeof raw.updatedAt !== "string"
+  ) {
+    throw new Error(invalidHtmlVideoDraftMessage);
+  }
+  const status = raw.status as HtmlVideoGenerationStatus;
+  const draft = status === "ready"
+    ? parseHtmlVideoDraftResponse({ success: true, data: raw.draft })
+    : undefined;
+  return {
+    id: raw.id.trim(),
+    status,
+    currentStage: raw.currentStage as HtmlVideoGenerationStatus,
+    progress: raw.progress,
+    stageMessage: raw.stageMessage,
+    error: status === "failed" && typeof raw.error === "string"
+      ? raw.error.trim() || null
+      : null,
+    ...(draft ? { draft } : {}),
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  };
+}
+
+function parseHtmlVideoPipeline(value: unknown): HtmlVideoPipelineMetadata | undefined {
+  if (value === undefined) return undefined;
+  if (
+    !isRecord(value) ||
+    value.version !== "2.0" ||
+    typeof value.sourceText !== "string" ||
+    !isRecord(value.videoBrief) ||
+    !Array.isArray(value.sourceContextRefs) ||
+    !Array.isArray(value.contentUnits) ||
+    !Array.isArray(value.scenePlan) ||
+    !Array.isArray(value.findings) ||
+    value.scenePlan.length === 0
+  ) {
+    throw new Error(invalidHtmlVideoDraftMessage);
+  }
+  return value as HtmlVideoPipelineMetadata;
 }
 
 export function parseHtmlVideoRenderResponse(
@@ -417,6 +573,59 @@ export function parseHtmlVideoRenderListResponse(
 }
 
 export const htmlVideoRenderService = {
+  async createGeneration(
+    input: CreateHtmlVideoGenerationRequest,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoGenerationDetail> {
+    const response = await fetch("/api/v1/html-video-generations", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify(input),
+      signal,
+    });
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể đưa yêu cầu tạo video vào hàng đợi.");
+    }
+    return parseHtmlVideoGenerationResponse(payload);
+  },
+
+  async getGeneration(
+    generationId: string,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoGenerationDetail> {
+    const response = await fetch(
+      `/api/v1/html-video-generations/${encodeURIComponent(generationId)}`,
+      { headers: authHeaders(), signal }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải trạng thái tạo bản dựng video.");
+    }
+    return parseHtmlVideoGenerationResponse(payload);
+  },
+
+  async retryGeneration(
+    generationId: string,
+    stage: "planning" | "visual" | "voice" | "validation",
+    signal?: AbortSignal
+  ): Promise<HtmlVideoGenerationDetail> {
+    const response = await fetch(
+      `/api/v1/html-video-generations/${encodeURIComponent(generationId)}/retry`,
+      {
+        method: "POST",
+        headers: authHeaders(true),
+        body: JSON.stringify({ stage }),
+        signal,
+      }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể thử lại stage tạo video.");
+    }
+    return parseHtmlVideoGenerationResponse(payload);
+  },
+
   async listRenders(
     options: HtmlVideoRenderListOptions = {},
     signal?: AbortSignal
@@ -631,4 +840,26 @@ export async function pollHtmlVideoRender({
     onUpdate(detail);
     if (!isActiveHtmlVideoStatus(detail.status)) return detail;
   }
+}
+
+export async function pollHtmlVideoGeneration(input: {
+  generationId: string;
+  signal: AbortSignal;
+  getGeneration: (
+    generationId: string,
+    signal: AbortSignal
+  ) => Promise<HtmlVideoGenerationDetail>;
+  onUpdate?: (detail: HtmlVideoGenerationDetail) => void;
+  wait?: (signal: AbortSignal) => Promise<void>;
+}): Promise<HtmlVideoGenerationDetail> {
+  const wait = input.wait || defaultPollWait;
+  let detail = await input.getGeneration(input.generationId, input.signal);
+  input.onUpdate?.(detail);
+  while (detail.status !== "ready" && detail.status !== "failed") {
+    await wait(input.signal);
+    if (input.signal.aborted) throw abortError();
+    detail = await input.getGeneration(input.generationId, input.signal);
+    input.onUpdate?.(detail);
+  }
+  return detail;
 }

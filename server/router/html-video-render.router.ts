@@ -1,19 +1,45 @@
 import { Router } from "express";
 import { htmlVideoRenderController } from "../controller/html-video-render.controller";
 import { htmlVideoContextController } from "../controller/html-video-context.controller";
+import { htmlVideoGenerationController } from "../controller/html-video-generation.controller";
 import { requireAuth } from "../middleware/auth";
 import { validateRequest } from "../middleware/validation";
 import {
   createHtmlVideoRenderBodySchema,
+  createHtmlVideoGenerationBodySchema,
   createHtmlVideoPromptHistoryBodySchema,
   htmlVideoContextPreviewBodySchema,
   htmlVideoDraftBodySchema,
   htmlVideoPreviewBodySchema,
   htmlVideoRenderListQuerySchema,
   htmlVideoRenderParamsSchema,
+  htmlVideoGenerationParamsSchema,
+  retryHtmlVideoGenerationBodySchema,
 } from "./html-video-render.schemas";
 
 export const htmlVideoRenderRouter = Router();
+
+htmlVideoRenderRouter.post(
+  "/html-video-generations",
+  requireAuth as never,
+  validateRequest({ body: createHtmlVideoGenerationBodySchema }),
+  htmlVideoGenerationController.create as never
+);
+htmlVideoRenderRouter.get(
+  "/html-video-generations/:generationId",
+  requireAuth as never,
+  validateRequest({ params: htmlVideoGenerationParamsSchema }),
+  htmlVideoGenerationController.get as never
+);
+htmlVideoRenderRouter.post(
+  "/html-video-generations/:generationId/retry",
+  requireAuth as never,
+  validateRequest({
+    params: htmlVideoGenerationParamsSchema,
+    body: retryHtmlVideoGenerationBodySchema,
+  }),
+  htmlVideoGenerationController.retry as never
+);
 
 htmlVideoRenderRouter.post(
   "/html-video-renders/context-preview",
