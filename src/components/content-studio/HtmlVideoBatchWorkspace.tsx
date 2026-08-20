@@ -26,6 +26,7 @@ import {
   createHtmlVideoIdempotencyKey,
   htmlVideoRenderService,
   isActiveHtmlVideoStatus,
+  pollHtmlVideoGeneration,
   pollHtmlVideoRender,
   type HtmlVideoAspectRatio,
   type HtmlVideoAsset,
@@ -62,8 +63,9 @@ import {
 type HtmlVideoBatchService = Pick<
   typeof htmlVideoRenderService,
   | "create"
+  | "createGeneration"
   | "createPromptHistory"
-  | "generateDraft"
+  | "getGeneration"
   | "get"
   | "listPromptHistory"
   | "listRenders"
@@ -758,6 +760,8 @@ export function HtmlVideoBatchWorkspace({
         resolution: candidate.resolution,
         promptHistoryId: candidate.promptHistoryId,
         voiceScript: (candidate.voiceScript || "").trim().slice(0, 8_000),
+        pipeline: candidate.pipeline,
+        scenePlan: candidate.pipeline?.scenePlan,
         assets: candidate.referenceAssets || buildReferenceAssets(references),
         idempotencyKey: createHtmlVideoIdempotencyKey(),
       });
@@ -787,7 +791,10 @@ export function HtmlVideoBatchWorkspace({
     });
     try {
       const referenceAssets = candidate.referenceAssets || buildReferenceAssets(references);
-      const composition = await service.generateDraft({
+      const controller = new AbortController();
+      pollControllersRef.current.get(candidate.id)?.abort();
+      pollControllersRef.current.set(candidate.id, controller);
+      const generation = await service.createGeneration({
         prompt: candidate.generationPrompt || candidate.prompt,
         durationSeconds: candidate.durationSeconds,
         aspectRatio: candidate.promptAspectRatio || aspectRatio,
@@ -798,7 +805,21 @@ export function HtmlVideoBatchWorkspace({
         primaryPromptContext: candidate.primaryPromptContext,
         primaryPromptFileName: candidate.primaryPromptFileName,
         referenceAssets: buildReferenceSlots(referenceAssets),
+        idempotencyKey: createHtmlVideoIdempotencyKey(),
       });
+      updateCandidate(candidate.id, { generation });
+      const completedGeneration = await pollHtmlVideoGeneration({
+        generationId: generation.id,
+        signal: controller.signal,
+        getGeneration: service.getGeneration,
+        onUpdate: (nextGeneration) => {
+          updateCandidate(candidate.id, { generation: nextGeneration });
+        },
+      });
+      if (completedGeneration.status !== "ready" || !completedGeneration.draft) {
+        throw new Error(completedGeneration.error || "Tạo bản dựng HTML-to-video thất bại.");
+      }
+      const composition = completedGeneration.draft;
       const preview = await service.preview({
         html: composition.html,
         css: composition.css,
@@ -806,21 +827,27 @@ export function HtmlVideoBatchWorkspace({
         aspectRatio: candidate.promptAspectRatio || aspectRatio,
         resolution: candidate.resolution,
         assets: referenceAssets,
+        scenePlan: composition.pipeline?.scenePlan,
       });
       const readyCandidate: HtmlVideoCandidate = {
         ...candidate,
         html: composition.html,
         css: composition.css,
         voiceScript: composition.voiceScript || candidate.voiceScript || "",
+        pipeline: composition.pipeline,
         preview,
         status: "ready",
       };
       updateCandidate(candidate.id, readyCandidate);
+      if (pollControllersRef.current.get(candidate.id) === controller) {
+        pollControllersRef.current.delete(candidate.id);
+      }
       if (autoRender) {
         await enqueueRender(readyCandidate);
       }
       return true;
     } catch (error) {
+      pollControllersRef.current.delete(candidate.id);
       updateCandidate(candidate.id, {
         status: "failed",
         error: errorMessage(error, "Không thể tạo bản dựng video bằng AI."),
@@ -1304,6 +1331,8 @@ export function HtmlVideoBatchWorkspace({
         <main className="min-w-0 overflow-y-auto bg-[#f4f5f7] p-5 sm:p-6">
           {selectedCandidate ? <section className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"><div><h2 className="text-sm font-black text-slate-900">{selectedCandidate.label}</h2><p className="text-[11px] text-slate-500">Canvas video · {selectedCandidate.promptAspectRatio || effectiveAspectRatio} · {selectedCandidate.durationSeconds} giây</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${candidateStatusClass(selectedCandidate.status)}`}>{candidateStatusLabel(selectedCandidate)}</span></div>
+            {selectedCandidate.pipeline ? <div className="border-b border-indigo-100 bg-indigo-50 px-4 py-2 text-[11px] font-semibold text-indigo-800">Đã kiểm tra prompt · {selectedCandidate.pipeline.scenePlan.length} cảnh · timeline do backend kiểm soát</div> : null}
+            {selectedCandidate.generation && !["ready", "failed"].includes(selectedCandidate.generation.status) ? <div className="border-b border-indigo-100 bg-indigo-50 px-4 py-2.5"><div className="flex items-center justify-between gap-3 text-[11px] font-semibold text-indigo-800"><span>{selectedCandidate.generation.stageMessage || "Đang tạo bản dựng..."}</span><span>{Math.round(selectedCandidate.generation.progress)}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-indigo-100"><div className="h-full rounded-full bg-indigo-500 transition-[width]" style={{ width: `${Math.max(0, Math.min(100, selectedCandidate.generation.progress))}%` }} /></div></div> : null}
             {selectedCandidate.render && isActiveHtmlVideoStatus(selectedCandidate.render.status) ? <div className="border-b border-slate-100 bg-sky-50 px-4 py-2.5"><div className="flex items-center justify-between gap-3 text-[11px] font-semibold text-sky-800"><span>{selectedCandidate.render.stageMessage || "Đang xử lý video..."}</span><span>{Math.round(selectedCandidate.render.progress)}%</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-100"><div className="h-full rounded-full bg-sky-500 transition-[width]" style={{ width: `${Math.max(0, Math.min(100, selectedCandidate.render.progress))}%` }} /></div></div> : null}
             {selectedCandidate.status === "failed" && selectedCandidate.error ? <div role="alert" className="border-b border-rose-100 bg-rose-50 px-4 py-2.5 text-xs font-semibold text-rose-700">{selectedCandidate.error}</div> : null}
              {selectedCandidate.render?.voiceStatus === "ready" ? <div className="border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-[11px] font-semibold text-emerald-800">Gemini voice đã được ghép trực tiếp vào file MP4.</div> : null}

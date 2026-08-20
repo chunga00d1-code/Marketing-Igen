@@ -7,8 +7,10 @@ import {
 } from "../html-video-render.controller";
 import {
   createHtmlVideoPromptHistoryBodySchema,
+  createHtmlVideoGenerationBodySchema,
   createHtmlVideoRenderBodySchema,
   htmlVideoPreviewBodySchema,
+  retryHtmlVideoGenerationBodySchema,
 } from "../../router/html-video-render.schemas";
 
 const validBody = {
@@ -275,6 +277,35 @@ test("lists prompt history through the authenticated user and company scope", as
 
   assert.deepEqual(received, { id: req.user.id, companyCode: "ACME" });
   assert.deepEqual(state.body, { success: true, data: histories });
+});
+
+test("validates async generation idempotency and selective retry stages", () => {
+  const generationBody = {
+    prompt: "Tạo video giới thiệu sản phẩm.",
+    durationSeconds: 30,
+    aspectRatio: "9:16",
+    resolution: "1080p",
+    idempotencyKey: "html_video_generation_123",
+  };
+  assert.equal(
+    createHtmlVideoGenerationBodySchema.validate(generationBody).error,
+    undefined
+  );
+  assert.ok(
+    createHtmlVideoGenerationBodySchema.validate({
+      ...generationBody,
+      idempotencyKey: "short",
+    }).error
+  );
+  for (const stage of ["planning", "visual", "voice", "validation"]) {
+    assert.equal(
+      retryHtmlVideoGenerationBodySchema.validate({ stage }).error,
+      undefined
+    );
+  }
+  assert.ok(
+    retryHtmlVideoGenerationBodySchema.validate({ stage: "render" }).error
+  );
 });
 
 test("lists persisted renders through the authenticated user and company scope", async () => {

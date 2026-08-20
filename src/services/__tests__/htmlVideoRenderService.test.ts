@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   htmlVideoRenderService,
   parseHtmlVideoDraftResponse,
+  parseHtmlVideoGenerationResponse,
   parseHtmlVideoPreviewResponse,
   parseHtmlVideoRenderResponse,
+  pollHtmlVideoGeneration,
 } from "../htmlVideoRenderService";
 
 const originalFetch = globalThis.fetch;
@@ -99,6 +101,29 @@ test("parses the single contextual voice script returned with a draft", () => {
       voiceScript: "Welcome to the product story.",
     }
   );
+});
+
+test("parses structured pipeline provenance returned with a draft", () => {
+  const pipeline = {
+    version: "2.0",
+    sourceText: "Tạo video hai cảnh",
+    sourceContextRefs: [],
+    videoBrief: { objective: "Tạo video" },
+    contentUnits: [{ id: "unit-1" }],
+    scenePlan: [{ id: "scene-1" }],
+    findings: [],
+  };
+  const result = parseHtmlVideoDraftResponse({
+    success: true,
+    data: {
+      html: "<main>Video</main>",
+      css: "",
+      voiceScript: "Lời đọc.",
+      pipeline,
+    },
+  });
+  assert.equal(result.pipeline?.version, "2.0");
+  assert.equal(result.pipeline?.scenePlan.length, 1);
 });
 
 test("rejects unknown keys in the HTML video draft envelope and data", () => {
@@ -313,6 +338,101 @@ test("create sends one idempotent render request", async () => {
     ...previewInput,
     idempotencyKey: "html_render_123456",
   });
+});
+
+test("createGeneration submits an idempotent async generation request", async () => {
+  let requestedUrl = "";
+  let requestedInit: RequestInit | undefined;
+  globalThis.fetch = (async (input, init) => {
+    requestedUrl = String(input);
+    requestedInit = init;
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: {
+          id: "generation-1",
+          status: "queued",
+          currentStage: "queued",
+          progress: 0,
+          stageMessage: "Đang chờ.",
+          error: null,
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
+      }),
+      { status: 202, headers: { "Content-Type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  await htmlVideoRenderService.createGeneration({
+    ...draftInput,
+    idempotencyKey: "html_video_generation_123",
+  });
+
+  assert.equal(requestedUrl, "/api/v1/html-video-generations");
+  assert.equal(requestedInit?.method, "POST");
+  assert.equal(
+    JSON.parse(String(requestedInit?.body)).idempotencyKey,
+    "html_video_generation_123"
+  );
+});
+
+test("parses queued and ready generation jobs without exposing a partial draft", () => {
+  const base = {
+    id: "generation-1",
+    currentStage: "planning",
+    progress: 30,
+    stageMessage: "Đang lập kịch bản.",
+    error: null,
+    createdAt: "2026-08-20T00:00:00.000Z",
+    updatedAt: "2026-08-20T00:00:01.000Z",
+  };
+  const queued = parseHtmlVideoGenerationResponse({
+    success: true,
+    data: { ...base, status: "planning" },
+  });
+  assert.equal(queued.draft, undefined);
+
+  const ready = parseHtmlVideoGenerationResponse({
+    success: true,
+    data: {
+      ...base,
+      status: "ready",
+      currentStage: "ready",
+      progress: 100,
+      draft: { html: "<main>Video</main>", css: "" },
+    },
+  });
+  assert.equal(ready.draft?.html, "<main>Video</main>");
+});
+
+test("polls generation stages until the ready draft is available", async () => {
+  const statuses = ["planning", "composing", "ready"] as const;
+  let index = 0;
+  const result = await pollHtmlVideoGeneration({
+    generationId: "generation-1",
+    signal: new AbortController().signal,
+    getGeneration: async () => {
+      const status = statuses[Math.min(index++, statuses.length - 1)];
+      return {
+        id: "generation-1",
+        status,
+        currentStage: status,
+        progress: status === "ready" ? 100 : 50,
+        stageMessage: status,
+        error: null,
+        ...(status === "ready"
+          ? { draft: { html: "<main>Video</main>", css: "" } }
+          : {}),
+        createdAt: "2026-08-20T00:00:00.000Z",
+        updatedAt: "2026-08-20T00:00:01.000Z",
+      };
+    },
+    wait: async () => undefined,
+  });
+  assert.equal(result.status, "ready");
+  assert.equal(result.draft?.html, "<main>Video</main>");
+  assert.equal(index, 3);
 });
 
 test("listRenders restores completed output URLs from server history", async () => {

@@ -9,6 +9,7 @@ import { hyperframeService } from "./hyperframe";
 import {
   VideoRenderAdapterError,
   type VideoRenderAdapter,
+  type VideoRenderExecutionContext,
   type VideoRenderInput,
 } from "./render-adapter";
 
@@ -51,6 +52,12 @@ export interface HyperframesRenderAdapterDependencies {
   fileSystem: HyperframesFileSystem;
   uploadOutput: (buffer: Buffer) => Promise<string>;
   prepareRuntime?: () => HyperframesRuntimeConfiguration;
+  probeOutput?: (
+    outputPath: string,
+    input: VideoRenderInput,
+    context: VideoRenderExecutionContext,
+    environment?: NodeJS.ProcessEnv
+  ) => Promise<void>;
 }
 
 export type HyperframesRuntimeConfiguration = {
@@ -61,6 +68,11 @@ export type HyperframesRuntimeConfiguration = {
 const supportedAspectRatios = new Set(["16:9", "9:16", "1:1"]);
 const supportedResolutions = new Set(["720p", "1080p"]);
 const maximumDiagnosticLength = 8192;
+const expectedDimensions = {
+  "16:9": { "720p": [1280, 720], "1080p": [1920, 1080] },
+  "9:16": { "720p": [720, 1280], "1080p": [1080, 1920] },
+  "1:1": { "720p": [720, 720], "1080p": [1080, 1080] },
+} as const;
 
 function isUsableBinary(value: string) {
   return (
@@ -299,6 +311,104 @@ function waitForRenderer(
     signal.addEventListener("abort", handleAbort, { once: true });
     if (signal.aborted) handleAbort();
   });
+}
+
+type FfprobePayload = {
+  streams?: Array<{
+    codec_type?: string;
+    width?: number;
+    height?: number;
+    duration?: string;
+  }>;
+  format?: { duration?: string };
+};
+
+export function validateProbePayload(payload: FfprobePayload, input: VideoRenderInput) {
+  const video = payload.streams?.find((stream) => stream.codec_type === "video");
+  const audio = payload.streams?.find((stream) => stream.codec_type === "audio");
+  const [expectedWidth, expectedHeight] = expectedDimensions[input.aspectRatio][input.resolution];
+  const duration = Number(payload.format?.duration || video?.duration);
+  const expectedDuration = Math.max(
+    1,
+    Number(input.durationSeconds) || Number(input.voiceDurationSeconds) || duration
+  );
+  const durationTolerance = Math.max(1, expectedDuration * 0.08);
+  if (
+    !video ||
+    video.width !== expectedWidth ||
+    video.height !== expectedHeight ||
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    Math.abs(duration - expectedDuration) > durationTolerance ||
+    (input.voiceAudioPath && !audio)
+  ) {
+    throw new VideoRenderAdapterError(
+      "RENDER_OUTPUT_INVALID",
+      "Rendered MP4 failed video or audio verification."
+    );
+  }
+}
+
+async function probeRenderedOutput(
+  outputPath: string,
+  input: VideoRenderInput,
+  context: VideoRenderExecutionContext,
+  environment?: NodeJS.ProcessEnv
+) {
+  const ffprobePath =
+    environment?.HYPERFRAMES_FFPROBE_PATH ||
+    environment?.VIDEO_CAPTION_FFPROBE_PATH ||
+    "ffprobe";
+  let child: HyperframesRenderProcess;
+  try {
+    child = spawn(
+      ffprobePath,
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,width,height,duration:format=duration",
+        "-of",
+        "json",
+        outputPath,
+      ],
+      {
+        cwd: context.temporaryDirectory,
+        ...(environment ? { env: environment } : {}),
+        shell: false,
+        windowsHide: true,
+      }
+    ) as HyperframesRenderProcess;
+  } catch (error) {
+    throw new VideoRenderAdapterError(
+      "RENDER_OUTPUT_INVALID",
+      "FFprobe output verification could not start.",
+      { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown probe error." }
+    );
+  }
+  const result = await waitForRenderer(
+    child,
+    context.signal,
+    context.timeoutMs,
+    [context.temporaryDirectory, process.cwd()],
+    () => undefined
+  );
+  if (result.code !== 0) {
+    throw new VideoRenderAdapterError(
+      "RENDER_OUTPUT_INVALID",
+      "FFprobe output verification failed.",
+      { exitCode: result.code, stderr: result.stderr }
+    );
+  }
+  try {
+    validateProbePayload(JSON.parse(result.stdout) as FfprobePayload, input);
+  } catch (error) {
+    if (error instanceof VideoRenderAdapterError) throw error;
+    throw new VideoRenderAdapterError(
+      "RENDER_OUTPUT_INVALID",
+      "FFprobe returned invalid output metadata."
+    );
+  }
 }
 
 export function createHyperframesRenderAdapter(
@@ -541,6 +651,14 @@ export function createHyperframesRenderAdapter(
           }
           finalOutputPath = outputWithVoicePath;
         }
+        if (dependencies.probeOutput) {
+          await dependencies.probeOutput(
+            finalOutputPath,
+            input,
+            context,
+            runtime?.environment
+          );
+        }
         let output: Buffer;
         try {
           output = await dependencies.fileSystem.readFile(finalOutputPath);
@@ -604,4 +722,5 @@ export const hyperframesRenderAdapter = createHyperframesRenderAdapter({
   uploadOutput: (buffer) =>
     cloudinaryService.uploadMediaBuffer(buffer, "igen_erp/marketing/video"),
   prepareRuntime: createDefaultRuntimeConfiguration,
+  probeOutput: probeRenderedOutput,
 });

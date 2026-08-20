@@ -1,4 +1,5 @@
 import sanitizeHtml from "sanitize-html";
+import type { HtmlVideoScenePlanItem } from "../../interface/html-video-pipeline.interface";
 
 export type HtmlVideoAspectRatio = "16:9" | "9:16" | "1:1";
 export type HtmlVideoResolution = "720p" | "1080p";
@@ -21,6 +22,7 @@ export type HtmlVideoSource = {
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
   assets?: HtmlVideoAsset[];
+  scenePlan?: HtmlVideoScenePlanItem[];
 };
 
 export type SafeHtmlVideoComposition = {
@@ -202,7 +204,102 @@ function normalizeCss(value: string) {
   if (forbiddenCss.test(withoutComments) || unsupportedAtRule.test(withoutComments)) {
     throw new Error("CSS chứa nội dung không được phép.");
   }
-  return withoutComments.trim();
+  return withoutComments
+    .replace(/-apple-system/gi, "sans-serif")
+    .replace(/BlinkMacSystemFont/gi, "sans-serif")
+    .trim();
+}
+
+function annotateVideoScenes(html: string) {
+  let sceneCount = 0;
+  const annotatedHtml = html.replace(
+    /<([a-z][a-z0-9-]*)\b([^>]*)>/gi,
+    (tag, _name: string, attributes: string) => {
+      const className = /\bclass="([^"]*)"/i.exec(attributes)?.[1] || "";
+      if (!className.split(/\s+/).includes("scene")) return tag;
+      const sceneIndex = sceneCount;
+      sceneCount += 1;
+      return tag.replace(/>$/, ` data-html-video-scene="${sceneIndex}">`);
+    }
+  );
+  return { annotatedHtml, sceneCount };
+}
+
+function normalizeSceneRanges(
+  sceneCount: number,
+  durationSeconds: number,
+  scenePlan?: HtmlVideoScenePlanItem[]
+) {
+  if (!scenePlan) {
+    const interval = durationSeconds / Math.max(1, sceneCount);
+    return Array.from({ length: sceneCount }, (_, index) => ({
+      startSeconds: index * interval,
+      endSeconds: (index + 1) * interval,
+    }));
+  }
+  if (scenePlan.length !== sceneCount) {
+    throw new Error("Scene plan does not match the generated scene count.");
+  }
+  let previousEnd = 0;
+  const ids = new Set<string>();
+  const ranges = scenePlan.map((scene, index) => {
+    if (
+      !scene ||
+      typeof scene.id !== "string" ||
+      !scene.id ||
+      ids.has(scene.id) ||
+      scene.order !== index ||
+      !Number.isFinite(scene.startSeconds) ||
+      !Number.isFinite(scene.endSeconds) ||
+      Math.abs(scene.startSeconds - previousEnd) > 0.05 ||
+      scene.endSeconds <= scene.startSeconds ||
+      scene.endSeconds > durationSeconds + 0.05
+    ) {
+      throw new Error("Scene plan timing is invalid.");
+    }
+    ids.add(scene.id);
+    previousEnd = scene.endSeconds;
+    return {
+      startSeconds: scene.startSeconds,
+      endSeconds: scene.endSeconds,
+    };
+  });
+  if (Math.abs(previousEnd - durationSeconds) > 0.05) {
+    throw new Error("Scene plan does not cover the complete video duration.");
+  }
+  return ranges;
+}
+
+function buildSceneIsolationCss(
+  sceneCount: number,
+  durationSeconds: number,
+  scenePlan?: HtmlVideoScenePlanItem[]
+) {
+  if (sceneCount < 2) return "";
+  const ranges = normalizeSceneRanges(sceneCount, durationSeconds, scenePlan);
+  const rules = [
+    ".scene-deck{position:relative!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important}",
+    `[data-html-video-scene]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important;opacity:0;visibility:hidden;pointer-events:none!important;animation-duration:${durationSeconds}s!important;animation-delay:0s!important;animation-direction:normal!important;animation-play-state:running!important;animation-timing-function:linear!important;animation-iteration-count:1!important;animation-fill-mode:both!important}`,
+  ];
+
+  for (let index = 0; index < sceneCount; index += 1) {
+    const start = ranges[index].startSeconds / durationSeconds * 100;
+    const end = ranges[index].endSeconds / durationSeconds * 100;
+    const interval = end - start;
+    const epsilon = Math.min(0.01, interval / 100);
+    const startBefore = Math.max(0, start - epsilon);
+    const endBefore = Math.max(start, end - epsilon);
+    const frames = index === 0
+      ? `0%,${endBefore.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`
+      : index === sceneCount - 1
+        ? `0%,${startBefore.toFixed(4)}%{opacity:0;visibility:hidden}${start.toFixed(4)}%,100%{opacity:1;visibility:visible}`
+        : `0%,${startBefore.toFixed(4)}%{opacity:0;visibility:hidden}${start.toFixed(4)}%,${endBefore.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`;
+    rules.push(
+      `[data-html-video-scene="${index}"]{animation-name:html-video-scene-${index}!important}`,
+      `@keyframes html-video-scene-${index}{${frames}}`
+    );
+  }
+  return rules.join("");
 }
 
 function assertSettings(source: HtmlVideoSource) {
@@ -228,22 +325,29 @@ export function buildSafeHtmlVideoComposition(
   const assets = normalizeAssets(source.assets);
   const sanitizedHtml = injectMediaAssets(normalizeHtml(source.html), assets);
   const sanitizedCss = normalizeCss(source.css);
+  const { annotatedHtml, sceneCount } = annotateVideoScenes(sanitizedHtml);
   const [width, height] = dimensions[source.aspectRatio][source.resolution];
   const mediaCss = assets.length > 0
     ? ".html-video-media-slot{position:relative;display:block;overflow:hidden;z-index:0;pointer-events:none}.html-video-media-slot img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.html-video-media-slot.html-video-media-slot-background{position:absolute;inset:0;width:100%;height:100%;z-index:0}.html-video-media-slot.html-video-media-slot-hero{position:relative!important;inset:auto!important;width:72%!important;height:46%!important;max-width:78%!important;max-height:48%!important;margin:3% auto!important;z-index:0;flex:0 0 auto}.html-video-media-slot-hero img{filter:drop-shadow(0 24px 28px rgba(15,23,42,.2))}.html-video-media-slot.html-video-media-slot-logo{position:absolute;top:6%;right:7%;width:28%;height:14%;max-height:18%;z-index:3}.html-video-media-slot.html-video-media-slot-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:2}"
     : "";
+  const sceneIsolationCss = buildSceneIsolationCss(
+    sceneCount,
+    source.durationSeconds,
+    source.scenePlan
+  );
 
   const compositionHtml = `<!doctype html>
-<html>
+<html data-no-timeline>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=${width},height=${height},initial-scale=1">
   <style>
     html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f1f5f9}
     *{box-sizing:border-box}
-    #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,sans-serif}
     ${sanitizedCss}
     ${mediaCss}
+    ${sceneIsolationCss}
   </style>
 </head>
 <body>
@@ -253,7 +357,8 @@ export function buildSafeHtmlVideoComposition(
     data-height="${height}"
     data-start="0"
     data-duration="${source.durationSeconds}"
-    data-no-timeline>${sanitizedHtml}</div>
+    data-no-timeline>${annotatedHtml}</div>
+  <script>window.__timelines = window.__timelines || {};</script>
 </body>
 </html>`;
 

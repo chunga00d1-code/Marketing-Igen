@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   createHyperframesRenderAdapter,
   sanitizeRenderDiagnostic,
+  validateProbePayload,
   type HyperframesRenderProcess,
   type HyperframesRenderAdapterDependencies,
 } from "../hyperframes-render-adapter";
@@ -149,6 +150,34 @@ test("reports missing Hyperframes CLI as unavailable", async () => {
   });
 });
 
+test("requires expected dimensions, duration, and voice stream in probed output", () => {
+  assert.doesNotThrow(() => validateProbePayload({
+    streams: [
+      { codec_type: "video", width: 1080, height: 1920 },
+      { codec_type: "audio" },
+    ],
+    format: { duration: "10.02" },
+  }, {
+    ...validInput,
+    durationSeconds: 10,
+    voiceAudioPath: "C:/tmp/voice.mp3",
+  }));
+
+  assert.throws(
+    () => validateProbePayload({
+      streams: [{ codec_type: "video", width: 1920, height: 1080 }],
+      format: { duration: "10" },
+    }, {
+      ...validInput,
+      durationSeconds: 10,
+      voiceAudioPath: "C:/tmp/voice.mp3",
+    }),
+    (error: unknown) =>
+      error instanceof VideoRenderAdapterError &&
+      error.code === "RENDER_OUTPUT_INVALID"
+  );
+});
+
 test("reports missing renderer binaries before starting a job", async () => {
   const adapter = createHyperframesRenderAdapter(createDependencies({
     prepareRuntime: () => ({
@@ -231,6 +260,45 @@ test("renders with the local CLI argument array, uploads output, and cleans up",
     "output-verification",
     "uploading",
   ]);
+});
+
+test("verifies the final MP4 before reading and uploading it", async () => {
+  const child = new FakeRenderProcess();
+  const events: string[] = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: () => {
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+    probeOutput: async (outputPath, input) => {
+      events.push("probe");
+      assert.match(outputPath, /[\\/]output\.mp4$/);
+      assert.equal(input.durationSeconds, 10);
+    },
+    fileSystem: {
+      access: async () => undefined,
+      mkdir: async () => undefined,
+      writeFile: async () => undefined,
+      readFile: async () => {
+        events.push("read");
+        return Buffer.from("verified-video");
+      },
+      rm: async () => undefined,
+    },
+    uploadOutput: async () => {
+      events.push("upload");
+      return "https://cdn.example/verified.mp4";
+    },
+  }));
+
+  await adapter.render({ ...validInput, durationSeconds: 10 }, {
+    signal: new AbortController().signal,
+    timeoutMs: 5_000,
+    temporaryDirectory: "C:/tmp/render-verified",
+    onProgress: () => undefined,
+  });
+
+  assert.deepEqual(events, ["probe", "read", "upload"]);
 });
 
 test("renders 720p compositions at native dimensions without an upscale preset", async () => {

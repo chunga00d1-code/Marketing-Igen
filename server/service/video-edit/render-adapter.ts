@@ -10,6 +10,7 @@ export type VideoRenderAdapterErrorCode =
   | "RENDER_PROCESS_ABORTED"
   | "RENDER_PROCESS_FAILED"
   | "RENDER_OUTPUT_MISSING"
+  | "RENDER_OUTPUT_INVALID"
   | "RENDER_UPLOAD_FAILED";
 
 export type VideoRenderDiagnostics = Record<
@@ -34,6 +35,7 @@ export type VideoRenderInput = {
   jobId: string;
   aspectRatio: VideoRenderAspectRatio;
   resolution: VideoRenderResolution;
+  durationSeconds?: number;
   sourceVideoUrl?: string;
   voiceAudioPath?: string;
   voiceAudioFormat?: VideoRenderVoiceAudioFormat;

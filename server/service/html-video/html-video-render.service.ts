@@ -15,6 +15,7 @@ import {
 import { VideoRenderAdapterError } from "../video-edit/render-adapter";
 import { defaultVideoRenderAdapterRegistry } from "../video-edit/video-render-adapters";
 import { htmlVideoTtsService } from "./html-video-tts.service";
+import type { HtmlVideoPipelineMetadata } from "../../interface/html-video-pipeline.interface";
 
 export type HtmlVideoActor = {
   id: string;
@@ -25,10 +26,34 @@ export type CreateHtmlVideoRenderInput = HtmlVideoSource & {
   idempotencyKey: string;
   promptHistoryId?: string;
   voiceScript?: string;
+  pipeline?: HtmlVideoPipelineMetadata;
 };
 
 const MAX_VOICE_SCRIPT_LENGTH = 8_000;
 const MAX_RENDER_DIAGNOSTIC_LENGTH = 4_096;
+
+function renderSourceWithPipeline(input: CreateHtmlVideoRenderInput): HtmlVideoSource {
+  if (!input.pipeline) return input;
+  const spec = input.pipeline.videoBrief.videoSpec;
+  if (
+    input.pipeline.version !== "2.0" ||
+    spec.durationSeconds !== input.durationSeconds ||
+    spec.aspectRatio !== input.aspectRatio ||
+    spec.resolution !== input.resolution
+  ) {
+    throw new Error("Pipeline snapshot does not match the requested video settings.");
+  }
+  if (
+    input.scenePlan &&
+    JSON.stringify(input.scenePlan) !== JSON.stringify(input.pipeline.scenePlan)
+  ) {
+    throw new Error("Pipeline snapshot does not match the requested scene plan.");
+  }
+  return {
+    ...input,
+    scenePlan: input.pipeline.scenePlan,
+  };
+}
 
 export type HtmlVideoRenderPublic = {
   id: string;
@@ -189,7 +214,8 @@ export const htmlVideoRenderService = {
     actor: HtmlVideoActor,
     input: CreateHtmlVideoRenderInput
   ): Promise<{ render: HtmlVideoRenderPublic; created: boolean }> {
-    const safeComposition = buildSafeHtmlVideoComposition(input);
+    const renderSource = renderSourceWithPipeline(input);
+    const safeComposition = buildSafeHtmlVideoComposition(renderSource);
     const voiceScript = String(input.voiceScript || "").trim().slice(0, MAX_VOICE_SCRIPT_LENGTH);
     const filter = scopedIdempotencyFilter(actor, input.idempotencyKey);
     const existing = await HtmlVideoRenderModel.findOne(filter).lean();
@@ -208,6 +234,7 @@ export const htmlVideoRenderService = {
         sanitizedHtml: safeComposition.sanitizedHtml,
         sanitizedCss: safeComposition.sanitizedCss,
         compositionHtml: safeComposition.compositionHtml,
+        ...(input.pipeline ? { pipelineSnapshot: input.pipeline } : {}),
         voiceScript,
         voiceStatus: voiceScript ? "queued" : "disabled",
         durationSeconds: input.durationSeconds,
@@ -393,6 +420,7 @@ export const htmlVideoRenderService = {
           compositionHtml: render.compositionHtml,
           aspectRatio: render.aspectRatio,
           resolution: render.resolution,
+          durationSeconds: render.durationSeconds,
           ...(voiceAudioPath
             ? {
                 voiceAudioPath,

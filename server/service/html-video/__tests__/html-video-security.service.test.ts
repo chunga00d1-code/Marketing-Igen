@@ -33,8 +33,52 @@ test("builds a server-owned 9:16 1080p composition", () => {
   );
   assert.match(result.compositionHtml, /width:1080px;height:1920px/);
   assert.match(result.compositionHtml, /linear-gradient\(135deg,#e0f2fe/);
+  assert.match(result.compositionHtml, /<html data-no-timeline>/);
+  assert.match(result.compositionHtml, /font-family:Inter,sans-serif/);
+  assert.doesNotMatch(
+    result.compositionHtml,
+    /-apple-system|BlinkMacSystemFont/
+  );
+  assert.match(
+    result.compositionHtml,
+    /<script>window\.__timelines = window\.__timelines \|\| \{\};<\/script>/
+  );
   assert.match(result.compositionHtml, /<main class="hero"/);
-  assert.doesNotMatch(result.compositionHtml, /<script/i);
+  assert.doesNotMatch(result.sanitizedHtml, /<script/i);
+});
+
+test("normalizes unsupported system font aliases before rendering", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    css: '.hero{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}',
+  });
+
+  assert.equal(
+    result.sanitizedCss,
+    '.hero{font-family:sans-serif,sans-serif,"Segoe UI",sans-serif}'
+  );
+  assert.doesNotMatch(result.compositionHtml, /-apple-system|BlinkMacSystemFont/i);
+});
+
+test("isolates multi-scene compositions on one server-owned timeline", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    html: '<main class="scene-deck"><section class="scene">One</section><section class="scene">Two</section><section class="scene">Three</section></main>',
+    css: ".scene{position:relative;opacity:1;animation:model-scene 1s 60s reverse paused infinite}@keyframes model-scene{to{opacity:1}}",
+    durationSeconds: 30,
+  });
+
+  assert.equal(
+    (result.compositionHtml.match(/<section class="scene" data-html-video-scene=/g) || []).length,
+    3
+  );
+  assert.match(result.compositionHtml, /\[data-html-video-scene\]\{position:absolute!important/);
+  assert.match(result.compositionHtml, /animation-duration:30s!important/);
+  assert.match(result.compositionHtml, /animation-delay:0s!important/);
+  assert.match(result.compositionHtml, /animation-direction:normal!important/);
+  assert.match(result.compositionHtml, /animation-play-state:running!important/);
+  assert.match(result.compositionHtml, /animation-name:html-video-scene-0!important/);
+  assert.match(result.compositionHtml, /@keyframes html-video-scene-2/);
 });
 
 test("maps every supported aspect ratio and resolution", () => {
