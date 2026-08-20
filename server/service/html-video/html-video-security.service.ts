@@ -234,14 +234,14 @@ export function buildSafeHtmlVideoComposition(
     : "";
 
   const compositionHtml = `<!doctype html>
-<html>
+<html data-no-timeline>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=${width},height=${height},initial-scale=1">
   <style>
     html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#f1f5f9}
     *{box-sizing:border-box}
-    #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,sans-serif}
     ${sanitizedCss}
     ${mediaCss}
   </style>
