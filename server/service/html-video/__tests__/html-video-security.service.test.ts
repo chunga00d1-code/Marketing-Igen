@@ -33,6 +33,12 @@ test("builds a server-owned 9:16 1080p composition", () => {
   );
   assert.match(result.compositionHtml, /width:1080px;height:1920px/);
   assert.match(result.compositionHtml, /linear-gradient\(135deg,#e0f2fe/);
+  assert.match(result.compositionHtml, /<html data-no-timeline>/);
+  assert.match(result.compositionHtml, /font-family:Inter,sans-serif/);
+  assert.doesNotMatch(
+    result.compositionHtml,
+    /-apple-system|BlinkMacSystemFont/
+  );
   assert.match(result.compositionHtml, /<main class="hero"/);
   assert.doesNotMatch(result.compositionHtml, /<script/i);
 });
