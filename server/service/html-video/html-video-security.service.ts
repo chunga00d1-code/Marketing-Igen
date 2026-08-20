@@ -202,7 +202,52 @@ function normalizeCss(value: string) {
   if (forbiddenCss.test(withoutComments) || unsupportedAtRule.test(withoutComments)) {
     throw new Error("CSS chứa nội dung không được phép.");
   }
-  return withoutComments.trim();
+  return withoutComments
+    .replace(/-apple-system/gi, "sans-serif")
+    .replace(/BlinkMacSystemFont/gi, "sans-serif")
+    .trim();
+}
+
+function annotateVideoScenes(html: string) {
+  let sceneCount = 0;
+  const annotatedHtml = html.replace(
+    /<([a-z][a-z0-9-]*)\b([^>]*)>/gi,
+    (tag, _name: string, attributes: string) => {
+      const className = /\bclass="([^"]*)"/i.exec(attributes)?.[1] || "";
+      if (!className.split(/\s+/).includes("scene")) return tag;
+      const sceneIndex = sceneCount;
+      sceneCount += 1;
+      return tag.replace(/>$/, ` data-html-video-scene="${sceneIndex}">`);
+    }
+  );
+  return { annotatedHtml, sceneCount };
+}
+
+function buildSceneIsolationCss(sceneCount: number, durationSeconds: number) {
+  if (sceneCount < 2) return "";
+  const interval = 100 / sceneCount;
+  const epsilon = Math.min(0.01, interval / 100);
+  const rules = [
+    ".scene-deck{position:relative!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important}",
+    `[data-html-video-scene]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important;opacity:0;visibility:hidden;pointer-events:none!important;animation-duration:${durationSeconds}s!important;animation-timing-function:linear!important;animation-iteration-count:1!important;animation-fill-mode:both!important}`,
+  ];
+
+  for (let index = 0; index < sceneCount; index += 1) {
+    const start = index * interval;
+    const end = (index + 1) * interval;
+    const startBefore = Math.max(0, start - epsilon);
+    const endBefore = Math.max(start, end - epsilon);
+    const frames = index === 0
+      ? `0%,${endBefore.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`
+      : index === sceneCount - 1
+        ? `0%,${startBefore.toFixed(4)}%{opacity:0;visibility:hidden}${start.toFixed(4)}%,100%{opacity:1;visibility:visible}`
+        : `0%,${startBefore.toFixed(4)}%{opacity:0;visibility:hidden}${start.toFixed(4)}%,${endBefore.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`;
+    rules.push(
+      `[data-html-video-scene="${index}"]{animation-name:html-video-scene-${index}!important}`,
+      `@keyframes html-video-scene-${index}{${frames}}`
+    );
+  }
+  return rules.join("");
 }
 
 function assertSettings(source: HtmlVideoSource) {
@@ -228,10 +273,15 @@ export function buildSafeHtmlVideoComposition(
   const assets = normalizeAssets(source.assets);
   const sanitizedHtml = injectMediaAssets(normalizeHtml(source.html), assets);
   const sanitizedCss = normalizeCss(source.css);
+  const { annotatedHtml, sceneCount } = annotateVideoScenes(sanitizedHtml);
   const [width, height] = dimensions[source.aspectRatio][source.resolution];
   const mediaCss = assets.length > 0
     ? ".html-video-media-slot{position:relative;display:block;overflow:hidden;z-index:0;pointer-events:none}.html-video-media-slot img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.html-video-media-slot.html-video-media-slot-background{position:absolute;inset:0;width:100%;height:100%;z-index:0}.html-video-media-slot.html-video-media-slot-hero{position:relative!important;inset:auto!important;width:72%!important;height:46%!important;max-width:78%!important;max-height:48%!important;margin:3% auto!important;z-index:0;flex:0 0 auto}.html-video-media-slot-hero img{filter:drop-shadow(0 24px 28px rgba(15,23,42,.2))}.html-video-media-slot.html-video-media-slot-logo{position:absolute;top:6%;right:7%;width:28%;height:14%;max-height:18%;z-index:3}.html-video-media-slot.html-video-media-slot-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:2}"
     : "";
+  const sceneIsolationCss = buildSceneIsolationCss(
+    sceneCount,
+    source.durationSeconds
+  );
 
   const compositionHtml = `<!doctype html>
 <html data-no-timeline>
@@ -244,6 +294,7 @@ export function buildSafeHtmlVideoComposition(
     #html-video-root{position:relative;width:${width}px;height:${height}px;overflow:hidden;background:linear-gradient(135deg,#e0f2fe 0%,#f8fafc 46%,#e0e7ff 100%);color:#0f172a;font-family:Inter,sans-serif}
     ${sanitizedCss}
     ${mediaCss}
+    ${sceneIsolationCss}
   </style>
 </head>
 <body>
@@ -253,7 +304,8 @@ export function buildSafeHtmlVideoComposition(
     data-height="${height}"
     data-start="0"
     data-duration="${source.durationSeconds}"
-    data-no-timeline>${sanitizedHtml}</div>
+    data-no-timeline>${annotatedHtml}</div>
+  <script>window.__timelines = window.__timelines || {};</script>
 </body>
 </html>`;
 
