@@ -229,7 +229,7 @@ function buildSceneIsolationCss(sceneCount: number, durationSeconds: number) {
   const epsilon = Math.min(0.01, interval / 100);
   const rules = [
     ".scene-deck{position:relative!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important}",
-    `[data-html-video-scene]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important;opacity:0;visibility:hidden;pointer-events:none!important;animation-duration:${durationSeconds}s!important;animation-timing-function:linear!important;animation-iteration-count:1!important;animation-fill-mode:both!important}`,
+    `[data-html-video-scene]{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;overflow:hidden!important;opacity:0;visibility:hidden;pointer-events:none!important;animation-duration:${durationSeconds}s!important;animation-delay:0s!important;animation-direction:normal!important;animation-play-state:running!important;animation-timing-function:linear!important;animation-iteration-count:1!important;animation-fill-mode:both!important}`,
   ];
 
   for (let index = 0; index < sceneCount; index += 1) {
