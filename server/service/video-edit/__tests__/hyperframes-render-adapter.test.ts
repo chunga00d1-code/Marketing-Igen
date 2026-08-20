@@ -204,14 +204,13 @@ test("renders with the local CLI argument array, uploads output, and cleans up",
 
   assert.equal(result.outputUrl, "https://cdn.example/render-1.mp4");
   assert.equal(writes.length, 1);
+  assert.match(writes[0]?.path ?? "", /[\\/]index\.html$/);
   assert.equal(writes[0]?.content, "<html></html>");
   assert.deepEqual(spawnCalls, [{
     command: "C:/Program Files/nodejs/node.exe",
       args: [
         "C:/app/node_modules/hyperframes/dist/cli.js",
         "render",
-        "-c",
-        "composition.html",
         "-o",
         "output.mp4",
         "--resolution",
@@ -261,8 +260,6 @@ test("renders 720p compositions at native dimensions without an upscale preset",
   assert.deepEqual(renderArgs, [
     "C:/app/node_modules/hyperframes/dist/cli.js",
     "render",
-    "-c",
-    "composition.html",
     "-o",
     "output.mp4",
     "--strict",
@@ -416,6 +413,7 @@ test("maps a non-zero renderer exit to a coded failure and cleans up", async () 
   const adapter = createHyperframesRenderAdapter(createDependencies({
     spawnProcess: () => {
       queueMicrotask(() => {
+        child.stdout.write("lint failed for C:/tmp/render-1/index.html");
         child.stderr.write("renderer failed at C:/tmp/render-1/output.mp4");
         child.emit("close", 1);
       });
@@ -436,9 +434,18 @@ test("maps a non-zero renderer exit to a coded failure and cleans up", async () 
       temporaryDirectory: "C:/tmp/render-1",
       onProgress: () => undefined,
     }),
-    (error: unknown) =>
-      error instanceof VideoRenderAdapterError &&
-      error.code === "RENDER_PROCESS_FAILED"
+    (error: unknown) => {
+      if (
+        !(error instanceof VideoRenderAdapterError) ||
+        error.code !== "RENDER_PROCESS_FAILED"
+      ) {
+        return false;
+      }
+      assert.match(String(error.diagnostics?.stdout), /lint failed/);
+      assert.match(String(error.diagnostics?.stderr), /renderer failed/);
+      assert.doesNotMatch(JSON.stringify(error.diagnostics), /C:\/tmp\/render-1/);
+      return true;
+    }
   );
   assert.deepEqual(removedDirectories, ["C:/tmp/render-1"]);
 });

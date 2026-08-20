@@ -171,7 +171,7 @@ function logRenderFailure(renderId: string, error: unknown) {
   };
 
   if (error instanceof VideoRenderAdapterError && error.diagnostics) {
-    for (const key of ["exitCode", "reason", "stderr"] as const) {
+    for (const key of ["exitCode", "reason", "stdout", "stderr"] as const) {
       const value = error.diagnostics[key];
       if (value === undefined || value === null || value === "") continue;
       diagnostic[key] =

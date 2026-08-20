@@ -231,7 +231,8 @@ function waitForRenderer(
   sensitivePaths: readonly string[],
   onRendering: () => void
 ) {
-  return new Promise<{ code: number | null; stderr: string }>((resolve, reject) => {
+  return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+    let stdout = "";
     let stderr = "";
     let settled = false;
 
@@ -263,7 +264,11 @@ function waitForRenderer(
       });
     }, timeoutMs);
 
-    child.stdout.on("data", () => {
+    child.stdout.on("data", (data) => {
+      stdout = sanitizeRenderDiagnostic(
+        `${stdout}${String(data)}`,
+        sensitivePaths
+      );
       onRendering();
     });
     child.stderr.on("data", (data) => {
@@ -288,7 +293,7 @@ function waitForRenderer(
     });
     child.on("close", (code) => {
       finish(() => {
-        resolve({ code, stderr });
+        resolve({ code, stdout, stderr });
       });
     });
     signal.addEventListener("abort", handleAbort, { once: true });
@@ -342,7 +347,7 @@ export function createHyperframesRenderAdapter(
       }
       const runtime = dependencies.prepareRuntime?.();
 
-      const htmlPath = join(context.temporaryDirectory, "composition.html");
+      const htmlPath = join(context.temporaryDirectory, "index.html");
       const outputPath = join(context.temporaryDirectory, "output.mp4");
 
       try {
@@ -376,8 +381,6 @@ export function createHyperframesRenderAdapter(
             [
               dependencies.cliPath,
               "render",
-              "-c",
-              "composition.html",
               "-o",
               "output.mp4",
               ...renderResolutionArgs(input),
@@ -428,6 +431,7 @@ export function createHyperframesRenderAdapter(
             "Hyperframes rendering failed.",
             {
               exitCode: processResult.code,
+              stdout: processResult.stdout,
               stderr: processResult.stderr,
             }
           );

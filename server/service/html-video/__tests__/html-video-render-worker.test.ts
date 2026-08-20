@@ -156,6 +156,7 @@ test("logs bounded sanitized Hyperframes diagnostics server-side", async (contex
         "Hyperframes rendering failed.",
         {
           exitCode: 1,
+          stdout: "Lint failed: TOKEN=stdout-private",
           stderr: "Chrome failed: API_KEY=private-value Bearer bearer-value",
         }
       );
@@ -171,8 +172,9 @@ test("logs bounded sanitized Hyperframes diagnostics server-side", async (contex
   const serializedLog = JSON.stringify(logged);
   assert.match(serializedLog, /RENDER_PROCESS_FAILED/);
   assert.match(serializedLog, /Chrome failed/);
+  assert.match(serializedLog, /Lint failed/);
   assert.match(serializedLog, /\[redacted\]/);
-  assert.doesNotMatch(serializedLog, /private-value|bearer-value/);
+  assert.doesNotMatch(serializedLog, /stdout-private|private-value|bearer-value/);
 });
 
 test("persists a safe terminal failure", async (context) => {
