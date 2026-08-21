@@ -48,6 +48,9 @@ export interface IAiAutoReplyConfig {
   advancedInstructions: string;
   trainingKnowledge: string;
   model?: string;
+  autoFollowUpEnabled?: boolean;
+  followUpDelayHours?: number;
+  followUpPrompt?: string;
   disabledAt?: string | null;
 }
 

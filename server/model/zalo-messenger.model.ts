@@ -14,6 +14,10 @@ export interface IZaloConversation extends Document {
   tags: string[];
   isVip: boolean;
   aiPausedUntil?: Date;
+  lastSender?: "user" | "assistant";
+  lastAssistantMessageAt?: Date;
+  followUpCount?: number;
+  followUpStatus?: "idle" | "pending" | "sent" | "responded";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,6 +54,10 @@ const ZaloConversationSchema: Schema = new Schema(
     tags: { type: [String], default: [] },
     isVip: { type: Boolean, default: false },
     aiPausedUntil: { type: Date, default: null },
+    lastSender: { type: String, enum: ["user", "assistant"], default: "user" },
+    lastAssistantMessageAt: { type: Date, default: null },
+    followUpCount: { type: Number, default: 0 },
+    followUpStatus: { type: String, enum: ["idle", "pending", "sent", "responded"], default: "idle" },
   },
   { timestamps: true }
 );

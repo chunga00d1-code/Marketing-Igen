@@ -59,6 +59,9 @@ export const AiAutoReplyConfigSchema = new Schema(
     advancedInstructions: { type: String, default: "" },
     trainingKnowledge: { type: String, default: "" },
     model: { type: String, default: "gemini-3.5-flash" },
+    autoFollowUpEnabled: { type: Boolean, default: false },
+    followUpDelayHours: { type: Number, default: 2 },
+    followUpPrompt: { type: String, default: "" },
     disabledAt: { type: Date, default: null },
   },
   { _id: false }

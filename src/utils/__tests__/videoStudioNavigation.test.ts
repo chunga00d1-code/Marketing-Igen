@@ -34,6 +34,12 @@ test("maps the HTML video tool to its stable Video Studio route", () => {
   );
 });
 
+test("maps the real-estate map video tool to its stable route", () => {
+  assert.equal(VIDEO_STUDIO_ROUTES["real-estate-map-video"], "/video-studio/video-bat-dong-san");
+  assert.equal(VIDEO_STUDIO_SEO_MAP["real-estate-map-video"].path, "/video-studio/video-bat-dong-san");
+  assert.equal(videoStudioPathToTool("/video-studio/video-bat-dong-san"), "real-estate-map-video");
+});
+
 test("round-trips a templates launch through session storage", () => {
   const values = new Map<string, string>();
   const originalSessionStorage = globalThis.sessionStorage;

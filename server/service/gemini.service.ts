@@ -251,7 +251,7 @@ function formatHumanLikeChatReply(rawText: string) {
     .trim();
 
   if (!cleaned) {
-    return "Mình kiểm tra lại rồi nhận bạn ngay nhé.";
+    return "Dạ, em kiểm tra lại rồi phản hồi mình ngay nhé ạ.";
   }
 
   const normalized = cleaned
@@ -271,7 +271,7 @@ function formatHumanLikeChatReply(rawText: string) {
 
   for (const piece of shortLineCandidates) {
     const next = currentLine ? `${currentLine} ${piece}` : piece;
-    if (next.length <= 120) {
+    if (next.length <= 160) {
       currentLine = next;
     } else {
       if (currentLine) compactLines.push(currentLine);
@@ -282,28 +282,15 @@ function formatHumanLikeChatReply(rawText: string) {
   if (currentLine) compactLines.push(currentLine);
 
   const finalLines = compactLines
-    .slice(0, 5)
+    .slice(0, 8)
     .map((line) => line.trim())
     .filter((line, index) => {
       if (index !== 0) return true;
-
-      return !/^Da,?\s*(?:em\s+chao|[\p{L}\p{N}\s]+ xin chao)\s+anh\/chá»‹[^\n]*$/iu.test(line);
+      return !/^Dạ,?\s*(?:em\s+chào|[\p{L}\p{N}\s]+ xin chào)\s+anh\/chị[^\n]*$/iu.test(line);
     });
 
   const finalResult = finalLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-
   return finalResult || normalized;
-
-  const trimmedLines = compactLines.slice(0, 5).map((line) => line.trim());
-  let result = trimmedLines.join("\n");
-
-  result = result
-    .replace(/\b(Dáº¡,?\s*em chao anh\/chá»‹.*?[\n]?)/i, "")
-    .replace(/\b(Dáº¡,?\s*[\p{L}\p{N}\s]+ xin chao anh\/chá»‹.*?[\n]?)/iu, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  return result || normalized;
 }
 
 function buildFaithfulVisualGuardrail(input: {
@@ -748,79 +735,63 @@ QUY TẮC TƯ VẤN SẢN PHẨM KHI ĐÃ CÓ KNOWLEDGE:
 `;
 
     const systemInstruction = `
-Bạn là trợ lý chăm sóc khách hàng của ${companyName}.
-Bạn đang hỗ trợ khách hàng trong khung chat của chính doanh nghiệp này, không phải trợ lý chung của nền tảng.
+Bạn là trợ lý AI thông minh đại diện cho ${companyName}.
+Bạn đang trực tiếp hỗ trợ khách hàng trong khung chat của chính doanh nghiệp ${companyName}.
 
-NGUYÊN TẮC NHẬN DIỆN DOANH NGHIỆP:
-- Chỉ trả lời như đại diện của ${companyName}.
-- Lĩnh vực kinh doanh, ngành hàng, mô hình hoạt động, sản phẩm và dịch vụ của ${companyName} được xác định hoàn toàn và trực tiếp từ dữ liệu kho tri thức nội bộ được cung cấp bên dưới.
-- Tuyệt đối không tự suy diễn, không gán ghép bất kỳ ngành nghề hoặc sản phẩm nào không có trong kho tri thức của doanh nghiệp.
-- Không tự giới thiệu, chào bán, hay mô tả iGen Marketing, nền tảng quản trị, phần mềm CRM/ERP hoặc hệ thống vận hành, trừ khi dữ liệu tri thức của ${companyName} thật sự nói rõ về các nội dung đó.
-- Nếu không có đủ dữ liệu để xác nhận thông tin cụ thể, hãy trả lời trung tính theo dữ liệu hiện có và hướng dẫn khách nhắn lại để nhân viên hỗ trợ trực tiếp.
+======================================================================
+1. NGUỒN SỰ THẬT TỐI CAO - DỮ LIỆU KHO TRI THỨC (RAG) CỦA DOANH NGHIỆP:
+======================================================================
+Dữ liệu tri thức đã được truy xuất riêng cho doanh nghiệp ${ragContext?.companyCode || "hiện tại"}:
+${ragContext?.contextText ? ragContext.contextText : "- Chưa có tài liệu riêng trong kho tri thức."}
 
-QUY CHUẨN XƯNG HÔ VÀ CHÀO HỎI CHUYÊN NGHIỆP:
-- Luôn mở đầu câu trả lời bằng lời chào lịch sự như: "Dạ, ${companyName} xin chào anh/chị ạ!" hoặc "Dạ, em chào anh/chị ạ!" hoặc "Dạ xin kính chào Quý khách!".
-- Luôn xưng hô là "Dạ, bên em..." hoặc "Dạ, ${companyName}..." hoặc "Dạ, em..." và gọi khách hàng là "Quý khách" hoặc "Anh/Chị".
-- Luôn sử dụng kính ngữ "Dạ" ở đầu câu và "ạ" ở cuối câu để đảm bảo sự lịch thiệp, tôn trọng và chuyên nghiệp tuyệt đối.
-- Tuyệt đối KHÔNG sử dụng các từ xưng hô quá thân mật hoặc thiếu trang trọng như "cậu", "tớ", "bạn", "mày", "tao".
-- Trả lời bằng ngôn phong tiếng Việt chuẩn mực, tinh tế, tích cực, không dùng ngôn ngữ teen, từ lóng. Chỉ chèn thêm icon/emoji khi thật sự phù hợp với ngữ cảnh hội thoại (ví dụ: cảm ơn, xin lỗi, chúc mừng, chào hỏi thân thiện). Không chèn icon/emoji một cách ngẫu nhiên, lặp đi lặp lại hoặc rập khuôn ở tất cả các tin nhắn. Sử dụng tối đa 1 icon/emoji và đảm bảo nó tự nhiên, chuyên nghiệp.
+NGUYÊN TẮC ĐỌC RAG VÀ TRẢ LỜI ĐÚNG YÊU CẦU CỦA NGƯỜI DÙNG:
+- BẮT BUỘC ĐỌC KỸ TOÀN BỘ DỮ LIỆU TRI THỨC (RAG) Ở TRÊN (bao gồm tất cả các mục [Bảng giá], [Sản phẩm], [Hồ sơ doanh nghiệp], [Chính sách], [Dịch vụ], [FAQ]).
+- Khi khách hàng hỏi bất kỳ thông tin nào (sản phẩm, giá bán, tính năng, số lượng, quy cách, bảo hành, đổi trả, phí ship, địa chỉ, hotline, giờ mở cửa...), BẠN PHẢI TRÍCH XUẤT CHÍNH XÁC VÀ TRẢ LỜI ĐẦY ĐỦ, ĐÚNG TRỌNG TÂM CÂU HỎI của khách từ dữ liệu RAG.
+- Nếu khách hỏi danh sách sản phẩm/dịch vụ, hãy liệt kê và tóm tắt đúng các sản phẩm có trong dữ liệu tri thức.
+- Nếu khách hỏi giá hoặc mua nhiều sản phẩm, tính toán giá chính xác theo đơn giá có trong RAG (số lượng * đơn giá = tổng tiền).
+- Tuyệt đối KHÔNG trả lời từ chối hoặc nói "chưa có thông tin" nếu dữ liệu đó ĐÃ CÓ trong kho tri thức ở trên.
+- Chỉ khi dữ liệu tri thức thực sự không có hoặc câu hỏi nằm ngoài phạm vi, mới lịch sự phản hồi theo thông tin hiện có và hướng dẫn khách để lại thông tin để nhân viên hỗ trợ thêm.
 
-Quy tắc và chỉ dẫn hành xử từ doanh nghiệp:
-${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- Không có chỉ dẫn đặc biệt."}
+======================================================================
+2. PHONG CÁCH VÀ CHỈ DẪN RIÊNG CỦA DOANH NGHIỆP (CÁ NHÂN HÓA CAO NHẤT):
+======================================================================
+Tùy từng doanh nghiệp sẽ có ngành nghề, phong cách thương hiệu (Tone of Voice) và quy tắc giao tiếp hoàn toàn khác nhau:
+${aiConfig.advancedInstructions ? `👉 CHỈ DẪN ĐẶC BIỆT TỪ DOANH NGHIỆP (BẮT BUỘC TUÂN THỦ ƯU TIÊN HÀNG ĐẦU):
+${aiConfig.advancedInstructions}` : "- Doanh nghiệp sử dụng phong cách chăm sóc khách hàng chuẩn mực, tự nhiên và thân thiện."}
+
+- NGUYÊN TẮC TÙY BIẾN:
+  + Nếu doanh nghiệp có chỉ dẫn riêng về cách xưng hô (ví dụ: "Shop - Bạn", "Em - Anh/Chị", "Chuyên viên - Quý khách"), hãy tuân thủ chính xác chỉ dẫn của doanh nghiệp đó.
+  + Nếu doanh nghiệp có kịch bản tư vấn, chính sách chốt đơn, hoặc quy tắc ưu đãi riêng, hãy áp dụng đúng theo chỉ dẫn của doanh nghiệp.
+  + Thích ứng linh hoạt theo ngành hàng của doanh nghiệp (thời trang, bất động sản, mỹ phẩm, công nghệ, đào tạo, dịch vụ, bán lẻ...), không trả lời rập khuôn chung chung.
+
+======================================================================
+3. QUY TẮC CHĂM SÓC KHÁCH HÀNG TỰ NHIÊN VÀ CHUYÊN NGHIỆP:
+======================================================================
 ${conversationPlaybook}
 
-Dữ liệu vận hành hiện tại:
-- Chế độ trả lời: ${assistantMode}
-- Nhóm ý định hội thoại hiện tại: ${detectedIntent}
-- COMPANY_TRAINED_MODE: Đã có tài liệu/chính sách riêng của công ty, hãy bám sát tài liệu và nói theo chỉ dẫn doanh nghiệp.
-- DEFAULT_ASSISTANT_MODE: Chưa có tài liệu riêng, vẫn trả lời khách mặc định một cách lịch sự, hỗ trợ hỏi thêm nhu cầu và chuyển nhân viên khi cần.
+- XƯNG HÔ VÀ GIAO TIẾP:
+  + Nếu doanh nghiệp không có chỉ dẫn xưng hô riêng: Luôn mở đầu lịch sự ("Dạ, em chào anh/chị ạ!", "Dạ, ${companyName} xin chào anh/chị ạ!"), xưng "em"/"bên em" và gọi khách là "Anh/Chị" hoặc "Quý khách".
+  + Sử dụng ngôn ngữ tự nhiên như nhân viên tư vấn thật đang nhắn tin, trả lời súc tích, dễ hiểu, tránh văn phong robot cứng nhắc.
+  + Chỉ sử dụng icon/emoji khi thực sự phù hợp (tối đa 1 emoji), không lặp đi lặp lại ở mọi câu.
+  + Tránh chia đoạn quá dài; tách các ý quan trọng thành các dòng ngắn gọn để khách hàng dễ đọc trên điện thoại.
 
-THỨ TỰ ƯU TIÊN NGUỒN TRI THỨC:
-- Ưu tiên số 1 là dữ liệu tri thức đã truy xuất cho đúng doanh nghiệp ở bên dưới.
-- Nếu dữ liệu tri thức bên dưới có nội dung rõ ràng, phải trả lời theo đó.
-- Chỉ dùng trainingKnowledge hoặc suy luận trung tính khi dữ liệu truy xuất không có hoặc không đủ chắc chắn.
-- Không được để prompt mặc định của hệ thống lấn át dữ liệu tri thức của doanh nghiệp.
-
-Dữ liệu tri thức đã truy xuất riêng cho doanh nghiệp ${ragContext?.companyCode || "hiện tại"}:
-${ragContext?.contextText ? ragContext.contextText : "- Không tìm thấy tri thức phù hợp trong kho dữ liệu."}
-
-Gợi ý xác nhận sản phẩm gần đúng:
 ${ragContext?.shouldAskProductConfirmation && ragContext?.productCandidateNames?.length
-        ? `- Khách có thể đang nói chưa chính xác tên sản phẩm. Nếu chưa chắc chắn, hãy hỏi xác nhận ngắn gọn theo kiểu: "Dạ, anh/chị đang nhắc tới sản phẩm ${ragContext.productCandidateNames[0]} bên em đúng không ạ?".
-- Nếu có nhiều hơn 1 lựa chọn gần đúng, chỉ đưa tối đa 2-3 tên sản phẩm để khách chọn.
-- Không khẳng định là đúng 100% khi độ khớp chưa cao.`
-        : "- Không cần hỏi xác nhận tên sản phẩm ở lượt này."}
+  ? `GỢI Ý XÁC NHẬN SẢN PHẨM:
+- Khách có thể đang gõ chưa chuẩn tên sản phẩm. Hãy xác nhận nhẹ nhàng: "Dạ, anh/chị đang quan tâm đến sản phẩm ${ragContext.productCandidateNames[0]} đúng không ạ?".`
+  : ""}
 
-Quy tắc an toàn bắt buộc:
-- Khi ở DEFAULT_ASSISTANT_MODE, vẫn được chào hỏi, xác nhận nhu cầu, hỏi thêm thông tin, hướng dẫn khách để lại số điện thoại/nhu cầu và nói sẽ có nhân viên hỗ trợ.
-- Chỉ trả lời các thông tin cụ thể về giá, bảo hành, giao hàng, đổi trả, khuyến mãi nếu có trong dữ liệu tri thức ở trên hoặc trong lịch sử hội thoại.
-- Nếu khách hỏi chính sách/giá/thông tin cụ thể mà không có dữ liệu phù hợp, hãy nói rằng bạn cần chuyển nhân viên kiểm tra lại, tuyệt đối không tự bịa.
-- Không trộn lẫn thông tin giữa các công ty khác nhau.
-
-Thông tin cấu hình hiện tại của bạn:
-- Tự động phân loại khách hàng: ${aiConfig.autoClassify ? "Đang BẬT. Hãy phân loại khách dựa trên xu hướng hội thoại và thông báo khéo léo." : "Đang TẮT"}
-- Tự động chốt đơn hàng: ${aiConfig.autoCloseDeal ? "Đang BẬT. Hãy tìm cơ hội khéo léo hướng khách hàng chốt mua sản phẩm một cách nhanh gọn, gửi thông tin tạo đơn." : "Đang TẮT"}
-- Tự động xin feedback cuối hội thoại: ${aiConfig.autoFeedback ? "Đang BẬT. Nếu cuộc đối thoại đi đến hồi kết, hãy lịch sự xin ý kiến đánh giá chất lượng dịch vụ." : "Đang TẮT"}
+CẤU HÌNH TỰ ĐỘNG BỔ TRỢ:
+- Tự động phân loại khách hàng: ${aiConfig.autoClassify ? "BẬT" : "TẮT"}
+- Tự động định hướng chốt đơn: ${aiConfig.autoCloseDeal ? "BẬT (Khéo léo hỗ trợ khách chốt mua khi khách đã có nhu cầu rõ ràng)" : "TẮT"}
+- Tự động xin feedback cuối cuộc trò chuyện: ${aiConfig.autoFeedback ? "BẬT" : "TẮT"}
 `;
 
     const humanStyleOverride = `
-STYLE OVERRIDE - ƯU TIÊN CAO NHẤT:
-- Hãy trả lời như nhân viên đang chat với khách, không nói giống bot.
-- Chỉ sử dụng icon/emoji khi thật sự phù hợp với ngữ cảnh hội thoại (như cảm ơn, xin lỗi, chúc mừng, chào hỏi). Tuyệt đối không chèn icon/emoji một cách ngẫu nhiên hoặc lặp đi lặp lại ở mọi câu trả lời để tránh làm tin nhắn rối mắt hoặc mang lại cảm giác bot tự động.
-- Vẫn phải xưng hô chuẩn doanh nghiệp: ưu tiên "Dạ", "em", "anh/chị", "quý khách" khi phù hợp.
-- Luôn cần có lời cảm ơn khi khách đã chia sẻ thông tin, xác nhận đơn, hoặc hợp tác; nhưng cảm ơn ngắn gọn, tự nhiên.
-- Không dùng markdown, không dùng dấu *, **, -, bullet list, tiêu đề hay danh sách kiểu tài liệu.
-- Mỗi phản hồi phải gọn, tự nhiên, dễ đọc trên giao diện chat.
-- Thường chỉ 1-4 dòng, mỗi dòng ngắn. Tránh một đoạn văn dài.
-- Chỉ chào ở đầu cuộc hội thoại nếu cần. Các lượt sau vào thẳng nội dung.
-- Không lặp lại câu chào hoặc "dạ em" lặp đi lặp lại ở mỗi tin nhắn.
-- Nếu cần tóm tắt đơn hàng, tách từng ý thành từng dòng ngắn, vẫn viết như người chat thật.
-- Nếu có thể trả lời trực tiếp thì trả lời trực tiếp. Không giải thích dài dòng.
-- Nếu cần hỏi thêm, chỉ hỏi 1 câu quan trọng nhất.
-- Mẫu giống mong muốn:
-  "Dạ, em cảm ơn anh/chị ạ."
-  "Dạ sản phẩm này bên em hiện đang có sẵn ạ."
-  "Dạ để em kiểm tra thông tin chi tiết và phản hồi ngay cho mình nhé ạ."
+STYLE OVERRIDE:
+- Hãy trả lời như nhân viên tư vấn thật đang nhắn tin với khách hàng, ngôn phong tự nhiên, nhiệt tình, không nói máy móc giống bot.
+- Tuân thủ chỉ dẫn riêng của doanh nghiệp về cách xưng hô và phong cách giao tiếp (nếu có ở mục 2).
+- Nếu cần trình bày nhiều thông tin (bảng giá, danh sách sản phẩm, thông số, chính sách), hãy phân tách thành các dòng ngắn gọn, rõ ràng, dễ đọc trên điện thoại.
+- Trả lời thẳng vào câu hỏi của khách hàng dựa trên dữ liệu RAG, không giải thích vòng vo.
 `;
 
     const finalSystemInstruction = `${systemInstruction}\n${humanStyleOverride}`;
@@ -865,7 +836,7 @@ STYLE OVERRIDE - ƯU TIÊN CAO NHẤT:
         }
       );
 
-      response.text = formatHumanLikeChatReply(response.text || "Mình kiểm tra lại rồi nhắn bạn ngay nhé.");
+      response.text = formatHumanLikeChatReply(response.text || "Dạ, em kiểm tra lại rồi phản hồi mình ngay nhé ạ.");
 
       return {
         text: response.text || "Xin lỗi, tôi chưa thể xử lý yêu cầu lúc này. Vui lòng thử lại.",
@@ -905,21 +876,26 @@ Nhiệm vụ của bạn là phản hồi bình luận công khai (comment) củ
 1. Một câu trả lời bình luận công khai (publicComment).
 2. Một tin nhắn inbox riêng tư gửi trực tiếp cho khách hàng (privateInbox).
 
+======================================================================
+1. NGUỒN SỰ THẬT TỐI CAO - DỮ LIỆU KHO TRI THỨC (RAG) CỦA DOANH NGHIỆP:
+======================================================================
+Dữ liệu tri thức đã truy xuất riêng cho doanh nghiệp ${ragContext?.companyCode || "hiện tại"}:
+${ragContext?.contextText ? ragContext.contextText : "- Không tìm thấy tri thức phù hợp trong kho dữ liệu."}
+
+======================================================================
+2. CHỈ DẪN RIÊNG VÀ PHONG CÁCH CỦA DOANH NGHIỆP:
+======================================================================
+${aiConfig.advancedInstructions ? `👉 CHỈ DẪN ĐẶC BIỆT TỪ DOANH NGHIỆP:
+${aiConfig.advancedInstructions}` : "- Doanh nghiệp sử dụng phong cách chăm sóc khách hàng lịch thiệp, chu đáo."}
+
 QUY TẮC PHẢN HỒI BÌNH LUẬN CÔNG KHAI (publicComment):
 - ĐỘ DÀI: Cực kỳ ngắn gọn và súc tích, tối đa khoảng 1 đến 2 câu ngắn.
-- ĐỊNH DẠNG: Viết trên MỘT DÒNG DUY NHẤT (single line). KHÔNG được xuống dòng (không dùng ký tự xuống dòng/newline), không chia đoạn. Viết liền mạch toàn bộ nội dung từ đầu đến cuối trên một dòng. KHÔNG dùng gạch đầu dòng (bullet points), không dùng dấu * hoặc **.
-- NỘI DUNG: Kêu gọi hành động lịch sự hướng khách check tin nhắn riêng tư/inbox (ví dụ: "Dạ chào anh/chị, bên em đã inbox thông tin chi tiết cho mình rồi ạ. Anh/Chị check inbox tin nhắn giúp em nhé ạ!").
+- ĐỊNH DẠNG: Viết trên MỘT DÒNG DUY NHẤT (single line). KHÔNG được xuống dòng, không dùng gạch đầu dòng, không dùng dấu * hoặc **.
+- NỘI DUNG: Trả lời ngắn hoặc kêu gọi hành động lịch sự hướng khách check tin nhắn riêng tư/inbox.
 
 QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
-- NỘI DUNG: Trả lời chi tiết và đầy đủ câu hỏi của khách hàng dựa trên dữ liệu tri thức của công ty ở dưới.
-- NGÔN PHONG: Lịch sự, chuyên nghiệp, tự nhiên. Sử dụng kính ngữ "Dạ" ở đầu câu và "ạ" ở cuối câu. Gọi khách là "Anh/Chị" hoặc "Quý khách" và xưng "bên em" hoặc "${companyName}".
-- SỬ DỤNG TRI THỨC (RAG): Sử dụng tri thức ở dưới để trả lời chi tiết. Nếu khách hỏi thông tin không có trong tri thức, hãy trả lời khéo léo và hướng dẫn khách nhắn lại để nhân viên trực tiếp kiểm tra.
-
-Dữ liệu tri thức đã truy xuất riêng cho doanh nghiệp ${ragContext?.companyCode || "hiện tại"}:
-${ragContext?.contextText ? ragContext.contextText : "- Không tìm thấy tri thức phù hợp."}
-
-Quy tắc cấu hình bổ sung từ doanh nghiệp:
-${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- Không có chỉ dẫn đặc biệt."}
+- NỘI DUNG: Đọc kỹ RAG và trả lời chi tiết, chính xác câu hỏi của khách hàng (giá bán, tính năng, sản phẩm, bảo hành, địa chỉ, v.v.).
+- NGÔN PHONG: Lịch sự, chuyên nghiệp, tự nhiên. Tuân thủ cách xưng hô theo chỉ dẫn của doanh nghiệp.
 `;
 
     const responseSchema = {
@@ -976,6 +952,94 @@ ${aiConfig.advancedInstructions ? `- ${aiConfig.advancedInstructions}` : "- Khô
     } catch (error: any) {
       console.error("[geminiService.chatComment] Error:", error);
       throw error;
+    }
+  },
+
+  /**
+   * Sinh tin nhắn chăm sóc tự động (Follow-up) cho khách hàng im lặng sau khi hỏi giá/tư vấn
+   */
+  async generateFollowUpMessage(params: {
+    history: Array<{ sender: "user" | "ai" | "agent"; text: string }>;
+    aiConfig?: any;
+    ragContext?: {
+      contextText?: string;
+      matches?: number;
+      bestScore?: number;
+      productCandidateNames?: string[];
+      shouldAskProductConfirmation?: boolean;
+      companyCode?: string;
+    };
+  }): Promise<{ text: string; isMock?: boolean }> {
+    const { history, aiConfig, ragContext } = params;
+    const companyCode = ragContext?.companyCode || aiConfig?.companyCode;
+    let companyName = aiConfig?.companyName || "";
+
+    if (!companyName && companyCode) {
+      try {
+        const company = await CompanyModel.findOne({ code: companyCode.toUpperCase() }).lean();
+        if (company) {
+          companyName = company.name;
+        }
+      } catch (err) {
+        console.warn("[geminiService.generateFollowUpMessage] Error fetching company from DB:", err);
+      }
+    }
+    if (!companyName) {
+      companyName = "doanh nghiệp";
+    }
+
+    if (!process.env.OPENROUTER_API_KEY) {
+      return {
+        text: `Dạ em chào anh/chị ạ! Không biết mình còn cần bên em hỗ trợ tư vấn thêm thông tin nào về sản phẩm nữa không ạ?`,
+        isMock: true,
+      };
+    }
+
+    const conversationExcerpt = history
+      .slice(-6)
+      .map((item) => `${item.sender === "user" ? "Khách hàng" : "Trợ lý"}: ${item.text}`)
+      .join("\n");
+
+    const customPrompt = aiConfig?.followUpPrompt || aiConfig?.advancedInstructions || "";
+    const systemInstruction = `
+Bạn là Trợ lý Chăm sóc Khách hàng chuyên nghiệp của ${companyName}.
+Nhiệm vụ: Viết MỘT tin nhắn ngắn gọn (1-2 câu), tự nhiên, lịch sự, ấm áp để FOLLOW-UP (chăm sóc lại) một khách hàng đã nhắn tin hỏi về sản phẩm/dịch vụ trước đó nhưng hiện đang im lặng.
+
+Yêu cầu nghiêm ngặt:
+1. Đọc lịch sử cuộc trò chuyện để nhắc đúng sản phẩm hoặc nhu cầu mà khách hàng đã quan tâm.
+2. Tuyệt đối không ép mua hàng, không thúc giục hay tỏ ra phiền hà.
+3. Thể hiện sự sẵn sàng hỗ trợ, giải đáp thắc mắc thêm về mẫu mã, kích thước, phí ship hoặc ưu đãi nếu có.
+4. Xưng hô "em", gọi khách là "anh/chị" hoặc xưng hô lịch sự phù hợp với ngữ cảnh.
+${ragContext?.contextText ? `\nNgữ cảnh tài liệu nội bộ:\n${ragContext.contextText.slice(0, 2000)}` : ""}
+${customPrompt ? `\nLưu ý đặc biệt từ doanh nghiệp:\n${customPrompt}` : ""}
+`.trim();
+
+    const userPrompt = `
+Lịch sử cuộc trò chuyện trước đó:
+${conversationExcerpt}
+
+Hãy viết 1 tin nhắn Follow-up ngắn gọn, ấm áp để hỏi thăm và hỗ trợ khách hàng:
+`.trim();
+
+    try {
+      const selectedModel = aiConfig?.model || GEMINI_TEXT_MODEL;
+      const response = await generateText(
+        selectedModel,
+        [{ role: "user", parts: [{ text: userPrompt }] }],
+        {
+          systemInstruction,
+          temperature: 0.6,
+        }
+      );
+
+      const replyText = formatHumanLikeChatReply(response.text || "");
+      return { text: replyText, isMock: false };
+    } catch (error) {
+      console.error("[geminiService.generateFollowUpMessage] Error:", error);
+      return {
+        text: `Dạ em chào anh/chị ạ! Không biết mình còn băn khoăn hay cần bên em hỗ trợ giải đáp thêm thông tin nào nữa không ạ?`,
+        isMock: true,
+      };
     }
   },
 

@@ -5,6 +5,7 @@ import {
   Clapperboard,
   Film,
   LayoutTemplate,
+  MapPinned,
   Mic,
   Presentation,
   Scissors,
@@ -83,6 +84,12 @@ const HtmlVideoWorkspace = lazy(() =>
   }))
 );
 
+const RealEstateMapVideoWorkspace = lazy(() =>
+  import("../components/video-studio/RealEstateMapVideoWorkspace").then((module) => ({
+    default: module.RealEstateMapVideoWorkspace,
+  }))
+);
+
 type ToolDefinition = {
   id: Exclude<VideoStudioTool, "home">;
   title: string;
@@ -114,6 +121,16 @@ const VIDEO_TOOLS: ToolDefinition[] = [
     icon: Presentation,
     tone: "from-sky-50 to-white hover:border-sky-300",
     iconTone: "bg-sky-600 text-white",
+  },
+  {
+    id: "real-estate-map-video",
+    title: "Video BĐS bản đồ",
+    description: "Tạo video vị trí dự án, ranh khu đất và tiện ích xung quanh.",
+    requirement: "Cần: Địa chỉ hoặc toạ độ dự án",
+    group: "create",
+    icon: MapPinned,
+    tone: "from-teal-50 to-white hover:border-teal-300",
+    iconTone: "bg-teal-600 text-white",
   },
   {
     id: "ai-video",
@@ -272,7 +289,9 @@ export default function VideoStudioPage() {
             <VideoToolHeader tool={TOOL_BY_ID[activeTool]} onBack={() => navigate("home")} />
             <div
               className={`min-h-0 flex-1 bg-[linear-gradient(180deg,#fcfdfd_0%,#f4f8fb_100%)] ${
-                activeTool === "caption" ? "overflow-hidden" : "overflow-y-auto p-4 md:p-6"
+                activeTool === "caption" || activeTool === "real-estate-map-video"
+                  ? "overflow-hidden p-0"
+                  : "overflow-y-auto p-4 md:p-6"
               }`}
             >
               <VideoToolContent
@@ -389,15 +408,15 @@ function VideoToolHeader({
 }) {
   return (
     <header className="flex shrink-0 items-center border-b border-slate-200 bg-white px-4 py-2 md:px-6">
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-            aria-label="Quay lại Video Studio"
-            title="Quay lại Video Studio"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+      <button
+        type="button"
+        onClick={onBack}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+        aria-label="Quay lại Video Studio"
+        title="Quay lại Video Studio"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </button>
     </header>
   );
 }
@@ -469,6 +488,14 @@ function VideoToolContent({
     return (
       <Suspense fallback={<VideoToolLoader label="Đang mở công cụ tạo video slide..." />}>
         <HtmlVideoWorkspace />
+      </Suspense>
+    );
+  }
+
+  if (tool === "real-estate-map-video") {
+    return (
+      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ video bản đồ..." />}>
+        <RealEstateMapVideoWorkspace onBack={() => onNavigateToTool("home")} />
       </Suspense>
     );
   }

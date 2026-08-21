@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../model/ai-knowledge.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
+import { geminiService } from "./gemini.service";
 
 const EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_TOP_K = 5;
@@ -20,7 +21,30 @@ type PurposeScope =
 type PageScope = "all" | "selected";
 export type KnowledgeDocumentType =
   | "company_profile" | "product" | "service" | "policy" | "pricing"
-  | "faq" | "brand_guideline" | "general";
+  | "promotion" | "faq" | "brand_guideline" | "general";
+
+export interface KnowledgeConflict {
+  id: string;
+  type: "pricing" | "contact" | "policy" | "duplicate";
+  severity: "warning" | "error";
+  title: string;
+  description: string;
+  documentA: { id: string; title: string; documentType?: string };
+  documentB: { id: string; title: string; documentType?: string };
+  conflictingValues: { a: string; b: string };
+}
+
+const DOC_TYPE_LABELS: Record<KnowledgeDocumentType, string> = {
+  company_profile: "Thông tin doanh nghiệp",
+  product: "Sản phẩm",
+  pricing: "Bảng giá",
+  promotion: "Khuyến mãi / Ưu đãi",
+  policy: "Chính sách",
+  service: "Dịch vụ",
+  faq: "Câu hỏi thường gặp (FAQ)",
+  brand_guideline: "Nhận diện thương hiệu",
+  general: "Tài liệu",
+};
 
 function inferDocumentType(
   requestedType: KnowledgeDocumentType | undefined,
@@ -30,8 +54,10 @@ function inferDocumentType(
   if (requestedType && requestedType !== "general") return requestedType;
 
   const normalizedTitle = normalizeForLookup(sourceTitle);
-  const normalizedText = normalizeForLookup(text.slice(0, 12000));
-  const hasPricingTitle = /\b(bang gia|bao gia|price list|pricing|retail price|wholesale price)\b/.test(normalizedTitle);
+  const normalizedText = normalizeForLookup(text.slice(0, 15000));
+  const combined = `${normalizedTitle} ${normalizedText}`;
+
+  // Kiểm tra file Excel / Spreadsheet trước
   const isSpreadsheet =
     /\.(xlsx?|csv)$/i.test(sourceTitle) ||
     /\bsheet\s*:|\btieu de cot\s*:|\bgoogle sheet\b/i.test(text);
@@ -41,13 +67,180 @@ function inferDocumentType(
     /\b(san pham|ten hang|ten hang hoa|ma hang|sku|model|product)\b/.test(normalizedText);
   const structuredRows = (text.match(/^(Sản phẩm|Dòng)\s+\d+\s*:/gim) || []).length;
 
-  if (
-    hasPricingTitle ||
-    (isSpreadsheet && hasPriceColumn && (hasProductColumn || structuredRows >= 2))
-  ) {
+  if (isSpreadsheet && hasPriceColumn && (hasProductColumn || structuredRows >= 2)) {
     return "pricing";
   }
+
+  // Bảng phân loại quy tắc thông minh
+  const rules: Array<{
+    type: KnowledgeDocumentType;
+    titlePatterns: RegExp[];
+    contentPatterns: RegExp[];
+    minContentMatches: number;
+  }> = [
+    {
+      type: "pricing",
+      titlePatterns: [/\b(bang gia|bao gia|price list|pricing|gia ban|don gia)\b/],
+      contentPatterns: [
+        /\b(gia|gia ban|don gia|gia le|gia si|price|chi phi)\b/,
+        /\b(vnd|vnđ|dong|₫|\.000|nghin|trieu)\b/,
+        /\b(san pham|hang hoa|dich vu|goi|combo|don vi tinh|dvt)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "promotion",
+      titlePatterns: [/\b(khuyen mai|uu dai|promotion|sale|giam gia|combo|voucher|coupon|tri an|chuong trinh)\b/],
+      contentPatterns: [
+        /\b(khuyen mai|uu dai|giam gia|sale|flash sale|giam)\b/,
+        /\b(tang kem|free|mien phi|discount|voucher|coupon|qua tang)\b/,
+        /\b(tu ngay|den ngay|thoi gian|han su dung|ap dung|dieu kien)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "policy",
+      titlePatterns: [/\b(chinh sach|bao hanh|doi tra|van chuyen|ship|giao hang|thanh toan|hoan tien|quy dinh|dieu khoan)\b/],
+      contentPatterns: [
+        /\b(chinh sach|quy dinh|dieu kien|cam ket|quy trinh)\b/,
+        /\b(bao hanh|doi tra|hoan tien|van chuyen|giao hang|ship|doi hang|tra hang)\b/,
+        /\b(thanh toan|chuyen khoan|cod|tien mat|tra gop)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "faq",
+      titlePatterns: [/\b(faq|cau hoi|hoi dap|q&a|thuong gap|giai dap|thac mac)\b/],
+      contentPatterns: [
+        /\b(cau hoi|hoi|dap|tra loi|faq|q&a)\b/,
+        /\b(lam the nao|nhu the nao|tai sao|khi nao|o dau|co duoc khong)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "service",
+      titlePatterns: [/\b(dich vu|service|goi dich vu|bang dich vu|giai phap|dich vu tu van)\b/],
+      contentPatterns: [
+        /\b(dich vu|service|tu van|cung cap|trien khai|giai phap|ho tro)\b/,
+        /\b(goi|plan|package|basic|premium|standard|chuyen nghiep|tron goi)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "product",
+      titlePatterns: [/\b(san pham|catalog|catalogue|danh muc|product|hang hoa|mau ma|bo suu tap)\b/],
+      contentPatterns: [
+        /\b(san pham|hang hoa|model|sku|ma hang|dong san pham)\b/,
+        /\b(thong so|kich thuoc|size|mau|mau sac|chat lieu|trong luong|cong suat|tinh nang)\b/,
+        /\b(cong dung|huong dan|thanh phan|xuat xu|chat luong)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "company_profile",
+      titlePatterns: [/\b(gioi thieu|ve chung toi|about|cong ty|ho so|thong tin doanh nghiep|profile)\b/],
+      contentPatterns: [
+        /\b(cong ty|doanh nghiep|thanh lap|nam kinh nghiem|tru so)\b/,
+        /\b(dia chi|hotline|sdt|email|lien he|chi nhanh|website|van phong)\b/,
+        /\b(su menh|tam nhin|gia tri cot loi|vision|mission)\b/,
+      ],
+      minContentMatches: 2,
+    },
+    {
+      type: "brand_guideline",
+      titlePatterns: [/\b(thuong hieu|brand|nhan dien|logo|guideline|tone of voice|quy chuan)\b/],
+      contentPatterns: [
+        /\b(thuong hieu|brand|logo|font|mau sac|color|slogan|tagline|quy chuan)\b/,
+      ],
+      minContentMatches: 1,
+    },
+  ];
+
+  // 1) Khớp title trước (ưu tiên cao)
+  for (const rule of rules) {
+    if (rule.titlePatterns.some((p) => p.test(normalizedTitle))) {
+      return rule.type;
+    }
+  }
+
+  // 2) Đếm pattern khớp trong nội dung
+  for (const rule of rules) {
+    const matches = rule.contentPatterns.filter((p) => p.test(combined)).length;
+    if (matches >= rule.minContentMatches) {
+      return rule.type;
+    }
+  }
+
   return requestedType || "general";
+}
+
+/**
+ * Phân tích tin nhắn của khách hàng để tự động xác định danh mục tài liệu cần truy xuất (Intent Router).
+ * Trả về danh sách KnowledgeDocumentType cần ưu tiên.
+ * Nếu không xác định rõ (hoặc chào hỏi chung), trả về mảng rỗng để fallback toàn kho.
+ */
+function detectRequiredDocumentTypes(query: string): KnowledgeDocumentType[] {
+  const q = normalizeForLookup(query);
+  const detected = new Set<KnowledgeDocumentType>();
+
+  // Nhóm GIÁ CẢ & BÁO GIÁ
+  if (/\b(gia|bao nhieu|bang gia|bao gia|don gia|gia ban|gia le|gia si|phi|cost|price|tinh tien|tong tien)\b/.test(q)) {
+    detected.add("pricing");
+    detected.add("product");
+    detected.add("promotion");
+  }
+
+  // Nhóm KHUYẾN MÃI & ƯU ĐÃI
+  if (/\b(khuyen mai|uu dai|giam gia|sale|flash sale|voucher|coupon|tang kem|combo|mien phi|free|chiet khau|tri an)\b/.test(q)) {
+    detected.add("promotion");
+    detected.add("pricing");
+  }
+
+  // Nhóm SẢN PHẨM & TÍNH NĂNG & THÔNG SỐ
+  if (/\b(san pham|hang|mau|size|mau sac|chat lieu|model|sku|thong so|kich thuoc|con hang|het hang|kho|trong luong|cong suat|chuc nang|tinh nang|dung nhu nao|xem hang)\b/.test(q)) {
+    detected.add("product");
+    detected.add("pricing");
+  }
+
+  // Nhóm CHÍNH SÁCH (vận chuyển, bảo hành, đổi trả, thanh toán)
+  if (/\b(ship|giao hang|van chuyen|bao hanh|doi tra|hoan tien|thanh toan|chuyen khoan|cod|tra gop|phi ship|freeship|chinh sach|kiem tra hang|dong kiem)\b/.test(q)) {
+    detected.add("policy");
+  }
+
+  // Nhóm DỊCH VỤ & GIẢI PHÁP
+  if (/\b(dich vu|service|tu van|goi dich vu|package|plan|basic|premium|trien khai|giai phap)\b/.test(q)) {
+    detected.add("service");
+    detected.add("pricing");
+  }
+
+  // Nhóm THÔNG TIN DOANH NGHIỆP & LIÊN HỆ
+  if (/\b(cong ty|doanh nghiep|gioi thieu|dia chi|hotline|sdt|so dien thoai|email|lien he|chi nhanh|la ai|ve ben|shop o dau|cua hang o dau|gio lam viec|gio mo cua|uy tin)\b/.test(q)) {
+    detected.add("company_profile");
+    detected.add("brand_guideline");
+  }
+
+  // Nhóm FAQ & HƯỚNG DẪN SỬ DỤNG
+  if (/\b(cach|lam sao|huong dan|faq|tai sao|bao lau|mat bao lau|thu tuc|quy trinh|co nen|loi gi)\b/.test(q)) {
+    detected.add("faq");
+    detected.add("policy");
+  }
+
+  // Nhóm MUA HÀNG & ĐẶT ĐƠN (cần cả giá, sản phẩm, chính sách)
+  if (/\b(mua|dat hang|dat|order|lay|muon mua|them vao|chot don|len don)\b/.test(q)) {
+    detected.add("product");
+    detected.add("pricing");
+    detected.add("policy");
+  }
+
+  // Nhóm TỔNG QUAN / TÌM HIỂU CHUNG ("bên mình có gì", "shop bán gì", "cho xem sản phẩm")
+  if (/\b(co gi|ban gi|co nhung gi|tu van|catalog|catalogue|danh sach|danh muc|cac san pham)\b/.test(q)) {
+    detected.add("product");
+    detected.add("service");
+    detected.add("pricing");
+    detected.add("company_profile");
+  }
+
+  return Array.from(detected);
 }
 
 function normalizePageTarget(pageScope?: PageScope, pageIds?: string[]) {
@@ -81,12 +274,38 @@ async function validateCompanyFacebookPages(companyCode: string, pageScope: Page
   }
 }
 
+const VIETNAMESE_CHAR_MAP: Record<string, string> = {
+  a: "[aàáảãạăằắẳẵặâầấẩẫậ]",
+  e: "[eèéẻẽẹêềếểễệ]",
+  i: "[iìíỉĩị]",
+  o: "[oòóỏõọôồốổỗộơờớởỡợ]",
+  u: "[uùúủũụưừứửữự]",
+  y: "[yỳýỷỹỵ]",
+  d: "[dđ]",
+};
+
+export function buildDiacriticRegexPattern(word: string): string {
+  const norm = normalizeForLookup(word);
+  if (!norm) return "";
+  let pattern = "";
+  for (const char of norm) {
+    if (VIETNAMESE_CHAR_MAP[char]) {
+      pattern += VIETNAMESE_CHAR_MAP[char];
+    } else if (/[a-z0-9]/.test(char)) {
+      pattern += char;
+    } else {
+      pattern += `\\${char}`;
+    }
+  }
+  return pattern;
+}
+
 const CANDIDATE_STOPWORDS = new Set([
   "toi", "muon", "dat", "mua", "ban", "cai", "cho", "cua", "co", "shop",
   "khong", "nay", "la", "gi", "de", "va", "them", "bot", "tu", "van",
   "lam", "sao", "nao", "lien", "he", "anh", "chi", "em", "quy", "khach",
-  "khao", "sat", "tim", "kiem", "xem", "lay", "nhan", "co", "ha", "nha", "a",
-  "di", "nhe", "nha", "voi", "giup", "dum", "dum", "oi", "ah", "uh",
+  "khao", "sat", "tim", "kiem", "xem", "lay", "nhan", "ha", "nha", "a",
+  "di", "nhe", "voi", "giup", "dum", "oi", "ah", "uh",
   "hoi", "duoc", "ben", "minh", "da"
 ]);
 
@@ -108,6 +327,14 @@ function tokenize(text: string) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length >= 2);
+}
+
+function tokenizeRaw(text: string) {
+  return normalizeText(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\sàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/gi, " ")
     .split(/\s+/)
     .filter((token) => token.length >= 2);
 }
@@ -145,7 +372,8 @@ function computeLooseSubstringScore(queryTokens: string[], title: string, text: 
     }
   }
 
-  return hits / Math.max(queryTokens.length, 1);
+  const effectiveLength = Math.min(Math.max(queryTokens.length, 1), 8);
+  return Math.min(1.5, hits / effectiveLength);
 }
 
 function cleanCandidateLine(line: string) {
@@ -228,17 +456,28 @@ function buildRankedContextItems(params: {
         /\b(gia|gia ban|don gia|bao gia|price|vnd|vnđ)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
         ? 0.35
         : 0;
+    const companyProfileBoost =
+      /\b(cong ty|doanh nghiep|gioi thieu|ve chung toi|dia chi|hotline|sdt|lien he|la ai|shop|thuong hieu)\b/.test(normalizeForLookup(normalizedQuery)) &&
+        /\b(cong ty|doanh nghiep|gioi thieu|dia chi|hotline|lien he|thuong hieu|brand)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
+        ? 0.3
+        : 0;
+    const promotionBoost =
+      /\b(khuyen mai|uu dai|giam gia|sale|voucher|coupon|tang|combo)\b/.test(normalizeForLookup(normalizedQuery)) &&
+        /\b(khuyen mai|uu dai|giam gia|sale|voucher|tang|combo)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
+        ? 0.3
+        : 0;
     const pageBoost =
       pageId && doc?.pageScope === "selected" && doc?.pageIds?.includes(pageId)
         ? 0.2
         : 0;
     const score =
       semanticScore + lexicalScore * 0.9 + titleBoost * 0.6 + looseMatchScore * 0.7 +
-      productDocBoost + pricingBoost + pageBoost;
+      productDocBoost + pricingBoost + companyProfileBoost + promotionBoost + pageBoost;
 
     return {
       chunkId: chunk._id,
       documentId: chunk.documentId,
+      documentType: (doc?.documentType as KnowledgeDocumentType) || "general",
       version: chunk.version,
       embedding: chunk.embedding,
       text: chunk.text,
@@ -276,7 +515,8 @@ function computeTokenOverlapScore(queryTokens: string[], chunkTokens: string[]) 
     }
   }
 
-  return matches / Math.max(queryTokens.length, 1);
+  const effectiveLength = Math.min(Math.max(queryTokens.length, 1), 8);
+  return Math.min(1.5, matches / effectiveLength);
 }
 
 function hashToken(token: string) {
@@ -307,6 +547,58 @@ function cosineSimilarity(a: number[], b: number[]) {
 }
 
 /**
+ * Chuẩn hóa và mở rộng câu truy vấn với từ lóng/viết tắt phổ biến trong chat bán hàng
+ */
+function expandQueryWithSlangAndSynonyms(query: string): {
+  normalizedQuery: string;
+  expandedQuery: string;
+  extraTerms: string[];
+} {
+  let q = String(query || "").trim();
+  const extraTerms: string[] = [];
+
+  // 1. Chuẩn hóa giá tiền viết tắt dạng "150k", "50k", "1.5tr", "2tr"
+  q = q.replace(/(\d+)[kK]\b/g, (_match, p1) => {
+    const num = parseInt(p1, 10);
+    extraTerms.push(`${num}.000`, `${num}000`, `${num} nghìn`, `${num} k`);
+    return `${num * 1000} ${num} nghìn`;
+  });
+  q = q.replace(/(\d+(?:[.,]\d+)?)\s*(?:tr|trieu|triệu)\b/gi, (_match, p1) => {
+    const num = parseFloat(p1.replace(",", "."));
+    const full = Math.round(num * 1000000);
+    extraTerms.push(`${full}`, `${p1} triệu`);
+    return `${full} ${p1} triệu`;
+  });
+
+  // 2. Mở rộng từ viết tắt thường gặp trong Chat bán hàng
+  const SLANG_MAP: Array<{ pattern: RegExp; expansion: string; terms: string[] }> = [
+    { pattern: /\b(ib|inbox)\b/gi, expansion: "nhắn tin tư vấn", terms: ["nhắn tin", "inbox", "tư vấn"] },
+    { pattern: /\b(sdt|đt|dt|tel)\b/gi, expansion: "số điện thoại hotline", terms: ["số điện thoại", "hotline", "sđt"] },
+    { pattern: /\b(dc|đc|d\/c|đ\/c)\b/gi, expansion: "địa chỉ cửa hàng", terms: ["địa chỉ", "chi nhánh", "cửa hàng"] },
+    { pattern: /\b(sz)\b/gi, expansion: "size kích thước", terms: ["size", "kích cỡ", "kích thước"] },
+    { pattern: /\b(bh)\b/gi, expansion: "bảo hành", terms: ["bảo hành", "chính sách bảo hành"] },
+    { pattern: /\b(bn|bnhieu|bao nhiu|bnh)\b/gi, expansion: "bao nhiêu", terms: ["bao nhiêu", "giá"] },
+    { pattern: /\b(freeship|fs)\b/gi, expansion: "miễn phí vận chuyển giao hàng", terms: ["freeship", "miễn phí giao hàng"] },
+    { pattern: /\b(ship|giao)\b/gi, expansion: "vận chuyển giao hàng", terms: ["vận chuyển", "giao hàng", "ship"] },
+    { pattern: /\b(sp)\b/gi, expansion: "sản phẩm", terms: ["sản phẩm", "hàng"] },
+    { pattern: /\b(rep|tl|tra loi)\b/gi, expansion: "trả lời phản hồi", terms: ["trả lời", "phản hồi"] },
+  ];
+
+  for (const item of SLANG_MAP) {
+    if (item.pattern.test(q)) {
+      extraTerms.push(...item.terms);
+    }
+  }
+
+  const expandedQuery = [q, ...extraTerms].join(" ");
+  return {
+    normalizedQuery: q,
+    expandedQuery,
+    extraTerms: Array.from(new Set(extraTerms)),
+  };
+}
+
+/**
  * Phát hiện nội dung dạng bảng sản phẩm từ Excel (output của extractWorkbookText).
  * Dạng: "Sản phẩm 1: Tên SP ..." hoặc "Dòng 1: ..."
  */
@@ -314,7 +606,7 @@ const PRODUCT_LINE_PATTERN = /^(Sản phẩm|Dong|Dòng)\s+\d+\s*:/i;
 const SHEET_HEADER_PATTERN = /^Sheet:\s+/i;
 const COLUMN_HEADER_PATTERN = /^Tiêu đề cột:\s+/i;
 
-function chunkProductTable(paragraphs: string[]) {
+function chunkProductTable(paragraphs: string[], contextPrefix: string = "") {
   // Tách header (Sheet + Tiêu đề cột) và các dòng sản phẩm
   const headerLines: string[] = [];
   const productLines: string[] = [];
@@ -327,7 +619,7 @@ function chunkProductTable(paragraphs: string[]) {
     }
   }
 
-  const headerText = headerLines.join("\n");
+  const headerText = [contextPrefix, ...headerLines].filter(Boolean).join("\n");
   const headerLen = headerText.length;
 
   // Chunk sản phẩm theo nhóm, mỗi chunk kèm header để giữ ngữ cảnh cột
@@ -355,34 +647,50 @@ function chunkProductTable(paragraphs: string[]) {
   return chunks;
 }
 
-function chunkText(text: string) {
+function chunkText(
+  text: string,
+  metadata?: { title?: string; documentType?: KnowledgeDocumentType }
+) {
   const normalized = normalizeText(text);
   if (!normalized) return [];
 
   const paragraphs = normalized.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
 
+  // Xây dựng tiền tố ngữ cảnh (Contextual Header Injection)
+  const docTypeLabel = metadata?.documentType ? (DOC_TYPE_LABELS[metadata.documentType] || "Tài liệu") : "";
+  const contextPrefix = metadata?.title
+    ? `[Tài liệu: ${metadata.title}${docTypeLabel ? ` | Danh mục: ${docTypeLabel}` : ""}]\n`
+    : "";
+
   // Phát hiện nội dung dạng bảng sản phẩm Excel: nếu >= 3 dòng khớp pattern sản phẩm
   const productLineCount = paragraphs.filter((p) => PRODUCT_LINE_PATTERN.test(p)).length;
   if (productLineCount >= 3) {
-    return chunkProductTable(paragraphs);
+    return chunkProductTable(paragraphs, contextPrefix);
   }
 
-  // Chunking thông thường cho tài liệu dạng văn bản
+  // Chunking thông thường cho tài liệu dạng văn bản với Sliding Window Overlap
   const chunks: string[] = [];
   let current = "";
-  const maxChars = 1200;
+  const maxChars = 1100;
   const minChars = 250;
+  const overlapChars = 160; // Gối đầu giữa các chunk để không đứt câu
 
   for (const paragraph of paragraphs) {
     if ((current + "\n\n" + paragraph).trim().length > maxChars && current.length >= minChars) {
-      chunks.push(current.trim());
-      current = paragraph;
+      const fullChunk = (contextPrefix + current.trim()).trim();
+      chunks.push(fullChunk);
+
+      const tail = current.length > overlapChars ? current.slice(-overlapChars).trim() : "";
+      current = [tail, paragraph].filter(Boolean).join("\n\n");
     } else {
       current = [current, paragraph].filter(Boolean).join("\n\n");
     }
   }
 
-  if (current.trim()) chunks.push(current.trim());
+  if (current.trim()) {
+    const fullChunk = (contextPrefix + current.trim()).trim();
+    chunks.push(fullChunk);
+  }
 
   return chunks.flatMap((chunk) => {
     if (chunk.length <= maxChars * 1.4) return [chunk];
@@ -507,7 +815,7 @@ export const aiKnowledgeService = {
 
     await AIKnowledgeChunkModel.deleteMany({ documentId: document._id });
 
-    const chunks = chunkText(text);
+    const chunks = chunkText(text, { title: params.sourceTitle, documentType });
     if (chunks.length > 0) {
       await repairLegacyChunkScopeIndexes();
       await AIKnowledgeChunkModel.insertMany(
@@ -552,10 +860,12 @@ export const aiKnowledgeService = {
         debugRawQueryTokens: [],
       };
     }
-    const normalizedQuery = normalizeText(params.query);
-    const queryVector = embedText(normalizedQuery);
-    const rawQueryTokens = tokenize(normalizedQuery);
+    const { normalizedQuery: rawNormQ, expandedQuery } = expandQueryWithSlangAndSynonyms(params.query);
+    const normalizedQuery = normalizeText(rawNormQ);
+    const queryVector = embedText(expandedQuery);
+    const rawQueryTokens = tokenize(expandedQuery);
     const queryTokens = rawQueryTokens.filter((token) => !CANDIDATE_STOPWORDS.has(token));
+    const accentedTokens = tokenizeRaw(expandedQuery).filter((token) => !CANDIDATE_STOPWORDS.has(normalizeForLookup(token)));
     const channel = params.channel || "facebook";
     const purpose = params.purpose || "sales";
 
@@ -566,28 +876,45 @@ export const aiKnowledgeService = {
     const topK = isProductQuery
       ? Math.max(params.topK || DEFAULT_TOP_K, 8)
       : (params.topK || DEFAULT_TOP_K);
-    const maxContextChars = isProductQuery ? 6500 : MAX_CONTEXT_CHARS;
+    const maxContextChars = isProductQuery ? 7500 : MAX_CONTEXT_CHARS;
 
     let chunks: any[] = [];
 
     // Luôn luôn tìm kiếm ngữ cảnh tài liệu RAG trong mọi trường hợp (kể cả câu hỏi về sản phẩm)
+    // INTENT ROUTER: Tự động phân tích câu hỏi để định tuyến nhóm tài liệu phù hợp nếu caller không chỉ định
+    let effectiveDocumentTypes = params.documentTypes;
+    if (!effectiveDocumentTypes?.length) {
+      const detectedTypes = detectRequiredDocumentTypes(params.query);
+      if (detectedTypes.length > 0) {
+        effectiveDocumentTypes = detectedTypes;
+      }
+    }
+
     let permittedDocumentIds: mongoose.Types.ObjectId[] | undefined;
-    if (params.documentTypes?.length) {
+    if (effectiveDocumentTypes?.length) {
       const permittedDocuments = await AIKnowledgeDocumentModel.find({
         companyCode,
-        documentType: { $in: params.documentTypes },
+        documentType: { $in: effectiveDocumentTypes },
         status: "active",
       }).select("_id").lean();
       permittedDocumentIds = permittedDocuments.map((document) => document._id);
+
+      // Safety net: Nếu doanh nghiệp chưa có tài liệu thuộc các tag được phát hiện,
+      // tự động bỏ filter để fallback tìm kiếm trên toàn bộ kho tri thức
+      if (permittedDocumentIds.length === 0) {
+        permittedDocumentIds = undefined;
+        effectiveDocumentTypes = undefined;
+      }
     }
 
+    const purposeFilterValues = ["all", purpose, "sales", "support", "marketing"];
     const filter: any = {
       companyCode,
       channelScope: { $in: ["all", channel] },
       $and: [
         {
           $or: [
-            { purposeScope: { $in: ["all", purpose] } },
+            { purposeScope: { $in: purposeFilterValues } },
             { purposeScope: { $exists: false } },
           ],
         },
@@ -609,10 +936,19 @@ export const aiKnowledgeService = {
       filter.documentId = { $in: permittedDocumentIds };
     }
 
-    if (queryTokens.length > 0) {
-      filter.$or = queryTokens.map((token) => ({
-        text: { $regex: token, $options: "i" },
-      }));
+    // Xây dựng điều kiện Regex tìm kiếm linh hoạt hỗ trợ tiếng Việt có dấu và không dấu
+    const searchTerms = Array.from(new Set([...queryTokens, ...accentedTokens]));
+    if (searchTerms.length > 0) {
+      const regexConditions: any[] = [];
+      for (const term of searchTerms.slice(0, 10)) {
+        const pattern = buildDiacriticRegexPattern(term);
+        if (pattern) {
+          regexConditions.push({ text: { $regex: pattern, $options: "i" } });
+        }
+      }
+      if (regexConditions.length > 0) {
+        filter.$or = regexConditions;
+      }
     }
 
     chunks = await AIKnowledgeChunkModel.find(filter as any)
@@ -620,14 +956,14 @@ export const aiKnowledgeService = {
       .limit(MAX_CHUNKS_TO_RANK)
       .lean();
 
-    if (chunks.length === 0 && queryTokens.length > 0) {
+    if (chunks.length === 0 && searchTerms.length > 0) {
       const fallbackFilter = {
         companyCode,
         channelScope: { $in: ["all", channel] },
         $and: [
           {
             $or: [
-              { purposeScope: { $in: ["all", purpose] } },
+              { purposeScope: { $in: purposeFilterValues } },
               { purposeScope: { $exists: false } },
             ],
           },
@@ -658,7 +994,7 @@ export const aiKnowledgeService = {
     const documents = await AIKnowledgeDocumentModel.find({
       _id: { $in: documentIds },
     })
-      .select("_id sourceTitle sourceUrl pageScope pageIds")
+      .select("_id sourceTitle sourceUrl pageScope pageIds documentType")
       .lean();
     const documentMap = new Map(documents.map((doc) => [String(doc._id), doc]));
 
@@ -670,12 +1006,12 @@ export const aiKnowledgeService = {
       queryTokens,
       pageId: params.pageId,
     })
-      .filter((item) => item.score > 0.12)
+      .filter((item) => item.score > 0.08)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
 
     const fallbackRanked =
-      ranked.length === 0 && isProductQuery
+      ranked.length === 0
         ? buildRankedContextItems({
             chunks,
             documentMap,
@@ -684,7 +1020,7 @@ export const aiKnowledgeService = {
             queryTokens,
             pageId: params.pageId,
           })
-            .filter((item) => item.score > 0.04)
+            .filter((item) => item.score > 0.03)
             .sort((a, b) => b.score - a.score)
             .slice(0, topK)
         : [];
@@ -697,36 +1033,48 @@ export const aiKnowledgeService = {
 
     for (const item of finalRanked) {
       if (usedChars + item.text.length > maxContextChars) break;
-      const labeledText = `[Tai lieu] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`;
+      const docTypeTag = (item as any).documentType as KnowledgeDocumentType || "general";
+      const tagLabel = DOC_TYPE_LABELS[docTypeTag] || "Tài liệu";
+      const labeledText = `[${tagLabel}] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`;
       if (usedChars + labeledText.length > maxContextChars) break;
       selected.push(labeledText);
       selectedItems.push(item);
       usedChars += labeledText.length;
     }
 
-    // Nếu chưa tìm thấy chunk khớp trực tiếp (hoặc câu hỏi chào hỏi/tổng quan), tự động bổ sung hồ sơ công ty từ kho tri thức
-    if (selected.length === 0 && companyCode) {
-      const profileDocs = await AIKnowledgeDocumentModel.find({
+    // Nếu chưa tìm thấy đủ chunk khớp trực tiếp (hoặc câu hỏi chào hỏi/tổng quan/giới thiệu),
+    // tự động bổ sung hồ sơ công ty và thông tin sản phẩm/dịch vụ/bảng giá từ kho tri thức
+    if (selected.length < 2 && companyCode) {
+      const coreDocs = await AIKnowledgeDocumentModel.find({
         companyCode,
-        documentType: { $in: ["company_profile", "general", "brand_guideline"] },
         status: "active",
-      }).select("_id sourceTitle sourceUrl").lean();
+      })
+        .sort({ updatedAt: -1 })
+        .limit(8)
+        .select("_id sourceTitle sourceUrl documentType")
+        .lean();
 
-      if (profileDocs.length > 0) {
-        const profileDocIds = profileDocs.map((d) => d._id);
-        const profileDocMap = new Map(profileDocs.map((d) => [String(d._id), d]));
-        const profileChunks = await AIKnowledgeChunkModel.find({
+      if (coreDocs.length > 0) {
+        const coreDocIds = coreDocs.map((d) => d._id);
+        const coreDocMap = new Map(coreDocs.map((d) => [String(d._id), d]));
+        const coreChunks = await AIKnowledgeChunkModel.find({
           companyCode,
-          documentId: { $in: profileDocIds },
+          documentId: { $in: coreDocIds },
         })
           .sort({ chunkIndex: 1 })
-          .limit(3)
+          .limit(8)
           .lean();
 
-        for (const pChunk of profileChunks) {
+        for (const pChunk of coreChunks) {
           if (usedChars + pChunk.text.length > maxContextChars) break;
-          const doc = profileDocMap.get(String(pChunk.documentId));
-          const labeledText = `[Hồ sơ doanh nghiệp] ${doc?.sourceTitle || "Thông tin chung"}${doc?.sourceUrl ? `\n[Link] ${doc.sourceUrl}` : ""}\n${pChunk.text}`;
+          const isAlreadySelected = selectedItems.some((s) => String(s.chunkId) === String(pChunk._id));
+          if (isAlreadySelected) continue;
+
+          const doc = coreDocMap.get(String(pChunk.documentId));
+          const docType = (doc?.documentType as KnowledgeDocumentType) || "general";
+          const docTypeLabel = DOC_TYPE_LABELS[docType] || "Thông tin doanh nghiệp";
+          const labeledText = `[${docTypeLabel}] ${doc?.sourceTitle || "Thông tin doanh nghiệp"}${doc?.sourceUrl ? `\n[Link] ${doc.sourceUrl}` : ""}\n${pChunk.text}`;
+          if (usedChars + labeledText.length > maxContextChars) break;
           selected.push(labeledText);
           usedChars += labeledText.length;
         }
@@ -845,12 +1193,204 @@ export const aiKnowledgeService = {
     };
   },
 
+  async detectKnowledgeConflicts(companyCode?: string): Promise<KnowledgeConflict[]> {
+    const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode) return [];
+
+    const documents = await AIKnowledgeDocumentModel.find({
+      companyCode: normalizedCompanyCode,
+      status: "active",
+    })
+      .select("_id sourceTitle documentType contentHash")
+      .lean();
+
+    if (documents.length < 2) return [];
+
+    const docIds = documents.map((d) => d._id);
+    const chunks = await AIKnowledgeChunkModel.find({
+      companyCode: normalizedCompanyCode,
+      documentId: { $in: docIds },
+    })
+      .select("documentId text chunkIndex")
+      .lean();
+
+    const docChunksMap = new Map<string, string[]>();
+
+    for (const chunk of chunks) {
+      const dId = String(chunk.documentId);
+      if (!docChunksMap.has(dId)) {
+        docChunksMap.set(dId, []);
+      }
+      docChunksMap.get(dId)!.push(chunk.text);
+    }
+
+    const conflicts: KnowledgeConflict[] = [];
+
+    // Helper trích xuất số điện thoại hotline
+    const extractHotlines = (text: string) => {
+      const phones = new Set<string>();
+      const regex = /(?:hotline|sdt|số điện thoại|liên hệ|tel|phone)[^\d]{0,10}(0[235789][0-9]{8,9}|\+84[235789][0-9]{8,9})/gi;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const clean = match[1].replace(/\s+/g, "");
+        if (clean.length >= 9) phones.add(clean);
+      }
+      return Array.from(phones);
+    };
+
+    // Helper trích xuất sản phẩm và giá tiền
+    const extractProductPrices = (text: string) => {
+      const productPrices = new Map<string, number>();
+      const lines = text.split("\n");
+      for (const line of lines) {
+        const lineMatch = /(?:sản phẩm|tên hàng|model|dòng|combo)?\s*[:-]?\s*([A-Za-z0-9\sàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđĐ]{3,40})[^\d\n]{1,15}(\d{1,3}(?:[.,]\d{3})+|\d{4,9})\s*(?:vnd|vnđ|đ|dong|đồng)?/i.exec(line);
+        if (lineMatch) {
+          const rawName = lineMatch[1].trim();
+          const rawPrice = lineMatch[2].replace(/[.,]/g, "");
+          const priceNum = parseInt(rawPrice, 10);
+          const normName = normalizeForLookup(rawName);
+          if (normName.length >= 3 && priceNum > 1000 && priceNum < 1000000000) {
+            productPrices.set(normName, priceNum);
+          }
+        }
+      }
+      return productPrices;
+    };
+
+    // Helper trích xuất ngày đổi trả / bảo hành
+    const extractPolicies = (text: string) => {
+      const policies: { returnDays?: number; warrantyMonths?: number } = {};
+      const returnMatch = /đổi trả[^\d]{0,10}(\d{1,3})\s*ngày/i.exec(text);
+      if (returnMatch) {
+        policies.returnDays = parseInt(returnMatch[1], 10);
+      }
+      const warrantyMatch = /bảo hành[^\d]{0,10}(\d{1,2})\s*(tháng|năm)/i.exec(text);
+      if (warrantyMatch) {
+        const num = parseInt(warrantyMatch[1], 10);
+        policies.warrantyMonths = warrantyMatch[2].toLowerCase() === "năm" ? num * 12 : num;
+      }
+      return policies;
+    };
+
+    // Đối chiếu từng cặp tài liệu
+    for (let i = 0; i < documents.length; i++) {
+      for (let j = i + 1; j < documents.length; j++) {
+        const docA = documents[i];
+        const docB = documents[j];
+        const textA = (docChunksMap.get(String(docA._id)) || []).join("\n\n");
+        const textB = (docChunksMap.get(String(docB._id)) || []).join("\n\n");
+
+        if (!textA || !textB) continue;
+
+        // 1. Kiểm tra trùng lặp tài liệu (Duplicate / High Overlap)
+        if (docA.contentHash && docA.contentHash === docB.contentHash) {
+          conflicts.push({
+            id: `dup_${docA._id}_${docB._id}`,
+            type: "duplicate",
+            severity: "warning",
+            title: "Trùng lặp 100% nội dung tài liệu",
+            description: `Tài liệu “${docA.sourceTitle}” và “${docB.sourceTitle}” có nội dung hoàn toàn giống nhau. Nên xóa bớt 1 tài liệu để tối ưu dung lượng kho tri thức.`,
+            documentA: { id: String(docA._id), title: docA.sourceTitle, documentType: docA.documentType },
+            documentB: { id: String(docB._id), title: docB.sourceTitle, documentType: docB.documentType },
+            conflictingValues: { a: "Bản sao A", b: "Bản sao B" },
+          });
+          continue;
+        }
+
+        // 2. Kiểm tra mâu thuẫn Giá bán (Pricing Conflicts)
+        const pricesA = extractProductPrices(textA);
+        const pricesB = extractProductPrices(textB);
+
+        for (const [prodName, priceA] of Array.from(pricesA.entries())) {
+          if (pricesB.has(prodName)) {
+            const priceB = pricesB.get(prodName)!;
+            const diffRatio = Math.abs(priceA - priceB) / Math.max(priceA, priceB);
+            if (diffRatio > 0.05) { // Lệch nhau trên 5%
+              conflicts.push({
+                id: `price_${docA._id}_${docB._id}_${encodeURIComponent(prodName)}`,
+                type: "pricing",
+                severity: "error",
+                title: `Mâu thuẫn giá sản phẩm: "${prodName}"`,
+                description: `Tài liệu “${docA.sourceTitle}” ghi giá ${priceA.toLocaleString("vi-VN")}đ nhưng tài liệu “${docB.sourceTitle}” lại ghi giá ${priceB.toLocaleString("vi-VN")}đ.`,
+                documentA: { id: String(docA._id), title: docA.sourceTitle, documentType: docA.documentType },
+                documentB: { id: String(docB._id), title: docB.sourceTitle, documentType: docB.documentType },
+                conflictingValues: {
+                  a: `${priceA.toLocaleString("vi-VN")} VND`,
+                  b: `${priceB.toLocaleString("vi-VN")} VND`,
+                },
+              });
+            }
+          }
+        }
+
+        // 3. Kiểm tra mâu thuẫn Số Hotline (Contact Conflicts)
+        const hotlinesA = extractHotlines(textA);
+        const hotlinesB = extractHotlines(textB);
+        if (hotlinesA.length > 0 && hotlinesB.length > 0) {
+          const hasCommon = hotlinesA.some((h) => hotlinesB.includes(h));
+          if (!hasCommon) {
+            conflicts.push({
+              id: `contact_${docA._id}_${docB._id}`,
+              type: "contact",
+              severity: "warning",
+              title: "Mâu thuẫn số điện thoại Hotline",
+              description: `Tài liệu “${docA.sourceTitle}” ghi Hotline (${hotlinesA.join(", ")}) khác với “${docB.sourceTitle}” (${hotlinesB.join(", ")}).`,
+              documentA: { id: String(docA._id), title: docA.sourceTitle, documentType: docA.documentType },
+              documentB: { id: String(docB._id), title: docB.sourceTitle, documentType: docB.documentType },
+              conflictingValues: {
+                a: hotlinesA.join(", "),
+                b: hotlinesB.join(", "),
+              },
+            });
+          }
+        }
+
+        // 4. Kiểm tra mâu thuẫn Chính sách Đổi trả & Bảo hành (Policy Conflicts)
+        const polA = extractPolicies(textA);
+        const polB = extractPolicies(textB);
+        if (polA.returnDays && polB.returnDays && polA.returnDays !== polB.returnDays) {
+          conflicts.push({
+            id: `policy_ret_${docA._id}_${docB._id}`,
+            type: "policy",
+            severity: "warning",
+            title: "Mâu thuẫn thời hạn đổi trả hàng",
+            description: `Tài liệu “${docA.sourceTitle}” quy định đổi trả trong ${polA.returnDays} ngày nhưng “${docB.sourceTitle}” lại ghi ${polB.returnDays} ngày.`,
+            documentA: { id: String(docA._id), title: docA.sourceTitle, documentType: docA.documentType },
+            documentB: { id: String(docB._id), title: docB.sourceTitle, documentType: docB.documentType },
+            conflictingValues: {
+              a: `${polA.returnDays} ngày`,
+              b: `${polB.returnDays} ngày`,
+            },
+          });
+        }
+        if (polA.warrantyMonths && polB.warrantyMonths && polA.warrantyMonths !== polB.warrantyMonths) {
+          conflicts.push({
+            id: `policy_war_${docA._id}_${docB._id}`,
+            type: "policy",
+            severity: "warning",
+            title: "Mâu thuẫn thời hạn bảo hành",
+            description: `Tài liệu “${docA.sourceTitle}” quy định bảo hành ${polA.warrantyMonths} tháng nhưng “${docB.sourceTitle}” lại ghi ${polB.warrantyMonths} tháng.`,
+            documentA: { id: String(docA._id), title: docA.sourceTitle, documentType: docA.documentType },
+            documentB: { id: String(docB._id), title: docB.sourceTitle, documentType: docB.documentType },
+            conflictingValues: {
+              a: `${polA.warrantyMonths} tháng`,
+              b: `${polB.warrantyMonths} tháng`,
+            },
+          });
+        }
+      }
+    }
+
+    return conflicts.slice(0, 20);
+  },
+
   async getKnowledgeHealth(companyCode?: string) {
     const normalizedCompanyCode = normalizeCompanyCode(companyCode);
-    const [documents, chunksCount, latestLog] = await Promise.all([
+    const [documents, chunksCount, latestLog, conflicts] = await Promise.all([
       AIKnowledgeDocumentModel.find({ companyCode: normalizedCompanyCode }).sort({ updatedAt: -1 }).lean(),
       AIKnowledgeChunkModel.countDocuments({ companyCode: normalizedCompanyCode }),
       AIReplyLogModel.findOne({ companyCode: normalizedCompanyCode }).sort({ createdAt: -1 }).lean(),
+      this.detectKnowledgeConflicts(normalizedCompanyCode).catch(() => []),
     ]);
 
     const allText = await AIKnowledgeChunkModel.find({ companyCode: normalizedCompanyCode })
@@ -872,6 +1412,9 @@ export const aiKnowledgeService = {
     if (chunksCount > 0 && detectedTopics.length === 0) {
       warnings.push("Tài liệu đã nhập nhưng chưa phát hiện chính sách quan trọng như giá, ship, bảo hành hoặc liên hệ.");
     }
+    if (conflicts.length > 0) {
+      warnings.push(`Phát hiện ${conflicts.length} mâu thuẫn dữ liệu giữa các tài liệu trong kho tri thức!`);
+    }
     if (chunksCount > 120) {
       warnings.push("Knowledge base khá lớn; nên chia tài liệu theo chủ đề để kiểm soát chất lượng tốt hơn.");
     }
@@ -883,6 +1426,7 @@ export const aiKnowledgeService = {
       chunksCount,
       detectedTopics,
       warnings,
+      conflicts,
       latestSyncAt: documents[0]?.updatedAt || null,
       latestReplyAt: latestLog?.createdAt || null,
       documents: documents.slice(0, 5).map((doc) => ({
@@ -893,6 +1437,7 @@ export const aiKnowledgeService = {
         version: doc.version,
         channelScope: doc.channelScope,
         purposeScope: doc.purposeScope,
+        documentType: doc.documentType || "general",
         updatedAt: doc.updatedAt,
       })),
     };
@@ -1077,5 +1622,73 @@ export const aiKnowledgeService = {
       { feedback, feedbackNote: note || "" },
       { new: true }
     );
+  },
+
+  /**
+   * Thử nghiệm tìm kiếm tri thức (RAG Search Simulator)
+   */
+  async testSearchKnowledge(params: {
+    companyCode?: string;
+    query: string;
+    channel?: "facebook" | "zalo" | "tiktok";
+    pageId?: string;
+    topK?: number;
+  }) {
+    const companyCode = normalizeCompanyCode(params.companyCode);
+    const query = String(params.query || "").trim();
+    if (!query) {
+      return {
+        query: "",
+        detectedDocumentTypes: [],
+        matches: 0,
+        bestScore: 0,
+        items: [],
+        simulatedAnswer: "Vui lòng nhập câu hỏi để thử nghiệm tìm kiếm tri thức.",
+      };
+    }
+
+    const detectedDocumentTypes = detectRequiredDocumentTypes(query);
+    const ragContext = await this.searchRelevantContext({
+      companyCode,
+      query,
+      channel: params.channel || "facebook",
+      pageId: params.pageId,
+      topK: params.topK || 5,
+    });
+
+    let simulatedAnswer = "";
+    try {
+      const chatRes = await geminiService.chat(
+        query,
+        [],
+        {
+          companyCode,
+          enabled: true,
+          model: "gemini-3.5-flash",
+          replyDelay: 0,
+          advancedInstructions: "",
+          trainingKnowledge: "",
+        },
+        ragContext
+      );
+      simulatedAnswer = chatRes.text;
+    } catch (err: any) {
+      simulatedAnswer = `[Lỗi sinh câu trả lời]: ${err.message || String(err)}`;
+    }
+
+    return {
+      query,
+      detectedDocumentTypes,
+      matches: ragContext.matches,
+      bestScore: ragContext.bestScore,
+      items: (ragContext.items || []).map((item) => ({
+        title: item.title,
+        documentType: (item as any).documentType || "general",
+        score: item.score,
+        text: item.text,
+        sourceUrl: item.sourceUrl,
+      })),
+      simulatedAnswer,
+    };
   },
 };

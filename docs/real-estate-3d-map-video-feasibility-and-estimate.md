@@ -1,272 +1,524 @@
-# Đề xuất tính năng tạo video bất động sản từ bản đồ 3D
+# Kế hoạch hoàn thiện Video BĐS từ bản đồ 3D
 
-> Ngày lập: 19/08/2026  
-> Mục đích: giúp người không chuyên kỹ thuật quyết định có nên đầu tư, cần bao lâu và cần bao nhiêu ngân sách.  
-> Đây là dự toán ban đầu, chưa phải báo giá cố định.
+> Cập nhật: 20/08/2026
+> Phạm vi chi phí: chỉ tính API, dữ liệu và license có thể phải mua; không tính nhân công, máy chủ, thiết bị hoặc chi phí tổ chức.
 
-## Kết luận ngắn
+## 1. Kết quả dự kiến
 
-Có thể xây một tính năng hoàn toàn mới, tách riêng khỏi **HTML to Video**, chuyên tạo video giới thiệu vị trí bất động sản. Hệ thống hiện tại có thể dùng lại phần tài khoản, dữ liệu doanh nghiệp, AI viết nội dung, giọng đọc, hàng đợi render, lưu lịch sử và xuất MP4. Phần khó và mới là bản đồ 3D, đường bay camera, đánh dấu khu đất, tuyến đường và địa điểm xung quanh.
+Xây một module riêng cho phép tạo video giới thiệu bất động sản từ địa chỉ hoặc tọa độ:
 
-Khuyến nghị thực tế:
+- tìm và xác nhận vị trí dự án;
+- vẽ/chỉnh ranh giới polygon;
+- hiển thị ảnh nền satellite/hybrid;
+- tạo camera zoom, xoay, nghiêng và di chuyển theo preset;
+- chọn POI và tuyến đường;
+- hiện marker, route, bán kính, nhãn, khoảng cách và thời gian;
+- thêm logo, thông tin dự án, CTA, giọng đọc và nhạc;
+- preview theo timeline;
+- render backend thành MP4 có âm thanh;
+- lưu lịch sử, attribution, nguồn dữ liệu, chi phí và trạng thái.
 
-- Không bắt đầu bằng việc tự động hóa Google Earth Studio. Đây là công cụ chạy trong trình duyệt, yêu cầu tab Chrome hoạt động khi render cục bộ và tài liệu công khai không cung cấp một API backend để ERP tự tạo hàng loạt video.
-- Không mặc định dùng Google Photorealistic 3D Tiles để bán video BĐS. Công nghệ có thể làm được, nhưng điều khoản video công khai của Map Tiles API giới hạn rất chặt. Cần Google xác nhận bằng văn bản hoặc có hợp đồng phù hợp trước khi triển khai thương mại.
-- Nên thực hiện một đợt thử nghiệm kỹ thuật và pháp lý kéo dài **1–2 tuần** trước. Chỉ sau khi chốt được nguồn bản đồ có quyền sử dụng mới triển khai bản đầy đủ.
-- Nếu đã có giấy phép nguồn bản đồ phù hợp, bản MVP dùng được trong nội bộ cần khoảng **8–10 tuần**; bản vận hành ổn định cho khách hàng cần tổng cộng khoảng **12–16 tuần** với đội 2 kỹ sư chính và QA/thiết kế bán thời gian.
-- Ngân sách phát triển dự kiến: **300–720 triệu đồng**, chưa gồm phí mua dữ liệu/giấy phép bản đồ đặc biệt. Nên duyệt ngân sách theo từng giai đoạn, không chi toàn bộ ngay từ đầu.
+### Mốc hoàn thiện
 
-## Video mẫu đang thể hiện điều gì?
+| Mốc | Thời gian |
+| --- | ---: |
+| Contract, fixture và provider scaffold | 2–4 giờ |
+| Prototype map → MP4 | hết ngày 1 hoặc đầu ngày 2 |
+| MVP nội bộ end-to-end | 2–3 ngày |
+| Hardening và pilot ngắn | trong ngày 4 |
+| **Tổng hoàn thiện tính năng** | **3–4 ngày** |
 
-Video được cung cấp dài khoảng **2 phút 52 giây**, khung dọc **576 × 1024**, gồm người thuyết trình, giọng nói và phần quay màn hình bản đồ 3D.
+Estimate này giả định sử dụng AI coding agents để thực hiện song song các nhánh map/renderer, backend/queue và UI/preview, sau đó tích hợp theo contract chung. Vì vậy tổng thời gian lịch là 3–4 ngày dù tổng giờ của từng task cộng lại lớn hơn. Thời gian chờ nhà cung cấp xác nhận quyền tạo video thương mại không nằm trong các mốc trên; trong lúc chờ vẫn hoàn thiện bằng mock data hoặc vector/2.5D.
 
-Các thao tác nhìn thấy gồm:
+### Giới hạn quan trọng
 
-1. Tìm và khoanh vùng khu vực.
-2. Xác định tuyến đường hoặc hướng tiếp cận.
-3. Vẽ ranh giới/đường trên bản đồ.
-4. Cho camera bay, phóng to, thu nhỏ và xoay quanh khu vực.
-5. Xem lại chuyển động tự động trên timeline.
+Mốc 3–4 ngày áp dụng cho video bản đồ 2D/2.5D có satellite/hybrid, camera nghiêng, polygon, route và overlay. Nó không bao gồm:
 
-Video mẫu là video hướng dẫn thao tác một công cụ bản đồ. Tính năng đề xuất không sao chép màn hình công cụ đó; nó biến cùng ý tưởng thành quy trình đơn giản cho nhân viên BĐS: nhập địa chỉ và thông tin dự án, xem trước, chỉnh sửa, sau đó xuất MP4.
+- photorealistic 3D giống hoàn toàn Google Earth;
+- mô hình 3D riêng của tòa nhà;
+- terrain/building coverage cao ở mọi địa chỉ;
+- editor camera tự do như phần mềm dựng phim;
+- render 4K hoặc hàng trăm video đồng thời.
 
-## Người dùng sẽ làm gì?
+Nếu yêu cầu hình ảnh đúng mức Google Earth photorealistic 3D, phải bổ sung provider có dữ liệu 3D và quyền video phù hợp; thời gian, chi phí và license sẽ cần estimate lại.
 
-Tên gợi ý cho khu vực mới: **Video BĐS bản đồ 3D**.
+## 2. Phạm vi theo giai đoạn
 
-Người dùng chỉ cần:
+### MVP bắt buộc
 
-1. Nhập địa chỉ hoặc chọn đúng điểm trên bản đồ.
-2. Điền tên dự án, giá, diện tích, tiện ích, thông tin liên hệ và lời kêu gọi hành động.
-3. Chọn các địa điểm muốn làm nổi bật như trường học, bệnh viện, trung tâm thương mại, quốc lộ hoặc sân bay.
-4. Nhập thời gian di chuyển đã được kiểm chứng hoặc cho hệ thống tính bằng dịch vụ chỉ đường.
-5. Tải ảnh, video, logo và bộ nhận diện của dự án.
-6. Chọn mẫu video 9:16, 1:1 hoặc 16:9.
-7. Xem trước từng cảnh, sửa nội dung, rồi bấm xuất video.
+1. Nhập địa chỉ hoặc chọn tọa độ.
+2. Vẽ/chỉnh polygon ranh giới dự án.
+3. Chọn tối đa 5 POI và 3 route.
+4. Ba camera preset:
+   - zoom-to-project;
+   - orbit nhẹ;
+   - route-follow.
+5. Các layer:
+   - marker dự án;
+   - polygon fill/outline;
+   - vòng bán kính;
+   - route progress;
+   - POI marker và label;
+   - attribution.
+6. Overlay logo, headline, thông tin chính và CTA.
+7. Voice bằng pipeline TTS hiện tại.
+8. Preview, render queue, progress, retry và history.
+9. MP4 9:16 1080p, 20–30 giây, có audio.
+10. Kiểm tra video/audio stream trước khi completed.
 
-Một video mặc định có thể gồm:
+### Production hardening
 
-- Cảnh mở đầu từ góc nhìn rộng rồi bay đến dự án.
-- Ghim vị trí và khoanh ranh giới khu đất.
-- Vẽ 1–3 tuyến đường quan trọng.
-- Hiện các tiện ích xung quanh và khoảng cách/thời gian di chuyển.
-- Chèn ảnh hoặc video thực tế của dự án.
-- Cảnh cuối có giá, ưu đãi, logo và thông tin liên hệ.
+- idempotency và recovery sau worker restart;
+- capped retry theo loại lỗi;
+- timeout/tile readiness/missing coverage;
+- quota và budget theo tenant;
+- provider attribution không bị che;
+- log cost theo video;
+- URL allowlist và bảo vệ API key;
+- golden-frame test cho camera preset;
+- fallback hybrid/vector khi satellite lỗi.
 
-## Vì sao phải tách khỏi HTML to Video?
+### Để sau
 
-HTML to Video hiện tại phù hợp với chữ, hình ảnh, thẻ nội dung và hiệu ứng 2D. Bản đồ 3D cần một bộ máy đồ họa khác để tải địa hình, nhà cửa, di chuyển camera và vẽ các lớp thông tin đúng tọa độ.
+- Three.js/Cesium và mô hình 3D riêng;
+- batch render lớn;
+- campaign automation;
+- cộng tác nhiều người;
+- editor camera tự do;
+- 4K hoặc video dài trên 90 giây;
+- dữ liệu quy hoạch tự động.
 
-Hai tính năng có thể dùng chung “phần hậu cần”, nhưng dữ liệu nghiệp vụ và màn hình sử dụng nên tách riêng:
+## 3. Công cụ cần liên kết
 
-| Dùng chung | Tách riêng cho BĐS |
+### Công cụ mới
+
+| Công cụ | Công dụng | Loại | Chi phí phần mềm |
+| --- | --- | --- | ---: |
+| VIETMAP API | Tile/style, satellite/hybrid, geocode, POI, routing | API/provider | Theo transaction hoặc hợp đồng |
+| MapLibre GL JS | Render map WebGL, camera, GeoJSON layer | Open source | 0 |
+| Turf.js | Bbox, buffer, centroid, length, along | Open source | 0 |
+| Terra Draw | Vẽ/chỉnh point, line, polygon | Open source | 0 |
+| GeoJSON | Contract geometry | Chuẩn dữ liệu | 0 |
+
+Dependency dự kiến:
+
+~~~bash
+npm install maplibre-gl +  @turf/bbox +  @turf/buffer +  @turf/centroid +  @turf/length +  @turf/along +  @watergis/maplibre-gl-terradraw
+~~~
+
+### Công cụ đã có trong repository
+
+| Công cụ | Tái sử dụng cho |
 | --- | --- |
-| Tài khoản và doanh nghiệp | Dự án, tọa độ và ranh đất |
-| Kho ảnh/video và logo | Đường bay camera trên bản đồ |
-| AI viết lời thoại | Tuyến đường, POI và khoảng cách |
-| Giọng đọc | Nguồn dữ liệu bản đồ và giấy phép |
-| Hàng đợi render, trạng thái, retry | Mẫu cảnh chuyên BĐS |
-| Lịch sử và link MP4 | Chi phí bản đồ của từng video |
+| React + Vite | Workspace, map editor, preview, history |
+| Remotion Player | Preview và seek theo frame |
+| Remotion Renderer/Bundler | Render Chromium |
+| FFmpeg | Encode MP4, mux audio và verify |
+| BullMQ + Redis | Queue, retry, progress và recovery |
+| MongoDB/Mongoose | Project, render snapshot và provenance |
+| Cloudinary | MP4, thumbnail, logo, ảnh và audio |
+| Gemini/TTS hiện tại | Kịch bản và giọng đọc |
+| Joi | Validation API, geometry và camera |
 
-Tách như vậy giúp lỗi bản đồ không ảnh hưởng HTML to Video, dễ theo dõi chi phí và có thể đổi nhà cung cấp bản đồ sau này.
+Các thành phần này không cần mua API mới nếu tài khoản/hạ tầng hiện tại còn quota.
 
-## Luồng hoạt động đề xuất
+### Provider dự phòng
 
-```text
-Thông tin BĐS + vị trí + hình ảnh
+MapTiler có thể dùng làm fallback cho map/satellite/terrain. Gói Flex công khai là 25 USD/tháng và gồm 500.000 API requests/tháng. Tuy nhiên, sản phẩm tạo video cho khách hàng có thể bị xem là commercial redistribution/reselling; trường hợp này phải hỏi MapTiler về Custom plan và Video Material License trước khi dùng production.
+
+### Công cụ không đưa vào MVP
+
+| Công cụ | Lý do |
+| --- | --- |
+| Google Earth/Earth Studio | Quyền promotional/commercial không phù hợp để mặc định bán video BĐS |
+| Google Photorealistic 3D Tiles | License video/resale cần xác nhận riêng; tile cost khó dự đoán |
+| CesiumJS | Chưa cần cho MVP 2.5D; tăng độ khó WebGL/GPU |
+| Three.js | Chỉ cần khi có model/particle/3D riêng |
+| deck.gl | Không cần cho số lượng layer nhỏ |
+| PostGIS/GeoServer | Chưa có spatial workload lớn |
+| After Effects automation | Tạo pipeline render thứ hai, khó chạy backend ổn định |
+
+## 4. Kiến trúc liên kết
+
+~~~text
+VIETMAP tile/geocode/POI/route
               ↓
-Kiểm tra địa chỉ, tọa độ và các thông tin được phép dùng
+RealEstateMapProvider adapter
               ↓
-AI đề xuất kịch bản và chia cảnh
+MapLibre GL JS + Turf.js
               ↓
-Tạo đường bay bản đồ 3D + ghim + ranh giới + tuyến đường
+Terra Draw editor + React workspace
               ↓
-Ghép chữ, ảnh dự án, logo và giọng đọc
+Normalized project + immutable render snapshot
               ↓
-Người dùng xem trước và chỉnh sửa
+Remotion frame clock + trusted MapSceneEngine
               ↓
-Backend render, kiểm tra âm thanh/hình ảnh, xuất MP4
+BullMQ worker + TTS + FFmpeg
               ↓
-Lưu lịch sử, chi phí và nguồn dữ liệu đã sử dụng
-```
+Verify MP4 → Cloudinary → history
+~~~
 
-Không nên để AI tự bịa giá, diện tích, khoảng cách hoặc tiện ích. Mỗi thông tin quan trọng phải đến từ người dùng, tài liệu dự án hoặc dịch vụ bản đồ đã được xác minh.
+Map renderer phải là React/TypeScript do hệ thống kiểm soát. Không cho AI chèn script, canvas, SDK map hoặc URL tile tùy ý vào HTML-to-video.
 
-## Ba phương án triển khai
+## 5. Ưu tiên và độ khó
 
-### Phương án A — Bán tự động, dùng clip bản đồ đã có
+Thang độ khó: 1 là đơn giản, 5 là khó nhất.
 
-Nhân viên tự tạo hoặc tải lên một clip bản đồ hợp lệ. ERP lo phần kịch bản, chữ, giọng đọc, ảnh dự án và xuất video cuối.
+| Thứ tự | Hạng mục | Ưu tiên | Độ khó | Phụ thuộc |
+| ---: | --- | --- | ---: | --- |
+| 1 | Xác nhận quyền video thương mại | P0 | 5 | Nhà cung cấp |
+| 2 | Data contract + mock provider | P0 | 3 | Không |
+| 3 | VIETMAP adapter | P0 | 3 | API key |
+| 4 | MapLibre renderer trong Chromium | P0 | 5 | Map style/tile |
+| 5 | Tile readiness và timeout | P0 | 5 | Renderer |
+| 6 | Camera deterministic theo frame | P0 | 5 | Renderer |
+| 7 | Polygon/route/radius/marker | P0 | 4 | Turf + MapLibre |
+| 8 | Label bám tọa độ màn hình | P0 | 4 | map.project |
+| 9 | Render snapshot + idempotency | P0 | 4 | Data contract |
+| 10 | Queue, TTS, FFmpeg và verify | P0 | 4 | Renderer |
+| 11 | API project/geocode/POI/route | P0 | 3 | Provider adapter |
+| 12 | Workspace và polygon editor | P1 | 3 | Terra Draw |
+| 13 | Preview và render history | P1 | 3 | API + queue |
+| 14 | Cost/quota/attribution/security | P1 | 4 | Provider |
+| 15 | Provider fallback | P2 | 4 | Adapter ổn định |
+| 16 | Photorealistic 3D riêng | Later | 5 | Dữ liệu/license/GPU |
 
-- Thời gian: **4–6 tuần**.
-- Chi phí phát triển: **140–280 triệu đồng**.
-- Ưu điểm: nhanh, ít rủi ro kỹ thuật, có thể thử nhu cầu thị trường sớm.
-- Nhược điểm: vẫn cần người thao tác; chưa phải “nhập địa chỉ là có video”. Quyền sử dụng clip đầu vào vẫn phải được kiểm tra.
+### Critical path
 
-### Phương án B — Tự động hoàn toàn bằng nguồn bản đồ được cấp phép
+~~~text
+License/provider
+    → provider adapter
+    → WebGL renderer
+    → camera/layers deterministic
+    → render worker + MP4 verify
+    → workspace
+    → pilot
+~~~
 
-ERP tự tìm vị trí, lập đường bay, vẽ ranh giới, dựng cảnh và xuất video.
+## 6. Kế hoạch thực hiện chi tiết
 
-- Thời gian đến MVP nội bộ: **8–10 tuần sau khi chốt nguồn dữ liệu**.
-- Thời gian đến bản production: **12–16 tuần**, tính cả giai đoạn thử nghiệm 1–2 tuần.
-- Chi phí phát triển: **300–720 triệu đồng**.
-- Ưu điểm: đúng trải nghiệm mong muốn, tạo được số lượng lớn, ít thao tác tay.
-- Nhược điểm: phụ thuộc giấy phép, độ phủ 3D, GPU/render và chi phí dữ liệu theo lượt dùng.
+### Phân bổ task
 
-Đây là phương án nên hướng tới, nhưng chỉ được duyệt sau khi nhà cung cấp xác nhận quyền tạo và cung cấp video BĐS thương mại.
+| Task | Thời lượng task | Lane | Chạy song song với |
+| --- | ---: | --- | --- |
+| Contract, fixture và module scaffold | 2 giờ | Nền tảng | Không |
+| Provider adapter + API key policy | 3–4 giờ | Provider | Model/API, UI shell |
+| Model, Joi schema và idempotency | 3–4 giờ | Backend | Provider, UI shell |
+| UI workspace shell | 2–3 giờ | Frontend | Provider, backend |
+| MapLibre renderer + tile readiness | 5–7 giờ | Renderer | API/queue, editor |
+| Camera, polygon, route và label | 4–5 giờ | Renderer | API/queue, editor |
+| Project API + render queue | 4–6 giờ | Backend | Renderer, UI |
+| Terra Draw editor + preview | 5–6 giờ | Frontend | Renderer, backend |
+| Remotion + TTS + FFmpeg + verify | 3–4 giờ | Video | UI integration, tests |
+| E2E, hardening và pilot ngắn | 6–8 giờ | QA/integration | Fix theo từng lane |
 
-### Phương án C — Google Aerial View API
+Tổng effort khoảng 37–49 giờ nhưng không chạy nối tiếp. Ba lane chính bắt đầu sau khi chốt contract, nên thời gian lịch mục tiêu vẫn là 3–4 ngày.
 
-Google có API tạo video bay quanh một địa chỉ và có tài liệu riêng cho bài toán BĐS. Tuy nhiên, hiện dịch vụ chỉ hỗ trợ địa chỉ tại Hoa Kỳ, không phù hợp với dự án tại Việt Nam. Video cũng được phát qua URL của Google; tài liệu nêu không được tải xuống, lưu trữ hoặc cache như file riêng.
+~~~text
+Ngày 1: contract
+        ├── provider + backend model/API + UI shell
+        └── map renderer scaffold
 
-- Phù hợp: sản phẩm BĐS tại Hoa Kỳ, phát video trong website/app theo điều khoản của Google.
-- Không phù hợp: ERP tại Việt Nam cần ghép clip thành MP4 và lưu lâu dài trên Cloudinary.
-- Giá công khai hiện tại: miễn phí 5.000 lượt/tháng, sau đó từ **16 USD/1.000 lượt lấy video** ở bậc đầu tiên.
+Ngày 2: renderer/camera
+        ├── queue/render lifecycle
+        └── editor/preview
 
-## Lưu ý quan trọng về Google Earth và Google Maps
+Ngày 3: tích hợp end-to-end
+        ├── TTS/FFmpeg/verify
+        └── contract/API/frame tests
 
-### Google Earth Studio
+Ngày 4: hardening + pilot ngắn + fix + chốt release
+~~~
 
-Google Earth Studio là công cụ tạo animation trong Chrome. Render cục bộ chạy trong trình duyệt và có thể dừng nếu đóng Chrome hoặc không giữ đúng tab. Đây không phải kiến trúc phù hợp cho worker backend chạy tự động 24/7.
+### Ngày 1 — Foundation và provider (8 giờ)
 
-Google yêu cầu luôn hiển thị attribution “Google Earth” và các nhà cung cấp ảnh liên quan trên nội dung. Không được che, cắt hoặc thay đổi attribution.
+**P0**
 
-### Google Photorealistic 3D Tiles
+- Thêm dependency MapLibre/Turf/Terra Draw.
+- Tạo RealEstateMapProject, POI, Route, MapScene và RenderSnapshot.
+- Tạo RealEstateMapProvider interface.
+- Tạo MockMapProvider với fixture cho 3 địa chỉ.
+- Tạo VietmapProvider cho geocode, place, route và style descriptor.
+- Chuẩn hóa lỗi permission, quota, timeout, coverage, invalid-data.
+- Tạo Joi validation cho polygon, route, camera và video spec.
+- Tạo project/render model có userId, companyCode và idempotency index.
 
-Về kỹ thuật, đây là nguồn hình gần với Google Earth nhất và có thể kết hợp với Cesium để điều khiển camera. Tuy nhiên, chính sách công khai về video cho Map Tiles API chỉ cho phép một nhóm video quảng bá rất hẹp: tối đa 30 giây, giới thiệu khả năng của chính ứng dụng, có nhãn “for promotional purposes only” và không được bán lại như một phần của sản phẩm/trải nghiệm.
+**Đầu ra**
 
-Vì vậy, không nên hiểu rằng mua API theo lượt là tự động có quyền bán video marketing cho từng dự án BĐS. Cần gửi mô tả use case cho Google Maps Platform Sales/Legal và nhận xác nhận bằng văn bản trước.
+- Contract compile được.
+- Mock provider vượt test.
+- Không test nào bắt buộc gọi API thật.
+- Input vượt giới hạn bị chặn.
 
-Nếu được cấp phép, giá danh sách hiện tại của Photorealistic 3D Tiles là:
+### Ngày 2 — Renderer, backend và UI song song (8 giờ)
 
-- Miễn phí **1.000 tile requests/tháng**.
-- Bậc đầu tiên: **6 USD/1.000 tile requests**.
-- Một video sử dụng bao nhiêu tile phụ thuộc vào độ dài đường bay, mức zoom, độ phân giải, vùng địa lý và cache. Không thể suy ra chi phí/video chỉ từ thời lượng.
+**P0**
 
-Ví dụ công thức để theo dõi trong pilot:
+- Tạo trusted MapSceneEngine.
+- Render satellite/hybrid style.
+- Thêm polygon, route, radius, marker và attribution.
+- Dùng Turf để fit bounds và tính route progress.
+- Thêm zoom-to-project, orbit và route-follow.
+- Camera phụ thuộc currentFrame; dùng jumpTo/triggerRepaint.
+- Thêm tile readiness gate, timeout và fallback state.
+- Tạo Remotion composition 9:16 1080p.
+- Tái sử dụng TTS/FFmpeg để tạo MP4 fixture.
 
-```text
-Chi phí bản đồ/video = số tile tính phí của video ÷ 1.000 × 6 USD
-```
+**Các nhánh chạy song song**
 
-Nếu một thử nghiệm tải 500 tile thì giá danh sách là khoảng 3 USD; nếu tải 2.000 tile thì khoảng 12 USD. Đây chỉ là ví dụ toán học, không phải cam kết mức tiêu thụ thực tế.
+- Backend tiếp tục project API, render model và queue skeleton.
+- Frontend tạo workspace shell, map container và editor state.
+- Renderer chốt camera/layer contract để backend và frontend không phải chờ implementation cuối.
 
-## Kế hoạch và thời gian chi tiết
+**Đầu ra**
 
-| Giai đoạn | Việc đạt được | Thời gian |
-| --- | --- | ---: |
-| 0. Xác minh | Chọn 3 địa chỉ thật, thử độ phủ 3D, hỏi quyền sử dụng thương mại, đo tile và thời gian render | 1–2 tuần |
-| 1. Prototype | Một video 15–30 giây có đường bay, ghim dự án, ranh giới và chữ mẫu | 2–3 tuần |
-| 2. MVP nội bộ | Màn hình riêng, lưu dự án, mẫu cảnh BĐS, preview, giọng đọc, render MP4, lịch sử | 4–5 tuần |
-| 3. Hoàn thiện production | Phân quyền, tính phí, retry, kiểm tra đầu ra, theo dõi chi phí, xử lý lỗi bản đồ | 3–4 tuần |
-| 4. Pilot người dùng | 20–30 video thật, sửa mẫu, đo tỷ lệ lỗi và chi phí/video | 2 tuần |
-| **Tổng** | Có thể chồng lấn một số việc | **12–16 tuần** |
+- Một MP4 20–30 giây có map, camera, polygon, route, label và audio.
+- Frame đầu/giữa/cuối không đen.
+- Label không trôi khỏi tọa độ.
+- Attribution luôn nhìn thấy.
 
-Nếu chỉ có một lập trình viên làm toàn thời gian, thời gian thực tế nên dự trù **20–28 tuần** vì phần WebGL/3D và phần video backend là hai chuyên môn khác nhau.
+### Ngày 3 — Tích hợp end-to-end (8 giờ)
 
-## Dự toán chi phí phát triển
+**P0**
 
-Giả định đội hình:
+- API create/get/update project.
+- API geocode, place search và route.
+- API preview snapshot.
+- API create/get/list/retry render.
+- Queue riêng real-estate-map-video-render.
+- Các stage validate → prepare → render → TTS → mux → upload → verify.
+- Capped retry và recovery sau restart.
+- Chỉ completed sau media verification.
+- Lưu cost, attempts, provider version và attribution.
 
-- 1 kỹ sư full-stack phụ trách màn hình, dữ liệu và API.
-- 1 kỹ sư video/3D phụ trách bản đồ, camera và render.
-- QA và thiết kế tham gia bán thời gian.
-- Tận dụng hạ tầng ERP, đăng nhập, lưu file, AI, TTS và worker hiện có.
-- Đơn giá quy đổi tham khảo: **350.000–600.000 đồng/giờ** tùy đội nội bộ hay thuê ngoài và độ khó chuyên môn 3D.
+**Tích hợp song song**
 
-| Hạng mục | Công sức dự kiến | Chi phí dự kiến |
-| --- | ---: | ---: |
-| Xác minh pháp lý và thử nguồn bản đồ | 50–80 giờ | 18–48 triệu |
-| Prototype bản đồ 3D | 120–180 giờ | 42–108 triệu |
-| MVP sản phẩm | 380–520 giờ | 133–312 triệu |
-| Production, QA, giám sát và pilot | 180–260 giờ | 63–156 triệu |
-| Dự phòng 15–20% | 110–160 giờ | 39–96 triệu |
-| **Tổng** | **840–1.200 giờ** | **khoảng 300–720 triệu** |
+- Nối Remotion Player với cùng snapshot của final renderer.
+- Nối Terra Draw geometry vào project API.
+- Nối TTS, FFmpeg, Cloudinary và media verification hiện có.
+- Chạy contract test, API test và worker failure test ngay khi từng nhánh hoàn thành.
 
-Chi phí có thể tăng nếu cần tự phát triển editor đường bay tự do, bản đồ 3D không đủ phủ tại Việt Nam, cần mua ảnh vệ tinh riêng hoặc cần render 4K.
+**Đầu ra**
 
-## Chi phí vận hành sau khi ra mắt
+- Đóng trình duyệt không làm mất render.
+- Retry không tạo job/output/charge trùng.
+- Tenant không đọc được project/render của nhau.
+- Lỗi provider trả category an toàn.
 
-Chi phí mỗi video gồm bốn phần:
+### Ngày 4 — Hardening, pilot ngắn và release (8 giờ)
 
-1. **Bản đồ/ảnh địa lý:** phụ thuộc nhà cung cấp và số tile/lượt lấy video.
-2. **AI và giọng đọc:** thường nhỏ hơn chi phí bản đồ 3D; cần đo theo prompt, số lần sửa và độ dài lời thoại.
-3. **Máy render:** phụ thuộc thời lượng, độ phân giải, số cảnh và có cần GPU hay không.
-4. **Lưu trữ/băng thông:** phụ thuộc dung lượng MP4 và số lượt xem/tải.
+**P0**
 
-Không nên đặt một giá cố định cho khách hàng trước pilot. Trong 20–30 video đầu, hệ thống cần ghi lại chi phí thật của từng bước. Sau pilot mới đặt mức credit/video và luôn cộng dự phòng cho retry.
+- Hoàn thiện workspace, map picker, polygon editor và POI/route confirmation.
+- Hoàn thiện preview, progress, retry và history.
+- Chạy 10–20 video từ 3 địa chỉ đại diện.
+- Kiểm tra frame đầu/giữa/cuối, audio, attribution và tile readiness.
+- Sửa lỗi blocking, label overlap và camera preset.
+- Chốt quota tạm, cost log và release checklist.
 
-Ngân sách thử nghiệm ban đầu nên dành riêng **15–40 triệu đồng** cho API bản đồ, máy render, AI, lưu trữ và các lượt render lỗi. Khoản này tách khỏi chi phí nhân công và có thể thấp hơn đáng kể nếu nhà cung cấp có free tier phù hợp.
+**Đầu ra**
 
-## Những gì MVP nên có và chưa nên có
+- Tạo video end-to-end mà không sửa code/HTML.
+- Preview và MP4 dùng cùng scene/camera data.
+- MP4 đúng duration, resolution và có audio.
+- Không lộ provider key, raw payload hoặc debug text.
 
-### Nên có ngay
+### Sau ngày 4 — Không chặn hoàn thiện tính năng
 
-- Một tab/sản phẩm riêng cho video BĐS.
-- Nhập địa chỉ, tọa độ hoặc chọn điểm trên bản đồ.
-- Ghim dự án, ranh giới đơn giản và tối đa 3 tuyến đường.
-- Tối đa 5 địa điểm xung quanh.
-- 3–5 mẫu chuyển động camera cố định để kết quả ổn định.
-- Ảnh/video dự án, logo, màu thương hiệu, lời thoại và CTA.
-- Preview, chỉnh chữ, đổi thứ tự cảnh và xuất MP4.
-- Lưu nguồn dữ liệu, attribution, chi phí, trạng thái và lỗi của từng video.
-- Kiểm tra MP4 có hình và âm thanh trước khi báo hoàn thành.
+- Tiếp tục mở rộng pilot từ 10–20 lên 20–30 video để đo P50/P95 chính xác hơn.
+- Theo dõi provider response/license và bật satellite production khi đủ quyền.
+- Three.js/Cesium, batch và campaign integration vẫn để sau MVP.
 
-### Để sau MVP
+## 7. Chi phí API để hoàn thiện
 
-- Editor camera tự do như phần mềm dựng phim chuyên nghiệp.
-- Tự dựng mô hình 3D của tòa nhà từ ảnh.
-- Nhiều người cùng sửa một project theo thời gian thực.
-- Video dài trên 90 giây hoặc 4K.
-- Tạo hàng trăm biến thể cùng lúc.
-- Avatar người nói giống video mẫu; có thể thêm sau như một lớp video riêng.
+### Cách tính
 
-Giới hạn MVP giúp giảm rủi ro từ một “công cụ dựng phim 3D” quá lớn thành một “máy tạo video BĐS theo mẫu” có thể hoàn thành và bán được.
+Chỉ tính khoản có thể phải trả cho API/license. Không tính:
 
-## Rủi ro cần chấp nhận hoặc xử lý
+- công phát triển;
+- máy chủ/GPU;
+- Redis/MongoDB;
+- domain;
+- thiết kế;
+- QA;
+- vận hành nội bộ.
 
-| Rủi ro | Tác động | Cách xử lý |
+Quy đổi tham khảo trong tài liệu: 1 USD ≈ 26.000 VNĐ. Khi thanh toán phải dùng tỷ giá và thuế thực tế.
+
+### VIETMAP
+
+Thông tin công khai tại thời điểm lập tài liệu:
+
+- tài khoản phát triển được giới thiệu 60.000 transactions/tháng, miễn phí trong 2 tháng;
+- tile map: 25 tile requests = 1 transaction;
+- geocode, reverse, autocomplete, place thường là 1 request = 1 transaction;
+- routing tính theo số waypoint;
+- mức công khai đầu tiên là khoảng 50 VNĐ/transaction trong dải 1–500.000 transactions/tháng;
+- console hỗ trợ flexible top-up.
+
+Estimate một video 20–30 giây:
+
+| Kịch bản | Tile requests | API khác | Tổng transaction ước tính | Giá theo 50 VNĐ/trans |
+| --- | ---: | ---: | ---: | ---: |
+| Nhẹ | 250 | 8 | 18 | 900 VNĐ |
+| Thông thường | 1.000 | 12 | 52 | 2.600 VNĐ |
+| Nặng | 2.500 | 20 | 120 | 6.000 VNĐ |
+
+Đây là mô hình dự toán, không phải số tiêu thụ cam kết. Renderer phải ghi số tile/request thật trong pilot. Cache, camera path, zoom, độ phân giải và style ảnh hưởng trực tiếp đến số request.
+
+Chi phí 30 video pilot theo mô hình trên khoảng 27.000–180.000 VNĐ và có thể nằm hoàn toàn trong free trial.
+
+**Khoản chưa có giá công khai chắc chắn:** quyền headless capture, lưu MP4 và phân phối video BĐS thương mại. Phải nhận xác nhận hoặc báo giá riêng từ VIETMAP; chi phí transaction không thay thế quyền này.
+
+### Gemini TTS
+
+Pipeline hiện có đã dùng Gemini. Giá công khai của Gemini 2.5 Flash Preview TTS:
+
+- paid input: 0,50 USD/1 triệu text tokens;
+- paid audio output: 10 USD/1 triệu audio tokens;
+- có free tier, nhưng điều kiện dữ liệu khác paid tier.
+
+Do Google tính audio token thay vì công bố giá/phút cố định ở bảng này, chưa nên gán chi phí chính xác cho một video trước khi đo usage metadata.
+
+Ngân sách phát triển/pilot hợp lý: **5–10 USD**, tương đương khoảng **130.000–260.000 VNĐ**. Nếu quota hiện có đủ thì chi phí mua thêm là 0.
+
+### MapTiler fallback
+
+- Flex: 25 USD/tháng, khoảng 650.000 VNĐ trước thuế.
+- Gồm 500.000 API requests/tháng.
+- Có commercial use và export for videos/games theo bảng giá.
+- Reselling chỉ được nêu cho Custom plan.
+- Một số trường hợp video yêu cầu thêm Video Material License Agreement.
+
+Vì sản phẩm tạo video cho khách hàng, không đưa MapTiler Flex vào production cho đến khi vendor xác nhận use-case. Nếu chỉ thử kỹ thuật một tháng, có thể dự phòng 25 USD.
+
+### Cloudinary
+
+Repository đã tích hợp Cloudinary:
+
+- Free: 0 USD, 25 credits/tháng.
+- Plus: 99 USD/tháng, khoảng 2.574.000 VNĐ trước thuế.
+
+Không cần mua gói mới để code tính năng nếu tài khoản hiện tại còn quota. Chỉ nâng cấp khi pilot chứng minh storage/bandwidth vượt mức hiện tại.
+
+### Thư viện và hạ tầng logic
+
+| Thành phần | Chi phí API/license mới |
+| --- | ---: |
+| MapLibre GL JS | 0 |
+| Turf.js | 0 |
+| Terra Draw | 0 |
+| Remotion hiện có | 0 chi phí API mới |
+| FFmpeg | 0 |
+| BullMQ/Redis hiện có | 0 chi phí API mới |
+| MongoDB hiện có | 0 chi phí API mới |
+
+### Tổng dự kiến
+
+| Phương án | Khoản mua thêm dự kiến |
+| --- | ---: |
+| MVP dùng VIETMAP free trial + quota TTS hiện có | **0 VNĐ** |
+| MVP có dự phòng TTS paid | **130.000–260.000 VNĐ** |
+| MVP thử thêm MapTiler Flex 1 tháng | **khoảng 780.000–910.000 VNĐ** |
+| Pilot 20–30 video với VIETMAP + TTS dự phòng | **khoảng 160.000–440.000 VNĐ** |
+| Cloudinary Plus nếu thật sự vượt quota | cộng **khoảng 2.574.000 VNĐ/tháng** |
+| License video thương mại của provider | **Chờ báo giá, chưa thể cộng chính xác** |
+
+**Ngân sách API nên chuẩn bị để hoàn thiện kỹ thuật:** 1.000.000 VNĐ là đủ cho MVP/pilot nhỏ trong điều kiện free trial hoạt động và không mua Cloudinary mới.
+
+**Ngân sách production chưa thể chốt tuyệt đối** cho đến khi VIETMAP hoặc provider thay thế xác nhận quyền video thương mại. Đây là biến số lớn nhất, không phải MapLibre, TTS hay FFmpeg.
+
+## 8. Câu hỏi phải gửi nhà cung cấp
+
+Gửi cho VIETMAP và provider dự phòng mô tả chính xác:
+
+> Hệ thống SaaS tự động tải tile/style bằng backend renderer, điều khiển camera, chụp frame, ghép polygon/route/label/voice, tạo MP4, lưu file và cho khách hàng doanh nghiệp tải xuống để quảng cáo bất động sản.
+
+Yêu cầu trả lời bằng văn bản:
+
+1. Có cho phép headless/browser automation không?
+2. Có cho phép capture frame và encode MP4 không?
+3. Có cho phép lưu trữ video lâu dài không?
+4. Có cho phép khách hàng tải và đăng mạng xã hội không?
+5. Có được bán video như output của SaaS không?
+6. Attribution phải hiện thế nào và trong bao lâu?
+7. Tile/style/satellite nào được phép dùng?
+8. Cache được bao lâu?
+9. Giá theo transaction hay cần hợp đồng riêng?
+10. Có giới hạn số video, độ phân giải hoặc nền tảng phân phối không?
+
+## 9. Tiêu chí hoàn thành
+
+### Kỹ thuật
+
+- Một project tạo được MP4 9:16 1080p, 20–30 giây.
+- Có map, camera, polygon, route, POI, overlay và audio.
+- Preview và final render dùng cùng snapshot.
+- Render lặp lại không lệch timeline/camera đáng kể.
+- Không có black frame hoặc missing tile im lặng.
+- Worker restart recover được job.
+- Retry không duplicate.
+- Output được verify trước completed.
+
+### Dữ liệu
+
+- Location, POI và route có source reference.
+- Người dùng xác nhận thông tin quan trọng.
+- AI không tự bịa giá, diện tích, khoảng cách hoặc tiện ích.
+- Provider/version/attribution được lưu.
+
+### Bảo mật
+
+- Service key không đi vào generated HTML hoặc client response.
+- URL/provider được allowlist.
+- Không log raw payload nhạy cảm.
+- Project/render luôn tenant-scoped.
+
+### Kinh doanh
+
+- Có quyền tạo và phân phối video thương mại.
+- Đã đo cost/video trên 20–30 video thật.
+- Có fallback khi provider lỗi hoặc thiếu coverage.
+- Attribution đáp ứng hợp đồng.
+
+## 10. Rủi ro và cách xử lý
+
+| Rủi ro | Mức | Xử lý |
 | --- | --- | --- |
-| Không được cấp quyền dùng hình Google cho video bán lại | Không thể ra mắt theo phương án Google | Chốt pháp lý trước; chuẩn bị nguồn dữ liệu thay thế |
-| Khu vực Việt Nam thiếu mô hình 3D đẹp | Video không giống mẫu | Test 3 địa chỉ đại diện trước khi làm sản phẩm |
-| Ảnh bản đồ cũ | Dự án mới chưa xuất hiện | Cho phép chèn mô hình/ảnh dự án và ghi ngày nguồn ảnh |
-| Sai khoảng cách hoặc thời gian đi lại | Gây hiểu nhầm khách hàng | Lấy từ API chỉ đường hoặc bắt buộc người dùng xác nhận |
-| Render WebGL không ổn định | Video lỗi, đen hình hoặc thiếu tile | Worker có GPU, chờ tải đủ tile, retry giới hạn và kiểm tra frame |
-| Chi phí tile tăng bất ngờ | Lỗ trên mỗi video | Quota, giới hạn đường bay/zoom, log chi phí và ngắt khi vượt ngân sách |
-| Attribution bị chữ/CTA che | Vi phạm điều khoản | Dành vùng cố định, kiểm tra tự động trước xuất video |
+| Provider không cấp quyền video | Rất cao | Dùng vector/2.5D hoặc clip hợp lệ do người dùng cung cấp |
+| Satellite/3D thiếu coverage | Cao | Test 3 địa chỉ trước; fallback hybrid/vector |
+| WebGL render không ổn định | Cao | Tile readiness, timeout, frame check, capped retry |
+| Camera preview khác MP4 | Cao | Một Remotion frame clock; không dùng flyTo |
+| Sai POI/route | Cao | Source reference và xác nhận người dùng |
+| Tile cost tăng | Trung bình | Giới hạn zoom/path/duration, quota và cost log |
+| Attribution bị che | Cao | Fixed safe-area layer và automated check |
+| TTS/Map API hết quota | Trung bình | Budget guard và terminal error rõ ràng |
 
-## Điều kiện để duyệt dự án
+## 11. Quyết định triển khai
 
-Chỉ chuyển từ giai đoạn 0 sang xây MVP khi đáp ứng đủ:
+Phương án phù hợp nhất:
 
-1. Có văn bản hoặc hợp đồng xác nhận được phép tạo, lưu, ghép và cung cấp video BĐS thương mại.
-2. Ít nhất 3 địa chỉ mục tiêu tại Việt Nam có chất lượng hình ảnh chấp nhận được.
-3. Prototype 20–30 giây render ổn định và attribution luôn rõ.
-4. Đã đo được số lượt API, thời gian render và chi phí thật cho một video.
-5. Có phương án thay thế khi nhà cung cấp bản đồ lỗi hoặc khu vực không có 3D.
-6. Người phụ trách kinh doanh chấp nhận video là hình ảnh tham khảo, không thay thế hồ sơ pháp lý hoặc khảo sát thực tế.
+1. Dùng **VIETMAP + MapLibre + Turf + Terra Draw** cho MVP.
+2. Tận dụng **Remotion + FFmpeg + BullMQ + Cloudinary + TTS** hiện có.
+3. Giữ **MapTiler** làm fallback, không mua nếu VIETMAP đáp ứng.
+4. Có MVP chạy được trong **2–3 ngày**, hoàn thiện end-to-end trong **3–4 ngày**.
+5. Dành tối đa **1.000.000 VNĐ** cho API thử nghiệm.
+6. Chưa mở production satellite/hybrid nếu chưa có quyền video bằng văn bản.
+7. Sau pilot, chốt transaction/video, quota và giá bán theo số liệu thật.
 
-## Quyết định đề xuất
+## 12. Nguồn giá và tài liệu chính thức
 
-Duyệt ngay **giai đoạn 0 với trần 60 triệu đồng và tối đa 2 tuần**. Kết quả bắt buộc là một prototype, bảng đo chi phí thật và xác nhận quyền sử dụng nguồn bản đồ.
+- [VIETMAP Maps API](https://maps.vietmap.vn/docs/vi/map-api/overview/)
+- [VIETMAP pricing](https://maps.vietmap.vn/web)
+- [VIETMAP request-to-transaction](https://maps.vietmap.vn/docs/map-api/console/request-to-transaction/)
+- [VIETMAP billing/top-up](https://maps.vietmap.vn/docs/map-api/console/payment/)
+- [VIETMAP Tilemap](https://maps.vietmap.vn/docs/vi/map-api/tilemap/)
+- [MapTiler Cloud pricing](https://www.maptiler.com/cloud/pricing/)
+- [MapTiler video license guide](https://docs.maptiler.com/guides/maps-apis/maps-platform/how-to-use-maptiler-maps-in-geolayers/)
+- [MapTiler Cloud Terms](https://www.maptiler.com/terms/cloud/)
+- [Gemini Developer API pricing](https://ai.google.dev/gemini-api/docs/pricing)
+- [Cloudinary pricing](https://cloudinary.com/pricing)
+- [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs)
+- [Turf.js](https://turfjs.org/docs/)
 
-Nếu cả ba đạt yêu cầu, duyệt tiếp MVP theo ngân sách mục tiêu **300–500 triệu đồng**. Chỉ dùng phần dự phòng để nâng lên tối đa **720 triệu đồng** khi đã chứng minh nhu cầu người dùng hoặc phát sinh yêu cầu giấy phép/hạ tầng có lý do rõ ràng.
-
-Nếu Google không cho phép use case thương mại này, chọn một trong hai hướng:
-
-- ra mắt bản bán tự động với clip hợp lệ do người dùng cung cấp; hoặc
-- ký với nhà cung cấp dữ liệu bản đồ/ảnh 3D khác có điều khoản cho phép tạo và bán video dẫn xuất.
-
-Không nên cố tự động điều khiển giao diện Google Earth Studio bằng bot. Cách đó dễ hỏng khi Google đổi giao diện, không phù hợp worker production và không giải quyết được quyền sử dụng thương mại.
-
-## Nguồn tham khảo chính thức
-
-- [Google Earth Studio là công cụ animation chạy trong trình duyệt](https://earth.google.com/studio/docs/)
-- [Cách Google Earth Studio render và yêu cầu giữ Chrome hoạt động](https://earth.google.com/studio/docs/making-animations/rendering/)
-- [Yêu cầu attribution của Google Earth Studio](https://earth.google.com/studio/docs/attribution/)
-- [Giá Google Maps Platform, gồm Photorealistic 3D Tiles và Aerial View](https://developers.google.com/maps/billing-and-pricing/pricing)
-- [Chính sách Map Tiles API và giới hạn tạo video](https://developers.google.com/maps/documentation/tile/policies)
-- [Phạm vi, giới hạn lưu trữ và cách hoạt động của Aerial View API](https://developers.google.com/maps/documentation/aerial-view/overview)
-- [Chính sách và attribution của Aerial View API](https://developers.google.com/maps/documentation/aerial-view/policies)
-
-> Giá và điều khoản có thể thay đổi. Cần kiểm tra lại tài liệu chính thức và hợp đồng tại thời điểm ký với nhà cung cấp.
+> Giá, quota và điều khoản có thể thay đổi. Cần kiểm tra lại tại thời điểm mua và ưu tiên hợp đồng/xác nhận của provider cho đúng use-case.
