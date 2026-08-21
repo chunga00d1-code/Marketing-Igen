@@ -110,6 +110,58 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
               <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-blue-600" />
             </label>
           </div>
+
+          {/* Smart Auto Follow-up status */}
+          <div className="flex justify-between items-start gap-4 pb-3 border-b border-slate-100/50">
+            <div>
+              <h5 className="font-extrabold text-indigo-600 font-sans tracking-tight text-xs flex items-center gap-1">
+                <Clock3 className="h-3.5 w-3.5 text-indigo-600" />
+                Tự động Follow-up khách chưa chốt
+              </h5>
+              <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
+                Tự động gửi tin nhắn chăm sóc lại khi khách hỏi giá/sản phẩm nhưng im lặng.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer select-none shrink-0 mt-0.5">
+              <input
+                type="checkbox"
+                checked={localConfig.autoFollowUpEnabled || false}
+                onChange={(e) => setLocalConfig({ ...localConfig, autoFollowUpEnabled: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-8 h-4 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-indigo-600" />
+            </label>
+          </div>
+
+          {localConfig.autoFollowUpEnabled && (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 space-y-3">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-slate-700">Thời gian chờ gửi nhắc nhở</span>
+                <select
+                  value={localConfig.followUpDelayHours || 2}
+                  onChange={(e) => setLocalConfig({ ...localConfig, followUpDelayHours: Number(e.target.value) })}
+                  className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-xs font-semibold text-indigo-700 outline-none"
+                >
+                  <option value={1}>1 giờ</option>
+                  <option value={2}>2 giờ (Khuyên dùng)</option>
+                  <option value={4}>4 giờ</option>
+                  <option value={8}>8 giờ</option>
+                  <option value={24}>24 giờ (1 ngày)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Kịch bản Follow-up riêng (Tùy chọn)
+                </label>
+                <textarea
+                  placeholder="Ví dụ: Khéo léo nhắc mã freeship hoặc hỏi thăm khách cần hỗ trợ thêm thông số gì không..."
+                  value={localConfig.followUpPrompt || ""}
+                  onChange={(e) => setLocalConfig({ ...localConfig, followUpPrompt: e.target.value })}
+                  className="w-full h-16 p-2 border border-indigo-200 bg-white rounded-lg text-xs leading-relaxed outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* delay slider config */}

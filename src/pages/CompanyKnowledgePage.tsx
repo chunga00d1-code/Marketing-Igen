@@ -1,15 +1,20 @@
 import {
   AlertCircle,
+  AlertTriangle,
   BookOpenCheck,
+  Bot,
   ChevronDown,
   ExternalLink,
   FileText,
   Link2,
   LoaderCircle,
+  MessageSquare,
   RefreshCw,
   Search,
+  Send,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -22,6 +27,7 @@ import {
   KnowledgeDocumentType,
   KnowledgePageScope,
   KnowledgePurposeScope,
+  TestSearchResult,
   companyKnowledgeService,
 } from "../services/companyKnowledgeService";
 import {
@@ -57,6 +63,7 @@ const DOCUMENT_TYPES: Array<{ id: KnowledgeDocumentType; label: string }> = [
   { id: "product", label: "Sản phẩm" },
   { id: "service", label: "Dịch vụ" },
   { id: "pricing", label: "Bảng giá" },
+  { id: "promotion", label: "Khuyến mãi / Ưu đãi" },
   { id: "policy", label: "Chính sách" },
   { id: "faq", label: "Câu hỏi thường gặp" },
   { id: "brand_guideline", label: "Nhận diện thương hiệu" },
@@ -229,6 +236,31 @@ export default function CompanyKnowledgePage() {
   const [editPageScope, setEditPageScope] = useState<KnowledgePageScope>("all");
   const [editPageIds, setEditPageIds] = useState<string[]>([]);
   const [editDocumentType, setEditDocumentType] = useState<KnowledgeDocumentType>("general");
+
+  // State cho RAG Search Simulator
+  const [testQuery, setTestQuery] = useState("");
+  const [testingSearch, setTestingSearch] = useState(false);
+  const [testResult, setTestResult] = useState<TestSearchResult | null>(null);
+  const [showMatchedChunks, setShowMatchedChunks] = useState(false);
+
+  async function handleTestSearch() {
+    if (!testQuery.trim()) {
+      toast.error("Vui lòng nhập câu hỏi để thử nghiệm.");
+      return;
+    }
+    setTestingSearch(true);
+    try {
+      const result = await companyKnowledgeService.testSearch(testQuery.trim());
+      setTestResult(result);
+      if (result.matches === 0) {
+        toast.info("Không tìm thấy khối tri thức nào khớp với câu hỏi này.");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Thử nghiệm tìm kiếm thất bại.");
+    } finally {
+      setTestingSearch(false);
+    }
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -561,12 +593,190 @@ export default function CompanyKnowledgePage() {
           </section>
         )}
 
-        {(health?.warnings || []).length > 0 && (
+        {(health?.conflicts || []).length > 0 && (
+          <div className="mt-4 overflow-hidden rounded-2xl border border-rose-200 bg-rose-50/60 p-4 shadow-xs">
+            <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
+              <AlertTriangle className="h-4 w-4 text-rose-600" />
+              <span>Phát hiện {health?.conflicts?.length} mâu thuẫn dữ liệu cần đối soát giữa các tài liệu:</span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {health?.conflicts?.map((conflict) => (
+                <div
+                  key={conflict.id}
+                  className="rounded-xl border border-rose-100 bg-white p-3 text-xs shadow-2xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-rose-700">{conflict.title}</span>
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-700 uppercase tracking-wider">
+                      {conflict.type === "pricing"
+                        ? "Lệch giá"
+                        : conflict.type === "contact"
+                          ? "Lệch Hotline"
+                          : conflict.type === "policy"
+                            ? "Lệch Chính sách"
+                            : "Trùng lặp"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-slate-600 leading-relaxed">
+                    {conflict.description}
+                  </p>
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-2 border-t border-slate-100">
+                    <div className="rounded bg-slate-50 p-1.5">
+                      <span className="font-semibold text-slate-700">Tài liệu A: </span>
+                      <span className="text-slate-600">{conflict.documentA.title}</span>
+                      <div className="font-mono text-rose-600 font-bold mt-0.5">↳ {conflict.conflictingValues.a}</div>
+                    </div>
+                    <div className="rounded bg-slate-50 p-1.5">
+                      <span className="font-semibold text-slate-700">Tài liệu B: </span>
+                      <span className="text-slate-600">{conflict.documentB.title}</span>
+                      <div className="font-mono text-rose-600 font-bold mt-0.5">↳ {conflict.conflictingValues.b}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(health?.warnings || []).length > 0 && !(health?.conflicts || []).length && (
           <div className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             {health?.warnings[0]}
           </div>
         )}
+
+        {/* RAG Search Simulator Component */}
+        <section className="mt-5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/40 p-5 shadow-xs">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Thử nghiệm tìm kiếm tri thức (RAG Search Simulator)
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Gõ thử câu hỏi của khách hàng để kiểm tra AI có tìm đúng tài liệu và trả lời chuẩn không
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <div className="relative flex-1">
+              <MessageSquare className="absolute left-3 top-2.5 h-4 w-4 text-indigo-400" />
+              <input
+                type="text"
+                value={testQuery}
+                onChange={(e) => setTestQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !testingSearch) {
+                    void handleTestSearch();
+                  }
+                }}
+                placeholder="Ví dụ: Áo polo giá bao nhiêu, ship về Hà Nội mất mấy ngày, có bảo hành ko?..."
+                className="w-full rounded-xl border border-indigo-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleTestSearch()}
+              disabled={testingSearch || !testQuery.trim()}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {testingSearch ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              Kiểm tra
+            </button>
+          </div>
+
+          {testResult && (
+            <div className="mt-4 space-y-3 rounded-xl border border-indigo-100 bg-white p-4 text-xs shadow-xs">
+              {/* Intent & Match Stats */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-bold text-slate-700">Intent nhận diện:</span>
+                  {testResult.detectedDocumentTypes?.length > 0 ? (
+                    testResult.detectedDocumentTypes.map((type) => (
+                      <span
+                        key={type}
+                        className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200"
+                      >
+                        {DOCUMENT_TYPES.find((t) => t.id === type)?.label || type}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                      Toàn bộ kho tri thức
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-slate-500 text-[11px]">
+                  <span>
+                    Khớp: <strong className="text-indigo-600 font-bold">{testResult.matches} khối</strong>
+                  </span>
+                  <span>
+                    Điểm cao nhất: <strong className="text-emerald-600 font-bold">{(testResult.bestScore || 0).toFixed(2)}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Simulated Answer */}
+              <div>
+                <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-1.5">
+                  <Bot className="h-3.5 w-3.5 text-indigo-600" />
+                  Câu trả lời mẫu AI sẽ gửi cho khách:
+                </div>
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-xs leading-relaxed text-slate-800 whitespace-pre-line">
+                  {testResult.simulatedAnswer || "(Chưa có câu trả lời)"}
+                </div>
+              </div>
+
+              {/* Matched Chunks Breakdown */}
+              {testResult.items?.length > 0 && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowMatchedChunks(!showMatchedChunks)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                  >
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform ${showMatchedChunks ? "rotate-180" : ""}`}
+                    />
+                    {showMatchedChunks ? "Ẩn các đoạn tri thức đã trích xuất" : `Xem ${testResult.items.length} đoạn tri thức đã trích xuất`}
+                  </button>
+
+                  {showMatchedChunks && (
+                    <div className="mt-2 space-y-2">
+                      {testResult.items.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-[11px]"
+                        >
+                          <div className="flex items-center justify-between gap-2 font-bold text-slate-700 mb-1">
+                            <span className="truncate text-indigo-700">
+                              #{idx + 1} · {item.title}
+                            </span>
+                            <span className="shrink-0 text-emerald-600 font-mono">
+                              Score: {item.score.toFixed(2)}
+                            </span>
+                          </div>
+                          <p className="text-slate-600 line-clamp-3 leading-relaxed">
+                            {item.text}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
         <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">

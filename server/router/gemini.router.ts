@@ -33,6 +33,9 @@ const chatSchema = {
       advancedInstructions: Joi.string().allow(""),
       trainingKnowledge: Joi.string().allow(""),
       model: Joi.string().allow("").optional(),
+      autoFollowUpEnabled: Joi.boolean().optional(),
+      followUpDelayHours: Joi.number().min(1).max(72).optional(),
+      followUpPrompt: Joi.string().allow("").optional(),
     }).required(),
   }),
 };
