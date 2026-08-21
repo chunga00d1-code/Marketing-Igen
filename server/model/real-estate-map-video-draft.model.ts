@@ -5,6 +5,7 @@ import type {
   RealEstateMapPoi,
   RealEstateMapRoute,
   RealEstateMapScenePreset,
+  RealEstateMapVfxConfig,
   RealEstateMapVideoSpec,
 } from "../interface/real-estate-map-video.interface";
 
@@ -19,6 +20,7 @@ export type RealEstateMapVideoDraftDocument = {
   pois: RealEstateMapPoi[];
   routes: RealEstateMapRoute[];
   branding?: RealEstateMapBranding;
+  vfxConfig?: RealEstateMapVfxConfig;
   templatePreset?: RealEstateMapScenePreset | "all";
   videoSpec: RealEstateMapVideoSpec;
   createdAt: Date;
@@ -95,6 +97,7 @@ const DraftSchema = new Schema<RealEstateMapVideoDraftDocument>(
     pois: { type: [PoiSubSchema], default: [] },
     routes: { type: [RouteSubSchema], default: [] },
     branding: { type: BrandingSubSchema, default: () => ({}) },
+    vfxConfig: { type: Schema.Types.Mixed, default: () => ({ boundaryTheme: "cyan-neon", boundaryGlowIntensity: 8, boundaryLedSpeed: 4, showRadiusPulse: true, showAnimatedRoutes: true, show3DBillboards: true }) },
     templatePreset: { type: String, default: "zoom-to-project" },
     videoSpec: { type: VideoSpecSubSchema, default: () => ({ aspectRatio: "9:16", resolution: "1080p", durationSeconds: 24 }) },
   },

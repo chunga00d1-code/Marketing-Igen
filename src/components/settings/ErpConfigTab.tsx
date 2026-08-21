@@ -8,7 +8,7 @@ export default function ErpConfigTab() {
   const [darkMode, setDarkMode] = useState(false);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [aiModel, setAiModel] = useState(() => {
-    return userProfile?.aiAutoReplyConfig?.model || localStorage.getItem("selected_ai_model") || "gemini-3.5-flash";
+    return userProfile?.aiAutoReplyConfig?.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731";
   });
   const [autoBackup, setAutoBackup] = useState(true);
 
@@ -89,7 +89,7 @@ export default function ErpConfigTab() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5 text-left">
-            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Phiên bản Gemini API</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Mô hình AI Auto-Reply</label>
             <select
               value={aiModel}
               onChange={async (e) => {
@@ -112,6 +112,7 @@ export default function ErpConfigTab() {
               }}
               className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none cursor-pointer"
             >
+              <option value="deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 (Mặc định - Tốc độ cao)</option>
               <option value="gemini-3.5-flash">Gemini 3.5 Flash (Tối ưu tốc độ)</option>
               <option value="gemini-3.1-pro">Gemini 3.1 Pro (Đọc hiểu nâng cao)</option>
             </select>

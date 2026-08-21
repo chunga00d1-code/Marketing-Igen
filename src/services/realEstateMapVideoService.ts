@@ -44,6 +44,19 @@ export type RealEstateMapVideoSpec = {
   durationSeconds: number;
 };
 
+export type RealEstateMapVfxTheme = "cyan-neon" | "gold-luxury" | "emerald" | "ruby";
+
+export type RealEstateMapVfxConfig = {
+  boundaryTheme?: RealEstateMapVfxTheme;
+  boundaryGlowIntensity?: number;
+  boundaryLedSpeed?: number;
+  showRadiusPulse?: boolean;
+  radiusMeters?: number;
+  showAnimatedRoutes?: boolean;
+  cameraTrajectory?: "cinematic-flyin-orbit" | "dynamic-tilt" | "smooth-glide";
+  show3DBillboards?: boolean;
+};
+
 export type RealEstateMapDraft = {
   id?: string;
   name: string;
@@ -53,6 +66,7 @@ export type RealEstateMapDraft = {
   pois?: RealEstateMapPoi[];
   routes?: RealEstateMapRoute[];
   branding?: RealEstateMapBranding;
+  vfxConfig?: RealEstateMapVfxConfig;
   templatePreset?: string;
   videoSpec?: RealEstateMapVideoSpec;
   updatedAt?: string;
@@ -73,6 +87,8 @@ export type RealEstateMapSceneSnapshot = {
     boundary?: { type: "Polygon"; coordinates: number[][][] };
     pois: RealEstateMapPoi[];
     routes: RealEstateMapRoute[];
+    branding?: RealEstateMapBranding;
+    vfxConfig?: RealEstateMapVfxConfig;
     scenes: Array<{ id: string; startSeconds: number; endSeconds: number }>;
     videoSpec: RealEstateMapVideoSpec;
   };
