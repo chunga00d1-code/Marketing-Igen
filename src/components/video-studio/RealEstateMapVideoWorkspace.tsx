@@ -7,10 +7,12 @@ import {
   PanelLeftClose,
   PanelRightClose,
   Plus,
+  Receipt,
   Route,
   Save,
   Settings,
 } from "lucide-react";
+import { PricingModal } from "../pricing/PricingModal";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MaplibreTerradrawControl } from "@watergis/maplibre-gl-terradraw";
@@ -72,6 +74,7 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
   const [aspectRatio, setAspectRatio] = useState<AspectRatioType>("9:16");
   const [showPlaceLabels, setShowPlaceLabels] = useState(true);
   const [isDrawingBoundary, setIsDrawingBoundary] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
 
   // Core Project State
   const [name, setName] = useState("Khu đô thị Starlake Tây Hồ Tây");
@@ -970,6 +973,14 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => setShowPricingModal(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 transition shadow-xs"
+            title="Bảng giá dịch vụ AI & Credit"
+          >
+            <Receipt className="h-3.5 w-3.5 text-sky-600" /> Bảng giá
+          </button>
+          <button
+            type="button"
             onClick={handleCreateNewProject}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
           >
@@ -1296,6 +1307,12 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         show={showRenderModal}
         onClose={() => setShowRenderModal(false)}
         activeRender={activeRender}
+      />
+
+      {/* Pricing Modal */}
+      <PricingModal
+        isOpen={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
       />
     </div>
   );

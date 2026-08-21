@@ -2,6 +2,17 @@ export type VideoRenderAspectRatio = "16:9" | "9:16" | "1:1";
 export type VideoRenderResolution = "720p" | "1080p";
 export type VideoRenderVoiceAudioFormat = "mp3" | "pcm";
 
+export type VideoRenderVoiceSegment = {
+  audioPath: string;
+  audioFormat?: VideoRenderVoiceAudioFormat;
+  audioSampleRate?: number;
+  audioChannels?: number;
+  startSeconds: number;
+  durationSeconds: number;
+  sourceDurationSeconds?: number;
+  playbackRate?: number;
+};
+
 export type VideoRenderAdapterErrorCode =
   | "RENDER_ADAPTER_UNAVAILABLE"
   | "RENDER_INPUT_INVALID"
@@ -43,6 +54,7 @@ export type VideoRenderInput = {
   voiceAudioChannels?: number;
   voiceDurationSeconds?: number;
   voicePlaybackRate?: number;
+  voiceSegments?: VideoRenderVoiceSegment[];
 } & (VideoRenderBlueprintSource | VideoRenderHtmlSource);
 
 export interface VideoRenderCapability {

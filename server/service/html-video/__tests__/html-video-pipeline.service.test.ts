@@ -3,10 +3,48 @@ import test from "node:test";
 import type { openrouterChat } from "../../openrouter.service";
 import { buildSafeHtmlVideoComposition } from "../html-video-security.service";
 import {
+  fitHtmlVideoSceneTimeline,
   runHtmlVideoStructuredPipeline,
   type HtmlVideoPipelineCheckpoint,
   type HtmlVideoPipelineStage,
 } from "../html-video-pipeline.service";
+
+test("normalizes incomplete AI scene timing to the exact video duration", () => {
+  const scenes = [
+    {
+      id: "scene-1",
+      order: 0,
+      purpose: "opening" as const,
+      sourceUnitIds: ["unit-1"],
+      onScreenText: ["First"],
+      narration: "First scene.",
+      startSeconds: 0,
+      endSeconds: 4,
+      transition: "crossfade" as const,
+      assetIds: [],
+    },
+    {
+      id: "scene-2",
+      order: 1,
+      purpose: "closing" as const,
+      sourceUnitIds: ["unit-2"],
+      onScreenText: ["Second"],
+      narration: "Second scene.",
+      startSeconds: 4,
+      endSeconds: 8,
+      transition: "crossfade" as const,
+      assetIds: [],
+    },
+  ];
+
+  const result = fitHtmlVideoSceneTimeline(scenes, 10);
+
+  assert.equal(result.adjusted, true);
+  assert.deepEqual(
+    result.scenes.map((scene) => [scene.startSeconds, scene.endSeconds]),
+    [[0, 5], [5, 10]]
+  );
+});
 
 const draftInput = {
   prompt: "Giải thích lợi ích đầu tiên\nGiải thích lợi ích thứ hai",
@@ -133,8 +171,15 @@ test("plans content first, composes visual and voice in parallel roles, then com
     [0, 4],
     [4, 10],
   ]);
+  assert.deepEqual(
+    result.pipeline.scenePlan.map((scene) => scene.narration),
+    checkpoint.voice?.scenes.map((scene) => scene.text)
+  );
   assert.match(result.html, /class="scene scene-1/);
   assert.match(result.html, /data-media-slot="product-1"/);
+  assert.match(result.html, /scene scene-1[^"]*has-media/);
+  assert.match(result.html, /scene scene-2[^"]*no-media/);
+  assert.doesNotMatch(result.html, /scene-illustration/);
   assert.match(result.voiceScript, /lợi ích thứ hai/i);
 
   const safe = buildSafeHtmlVideoComposition({
@@ -199,4 +244,70 @@ test("rejects a plan that omits a required content unit before visual or voice g
     /unit-2 must appear exactly once/
   );
   assert.equal(calls, 1);
+});
+
+test("fits an overlong Voice Writer scene to approved planner narration instead of failing generation", async () => {
+  const [firstUnit, secondUnit] = draftInput.prompt.split("\n");
+  const responses = [
+    response({
+      videoBrief: { objective: firstUnit, voiceRequired: true },
+      scenePlan: [
+        {
+          id: "scene-1",
+          purpose: "opening",
+          sourceUnitIds: ["unit-1"],
+          onScreenText: [firstUnit],
+          narration: "First benefit.",
+          startSeconds: 0,
+          endSeconds: 2,
+          transition: "crossfade",
+          assetIds: [],
+        },
+        {
+          id: "scene-2",
+          purpose: "closing",
+          sourceUnitIds: ["unit-2"],
+          onScreenText: [secondUnit],
+          narration: "Second benefit explained clearly.",
+          startSeconds: 2,
+          endSeconds: 10,
+          transition: "crossfade",
+          assetIds: [],
+        },
+      ],
+    }),
+    response({
+      theme: "ocean",
+      scenes: [
+        { sceneId: "scene-1", layout: "centered", headline: firstUnit },
+        { sceneId: "scene-2", layout: "centered", headline: secondUnit },
+      ],
+    }),
+    response({
+      scenes: [
+        { sceneId: "scene-1", text: "This narration is deliberately far too long for a scene lasting only two seconds." },
+        { sceneId: "scene-2", text: "Second benefit explained clearly." },
+      ],
+      fullScript: "ignored",
+    }),
+  ];
+  const calls: Parameters<typeof openrouterChat>[0][] = [];
+  const result = await runHtmlVideoStructuredPipeline({
+    chat: async (params) => {
+      calls.push(params);
+      return responses[calls.length - 1];
+    },
+    draftInput,
+    generationPrompt: draftInput.prompt,
+    referenceAssets: draftInput.referenceAssets,
+  });
+
+  assert.equal(result.kind, "structured");
+  if (result.kind !== "structured") return;
+  assert.equal(result.pipeline.scenePlan[0].narration, "First benefit.");
+  assert.match(result.voiceScript, /^First benefit\./);
+  assert.ok(result.pipeline.findings.some((finding) =>
+    finding.code === "VOICE_NARRATION_FITTED_TO_SCENE" && finding.sceneId === "scene-1"
+  ));
+  assert.match(String(calls[2].messages[0].content), /"sceneId":"scene-1","maximumWords":5/);
 });

@@ -154,7 +154,7 @@ test("requires expected dimensions, duration, and voice stream in probed output"
   assert.doesNotThrow(() => validateProbePayload({
     streams: [
       { codec_type: "video", width: 1080, height: 1920 },
-      { codec_type: "audio" },
+      { codec_type: "audio", duration: "9.4" },
     ],
     format: { duration: "10.02" },
   }, {
@@ -166,6 +166,23 @@ test("requires expected dimensions, duration, and voice stream in probed output"
   assert.throws(
     () => validateProbePayload({
       streams: [{ codec_type: "video", width: 1920, height: 1080 }],
+      format: { duration: "10" },
+    }, {
+      ...validInput,
+      durationSeconds: 10,
+      voiceAudioPath: "C:/tmp/voice.mp3",
+    }),
+    (error: unknown) =>
+      error instanceof VideoRenderAdapterError &&
+      error.code === "RENDER_OUTPUT_INVALID"
+  );
+
+  assert.throws(
+    () => validateProbePayload({
+      streams: [
+        { codec_type: "video", width: 1080, height: 1920 },
+        { codec_type: "audio", duration: "5.5" },
+      ],
       format: { duration: "10" },
     }, {
       ...validInput,
@@ -390,7 +407,7 @@ test("muxes the local voice track into the final MP4 before upload", async () =>
     "-i",
     "C:/tmp/render-voice-1/voice.mp3",
     "-filter_complex",
-    "[1:a]atempo=1.120,apad[voice]",
+    "[1:a]atempo=1.120[voice]",
     "-map",
     "0:v:0",
     "-map",
@@ -469,10 +486,81 @@ test("passes Gemini PCM voice metadata to FFmpeg before muxing", async () => {
     "-i",
     "C:/tmp/render-voice-pcm-1/voice.pcm",
     "-filter_complex",
-    "[1:a]atempo=1.120,apad[voice]",
+    "[1:a]atempo=1.120[voice]",
     "-map",
     "0:v:0",
   ]);
+});
+
+test("places measured voice segments on their exact scene timeline", async () => {
+  const children: FakeRenderProcess[] = [];
+  const spawnCalls: Array<{ command: string; args: readonly string[] }> = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    prepareRuntime: () => ({
+      environment: { HYPERFRAMES_FFMPEG_PATH: "C:/bin/ffmpeg.exe" },
+      missing: [],
+    }),
+    spawnProcess: (command, args) => {
+      const child = new FakeRenderProcess();
+      children.push(child);
+      spawnCalls.push({ command, args });
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+    fileSystem: {
+      access: async () => undefined,
+      mkdir: async () => undefined,
+      writeFile: async () => undefined,
+      readFile: async () => Buffer.from("muxed-video"),
+      rm: async () => undefined,
+    },
+  }));
+
+  await adapter.render(
+    {
+      jobId: "render-scene-voice-1",
+      compositionHtml: '<!doctype html><html data-composition-id="html-video"></html>',
+      aspectRatio: "9:16",
+      resolution: "720p",
+      durationSeconds: 5,
+      voiceSegments: [
+        {
+          audioPath: "C:/tmp/render-scene-voice-1/voice-scene-01.pcm",
+          audioFormat: "pcm",
+          audioSampleRate: 24_000,
+          audioChannels: 1,
+          startSeconds: 0,
+          durationSeconds: 2,
+          sourceDurationSeconds: 1.8,
+        },
+        {
+          audioPath: "C:/tmp/render-scene-voice-1/voice-scene-02.pcm",
+          audioFormat: "pcm",
+          audioSampleRate: 24_000,
+          audioChannels: 1,
+          startSeconds: 2,
+          durationSeconds: 3,
+          sourceDurationSeconds: 2.7,
+        },
+      ],
+    },
+    {
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      temporaryDirectory: "C:/tmp/render-scene-voice-1",
+      onProgress: () => undefined,
+    }
+  );
+
+  assert.equal(children.length, 2);
+  const muxArgs = spawnCalls[1]?.args || [];
+  assert.ok(muxArgs.includes("C:/tmp/render-scene-voice-1/voice-scene-01.pcm"));
+  assert.ok(muxArgs.includes("C:/tmp/render-scene-voice-1/voice-scene-02.pcm"));
+  const filterIndex = muxArgs.indexOf("-filter_complex");
+  const filter = muxArgs[filterIndex + 1];
+  assert.match(filter, /\[1:a\]atempo=1\.000.*adelay=0\|0\[voice_0\]/);
+  assert.match(filter, /\[2:a\]atempo=1\.000.*adelay=2000\|2000\[voice_1\]/);
+  assert.match(filter, /\[voice_0\]\[voice_1\]amix=inputs=2.*atrim=duration=5\.000\[voice\]/);
 });
 
 test("maps a non-zero renderer exit to a coded failure and cleans up", async () => {

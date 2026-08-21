@@ -47,6 +47,28 @@ test("builds a server-owned 9:16 1080p composition", () => {
   assert.doesNotMatch(result.sanitizedHtml, /<script/i);
 });
 
+test("adds deterministic ambient motion when the generated source is otherwise static", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    css: ".hero { color: #0f172a; }",
+    durationSeconds: 12,
+  });
+
+  assert.doesNotMatch(result.sanitizedCss, /animation/i);
+  assert.match(
+    result.compositionHtml,
+    /#html-video-root>:first-child\{[^}]*animation:html-video-root-motion 12s[^}]*!important\}/
+  );
+  assert.match(result.compositionHtml, /@keyframes html-video-root-motion/);
+  assert.match(result.compositionHtml, /@keyframes html-video-background-motion/);
+  assert.match(result.compositionHtml, /@keyframes html-video-content-reveal/);
+  assert.match(result.compositionHtml, /@keyframes html-video-media-motion/);
+  assert.match(
+    result.compositionHtml,
+    /#html-video-root>:not\(\.scene-deck\) :is\(h1,h2,h3,p,li\)/
+  );
+});
+
 test("normalizes unsupported system font aliases before rendering", () => {
   const result = buildSafeHtmlVideoComposition({
     ...validSource,

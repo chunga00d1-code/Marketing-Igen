@@ -126,6 +126,43 @@ function normalizeTransition(value: unknown): HtmlVideoScenePlanItem["transition
   return value === "slide-left" || value === "slide-right" ? value : "crossfade";
 }
 
+export function fitHtmlVideoSceneTimeline(
+  scenes: HtmlVideoScenePlanItem[],
+  durationSeconds: number
+) {
+  let previousEnd = 0;
+  const alreadyContiguous = scenes.every((scene, index) => {
+    const startsAtExpectedTime = index === 0
+      ? scene.startSeconds === 0
+      : Math.abs(scene.startSeconds - previousEnd) <= 0.001;
+    const hasPositiveBoundedDuration = scene.endSeconds > scene.startSeconds &&
+      scene.endSeconds <= durationSeconds + 0.001;
+    previousEnd = scene.endSeconds;
+    return startsAtExpectedTime && hasPositiveBoundedDuration;
+  }) && Math.abs(previousEnd - durationSeconds) <= 0.001;
+  if (alreadyContiguous) return { scenes, adjusted: false };
+
+  const weights = scenes.map((scene) => {
+    const proposedDuration = scene.endSeconds - scene.startSeconds;
+    if (Number.isFinite(proposedDuration) && proposedDuration > 0) {
+      return proposedDuration;
+    }
+    const narrationWords = scene.narration.split(/\s+/).filter(Boolean).length;
+    return Math.max(1, narrationWords);
+  });
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  let cursor = 0;
+  const fittedScenes = scenes.map((scene, index) => {
+    const startSeconds = Number(cursor.toFixed(3));
+    const endSeconds = index === scenes.length - 1
+      ? durationSeconds
+      : Number((cursor + (durationSeconds * weights[index]) / totalWeight).toFixed(3));
+    cursor = endSeconds;
+    return { ...scene, startSeconds, endSeconds };
+  });
+  return { scenes: fittedScenes, adjusted: true };
+}
+
 function normalizePlan(
   value: unknown,
   input: HtmlVideoDraftInput,
@@ -138,7 +175,7 @@ function normalizePlan(
   const rawScenes = value.scenePlan.slice(0, 16);
   if (rawScenes.length === 0) throw new Error("Planner returned no scenes.");
   const validUnitIds = new Set(contentUnits.map((unit) => unit.id));
-  const scenePlan = rawScenes.map((candidate, index): HtmlVideoScenePlanItem => {
+  const parsedScenePlan = rawScenes.map((candidate, index): HtmlVideoScenePlanItem => {
     if (!isRecord(candidate)) throw new Error("Planner returned an invalid scene.");
     const sourceUnitIds = stringArray(candidate.sourceUnitIds, contentUnits.length)
       .filter((id) => validUnitIds.has(id));
@@ -160,6 +197,10 @@ function normalizePlan(
       assetIds: stringArray(candidate.assetIds, 6).filter((id) => allowedAssetIds.has(id)),
     };
   });
+  const { scenes: scenePlan } = fitHtmlVideoSceneTimeline(
+    parsedScenePlan,
+    input.durationSeconds
+  );
 
   const ids = new Set<string>();
   const unitUseCount = new Map<string, number>();
@@ -245,19 +286,27 @@ function plannerPrompt(
 
 function visualSystemPrompt() {
   return [
-    "You are the Visual Composer. Choose hierarchy and layout for the approved scene plan.",
+    "You are the Visual Composer. Choose hierarchy, layout, theme, and visual emphasis for the approved scene plan.",
     "Do not generate HTML, CSS, scripts, URLs, timing, new scenes, or new factual copy.",
     "Use only text already present in each scene onScreenText and only approved asset IDs assigned to that scene.",
-    "Make each scene visually complete and readable on a phone. Select one allowed theme and one allowed layout per scene.",
+    "Make each scene visually complete and readable on a phone.",
+    "Select the most fitting theme for the subject from: ocean (tech/SaaS), midnight (luxury), sunset (energy/passion), emerald (health/nature), violet (creative/arts), coral (fashion/beauty), gold (finance/real-estate), arctic (medical/science), neon (gaming/entertainment), earth (food/organic), blush (parenting/lifestyle), slate (corporate/B2B).",
+    "For each scene, choose: layout (centered|split-left|split-right|statement|cta), emphasis (hero for opening/hook, standard for content, climax for CTA/offer), and accentStyle (glow|border|gradient-shift|minimal).",
   ].join("\n");
 }
 
-function voiceSystemPrompt(input: HtmlVideoDraftInput) {
+function voiceSystemPrompt(input: HtmlVideoDraftInput, plan: HtmlVideoPlan) {
+  const sceneBudgets = plan.scenePlan.map((scene) => ({
+    sceneId: scene.id,
+    maximumWords: Math.max(1, Math.floor((scene.endSeconds - scene.startSeconds) * 2.5)),
+  }));
   return [
     "You are the Voice Writer for one continuous social-video narrator.",
     "Use only facts and phrases in the approved scene plan. Do not add labels, timestamps, directions, sound effects, URLs, prices, or claims.",
-    `Keep the complete narration under ${Math.ceil(input.durationSeconds * 3.2)} words and in scene order.`,
-    "Return one narration segment for every scene and one fullScript containing those segments in the same order.",
+    `Keep the complete narration under ${Math.ceil(input.durationSeconds * 2.5)} words and in scene order.`,
+    "Return one non-empty narration segment for every scene and one fullScript containing those segments in the same order.",
+    "Each scene segment must fit its own startSeconds..endSeconds interval at no more than 2.5 spoken words per second. End each segment as a complete sentence so the narrator can pause naturally at scene boundaries.",
+    `Hard per-scene word limits: ${JSON.stringify(sceneBudgets)}. Count words before returning and never exceed these limits.`,
   ].join("\n");
 }
 
@@ -268,13 +317,18 @@ function normalizeVisual(
   if (!isRecord(value) || !Array.isArray(value.scenes)) {
     throw new Error("Visual Composer returned no scenes.");
   }
-  const themes = new Set(["ocean", "midnight", "sunset", "emerald", "violet"]);
+  const themes = new Set([
+    "ocean", "midnight", "sunset", "emerald", "violet",
+    "coral", "gold", "arctic", "neon", "earth", "blush", "slate"
+  ]);
   const layouts = new Set(["centered", "split-left", "split-right", "statement", "cta"]);
+  const emphasisValues = new Set(["hero", "standard", "climax"]);
+  const accentStyles = new Set(["glow", "border", "gradient-shift", "minimal"]);
   const byId = new Map<string, Record<string, unknown>>();
   value.scenes.forEach((scene) => {
     if (isRecord(scene)) byId.set(stringValue(scene.sceneId, 80), scene);
   });
-  const scenes = plan.scenePlan.map((scene): HtmlVideoVisualScene => {
+  const scenes = plan.scenePlan.map((scene, index): HtmlVideoVisualScene => {
     const raw = byId.get(scene.id) || {};
     const approvedText = new Set(scene.onScreenText.map((text) => text.trim()).filter(Boolean));
     const takeApproved = (candidate: unknown, fallback = "") => {
@@ -283,11 +337,20 @@ function normalizeVisual(
     };
     const available = [...approvedText];
     const approvedAssets = new Set(scene.assetIds);
+    const rawEmphasis = String(raw.emphasis || "").toLowerCase().trim();
+    const rawAccent = String(raw.accentStyle || "").toLowerCase().trim();
+    const defaultEmphasis = index === 0 ? "hero" : index === plan.scenePlan.length - 1 ? "climax" : "standard";
     return {
       sceneId: scene.id,
       layout: layouts.has(String(raw.layout))
         ? String(raw.layout) as HtmlVideoVisualScene["layout"]
         : scene.purpose === "closing" ? "cta" : "centered",
+      emphasis: emphasisValues.has(rawEmphasis)
+        ? rawEmphasis as HtmlVideoVisualScene["emphasis"]
+        : defaultEmphasis,
+      accentStyle: accentStyles.has(rawAccent)
+        ? rawAccent as HtmlVideoVisualScene["accentStyle"]
+        : "glow",
       eyebrow: takeApproved(raw.eyebrow),
       headline: takeApproved(raw.headline, available[0] || ""),
       body: takeApproved(raw.body, available[1] || ""),
@@ -303,6 +366,37 @@ function normalizeVisual(
   };
 }
 
+export function fitHtmlVideoSceneNarration(
+  requestedText: string,
+  scene: HtmlVideoScenePlanItem
+) {
+  const maximumWords = Math.max(1, Math.floor((scene.endSeconds - scene.startSeconds) * 2.5));
+  const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
+  const words = (text: string) => normalize(text).split(/\s+/).filter(Boolean);
+  const requested = normalize(requestedText);
+  if (requested && words(requested).length <= maximumWords) {
+    return { text: requested, adjusted: false, maximumWords };
+  }
+
+  const faithfulFallbacks = [
+    normalize(scene.narration),
+    normalize(scene.onScreenText.join(". ")),
+  ].filter(Boolean);
+  const fittingFallback = faithfulFallbacks.find((candidate) => words(candidate).length <= maximumWords);
+  if (fittingFallback) {
+    return { text: fittingFallback, adjusted: true, maximumWords };
+  }
+
+  const sourceText = faithfulFallbacks[0] || requested;
+  const boundedWords = words(sourceText).slice(0, maximumWords);
+  if (boundedWords.length === 0) {
+    throw new Error(`Voice Writer returned no usable narration for scene ${scene.id}.`);
+  }
+  let text = boundedWords.join(" ").replace(/[,:;-]+$/g, "").trim();
+  if (!/[.!?&]$/.test(text)) text += ".";
+  return { text, adjusted: true, maximumWords };
+}
+
 function normalizeVoice(value: unknown, plan: HtmlVideoPlan, durationSeconds: number): HtmlVideoVoiceComposition {
   if (!isRecord(value) || !Array.isArray(value.scenes)) {
     throw new Error("Voice Writer returned no scene narration.");
@@ -311,16 +405,18 @@ function normalizeVoice(value: unknown, plan: HtmlVideoPlan, durationSeconds: nu
   value.scenes.forEach((scene) => {
     if (isRecord(scene)) rawById.set(stringValue(scene.sceneId, 80), stringValue(scene.text, 2_000));
   });
-  const scenes = plan.scenePlan.map((scene) => ({
-    sceneId: scene.id,
-    text: rawById.get(scene.id) || scene.narration,
-  }));
+  const adjustedSceneIds: string[] = [];
+  const scenes = plan.scenePlan.map((scene) => {
+    const fitted = fitHtmlVideoSceneNarration(rawById.get(scene.id) || scene.narration, scene);
+    if (fitted.adjusted) adjustedSceneIds.push(scene.id);
+    return { sceneId: scene.id, text: fitted.text };
+  });
   const fullScript = scenes.map((scene) => scene.text).filter(Boolean).join(" ").trim();
   const wordCount = fullScript.split(/\s+/).filter(Boolean).length;
-  if (!fullScript || wordCount > Math.ceil(durationSeconds * 3.2)) {
+  if (!fullScript || wordCount > Math.ceil(durationSeconds * 2.5)) {
     throw new Error("Voice narration does not fit the requested duration.");
   }
-  return { scenes, fullScript };
+  return { scenes, fullScript, ...(adjustedSceneIds.length > 0 ? { adjustedSceneIds } : {}) };
 }
 
 function escapeHtml(value: string) {
@@ -334,11 +430,18 @@ function escapeHtml(value: string) {
 }
 
 const themeCss: Record<HtmlVideoVisualComposition["theme"], string> = {
-  ocean: "--bg1:#071a33;--bg2:#0b5f73;--accent:#38bdf8;--accent2:#67e8f9;--surface:rgba(7,26,51,.76)",
-  midnight: "--bg1:#070b1d;--bg2:#252054;--accent:#a78bfa;--accent2:#f0abfc;--surface:rgba(15,18,48,.8)",
-  sunset: "--bg1:#3b1025;--bg2:#9a3412;--accent:#fb7185;--accent2:#fbbf24;--surface:rgba(59,16,37,.78)",
-  emerald: "--bg1:#052e2b;--bg2:#065f46;--accent:#34d399;--accent2:#a7f3d0;--surface:rgba(5,46,43,.8)",
-  violet: "--bg1:#241044;--bg2:#5b21b6;--accent:#c084fc;--accent2:#f5d0fe;--surface:rgba(36,16,68,.78)",
+  ocean: "--bg1:#071a33;--bg2:#0b5f73;--accent:#38bdf8;--accent2:#67e8f9;--surface:rgba(7,26,51,.76);--glow:rgba(56,189,248,.4)",
+  midnight: "--bg1:#070b1d;--bg2:#252054;--accent:#a78bfa;--accent2:#f0abfc;--surface:rgba(15,18,48,.8);--glow:rgba(167,139,250,.4)",
+  sunset: "--bg1:#3b1025;--bg2:#9a3412;--accent:#fb7185;--accent2:#fbbf24;--surface:rgba(59,16,37,.78);--glow:rgba(251,113,133,.4)",
+  emerald: "--bg1:#052e2b;--bg2:#065f46;--accent:#34d399;--accent2:#a7f3d0;--surface:rgba(5,46,43,.8);--glow:rgba(52,211,153,.4)",
+  violet: "--bg1:#241044;--bg2:#5b21b6;--accent:#c084fc;--accent2:#f5d0fe;--surface:rgba(36,16,68,.78);--glow:rgba(192,132,252,.4)",
+  coral: "--bg1:#2a0f1d;--bg2:#881337;--accent:#f43f5e;--accent2:#fda4af;--surface:rgba(42,15,29,.78);--glow:rgba(244,63,94,.4)",
+  gold: "--bg1:#1c1404;--bg2:#78350f;--accent:#f59e0b;--accent2:#fde68a;--surface:rgba(28,20,4,.8);--glow:rgba(245,158,11,.4)",
+  arctic: "--bg1:#0a192f;--bg2:#1e293b;--accent:#38bdf8;--accent2:#e0f2fe;--surface:rgba(15,23,42,.8);--glow:rgba(56,189,248,.35)",
+  neon: "--bg1:#050811;--bg2:#0f172a;--accent:#22c55e;--accent2:#06b6d4;--surface:rgba(5,8,17,.85);--glow:rgba(34,197,94,.5)",
+  earth: "--bg1:#1c1308;--bg2:#451a03;--accent:#d97706;--accent2:#fed7aa;--surface:rgba(28,19,8,.82);--glow:rgba(217,119,6,.4)",
+  blush: "--bg1:#261020;--bg2:#701a75;--accent:#e879f9;--accent2:#fbcfe8;--surface:rgba(38,16,32,.78);--glow:rgba(232,121,249,.4)",
+  slate: "--bg1:#0f172a;--bg2:#334155;--accent:#94a3b8;--accent2:#f8fafc;--surface:rgba(15,23,42,.82);--glow:rgba(148,163,184,.35)",
 };
 
 export function compileHtmlVideoComposition(
@@ -364,25 +467,52 @@ export function compileHtmlVideoComposition(
       scene.body ? `<p class="scene-body">${escapeHtml(scene.body)}</p>` : "",
       scene.cta ? `<p class="scene-cta">${escapeHtml(scene.cta)}</p>` : "",
     ].join("");
-    return `<section class="scene scene-${index + 1} layout-${scene.layout}"><div class="scene-orb scene-orb-a"></div><div class="scene-orb scene-orb-b"></div><div class="scene-frame"><div class="scene-copy">${text}</div>${media ? `<div class="scene-media">${media}</div>` : `<div class="scene-illustration"><span></span><span></span><span></span></div>`}</div></section>`;
+    const emphasisClass = `emphasis-${scene.emphasis || "standard"}`;
+    const accentClass = `accent-${scene.accentStyle || "glow"}`;
+    const mediaClass = media ? "has-media" : "no-media";
+    return `<section class="scene scene-${index + 1} layout-${scene.layout} ${emphasisClass} ${accentClass} ${mediaClass}"><div class="scene-orb scene-orb-a"></div><div class="scene-orb scene-orb-b"></div><div class="scene-frame"><div class="scene-copy">${text}</div>${media ? `<div class="scene-media">${media}</div>` : ""}</div></section>`;
   }).join("")}</main>`;
   const css = `
-.scene-deck{${themeCss[visual.theme]};position:relative;width:100%;height:100%;overflow:hidden;background:linear-gradient(145deg,var(--bg1),var(--bg2));font-family:Inter,sans-serif;color:#fff}
-.scene{position:absolute;inset:0;overflow:hidden;padding:9%;background:radial-gradient(circle at 18% 16%,color-mix(in srgb,var(--accent) 34%,transparent),transparent 34%),linear-gradient(145deg,var(--bg1),var(--bg2))}
-.scene-frame{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:6%;width:100%;height:100%;padding:7%;border:2px solid rgba(255,255,255,.2);border-radius:48px;background:var(--surface);box-shadow:0 36px 100px rgba(0,0,0,.34);overflow:hidden}
-.scene-copy{position:relative;z-index:3;display:flex;flex:1 1 54%;min-width:0;flex-direction:column;justify-content:center;gap:28px}
-.scene-eyebrow{margin:0;color:var(--accent2);font-size:30px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
-.scene-headline{margin:0;max-width:100%;font-size:96px;line-height:1.02;letter-spacing:-.045em;text-wrap:balance}
-.scene-body{margin:0;max-width:94%;font-size:38px;line-height:1.35;color:rgba(255,255,255,.88)}
-.scene-cta{align-self:flex-start;margin:4px 0 0;padding:18px 30px;border-radius:999px;background:var(--accent);box-shadow:0 16px 40px color-mix(in srgb,var(--accent) 34%,transparent);color:#06111f;font-size:30px;font-weight:900}
-.scene-media,.scene-illustration{position:relative;z-index:2;display:flex;flex:0 1 40%;width:40%;height:58%;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.16);border-radius:40px;background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,.04));box-shadow:inset 0 1px rgba(255,255,255,.2),0 30px 80px rgba(0,0,0,.25);overflow:hidden}
+.scene-deck{${themeCss[visual.theme] || themeCss.ocean};position:relative;width:100%;height:100%;overflow:hidden;background:linear-gradient(145deg,var(--bg1),var(--bg2));font-family:Inter,sans-serif;color:#fff}
+.scene{position:absolute;inset:0;overflow:hidden;padding:7%;background:radial-gradient(circle at 50% 30%,color-mix(in srgb,var(--accent) 28%,transparent),transparent 65%),linear-gradient(145deg,var(--bg1),var(--bg2))}
+.scene-frame{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:5%;width:100%;height:100%;padding:8%;border:2px solid rgba(255,255,255,.22);border-radius:44px;background:var(--surface);backdrop-filter:blur(24px);box-shadow:0 36px 100px rgba(0,0,0,.35),inset 0 1px 1px rgba(255,255,255,.2);overflow:hidden;animation:sceneFrameGlow 4s ease-in-out infinite alternate}
+.scene-copy{position:relative;z-index:3;display:flex;flex:1 1 54%;min-width:0;flex-direction:column;justify-content:center;gap:24px}
+.scene-eyebrow{margin:0;align-self:flex-start;display:inline-flex;align-items:center;padding:10px 24px;border-radius:999px;background:color-mix(in srgb,var(--accent) 20%,transparent);border:1.5px solid color-mix(in srgb,var(--accent2) 45%,transparent);color:var(--accent2);font-size:28px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 4px 24px color-mix(in srgb,var(--accent) 24%,transparent);animation:sceneEyebrowEntrance .7s cubic-bezier(.16,1,.3,1) both}
+.scene-headline{margin:0;max-width:100%;font-size:92px;line-height:1.06;letter-spacing:-.04em;text-wrap:balance;background:linear-gradient(135deg,#ffffff 50%,var(--accent2) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 4px 20px var(--glow,color-mix(in srgb,var(--accent) 35%,transparent)));animation:sceneHeadlineEntrance .8s cubic-bezier(.16,1,.3,1) .1s both}
+.scene-body{margin:0;max-width:94%;font-size:36px;line-height:1.4;color:rgba(255,255,255,.92);animation:sceneBodyEntrance .9s cubic-bezier(.16,1,.3,1) .2s both}
+.scene-cta{align-self:flex-start;margin:8px 0 0;padding:20px 36px;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 16px 45px var(--glow,color-mix(in srgb,var(--accent) 45%,transparent));color:#06111f;font-size:32px;font-weight:900;letter-spacing:.02em;animation:sceneCtaPulse 2.2s ease-in-out infinite}
+.scene-media{position:relative;z-index:2;display:flex;flex:0 1 42%;width:42%;height:58%;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.2);border-radius:36px;background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(255,255,255,.05));box-shadow:inset 0 1px rgba(255,255,255,.25),0 30px 80px rgba(0,0,0,.3);overflow:hidden;animation:sceneMediaZoom .9s cubic-bezier(.16,1,.3,1) both}
 .scene-media .html-video-media-slot{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important}
-.scene-illustration span{position:absolute;width:42%;aspect-ratio:1;border:4px solid var(--accent);border-radius:28%;transform:rotate(18deg);box-shadow:0 0 50px color-mix(in srgb,var(--accent) 45%,transparent)}
-.scene-illustration span:nth-child(2){width:28%;transform:translate(35%,-35%) rotate(45deg);border-color:var(--accent2)}
-.scene-illustration span:nth-child(3){width:16%;transform:translate(-70%,70%) rotate(8deg);background:var(--accent);border:0}
-.scene-orb{position:absolute;border-radius:50%;filter:blur(18px);opacity:.55}.scene-orb-a{top:-8%;right:-5%;width:34%;aspect-ratio:1;background:var(--accent)}.scene-orb-b{bottom:-12%;left:-7%;width:28%;aspect-ratio:1;background:var(--accent2)}
-.layout-centered .scene-frame,.layout-statement .scene-frame,.layout-cta .scene-frame{justify-content:center;text-align:center}.layout-centered .scene-copy,.layout-statement .scene-copy,.layout-cta .scene-copy{align-items:center;max-width:86%}.layout-centered .scene-body,.layout-statement .scene-body,.layout-cta .scene-body{max-width:88%}.layout-centered .scene-media,.layout-centered .scene-illustration,.layout-statement .scene-media,.layout-statement .scene-illustration,.layout-cta .scene-media,.layout-cta .scene-illustration{display:none}.layout-cta .scene-cta{align-self:center}
+.scene.no-media .scene-frame{justify-content:center;text-align:center}
+.scene.no-media .scene-copy{flex:1 1 100%;width:100%;max-width:92%;align-items:center}
+.scene.no-media .scene-eyebrow,.scene.no-media .scene-cta{align-self:center}
+.scene.no-media .scene-body{max-width:90%}
+.scene-orb{position:absolute;border-radius:50%;filter:blur(30px);opacity:.75;pointer-events:none}
+.scene-orb-a{top:-10%;right:-8%;width:42%;aspect-ratio:1;background:radial-gradient(circle,var(--accent) 0%,transparent 70%);animation:sceneOrbFloatA 7s ease-in-out infinite alternate}
+.scene-orb-b{bottom:-14%;left:-10%;width:38%;aspect-ratio:1;background:radial-gradient(circle,var(--accent2) 0%,transparent 70%);animation:sceneOrbFloatB 6s ease-in-out infinite alternate}
+.layout-centered .scene-frame,.layout-statement .scene-frame,.layout-cta .scene-frame{justify-content:center;text-align:center}
+.layout-centered .scene-frame{flex-direction:column}
+.layout-centered .scene-copy,.layout-statement .scene-copy,.layout-cta .scene-copy{align-items:center;max-width:92%}
+.layout-centered .scene-copy{flex:1 1 auto}
+.layout-centered .scene-eyebrow,.layout-statement .scene-eyebrow,.layout-cta .scene-eyebrow{align-self:center}
+.layout-centered .scene-body,.layout-statement .scene-body,.layout-cta .scene-body{max-width:90%}
+.layout-centered .scene-media{display:flex;flex:0 1 34%;width:58%;height:34%}
+.layout-statement .scene-media,.layout-cta .scene-media{display:none}
+.layout-cta .scene-cta{align-self:center}
 .layout-split-right .scene-frame{flex-direction:row-reverse}
+.emphasis-hero .scene-headline{font-size:96px;filter:drop-shadow(0 6px 28px var(--glow,rgba(255,255,255,.35)))}
+.emphasis-climax .scene-frame{border-color:color-mix(in srgb,var(--accent2) 55%,transparent);box-shadow:0 36px 100px rgba(0,0,0,.4),0 0 50px var(--glow,transparent)}
+.emphasis-climax .scene-cta{padding:22px 42px;font-size:34px}
+.accent-border .scene-frame{border:2.5px solid color-mix(in srgb,var(--accent2) 60%,transparent)}
+.accent-minimal .scene-orb{opacity:.35}
+@keyframes sceneEyebrowEntrance{0%{opacity:0;transform:translateX(-24px) scale(.92)}100%{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes sceneHeadlineEntrance{0%{opacity:0;transform:translateX(-36px) scale(.94);filter:blur(8px)}100%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}}
+@keyframes sceneBodyEntrance{0%{opacity:0;transform:translateX(-24px)}100%{opacity:1;transform:translateX(0)}}
+@keyframes sceneMediaZoom{0%{opacity:0;transform:scale(.88)}100%{opacity:1;transform:scale(1)}}
+@keyframes sceneCtaPulse{0%,100%{transform:scale(1);box-shadow:0 16px 45px var(--glow,color-mix(in srgb,var(--accent) 45%,transparent))}50%{transform:scale(1.07);box-shadow:0 24px 65px var(--glow,color-mix(in srgb,var(--accent) 75%,transparent))}}
+@keyframes sceneOrbFloatA{0%,100%{transform:translate(0,0) scale(1);opacity:.65}50%{transform:translate(45px,-35px) scale(1.3);opacity:.9}}
+@keyframes sceneOrbFloatB{0%,100%{transform:translate(0,0) scale(1);opacity:.6}50%{transform:translate(-40px,35px) scale(1.25);opacity:.85}}
+@keyframes sceneFrameGlow{0%,100%{scale:1;box-shadow:0 36px 100px rgba(0,0,0,.35),0 0 40px var(--glow,color-mix(in srgb,var(--accent) 20%,transparent))}50%{scale:1.008;box-shadow:0 40px 120px rgba(0,0,0,.45),0 0 70px var(--glow,color-mix(in srgb,var(--accent) 45%,transparent))}}
 `.trim();
   return { html, css };
 }
@@ -483,9 +613,10 @@ export async function runHtmlVideoStructuredPipeline(input: {
           visualSystemPrompt(),
           planJson,
           {
-            theme: "ocean|midnight|sunset|emerald|violet",
+            theme: "ocean|midnight|sunset|emerald|violet|coral|gold|arctic|neon|earth|blush|slate",
             scenes: [{
               sceneId: "string", layout: "centered|split-left|split-right|statement|cta",
+              emphasis: "hero|standard|climax", accentStyle: "glow|border|gradient-shift|minimal",
               eyebrow: "string", headline: "string", body: "string", cta: "string", assetIds: ["asset-id"],
             }],
           },
@@ -499,7 +630,7 @@ export async function runHtmlVideoStructuredPipeline(input: {
       ? Promise.resolve(checkpoint.voice)
       : structuredCall(
           input.chat,
-          voiceSystemPrompt(input.draftInput),
+          voiceSystemPrompt(input.draftInput, plan),
           planJson,
           { scenes: [{ sceneId: "string", text: "string" }], fullScript: "string" },
           0.25
@@ -515,6 +646,10 @@ export async function runHtmlVideoStructuredPipeline(input: {
   ]);
   await input.onStage?.("validation");
   const composition = compileHtmlVideoComposition(visual, plan, input.referenceAssets);
+  const alignedScenePlan = plan.scenePlan.map((scene, index) => ({
+    ...scene,
+    narration: voice.scenes[index]?.text || scene.narration,
+  }));
   return {
     kind: "structured",
     ...composition,
@@ -525,13 +660,19 @@ export async function runHtmlVideoStructuredPipeline(input: {
       sourceContextRefs: grounding.sourceContextRefs,
       videoBrief: plan.videoBrief,
       contentUnits: plan.contentUnits,
-      scenePlan: plan.scenePlan,
+      scenePlan: alignedScenePlan,
       findings: [{
         stage: "validation",
         code: "PROMPT_COVERAGE_VERIFIED",
         severity: "info",
         message: "All required content units are mapped exactly once to a contiguous scene timeline.",
-      }],
+      }, ...(voice.adjustedSceneIds || []).map((sceneId) => ({
+        stage: "voice" as const,
+        code: "VOICE_NARRATION_FITTED_TO_SCENE",
+        severity: "warning" as const,
+        message: "Narration was shortened using approved scene text to fit the scene duration.",
+        sceneId,
+      }))],
     },
   };
 }
