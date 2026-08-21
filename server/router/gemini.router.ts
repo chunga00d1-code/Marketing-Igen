@@ -40,7 +40,7 @@ const chatSchema = {
   }),
 };
 
-const htmlVideoComposeSchema = {
+const _htmlVideoComposeSchema = {
   body: Joi.object({
     // HTML video prompts may contain grounded excerpts from several uploaded
     // documents. Keep a bounded request size, but do not reject normal
@@ -250,6 +250,17 @@ const optimizeVideoPromptSchema = {
   }),
 };
 
+const optimizeMasterPromptSchema = {
+  body: Joi.object({
+    prompt: Joi.string().trim().min(1).max(30_000).optional(),
+    description: Joi.string().trim().min(1).max(30_000).optional(),
+    context: Joi.string().allow("").max(30_000).optional(),
+    imageUris: Joi.array().items(Joi.string().max(2_000_000)).max(6).optional(),
+    durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+    aspectRatio: Joi.string().valid("9:16", "1:1", "16:9").optional(),
+  }).or("prompt", "description"),
+};
+
 const getHistorySchema = {
   query: Joi.object({
     type: Joi.string().valid("image", "video", "voice").required(),
@@ -329,12 +340,6 @@ const feedbackSchema = {
 
 // Đăng ký định tuyến API kèm Joi validation
 geminiRouter.post("/chat", requireAuth as any, validateRequest(chatSchema), geminiController.chat as any);
-geminiRouter.post(
-  "/html-video-compose",
-  requireAuth as any,
-  validateRequest(htmlVideoComposeSchema),
-  geminiController.composeHtmlVideo as any
-);
 geminiRouter.get("/marketing-suggestions", requireAuth as any, geminiController.getMarketingSuggestions as any);
 geminiRouter.post("/marketing-pillars", requireAuth as any, validateRequest(pillarsSchema), geminiController.analyzeMarketingPillars as any);
 geminiRouter.post("/marketing-pillars/swap", requireAuth as any, validateRequest(swapPillarSchema), geminiController.swapMarketingPillar as any);
@@ -360,6 +365,7 @@ geminiRouter.post("/analyze-video-style", requireAuth as any, validateRequest(an
 geminiRouter.post("/optimize-script", requireAuth as any, validateRequest(optimizeScriptSchema), geminiController.optimizeScript);
 geminiRouter.post("/optimize-prompt", requireAuth as any, validateRequest(optimizePromptSchema), geminiController.optimizeImagePrompt);
 geminiRouter.post("/optimize-video-prompt", requireAuth as any, validateRequest(optimizeVideoPromptSchema), geminiController.optimizeVideoPrompt);
+geminiRouter.post("/optimize-master-prompt", requireAuth as any, validateRequest(optimizeMasterPromptSchema), geminiController.optimizeMasterVideoPrompt);
 
 // Edit Script endpoints
 geminiRouter.post(
@@ -388,13 +394,13 @@ geminiRouter.post(
   geminiController.renderFromEditScript as any
 );
 
-  // Tối ưu prompt CHỈNH SỬA video (Remotion) - khác với optimize-video-prompt dành cho sinh video mới
+// Tối ưu prompt CHỈNH SỬA video (Remotion) - khác với optimize-video-prompt dành cho sinh video mới
 const optimizeEditPromptSchema = {
   body: Joi.object({
     description: Joi.string().required(),
   }),
 };
-  geminiRouter.post("/optimize-edit-prompt", requireAuth as any, validateRequest(optimizeEditPromptSchema), geminiController.optimizeEditPrompt);
+geminiRouter.post("/optimize-edit-prompt", requireAuth as any, validateRequest(optimizeEditPromptSchema), geminiController.optimizeEditPrompt);
 geminiRouter.get("/media-history", requireAuth as any, validateRequest(getHistorySchema), geminiController.getMediaHistory);
 geminiRouter.delete("/media-history/:id", requireAuth as any, validateRequest(deleteHistorySchema), geminiController.deleteMediaHistory);
 

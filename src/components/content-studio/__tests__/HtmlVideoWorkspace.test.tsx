@@ -24,6 +24,7 @@ import {
   estimateHtmlVideoGenerationProgress,
   formatHtmlVideoElapsedTime,
   getHtmlVideoGenerationStage,
+  seekableCompositionDocument,
 } from "../html-video/utils";
 import type {
   HtmlVideoRenderDetail,
@@ -66,6 +67,19 @@ test("renders the prompt-first batch workspace and keeps its preview sandboxed",
   assert.doesNotMatch(source, /selectedCandidate && activeTool === "prompt"/);
   assert.doesNotMatch(source, /\{activeTool === "history" \? <>/);
   assert.doesNotMatch(markup, /Cài đặt video/);
+});
+
+test("preview seeking overrides the server-owned scene timeline with sufficient specificity", () => {
+  const document = seekableCompositionDocument(
+    "<html><head></head><body><div id=\"html-video-root\"></div></body></html>",
+    4.25,
+    false
+  );
+
+  assert.match(
+    document,
+    /#html-video-root,#html-video-root \*:not\(svg\):not\(path\)[\s\S]*animation-delay:-4\.250s !important;animation-play-state:paused !important/
+  );
 });
 
 test("renders prompt generation controls and the exact wallet cost", () => {
@@ -484,4 +498,19 @@ test("aborts polling before a stale response can update the UI", async () => {
     /aborted/i
   );
   assert.equal(updates, 0);
+});
+
+test("renders the optimize master prompt button and undo button in the prompt panel", () => {
+  const markup = renderToStaticMarkup(React.createElement(HtmlVideoWorkspace));
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /optimizeMasterPrompt\(rawPrompt, referenceContext, imageUris, \{[\s\S]{0,180}durationSeconds,[\s\S]{0,100}aspectRatio: effectiveAspectRatio/
+  );
+  assert.match(markup, /Tối ưu prompt/);
+  assert.match(markup, /html-video-optimize-prompt-btn/);
 });

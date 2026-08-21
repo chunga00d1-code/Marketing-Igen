@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { Types } from "mongoose";
@@ -10,12 +11,13 @@ import type {
 } from "../../video-edit/render-adapter";
 import { VideoRenderAdapterError } from "../../video-edit/render-adapter";
 import { htmlVideoRenderService } from "../html-video-render.service";
+import { htmlVideoTtsService } from "../html-video-tts.service";
 
 const renderId = new Types.ObjectId().toString();
 const compositionHtml =
   '<!doctype html><html data-composition-id="html-video"></html>';
 
-function claimedRender() {
+function claimedRender(overrides: Record<string, unknown> = {}) {
   return {
     _id: renderId,
     companyCode: "ACME",
@@ -24,6 +26,7 @@ function claimedRender() {
     aspectRatio: "16:9",
     resolution: "720p",
     durationSeconds: 5,
+    ...overrides,
   };
 }
 
@@ -136,6 +139,74 @@ test("returns an adapter failure to queued state for capped queue retry", async 
   const serialized = JSON.stringify(updates);
   assert.match(serialized, /"status":"queued"/);
   assert.doesNotMatch(serialized, /C:\\\\private|SECRET=value/);
+});
+
+test("generates and passes scene-aligned voice segments to the renderer", async (context) => {
+  mockClaim(context, claimedRender({
+    voiceScript: "Scene one. Scene two.",
+    pipelineSnapshot: {
+      scenePlan: [
+        { narration: "Scene one.", startSeconds: 0, endSeconds: 2 },
+        { narration: "Scene two.", startSeconds: 2, endSeconds: 5 },
+      ],
+    },
+  }));
+  context.mock.method(HtmlVideoRenderModel, "updateOne", async () => ({
+    matchedCount: 1,
+  }));
+  const generated: Array<{ text: string; durationSeconds?: number }> = [];
+  context.mock.method(
+    htmlVideoTtsService,
+    "generate",
+    async (text, options: { durationSeconds?: number } = {}) => {
+      generated.push({ text, durationSeconds: options.durationSeconds });
+      return {
+        buffer: Buffer.alloc(480, 1),
+        model: "test-tts",
+        voice: "test-voice",
+        format: "pcm" as const,
+        sampleRate: 24_000,
+        channels: 1,
+        playbackRate: 1,
+        durationSeconds: Number(options.durationSeconds) * 0.9,
+      };
+    }
+  );
+
+  let receivedInput: VideoRenderInput | undefined;
+  const adapter: VideoRenderAdapter = {
+    id: "hyperframes",
+    checkCapability: async () => ({ available: true }),
+    validateInput: () => undefined,
+    async render(input, executionContext) {
+      receivedInput = input;
+      await rm(executionContext.temporaryDirectory, { recursive: true, force: true });
+      return {
+        engine: "hyperframes",
+        outputUrl: "https://cdn.example/scene-voice.mp4",
+      };
+    },
+  };
+  context.mock.method(defaultVideoRenderAdapterRegistry, "get", () => adapter);
+
+  await htmlVideoRenderService.processRender(renderId);
+
+  assert.deepEqual(generated, [
+    { text: "Scene one.", durationSeconds: 2 },
+    { text: "Scene two.", durationSeconds: 3 },
+  ]);
+  assert.equal(receivedInput?.voiceAudioPath, undefined);
+  assert.deepEqual(
+    receivedInput?.voiceSegments?.map((segment) => ({
+      startSeconds: segment.startSeconds,
+      durationSeconds: segment.durationSeconds,
+      sourceDurationSeconds: segment.sourceDurationSeconds,
+    })),
+    [
+      { startSeconds: 0, durationSeconds: 2, sourceDurationSeconds: 1.8 },
+      { startSeconds: 2, durationSeconds: 3, sourceDurationSeconds: 2.7 },
+    ]
+  );
 });
 
 test("logs bounded sanitized Hyperframes diagnostics server-side", async (context) => {

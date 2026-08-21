@@ -188,11 +188,25 @@ function assertValidInput(input: VideoRenderInput) {
     "compositionHtml" in input &&
     typeof input.compositionHtml === "string" &&
     input.compositionHtml.trim().length > 0;
+  const voiceSegmentsAreInvalid = Boolean(
+    input.voiceSegments && (
+      input.voiceSegments.length === 0 ||
+      input.voiceSegments.some((segment) =>
+        !segment.audioPath.trim() ||
+        !Number.isFinite(segment.startSeconds) ||
+        segment.startSeconds < 0 ||
+        !Number.isFinite(segment.durationSeconds) ||
+        segment.durationSeconds <= 0
+      )
+    )
+  );
   if (
     !input.jobId.trim() ||
     hasBlueprint === hasCompositionHtml ||
     !supportedAspectRatios.has(input.aspectRatio) ||
-    !supportedResolutions.has(input.resolution)
+    !supportedResolutions.has(input.resolution) ||
+    voiceSegmentsAreInvalid ||
+    Boolean(input.voiceAudioPath && input.voiceSegments?.length)
   ) {
     throw new VideoRenderAdapterError(
       "RENDER_INPUT_INVALID",
@@ -208,20 +222,25 @@ function resolutionPresetFor(aspectRatio: VideoRenderInput["aspectRatio"]) {
 }
 
 function assertLocalVoicePath(input: VideoRenderInput, temporaryDirectory: string) {
-  if (!input.voiceAudioPath) return;
   const root = resolve(temporaryDirectory);
-  const audioPath = resolve(input.voiceAudioPath);
-  const relativeAudioPath = relative(root, audioPath);
-  if (
-    !relativeAudioPath ||
-    relativeAudioPath === ".." ||
-    relativeAudioPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
-    isAbsolute(relativeAudioPath)
-  ) {
-    throw new VideoRenderAdapterError(
-      "RENDER_INPUT_INVALID",
-      "Voice audio must be stored inside the temporary render directory."
-    );
+  const audioPaths = [
+    ...(input.voiceAudioPath ? [input.voiceAudioPath] : []),
+    ...(input.voiceSegments || []).map((segment) => segment.audioPath),
+  ];
+  for (const path of audioPaths) {
+    const audioPath = resolve(path);
+    const relativeAudioPath = relative(root, audioPath);
+    if (
+      !relativeAudioPath ||
+      relativeAudioPath === ".." ||
+      relativeAudioPath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+      isAbsolute(relativeAudioPath)
+    ) {
+      throw new VideoRenderAdapterError(
+        "RENDER_INPUT_INVALID",
+        "Voice audio must be stored inside the temporary render directory."
+      );
+    }
   }
 }
 
@@ -333,6 +352,12 @@ export function validateProbePayload(payload: FfprobePayload, input: VideoRender
     Number(input.durationSeconds) || Number(input.voiceDurationSeconds) || duration
   );
   const durationTolerance = Math.max(1, expectedDuration * 0.08);
+  const audioDuration = Number(audio?.duration);
+  const hasVoice = Boolean(input.voiceAudioPath || input.voiceSegments?.length);
+  const voiceCoverageIsInvalid = Boolean(
+    hasVoice &&
+    (!Number.isFinite(audioDuration) || audioDuration < expectedDuration * 0.8)
+  );
   if (
     !video ||
     video.width !== expectedWidth ||
@@ -340,7 +365,8 @@ export function validateProbePayload(payload: FfprobePayload, input: VideoRender
     !Number.isFinite(duration) ||
     duration <= 0 ||
     Math.abs(duration - expectedDuration) > durationTolerance ||
-    (input.voiceAudioPath && !audio)
+    (hasVoice && !audio) ||
+    voiceCoverageIsInvalid
   ) {
     throw new VideoRenderAdapterError(
       "RENDER_OUTPUT_INVALID",
@@ -553,10 +579,13 @@ export function createHyperframesRenderAdapter(
           message: "Verifying rendered output.",
         });
         let finalOutputPath = outputPath;
-        if ("voiceAudioPath" in input && input.voiceAudioPath) {
+        if (input.voiceAudioPath || input.voiceSegments?.length) {
           const voiceDuration = Math.max(
             1,
-            Math.min(180, Number(input.voiceDurationSeconds) || 1)
+            Math.min(
+              180,
+              Number(input.voiceDurationSeconds) || Number(input.durationSeconds) || 1
+            )
           );
           const voicePlaybackRate = Math.min(
             2,
@@ -570,18 +599,31 @@ export function createHyperframesRenderAdapter(
             runtime?.environment.HYPERFRAMES_FFMPEG_PATH ||
             runtime?.environment.VIDEO_CAPTION_FFMPEG_PATH ||
             "ffmpeg";
-          const voiceInputArgs = input.voiceAudioFormat === "pcm"
-            ? [
-                "-f",
-                "s16le",
-                "-ar",
-                String(input.voiceAudioSampleRate || 24_000),
-                "-ac",
-                String(input.voiceAudioChannels || 1),
-                "-i",
-                input.voiceAudioPath,
-              ]
-            : ["-i", input.voiceAudioPath];
+          const voiceInputArgs = input.voiceSegments?.length
+            ? input.voiceSegments.flatMap((segment) => segment.audioFormat === "pcm"
+              ? [
+                  "-f",
+                  "s16le",
+                  "-ar",
+                  String(segment.audioSampleRate || 24_000),
+                  "-ac",
+                  String(segment.audioChannels || 1),
+                  "-i",
+                  segment.audioPath,
+                ]
+              : ["-i", segment.audioPath])
+            : input.voiceAudioFormat === "pcm"
+              ? [
+                  "-f",
+                  "s16le",
+                  "-ar",
+                  String(input.voiceAudioSampleRate || 24_000),
+                  "-ac",
+                  String(input.voiceAudioChannels || 1),
+                  "-i",
+                  input.voiceAudioPath!,
+                ]
+              : ["-i", input.voiceAudioPath!];
           await context.onProgress({
             stage: "output-verification",
             progress: 84,
@@ -589,9 +631,24 @@ export function createHyperframesRenderAdapter(
           });
           let muxProcess: HyperframesRenderProcess;
           try {
-            const voiceFilter = voicePlaybackRate === 1
-              ? '[1:a]apad[voice]'
-              : `[1:a]atempo=${voicePlaybackRate.toFixed(3)},apad[voice]`;
+            const voiceFilter = input.voiceSegments?.length
+              ? [
+                  input.voiceSegments.map((segment, index) => {
+                    const speechWindow = Math.max(0.2, segment.durationSeconds * 0.9);
+                    const sourceDuration = Number(segment.sourceDurationSeconds);
+                    const measuredRate = Number.isFinite(sourceDuration) && sourceDuration > 0
+                      ? sourceDuration / speechWindow
+                      : Number(segment.playbackRate) || 1;
+                    const rate = Math.min(2, Math.max(0.75, measuredRate));
+                    const delayMs = Math.max(0, Math.round(segment.startSeconds * 1_000));
+                    const slotDuration = segment.durationSeconds.toFixed(3);
+                    return `[${index + 1}:a]atempo=${rate.toFixed(3)},apad=pad_dur=${slotDuration},atrim=duration=${slotDuration},asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs}[voice_${index}]`;
+                  }).join(";"),
+                  `${input.voiceSegments.map((_, index) => `[voice_${index}]`).join("")}amix=inputs=${input.voiceSegments.length}:duration=longest:normalize=0,apad=pad_dur=${voiceDuration.toFixed(3)},atrim=duration=${voiceDuration.toFixed(3)}[voice]`,
+                ].join(";")
+              : voicePlaybackRate === 1
+                ? '[1:a]anull[voice]'
+                : `[1:a]atempo=${voicePlaybackRate.toFixed(3)}[voice]`;
             muxProcess = dependencies.spawnProcess(
               ffmpegPath,
               [

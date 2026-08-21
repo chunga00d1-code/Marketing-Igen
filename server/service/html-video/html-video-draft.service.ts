@@ -344,7 +344,7 @@ function assertStoryboardQuality(
     throw new Error("Generated storyboard must include one continuous voiceScript.");
   }
   const wordCount = voiceScript.trim().split(/\s+/).filter(Boolean).length;
-  if (wordCount > Math.ceil(durationSeconds * 3.2)) {
+  if (wordCount > Math.ceil(durationSeconds * 2.5)) {
     throw new Error("Generated voiceScript is too long for the requested duration.");
   }
 }
@@ -465,10 +465,10 @@ export function buildSystemPrompt(input: HtmlVideoDraftInput) {
       ? `EXPLICIT STORYBOARD CONTRACT: The authoritative request contains exactly ${explicitSceneCount} explicit SCENE headings. Create exactly ${explicitSceneCount} elements whose class list contains the token scene inside one scene-deck, in the exact source order. Do not add an extra intro, outro, or summary scene. Preserve the requested scene timing and use the same product/reference slot inside each scene that needs the product; never turn the product into a small standalone card.`
       : "",
     "Return only a JSON object with exactly the html, css, and voiceScript string fields. The html value must be an HTML fragment only (no doctype, html, head, body, style, or markdown fences); css must contain the styles separately. Use supported HTML and CSS only; do not include JavaScript.",
-    "voiceScript is the single continuous narration for the final video. Derive it from the user's request and the visual story you create. Keep it concise enough to fit the requested duration at a natural speaking pace, preserve factual details, and keep the same language as the request while preserving important English phrases exactly.",
+    "voiceScript is the single continuous narration for the final video. STRICT SCENE-VOICE SYNCHRONIZATION: The voice narration must synchronize 100% with the visual progression of the scene deck. When a scene is visible, voiceScript must narrate the exact subject and on-screen text of that scene — never narrate points out of order, ahead of time, or after the slide has already passed. Keep the voice pace at ~2.2-2.5 words per second matching the scene duration.",
     "voiceScript must contain spoken words only: no labels such as Voice or Narrator, no timestamps, no scene directions, no markdown, no multiple speakers, and no sound effects. Use one consistent narrator throughout the video.",
-    "This must be an animated video composition, not a static poster: include a clear opening, main message sequence, and final CTA using CSS @keyframes across the full requested duration.",
-    "Use the same full-duration animation timeline for scene elements and encode their timing in keyframe percentages; avoid per-element animation-delay so preview seeking and final rendering show the same frame.",
+    "This must be an animated video composition, not a static poster: include dynamic CSS @keyframes animations for headline entrance, supporting copy reveal, CTA breathing pulse, and gentle background accents across the video.",
+    "MOTION & ANIMATION PATTERNS: Bring elements to life with smooth cubic-bezier / ease-out curves: 1) Eyebrow/Headline/Body entrance: translateX(-24px) or opacity fade-in with cubic-bezier(0.16, 1, 0.3, 1); 2) CTA button: gentle breathing pulse scale(1.05) and box-shadow glow; 3) Background orbs/shapes: slow floating translation; 4) Hero media: subtle entrance zoom-in.",
     "Keep the HTML/CSS concise and self-contained so the complete JSON response fits comfortably within the model output limit.",
     "Make the layout fill the target canvas, keep overflow controlled, and ensure text remains readable at the requested aspect ratio.",
     "SLIDE/SCENE CONTRACT: Treat every distinct item, sentence, lesson point, product feature, step, or story beat as its own full-canvas slide when the request contains more than one item. Build a fixed scene deck inside the root using class names scene-deck for the container and scene for every slide: one scene element per item, with the scene deck and every scene using position:relative/absolute, inset:0 or an equivalent full-canvas layout, overflow:hidden, and no page scroll. Show scenes one at a time in the user's order with a short horizontal slide or opacity crossfade; never use vertical scrolling, a tall column of scenes, top-to-bottom page flow, or translateY as the main scene transition. Each scene may use normal flex/grid flow internally for its own text, but the deck must never stack scenes in normal document flow.",

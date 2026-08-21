@@ -112,9 +112,9 @@ export default function ErpConfigTab() {
               }}
               className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none cursor-pointer"
             >
-              <option value="deepseek-v4-flash-0731">DeepSeek V4 Flash 0731 (Mặc định - Tốc độ cao)</option>
-              <option value="gemini-3.5-flash">Gemini 3.5 Flash (Tối ưu tốc độ)</option>
-              <option value="gemini-3.1-pro">Gemini 3.1 Pro (Đọc hiểu nâng cao)</option>
+              <option value="deepseek-v4-flash-0731">DeepSeek V4 Flash </option>
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash </option>
+              <option value="gemini-3.1-pro">Gemini 3.1 Pro </option>
             </select>
           </div>
 
