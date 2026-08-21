@@ -19,6 +19,7 @@ import {
   Sliders,
   Sparkles,
   Trash2,
+  Undo2,
   WandSparkles,
   X,
 } from "lucide-react";
@@ -562,10 +563,55 @@ export function HtmlVideoBatchWorkspace({
     setReferences((current) => current.map((reference) => reference.id === referenceId ? { ...reference, ...update } : reference));
   };
 
+  const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false);
+  const [previousPrompt, setPreviousPrompt] = useState<string | null>(null);
+
   const handlePromptChange = (nextPrompt: string) => {
     setPrompt(nextPrompt);
     if (references.some((reference) => reference.isPrimaryPrompt)) {
       setReferences((current) => current.filter((reference) => !reference.isPrimaryPrompt));
+    }
+  };
+
+  const handleOptimizeMasterPrompt = async () => {
+    const rawPrompt = prompt.trim();
+    if (!rawPrompt) {
+      toast.warning("Vui lòng nhập ý tưởng hoặc câu mô tả video trước.");
+      return;
+    }
+
+    setIsOptimizingPrompt(true);
+    try {
+      const referenceContext = buildReferenceContext(references);
+      const imageUris = references
+        .filter((r) => r.kind === "image" && r.assetUrl)
+        .map((r) => r.assetUrl as string)
+        .slice(0, 4);
+
+      const optimized = await geminiApi.optimizeMasterPrompt(rawPrompt, referenceContext, imageUris, {
+        durationSeconds,
+        aspectRatio: effectiveAspectRatio,
+      });
+      if (optimized && optimized.trim()) {
+        setPreviousPrompt(prompt);
+        setPrompt(optimized.trim());
+        toast.success("Đã tối ưu thành Master Prompt tạo video thành công!");
+      } else {
+        toast.warning("Không nhận được nội dung tối ưu. Vui lòng thử lại.");
+      }
+    } catch (error: unknown) {
+      console.error("[HtmlVideoBatchWorkspace] Optimize master prompt error:", error);
+      toast.error(errorMessage(error, "Lỗi tối ưu prompt."));
+    } finally {
+      setIsOptimizingPrompt(false);
+    }
+  };
+
+  const handleUndoOptimizePrompt = () => {
+    if (previousPrompt !== null) {
+      setPrompt(previousPrompt);
+      setPreviousPrompt(null);
+      toast.info("Đã khôi phục prompt trước khi tối ưu.");
     }
   };
 
@@ -1019,22 +1065,27 @@ export function HtmlVideoBatchWorkspace({
         setPreviewElapsed(elapsed);
       }
       if (elapsed >= activeDuration) {
-        setPreviewFrameElapsed(activeDuration);
-        setIsPreviewPlaying(false);
+        previewElapsedRef.current = 0;
+        setPreviewElapsed(0);
+        setPreviewFrameElapsed(0);
+        setPreviewPlaybackNonce((current) => current + 1);
         return;
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [activeDuration, isPreviewPlaying, selectedCandidate?.id]);
+  }, [activeDuration, isPreviewPlaying, selectedCandidate?.id, previewPlaybackNonce]);
 
+  const hasSelectedPreview = Boolean(selectedCandidate?.preview);
   useEffect(() => {
     previewElapsedRef.current = 0;
     setPreviewElapsed(0);
     setPreviewFrameElapsed(0);
-    setIsPreviewPlaying(false);
-  }, [selectedCandidateId]);
+    if (hasSelectedPreview) {
+      setIsPreviewPlaying(true);
+    }
+  }, [selectedCandidateId, hasSelectedPreview]);
   const historyCandidates = useMemo(
     () => candidates.filter((candidate) => Boolean(candidate.render)),
     [candidates]
@@ -1186,12 +1237,53 @@ export function HtmlVideoBatchWorkspace({
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-700"><WandSparkles className="h-5 w-5" /></span>
             <div><h2 className="text-sm font-black text-slate-900">Tạo video bằng AI</h2><p className="text-xs text-slate-500">Prompt-first, không cần viết code.</p></div>
           </div>
-          <label className="block text-xs font-semibold text-slate-700">Bạn muốn video nói gì?</label>
+          <div className="flex items-center justify-between">
+            <label htmlFor="html-video-prompt" className="block text-xs font-semibold text-slate-700">Bạn muốn video nói gì?</label>
+            {previousPrompt !== null ? (
+              <button
+                type="button"
+                onClick={handleUndoOptimizePrompt}
+                className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-indigo-600 transition cursor-pointer"
+                title="Khôi phục lại prompt ban đầu"
+              >
+                <Undo2 className="h-3 w-3" />
+                <span>Hoàn tác prompt</span>
+              </button>
+            ) : null}
+          </div>
           <div className="relative mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition focus-within:border-indigo-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-indigo-100">
             {references.length > 0 ? <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto border-b border-slate-200/80 bg-white/70 px-3 py-2">{references.map((reference) => <div key={reference.id} className="flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1 pl-1.5 pr-1 text-xs shadow-sm"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">{reference.kind === "image" ? <ImageIcon className="h-3 w-3" /> : reference.kind === "video" ? <MonitorPlay className="h-3 w-3" /> : <FileText className="h-3 w-3" />}</span><span className="max-w-28 truncate font-medium text-slate-700">{reference.name}</span>{reference.status === "analyzing" ? <LoaderCircle className="h-3 w-3 animate-spin text-indigo-500" /> : reference.status === "failed" ? <span className="text-[10px] text-rose-600">Lỗi</span> : reference.kind === "image" && reference.includeInVideo ? <span className="text-[10px] text-sky-600">Sẽ dùng ảnh</span> : <span className="text-[10px] text-emerald-600">Đã đọc</span>}<button type="button" onClick={() => setReferences((current) => current.filter((item) => item.id !== reference.id))} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600" title="Bỏ tài liệu"><X className="h-3 w-3" /></button></div>)}</div> : null}
             {references.some((reference) => reference.isPrimaryPrompt) ? <p className="border-b border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[10px] font-semibold text-indigo-700">Tệp prompt chính đã sẵn sàng: {PRIMARY_PROMPT_FILE_NAME}</p> : null}
-            <textarea id="html-video-prompt" value={prompt} onChange={(event) => handlePromptChange(event.target.value)} placeholder="Ví dụ: Video 15 giây giới thiệu ưu đãi khai trương, nhấn mạnh giảm 30%, CTA đăng ký ngay..." className="min-h-36 w-full resize-y bg-transparent px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400" disabled={isCreating} />
-            <div className="flex h-10 items-center border-t border-slate-200/80 px-2"><label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-indigo-700" title="Đính kèm PDF, Word, Sheet, Markdown, ảnh hoặc video mẫu"><Paperclip className="h-4 w-4" /><input id="html-video-reference-input" key={referenceInputKey} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.md,.txt,.json,image/*,video/*" className="hidden" onChange={(event) => handleReferenceFiles(event.target.files)} /></label><span className="ml-1 text-[10px] font-normal text-slate-400">Tài liệu, ảnh hoặc video mẫu</span></div>
+            <textarea id="html-video-prompt" value={prompt} onChange={(event) => handlePromptChange(event.target.value)} placeholder="Ví dụ: Video 15 giây giới thiệu ưu đãi khai trương, nhấn mạnh giảm 30%, CTA đăng ký ngay..." className="min-h-36 w-full resize-y bg-transparent px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400" disabled={isCreating || isOptimizingPrompt} />
+            <div className="flex h-10 items-center justify-between border-t border-slate-200/80 px-2 bg-slate-50/50">
+              <div className="flex items-center">
+                <label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-indigo-700" title="Đính kèm PDF, Word, Sheet, Markdown, ảnh hoặc video mẫu">
+                  <Paperclip className="h-4 w-4" />
+                  <input id="html-video-reference-input" key={referenceInputKey} type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.md,.txt,.json,image/*,video/*" className="hidden" onChange={(event) => handleReferenceFiles(event.target.files)} />
+                </label>
+                <span className="ml-1 text-[10px] font-normal text-slate-400">Tài liệu, ảnh hoặc video mẫu</span>
+              </div>
+              <button
+                type="button"
+                id="html-video-optimize-prompt-btn"
+                onClick={() => void handleOptimizeMasterPrompt()}
+                disabled={!prompt.trim() || isOptimizingPrompt || isCreating}
+                className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 px-3 py-1.5 text-xs font-bold text-white shadow-xs transition hover:from-indigo-600 hover:to-sky-600 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
+                title="Tối ưu câu đơn giản thành Master Prompt hoàn chỉnh cho việc tạo video"
+              >
+                {isOptimizingPrompt ? (
+                  <>
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                    <span>Đang tối ưu...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>Tối ưu prompt</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
             <span className={prompt.length > MAX_LONG_PROMPT_LENGTH ? "font-semibold text-rose-600" : ""}>{prompt.length.toLocaleString("vi-VN")}/{MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>
@@ -1376,7 +1468,34 @@ export function HtmlVideoBatchWorkspace({
                 <div className="min-w-[680px]">
                   <div className="flex items-end justify-between border-b border-slate-200 pb-1 text-[10px] text-slate-500">{Array.from({ length: (timelineScaleDuration / 10) + 1 }, (_, index) => <span key={index}>{index * 10} giây</span>)}</div>
                   <div ref={timelineRef} className="relative mt-1 h-12 rounded-xl bg-slate-100/90 p-1" aria-label="Dòng thời gian video">
-                    <div className="pointer-events-none absolute inset-y-1 left-1 rounded-lg bg-gradient-to-r from-sky-200 via-cyan-200 to-indigo-200" style={{ width: `calc(${Math.min(100, Math.max(0, (activeDuration / timelineScaleDuration) * 100))}% - 8px)` }} />
+                    {selectedCandidate.pipeline?.scenePlan?.length ? (
+                      <div className="pointer-events-none absolute inset-y-1 left-1 right-1 flex overflow-hidden rounded-lg">
+                        {selectedCandidate.pipeline.scenePlan.map((scene, idx) => {
+                          const sceneDuration = scene.endSeconds - scene.startSeconds;
+                          const widthPercent = (sceneDuration / timelineScaleDuration) * 100;
+                          const isOpening = scene.purpose === "opening";
+                          const isClosing = scene.purpose === "closing";
+                          const bgStyle = isOpening
+                            ? "bg-gradient-to-r from-indigo-500/20 to-purple-500/25 border-indigo-400/40 text-indigo-700"
+                            : isClosing
+                              ? "bg-gradient-to-r from-amber-500/20 to-rose-500/25 border-amber-400/40 text-amber-700"
+                              : "bg-gradient-to-r from-sky-500/15 to-cyan-500/20 border-sky-400/30 text-sky-700";
+                          return (
+                            <div
+                              key={scene.id || idx}
+                              style={{ width: `${widthPercent}%` }}
+                              className={`relative flex h-full items-center justify-between border-r px-2 text-[10px] font-bold ${bgStyle}`}
+                              title={`Cảnh ${idx + 1} (${scene.purpose}): ${scene.narration || scene.onScreenText?.[0] || ""}`}
+                            >
+                              <span className="truncate">S{idx + 1}: {isOpening ? "Hook" : isClosing ? "CTA" : `Ý ${idx}`}</span>
+                              <span className="text-[9px] opacity-70">{scene.startSeconds}s-{scene.endSeconds}s</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="pointer-events-none absolute inset-y-1 left-1 rounded-lg bg-gradient-to-r from-sky-200 via-cyan-200 to-indigo-200" style={{ width: `calc(${Math.min(100, Math.max(0, (activeDuration / timelineScaleDuration) * 100))}% - 8px)` }} />
+                    )}
                     <button type="button" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); seekTimelinePosition(event.clientX); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) seekTimelinePosition(event.clientX); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} style={{ left: `${Math.min(100, (previewElapsed / timelineScaleDuration) * 100)}%` }} className="absolute -top-2 bottom-0 z-30 w-4 -translate-x-1/2 cursor-ew-resize touch-none" aria-label="Kéo thanh tiến độ"><span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-slate-900 shadow-sm" /><span className="absolute -top-1 left-1/2 h-2.5 w-2.5 -translate-x-1/2 rotate-45 rounded-sm bg-slate-900" /></button>
                   </div>
                 </div>

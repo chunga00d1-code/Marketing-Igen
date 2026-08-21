@@ -28,7 +28,7 @@ export function inferHtmlVideoAspectRatio(prompt: string): '9:16' | '1:1' | '16:
 }
 
 export function seekableCompositionDocument(compositionHtml: string, frameSeconds: number, isPlaying: boolean) {
-  const override = `<style data-preview-frame>*:not(svg):not(path),*:not(svg):not(path)::before,*:not(svg):not(path)::after{animation-delay:-${Math.max(0, frameSeconds).toFixed(3)}s !important;animation-play-state:${isPlaying ? 'running' : 'paused'} !important;animation-fill-mode:both !important}</style>`;
+  const override = `<style data-preview-frame>#html-video-root,#html-video-root *:not(svg):not(path),#html-video-root *:not(svg):not(path)::before,#html-video-root *:not(svg):not(path)::after{animation-delay:-${Math.max(0, frameSeconds).toFixed(3)}s !important;animation-play-state:${isPlaying ? 'running' : 'paused'} !important;animation-fill-mode:both !important}</style>`;
   return compositionHtml.includes('</head>')
     ? compositionHtml.replace(/<\/head>/i, `${override}</head>`)
     : `${compositionHtml}${override}`;

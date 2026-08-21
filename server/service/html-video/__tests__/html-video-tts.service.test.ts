@@ -40,7 +40,7 @@ test("uses Gemini Flash TTS with one default voice and returns raw audio bytes",
   assert.equal(requestBody?.model, "google/gemini-3.1-flash-tts-preview");
   assert.equal(requestBody?.voice, "Kore");
   assert.equal(requestBody?.response_format, "pcm");
-  assert.equal(requestBody?.speed, 1.12);
+  assert.equal(requestBody?.speed, 1);
   assert.match(String(requestBody?.input), /một câu ngắn/);
   assert.match(String(requestBody?.input), /native Vietnamese accent/);
   assert.doesNotMatch(String(requestBody?.input), /\x20{2}/);
@@ -50,7 +50,8 @@ test("uses Gemini Flash TTS with one default voice and returns raw audio bytes",
   assert.equal(result.format, "pcm");
   assert.equal(result.sampleRate, 24_000);
   assert.equal(result.channels, 1);
-  assert.equal(result.playbackRate, 1.12);
+  assert.equal(result.playbackRate, 1);
+  assert.equal(result.durationSeconds, 256 / (24_000 * 2));
 });
 
 test('clamps the configured TTS speed to a brisk but natural range', async () => {
@@ -65,8 +66,8 @@ test('clamps the configured TTS speed to a brisk but natural range', async () =>
 
   const result = await htmlVideoTtsService.generate('Một câu ngắn.');
 
-  assert.equal(requestBody?.speed, 1.35);
-  assert.equal(result.playbackRate, 1.35);
+  assert.equal(requestBody?.speed, 1.25);
+  assert.equal(result.playbackRate, 1.25);
 });
 
 test("adapts provider speed to the requested video duration", async () => {
@@ -78,10 +79,26 @@ test("adapts provider speed to the requested video duration", async () => {
     return new Response(Buffer.alloc(256, 7), { status: 200 });
   }) as typeof fetch;
 
-  const narration = Array.from({ length: 60 }, (_, index) => `word${index}`).join(" ");
+  const narration = Array.from({ length: 44 }, (_, index) => `word${index}`).join(" ");
   const result = await htmlVideoTtsService.generate(narration, { durationSeconds: 20 });
   const speed = Number(requestBody?.speed);
 
-  assert.ok(speed > 1.12 && speed < 1.2);
+  assert.ok(speed > 1 && speed < 1.1);
   assert.equal(result.playbackRate, speed);
+});
+
+test("slows short narration slightly instead of padding a large silent tail", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  delete process.env.OPENROUTER_HTML_VIDEO_TTS_SPEED;
+  let requestBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(Buffer.alloc(256, 7), { status: 200 });
+  }) as typeof fetch;
+
+  const narration = Array.from({ length: 24 }, (_, index) => `word${index}`).join(" ");
+  await htmlVideoTtsService.generate(narration, { durationSeconds: 20 });
+
+  assert.equal(requestBody?.speed, 0.85);
+  assert.match(String(requestBody?.input), /Avoid rushing/);
 });

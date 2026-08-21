@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { LogOut, Search, Settings, Wallet, Send } from "lucide-react";
+import { LogOut, Search, Settings, Wallet, Send, Receipt } from "lucide-react";
 import type { TabType } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { walletService } from "../services/walletService";
 import PersonalIntegrationsTab from "../components/settings/PersonalIntegrationsTab";
+import { PricingModal } from "../components/pricing/PricingModal";
 import {
   openVideoStudio,
   type VideoStudioTool,
@@ -51,6 +52,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
   const [showResults, setShowResults] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showIntegrationsModal, setShowIntegrationsModal] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
 
   useEffect(() => {
     const fetchBalance = async () => {
@@ -133,7 +135,18 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
         {showResults && <div className="fixed inset-0 z-[-1]" onClick={() => setShowResults(false)} />}
       </div>
 
-      <div className="ml-6 flex items-center gap-4" id="header_controls">
+      <div className="ml-6 flex items-center gap-3" id="header_controls">
+        {/* Nút Bảng Giá Dịch Vụ */}
+        <button
+          onClick={() => setShowPricingModal(true)}
+          className="flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50/80 px-3.5 py-2 text-sky-700 hover:bg-sky-100 transition-all cursor-pointer shadow-xs"
+          title="Bảng giá dịch vụ AI & Credit"
+          id="header_pricing_trigger"
+        >
+          <Receipt className="h-4 w-4 text-sky-600" />
+          <span className="text-xs font-bold hidden sm:inline">Bảng giá</span>
+        </button>
+
         {userProfile && (
           <button
             onClick={() => onSearchSelect("VI & NAP TIEN" as TabType)}
@@ -211,6 +224,17 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                   </div>
 
                   <div className="space-y-1">
+                    <button
+                      onClick={() => {
+                        setShowPricingModal(true);
+                        setShowProfileDropdown(false);
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-semibold text-sky-700 hover:bg-sky-50 transition-colors cursor-pointer"
+                    >
+                      <Receipt className="h-4 w-4 text-sky-600" />
+                      Bảng giá dịch vụ
+                    </button>
+
                     <button
                       onClick={() => {
                         onSearchSelect("CAI DAT");
@@ -297,6 +321,12 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
           </div>
         </div>
       )}
+
+      {/* Pricing Table Modal */}
+      <PricingModal
+        isOpen={showPricingModal}
+        onClose={() => setShowPricingModal(false)}
+      />
     </header>
   );
 }

@@ -507,6 +507,37 @@ export const geminiApi = {
     return response.json();
   },
 
+  /**
+   * Tối ưu câu mô tả đơn giản thành Master Prompt hoàn chỉnh cho việc tạo video
+   */
+  async optimizeMasterPrompt(
+    prompt: string,
+    context?: string,
+    imageUris?: string[],
+    videoSpec?: {
+      durationSeconds?: number;
+      aspectRatio?: '9:16' | '1:1' | '16:9';
+    }
+  ): Promise<string> {
+    const headers = await getHeaders(true);
+    const response = await fetch('/api/v1/gemini/optimize-master-prompt', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        prompt,
+        context,
+        imageUris,
+        durationSeconds: videoSpec?.durationSeconds,
+        aspectRatio: videoSpec?.aspectRatio,
+      }),
+    });
+    if (!response.ok) {
+      await handleErrorResponse(response, 'Lỗi khi tối ưu Master Prompt video');
+    }
+    const data = await response.json();
+    return data.master_prompt || '';
+  },
+
   async analyzeVideoStyle(
     videoUrl: string,
     duration?: number,
@@ -527,150 +558,150 @@ export const geminiApi = {
   },
 
   async generateEditScript(
-    videoUrl: string,
-    duration: number,
-    prompt?: string
-  ): Promise<{ status: string; script: any }> {
-    const headers = await getHeaders(true);
-    const response = await fetchWithTimeout(
-      '/api/v1/gemini/generate-edit-script',
-      { method: 'POST', headers, body: JSON.stringify({ videoUrl, duration, prompt }) },
-      300000,
-      'Tạo kịch bản biên tập mất quá lâu. Vui lòng thử lại.'
-    );
-    if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi tạo kịch bản biên tập video');
-    }
-    return response.json();
+  videoUrl: string,
+  duration: number,
+  prompt ?: string
+): Promise < { status: string; script: any } > {
+  const headers = await getHeaders(true);
+  const response = await fetchWithTimeout(
+    '/api/v1/gemini/generate-edit-script',
+    { method: 'POST', headers, body: JSON.stringify({ videoUrl, duration, prompt }) },
+    300000,
+    'Tạo kịch bản biên tập mất quá lâu. Vui lòng thử lại.'
+  );
+  if(!response.ok) {
+  await handleErrorResponse(response, 'Lỗi tạo kịch bản biên tập video');
+}
+return response.json();
   },
 
   async renderFromEditScript(
-    script: any,
-    aspectRatio?: string,
-    resolution?: string
-  ): Promise<{ status: string; record: any; blueprint: any }> {
-    const headers = await getHeaders(true);
-    const response = await fetchWithTimeout(
-      '/api/v1/gemini/render-from-edit-script',
-      { method: 'POST', headers, body: JSON.stringify({ script, aspectRatio, resolution }) },
-      60000,
-      'Xếp hàng kết xuất video mất quá lâu. Vui lòng thử lại.'
-    );
-    if (!response.ok) {
-      await handleErrorResponse(response, 'Lỗi kết xuất video từ kịch bản');
-    }
-    return response.json();
+  script: any,
+  aspectRatio ?: string,
+  resolution ?: string
+): Promise < { status: string; record: any; blueprint: any } > {
+  const headers = await getHeaders(true);
+  const response = await fetchWithTimeout(
+    '/api/v1/gemini/render-from-edit-script',
+    { method: 'POST', headers, body: JSON.stringify({ script, aspectRatio, resolution }) },
+    60000,
+    'Xếp hàng kết xuất video mất quá lâu. Vui lòng thử lại.'
+  );
+  if(!response.ok) {
+  await handleErrorResponse(response, 'Lỗi kết xuất video từ kịch bản');
+}
+return response.json();
   },
 
-  async getMediaHistory(type: "image" | "video" | "voice"): Promise<{ status: string; history: any[] }> {
-    const headers = await getHeaders(false);
-    const response = await fetch(`/api/v1/gemini/media-history?type=${type}`, {
-      headers,
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi lấy lịch sử sinh ảnh phương tiện');
-    }
-    return response.json();
+  async getMediaHistory(type: "image" | "video" | "voice"): Promise < { status: string; history: any[] } > {
+  const headers = await getHeaders(false);
+  const response = await fetch(`/api/v1/gemini/media-history?type=${type}`, {
+    headers,
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi lấy lịch sử sinh ảnh phương tiện');
+}
+return response.json();
   },
 
-  async deleteMediaHistory(id: string): Promise<{ status: string }> {
-    const headers = await getHeaders(false);
-    const response = await fetch(`/api/v1/gemini/media-history/${id}`, {
-      method: 'DELETE',
-      headers,
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi khi xóa bản ghi lịch sử');
-    }
-    return response.json();
+  async deleteMediaHistory(id: string): Promise < { status: string } > {
+  const headers = await getHeaders(false);
+  const response = await fetch(`/api/v1/gemini/media-history/${id}`, {
+    method: 'DELETE',
+    headers,
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi khi xóa bản ghi lịch sử');
+}
+return response.json();
   },
 
-  async getElevenLabsVoices(): Promise<{ status: string; voices: any[] }> {
-    const headers = await getHeaders(false);
-    const response = await fetch('/api/v1/gemini/elevenlabs-voices', {
-      headers,
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi lấy danh sách giọng nói ElevenLabs');
-    }
-    return response.json();
+  async getElevenLabsVoices(): Promise < { status: string; voices: any[] } > {
+  const headers = await getHeaders(false);
+  const response = await fetch('/api/v1/gemini/elevenlabs-voices', {
+    headers,
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi lấy danh sách giọng nói ElevenLabs');
+}
+return response.json();
   },
 
   async generateCustomVoicePreview(input: {
-    gender: string;
-    accent: string;
-    age: string;
-    accentStrength: number;
-    text: string;
-  }): Promise<{ generatedVoiceId: string; url: string }> {
-    const headers = await getHeaders(true);
-    const response = await fetch('/api/v1/gemini/elevenlabs-custom-voice-preview', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(input),
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi thiết kế giọng nói thử nghiệm');
-    }
-    return response.json();
+  gender: string;
+  accent: string;
+  age: string;
+  accentStrength: number;
+  text: string;
+}): Promise < { generatedVoiceId: string; url: string } > {
+  const headers = await getHeaders(true);
+  const response = await fetch('/api/v1/gemini/elevenlabs-custom-voice-preview', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi thiết kế giọng nói thử nghiệm');
+}
+return response.json();
   },
 
   async createCustomVoice(input: {
-    voiceName: string;
-    voiceDescription: string;
-    generatedVoiceId: string;
-  }): Promise<{ voice_id: string }> {
-    const headers = await getHeaders(true);
-    const response = await fetch('/api/v1/gemini/elevenlabs-create-voice', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(input),
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi lưu giọng nói cá nhân');
-    }
-    return response.json();
+  voiceName: string;
+  voiceDescription: string;
+  generatedVoiceId: string;
+}): Promise < { voice_id: string } > {
+  const headers = await getHeaders(true);
+  const response = await fetch('/api/v1/gemini/elevenlabs-create-voice', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi lưu giọng nói cá nhân');
+}
+return response.json();
   },
 
   async addElevenLabsVoice(input: {
-    name: string;
-    description: string;
-    files: string[];
-    userId?: string;
-  }): Promise<{ voice_id: string }> {
-    const headers = await getHeaders(true);
-    const response = await fetch('/api/v1/gemini/elevenlabs-add-voice', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(input),
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi khi nhân bản giọng nói ElevenLabs');
-    }
-    return response.json();
+  name: string;
+  description: string;
+  files: string[];
+  userId?: string;
+}): Promise < { voice_id: string } > {
+  const headers = await getHeaders(true);
+  const response = await fetch('/api/v1/gemini/elevenlabs-add-voice', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi khi nhân bản giọng nói ElevenLabs');
+}
+return response.json();
   },
 
-  async deleteElevenLabsVoice(voiceId: string): Promise<{ success: boolean }> {
-    const headers = await getHeaders(true);
-    const response = await fetch(`/api/v1/gemini/elevenlabs-delete-voice/${voiceId}`, {
-      method: 'DELETE',
-      headers,
-    });
-    if (!response.ok) {
-      throw new Error('Lỗi khi xóa giọng nói ElevenLabs');
-    }
-    return response.json();
+  async deleteElevenLabsVoice(voiceId: string): Promise < { success: boolean } > {
+  const headers = await getHeaders(true);
+  const response = await fetch(`/api/v1/gemini/elevenlabs-delete-voice/${voiceId}`, {
+    method: 'DELETE',
+    headers,
+  });
+  if(!response.ok) {
+  throw new Error('Lỗi khi xóa giọng nói ElevenLabs');
+}
+return response.json();
   },
 
   // FreeLLM API LLM mi&n phí
 
   /** KiỒm tra trạng thái cấu hình FreeLLM API */
-  async freeLLMStatus(): Promise<{ configured: boolean; model: string; url: string | null; message: string }> {
-    const headers = await getHeaders(false);
-    const response = await fetch('/api/v1/gemini/freellm-status', { headers });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi kiỂm tra FreeLLM API');
+  async freeLLMStatus(): Promise < { configured: boolean; model: string; url: string | null; message: string } > {
+  const headers = await getHeaders(false);
+  const response = await fetch('/api/v1/gemini/freellm-status', { headers });
+  if(!response.ok) await handleErrorResponse(response, 'Lỗi kiỂm tra FreeLLM API');
     return response.json().then((r: any) => r);
-  },
+},
 
   /** Chat multi-turn hoặc single prompt v�:i FreeLLM */
   async freeLLMChat(input: {
@@ -680,72 +711,72 @@ export const geminiApi = {
     temperature?: number;
     maxTokens?: number;
     jsonMode?: boolean;
-  }): Promise<{ content: string; model: string; usage?: any }> {
+  }): Promise < { content: string; model: string; usage?: any } > {
     const headers = await getHeaders(true);
     const response = await fetch('/api/v1/gemini/freellm-chat', {
       method: 'POST',
       headers,
       body: JSON.stringify({ action: 'chat', ...input }),
     });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗii khi gọi FreeLLM API');
+    if(!response.ok) await handleErrorResponse(response, 'Lỗii khi gọi FreeLLM API');
     return response.json().then((r: any) => ({ content: r.content, model: r.model, usage: r.usage }));
   },
 
-  /** Ti ưu prompt tiếng Vi!t  tiếng Anh chuyên nghi!p */
-  async freeLLMOptimizePrompt(prompt: string): Promise<string> {
-    const headers = await getHeaders(true);
-    const response = await fetch('/api/v1/gemini/freellm-chat', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ action: 'optimize-prompt', prompt }),
-    });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi tỗi ưu prompt FreeLLM');
+    /** Ti ưu prompt tiếng Vi!t  tiếng Anh chuyên nghi!p */
+    async freeLLMOptimizePrompt(prompt: string): Promise < string > {
+      const headers = await getHeaders(true);
+      const response = await fetch('/api/v1/gemini/freellm-chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'optimize-prompt', prompt }),
+      });
+      if(!response.ok) await handleErrorResponse(response, 'Lỗi tỗi ưu prompt FreeLLM');
     const data = await response.json();
-    return data.result || '';
-  },
+      return data.result || '';
+    },
 
-  /** Tóm tắt vĒn bản bằng FreeLLM */
-  async freeLLMSummarize(text: string, maxWords?: number): Promise<string> {
-    const headers = await getHeaders(true);
-    const response = await fetch('/api/v1/gemini/freellm-chat', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ action: 'summarize', prompt: text, maxTokens: maxWords }),
-    });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi tóm tắt FreeLLM');
+      /** Tóm tắt vĒn bản bằng FreeLLM */
+      async freeLLMSummarize(text: string, maxWords ?: number): Promise < string > {
+        const headers = await getHeaders(true);
+        const response = await fetch('/api/v1/gemini/freellm-chat', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ action: 'summarize', prompt: text, maxTokens: maxWords }),
+        });
+        if(!response.ok) await handleErrorResponse(response, 'Lỗi tóm tắt FreeLLM');
     const data = await response.json();
-    return data.result || '';
-  },
+        return data.result || '';
+      },
 
-  /** Sinh n�"i dung marketing v�:i FreeLLM */
-  async freeLLMMarketing(params: {
-    topic: string;
-    platform?: 'facebook' | 'instagram' | 'tiktok' | 'zalo' | 'general';
-    tone?: 'professional' | 'friendly' | 'humorous' | 'inspirational';
-    language?: 'vi' | 'en';
-  }): Promise<{ title: string; content: string; hashtags: string[] }> {
-    const headers = await getHeaders(true);
-    const response = await fetch('/api/v1/gemini/freellm-chat', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ action: 'marketing', prompt: params.topic, ...params }),
-    });
-    if (!response.ok) await handleErrorResponse(response, 'Lỗi sinh marketing content FreeLLM');
+        /** Sinh n"i dung marketing v:i FreeLLM */
+        async freeLLMMarketing(params: {
+          topic: string;
+          platform?: 'facebook' | 'instagram' | 'tiktok' | 'zalo' | 'general';
+          tone?: 'professional' | 'friendly' | 'humorous' | 'inspirational';
+          language?: 'vi' | 'en';
+        }): Promise < { title: string; content: string; hashtags: string[] } > {
+          const headers = await getHeaders(true);
+          const response = await fetch('/api/v1/gemini/freellm-chat', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ action: 'marketing', prompt: params.topic, ...params }),
+          });
+          if(!response.ok) await handleErrorResponse(response, 'Lỗi sinh marketing content FreeLLM');
     const data = await response.json();
-    return data.result || { title: '', content: '', hashtags: [] };
-  },
+          return data.result || { title: '', content: '', hashtags: [] };
+        },
 
-  async uploadLocalDocument(fileName: string, fileBase64: string, mimeType: string): Promise<any> {
-    const headers = await getHeaders(true);
-    const response = await fetch("/api/v1/gemini/upload-document", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ fileName, fileBase64, mimeType }),
-    });
-    if (!response.ok) {
-      await handleErrorResponse(response, "Lỗi tải lên tài liệu huấn luyện AI");
-    }
-    return response.json();
+          async uploadLocalDocument(fileName: string, fileBase64: string, mimeType: string): Promise < any > {
+            const headers = await getHeaders(true);
+            const response = await fetch("/api/v1/gemini/upload-document", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ fileName, fileBase64, mimeType }),
+            });
+            if(!response.ok) {
+  await handleErrorResponse(response, "Lỗi tải lên tài liệu huấn luyện AI");
+}
+return response.json();
   },
 };
 

@@ -1629,6 +1629,40 @@ export const geminiController = {
   },
 
   /**
+   * POST /api/v1/gemini/optimize-master-prompt
+   * Tối ưu hóa mô tả ngắn thành Master Prompt tạo video hoàn chỉnh
+   */
+  async optimizeMasterVideoPrompt(req: Request, res: Response) {
+    try {
+      const { prompt, description, context, imageUris, durationSeconds, aspectRatio } = req.body;
+      const rawPrompt = String(prompt || description || "").trim();
+      const userId = (req as any).user?.id;
+      if (!userId) {
+        return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
+      }
+
+      if (!rawPrompt) {
+        return res.status(400).json({ status: "error", message: "Vui lòng nhập mô tả video để tối ưu" });
+      }
+
+      console.log(`[geminiController.optimizeMasterVideoPrompt] Incoming prompt: "${rawPrompt.slice(0, 80)}"`);
+      await walletService.checkBalance(userId, API_COSTS.GEMINI_OPTIMIZE);
+      const result = await geminiService.optimizeMasterVideoPrompt(rawPrompt, context, imageUris, {
+        durationSeconds,
+        aspectRatio,
+      });
+
+      if (result?.isLocalFallback !== true) {
+        await walletService.deductBalance(userId, API_COSTS.GEMINI_OPTIMIZE, "Phí tối ưu Master Prompt tạo video AI");
+      }
+      return res.status(200).json({ status: "success", ...result });
+    } catch (error: any) {
+      console.error("[geminiController.optimizeMasterVideoPrompt] Error:", error);
+      return handleGeminiError(res, error, "Lỗi tối ưu Master Prompt tạo video");
+    }
+  },
+
+  /**
    * GET /api/v1/gemini/media-history
    */
   async getMediaHistory(req: Request, res: Response) {

@@ -225,16 +225,25 @@ function annotateVideoScenes(html: string) {
   return { annotatedHtml, sceneCount };
 }
 
+type NormalizedSceneMetadata = {
+  startSeconds: number;
+  endSeconds: number;
+  purpose: "opening" | "content" | "closing";
+  transition: "crossfade" | "slide-left" | "slide-right";
+};
+
 function normalizeSceneRanges(
   sceneCount: number,
   durationSeconds: number,
   scenePlan?: HtmlVideoScenePlanItem[]
-) {
+): NormalizedSceneMetadata[] {
   if (!scenePlan) {
     const interval = durationSeconds / Math.max(1, sceneCount);
     return Array.from({ length: sceneCount }, (_, index) => ({
       startSeconds: index * interval,
       endSeconds: (index + 1) * interval,
+      purpose: index === 0 ? "opening" : index === sceneCount - 1 ? "closing" : "content",
+      transition: "crossfade",
     }));
   }
   if (scenePlan.length !== sceneCount) {
@@ -242,7 +251,7 @@ function normalizeSceneRanges(
   }
   let previousEnd = 0;
   const ids = new Set<string>();
-  const ranges = scenePlan.map((scene, index) => {
+  const ranges = scenePlan.map((scene, index): NormalizedSceneMetadata => {
     if (
       !scene ||
       typeof scene.id !== "string" ||
@@ -259,9 +268,17 @@ function normalizeSceneRanges(
     }
     ids.add(scene.id);
     previousEnd = scene.endSeconds;
+    const purpose = scene.purpose === "opening" || scene.purpose === "closing" || scene.purpose === "content"
+      ? scene.purpose
+      : (index === 0 ? "opening" : index === sceneCount - 1 ? "closing" : "content");
+    const transition = scene.transition === "slide-left" || scene.transition === "slide-right"
+      ? scene.transition
+      : "crossfade";
     return {
       startSeconds: scene.startSeconds,
       endSeconds: scene.endSeconds,
+      purpose,
+      transition,
     };
   });
   if (Math.abs(previousEnd - durationSeconds) > 0.05) {
@@ -283,23 +300,76 @@ function buildSceneIsolationCss(
   ];
 
   for (let index = 0; index < sceneCount; index += 1) {
-    const start = ranges[index].startSeconds / durationSeconds * 100;
-    const end = ranges[index].endSeconds / durationSeconds * 100;
+    const range = ranges[index];
+    const start = (range.startSeconds / durationSeconds) * 100;
+    const end = (range.endSeconds / durationSeconds) * 100;
     const interval = end - start;
-    const epsilon = Math.min(0.01, interval / 100);
-    const startBefore = Math.max(0, start - epsilon);
-    const endBefore = Math.max(start, end - epsilon);
-    const frames = index === 0
-      ? `0%,${endBefore.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`
-      : index === sceneCount - 1
-        ? `0%,${startBefore.toFixed(4)}%{opacity:0;visibility:hidden}${start.toFixed(4)}%,100%{opacity:1;visibility:visible}`
-        : `0%,${startBefore.toFixed(4)}%{opacity:0;visibility:hidden}${start.toFixed(4)}%,${endBefore.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`;
+    const fadePercent = Math.min(interval * 0.12, (0.35 / durationSeconds) * 100);
+    const startIn = Math.min(end - 0.01, start + fadePercent);
+    const endOut = Math.max(start + 0.01, end - fadePercent);
+
+    let frames: string;
+    if (range.transition === "slide-left") {
+      if (index === 0) {
+        frames = `0%,${endOut.toFixed(4)}%{opacity:1;visibility:visible;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden;transform:translateX(-60px)}`;
+      } else if (index === sceneCount - 1) {
+        frames = `0%,${start.toFixed(4)}%{opacity:0;visibility:hidden;transform:translateX(60px)}${startIn.toFixed(4)}%,100%{opacity:1;visibility:visible;transform:translateX(0)}`;
+      } else {
+        frames = `0%,${start.toFixed(4)}%{opacity:0;visibility:hidden;transform:translateX(60px)}${startIn.toFixed(4)}%,${endOut.toFixed(4)}%{opacity:1;visibility:visible;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden;transform:translateX(-60px)}`;
+      }
+    } else if (range.transition === "slide-right") {
+      if (index === 0) {
+        frames = `0%,${endOut.toFixed(4)}%{opacity:1;visibility:visible;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden;transform:translateX(60px)}`;
+      } else if (index === sceneCount - 1) {
+        frames = `0%,${start.toFixed(4)}%{opacity:0;visibility:hidden;transform:translateX(-60px)}${startIn.toFixed(4)}%,100%{opacity:1;visibility:visible;transform:translateX(0)}`;
+      } else {
+        frames = `0%,${start.toFixed(4)}%{opacity:0;visibility:hidden;transform:translateX(-60px)}${startIn.toFixed(4)}%,${endOut.toFixed(4)}%{opacity:1;visibility:visible;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden;transform:translateX(60px)}`;
+      }
+    } else {
+      if (index === 0) {
+        frames = `0%,${endOut.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`;
+      } else if (index === sceneCount - 1) {
+        frames = `0%,${start.toFixed(4)}%{opacity:0;visibility:hidden}${startIn.toFixed(4)}%,100%{opacity:1;visibility:visible}`;
+      } else {
+        frames = `0%,${start.toFixed(4)}%{opacity:0;visibility:hidden}${startIn.toFixed(4)}%,${endOut.toFixed(4)}%{opacity:1;visibility:visible}${end.toFixed(4)}%,100%{opacity:0;visibility:hidden}`;
+      }
+    }
+
+    const headlineKeyframe = range.purpose === "opening"
+      ? `0%,${start.toFixed(4)}%{opacity:0;transform:translateX(-36px) scale(.92);filter:blur(10px)}${Math.min(end - 0.01, start + Math.min(interval * 0.28, (0.8 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(20px)}`
+      : range.purpose === "closing"
+        ? `0%,${start.toFixed(4)}%{opacity:0;transform:scale(1.06);filter:blur(4px)}${Math.min(end - 0.01, start + Math.min(interval * 0.24, (0.7 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1);filter:blur(0)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.95)}`
+        : `0%,${start.toFixed(4)}%{opacity:0;transform:translateX(-36px);filter:blur(8px)}${Math.min(end - 0.01, start + Math.min(interval * 0.28, (0.8 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0);filter:blur(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(20px)}`;
+
     rules.push(
       `[data-html-video-scene="${index}"]{animation-name:html-video-scene-${index}!important}`,
-      `@keyframes html-video-scene-${index}{${frames}}`
+      `@keyframes html-video-scene-${index}{${frames}}`,
+      `[data-html-video-scene="${index}"] .scene-headline{animation:html-video-scene-${index}-headline ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-headline{${headlineKeyframe}}`,
+      `[data-html-video-scene="${index}"] .scene-eyebrow{animation:html-video-scene-${index}-eyebrow ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-eyebrow{0%,${start.toFixed(4)}%{opacity:0;transform:translateX(-24px) scale(.92)}${Math.min(end - 0.01, start + Math.min(interval * 0.22, (0.6 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0) scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(14px)}}`,
+      `[data-html-video-scene="${index}"] .scene-body{animation:html-video-scene-${index}-body ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-body{0%,${Math.min(end - 0.01, start + (0.12 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:translateX(-24px)}${Math.min(end - 0.01, start + Math.min(interval * 0.36, (0.9 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(14px)}}`,
+      `[data-html-video-scene="${index}"] .scene-media{animation:html-video-scene-${index}-media ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-media{0%,${start.toFixed(4)}%{opacity:0;transform:scale(.88)}${Math.min(end - 0.01, start + Math.min(interval * 0.32, (0.8 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.92)}}`,
+      `[data-html-video-scene="${index}"] .scene-cta{animation:html-video-scene-${index}-cta ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-cta{0%,${Math.min(end - 0.01, start + (0.18 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:scale(.9)}${Math.min(end - 0.01, start + Math.min(interval * 0.3, (0.7 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${Math.min(end - 0.01, start + Math.min(interval * 0.6, (1.8 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.06)}${Math.min(end - 0.01, start + Math.min(interval * 0.85, (2.6 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.95)}}`
     );
   }
   return rules.join("");
+}
+
+function buildAmbientMotionCss(durationSeconds: number) {
+  return [
+    `#html-video-root{background-size:140% 140%!important;animation:html-video-background-motion ${durationSeconds}s ease-in-out both!important}`,
+    `#html-video-root>:first-child{transform-origin:center center;animation:html-video-root-motion ${durationSeconds}s ease-in-out both!important}`,
+    `#html-video-root>:not(.scene-deck) :is(h1,h2,h3,p,li){animation:html-video-content-reveal ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+    `#html-video-root .html-video-media-slot img{transform-origin:center center;animation:html-video-media-motion ${durationSeconds}s ease-in-out both!important}`,
+    "@keyframes html-video-background-motion{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:35% 50%}}",
+    "@keyframes html-video-root-motion{0%{scale:1}45%{scale:1.006}100%{scale:1.012}}",
+    "@keyframes html-video-content-reveal{0%{opacity:0;translate:-24px 0;filter:blur(6px)}10%,88%{opacity:1;translate:0 0;filter:blur(0)}100%{opacity:.96;translate:8px 0;filter:blur(0)}}",
+    "@keyframes html-video-media-motion{0%{scale:1}50%{scale:1.035}100%{scale:1.015}}",
+  ].join("");
 }
 
 function assertSettings(source: HtmlVideoSource) {
@@ -335,6 +405,7 @@ export function buildSafeHtmlVideoComposition(
     source.durationSeconds,
     source.scenePlan
   );
+  const ambientMotionCss = buildAmbientMotionCss(source.durationSeconds);
 
   const compositionHtml = `<!doctype html>
 <html data-no-timeline>
@@ -348,6 +419,7 @@ export function buildSafeHtmlVideoComposition(
     ${sanitizedCss}
     ${mediaCss}
     ${sceneIsolationCss}
+    ${ambientMotionCss}
   </style>
 </head>
 <body>

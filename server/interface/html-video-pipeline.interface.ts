@@ -43,6 +43,20 @@ export type HtmlVideoContentUnit = {
 export type HtmlVideoScenePurpose = "opening" | "content" | "closing";
 export type HtmlVideoSceneTransition = "crossfade" | "slide-left" | "slide-right";
 
+export type HtmlVideoTheme =
+  | "ocean"
+  | "midnight"
+  | "sunset"
+  | "emerald"
+  | "violet"
+  | "coral"
+  | "gold"
+  | "arctic"
+  | "neon"
+  | "earth"
+  | "blush"
+  | "slate";
+
 export type HtmlVideoScenePlanItem = {
   id: string;
   order: number;
@@ -59,6 +73,8 @@ export type HtmlVideoScenePlanItem = {
 export type HtmlVideoVisualScene = {
   sceneId: string;
   layout: "centered" | "split-left" | "split-right" | "statement" | "cta";
+  emphasis?: "hero" | "standard" | "climax";
+  accentStyle?: "glow" | "border" | "gradient-shift" | "minimal";
   eyebrow: string;
   headline: string;
   body: string;
@@ -67,7 +83,7 @@ export type HtmlVideoVisualScene = {
 };
 
 export type HtmlVideoVisualComposition = {
-  theme: "ocean" | "midnight" | "sunset" | "emerald" | "violet";
+  theme: HtmlVideoTheme;
   scenes: HtmlVideoVisualScene[];
 };
 
@@ -79,6 +95,7 @@ export type HtmlVideoVoiceScene = {
 export type HtmlVideoVoiceComposition = {
   scenes: HtmlVideoVoiceScene[];
   fullScript: string;
+  adjustedSceneIds?: string[];
 };
 
 export type HtmlVideoPipelineFinding = {

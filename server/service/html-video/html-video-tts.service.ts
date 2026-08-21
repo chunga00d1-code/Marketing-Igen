@@ -4,7 +4,11 @@ const DEFAULT_TTS_VOICE = "Kore";
 const DEFAULT_TTS_FORMAT = "pcm" as const;
 const DEFAULT_TTS_SAMPLE_RATE = 24_000;
 const DEFAULT_TTS_CHANNELS = 1;
-const DEFAULT_TTS_PLAYBACK_RATE = 1.12;
+const DEFAULT_TTS_PLAYBACK_RATE = 1;
+const MIN_TTS_PLAYBACK_RATE = 0.85;
+const MAX_TTS_PLAYBACK_RATE = 1.2;
+const NATURAL_VIETNAMESE_WORDS_PER_MINUTE = 140;
+const TARGET_NARRATION_FILL_RATIO = 0.92;
 const MAX_TTS_INPUT_LENGTH = 8_000;
 const TTS_TIMEOUT_MS = 60_000;
 
@@ -16,6 +20,7 @@ export type HtmlVideoTtsResult = {
   sampleRate?: number;
   channels?: number;
   playbackRate: number;
+  durationSeconds?: number;
 };
 
 export type HtmlVideoTtsOptions = {
@@ -34,12 +39,15 @@ function isRetryableStatus(status: number) {
 function configuredPlaybackRate(text: string, targetDurationSeconds?: number) {
   const configuredText = String(process.env.OPENROUTER_HTML_VIDEO_TTS_SPEED || "").trim();
   const configured = Number(configuredText);
-  if (configuredText && Number.isFinite(configured)) return Math.min(1.35, Math.max(1, configured));
+  if (configuredText && Number.isFinite(configured)) {
+    return Math.min(1.25, Math.max(MIN_TTS_PLAYBACK_RATE, configured));
+  }
   if (!Number.isFinite(targetDurationSeconds) || (targetDurationSeconds || 0) <= 0) return DEFAULT_TTS_PLAYBACK_RATE;
   const wordCount = text.split(/\s+/).filter(Boolean).length;
-  const naturalDurationSeconds = wordCount / (155 / 60);
-  const targetRate = naturalDurationSeconds / targetDurationSeconds!;
-  return Math.min(1.35, Math.max(1, targetRate));
+  const naturalDurationSeconds = wordCount / (NATURAL_VIETNAMESE_WORDS_PER_MINUTE / 60);
+  const targetNarrationSeconds = targetDurationSeconds! * TARGET_NARRATION_FILL_RATIO;
+  const targetRate = naturalDurationSeconds / targetNarrationSeconds;
+  return Math.min(MAX_TTS_PLAYBACK_RATE, Math.max(MIN_TTS_PLAYBACK_RATE, targetRate));
 }
 
 function normalizeNarrationText(input: string) {
@@ -64,7 +72,7 @@ export const htmlVideoTtsService = {
       '# AUDIO PROFILE',
       'One consistent adult Vietnamese narrator with a natural native Vietnamese accent. Use neutral, standard Vietnamese pronunciation with no foreign accent and no English-style intonation.',
       '# DIRECTOR\'S NOTES',
-      'Warm, clear, confident and professional delivery for a short social video. Speak briskly but comfortably, around 150-165 Vietnamese words per minute. Keep articulation crisp, connect phrases naturally, and use only short pauses required by punctuation. Avoid dead air, slow lecturing, exaggerated acting, or dramatic pauses.',
+      'Warm, clear, confident and professional delivery for a short social video. Speak naturally at around 130-145 Vietnamese words per minute. Keep articulation crisp, connect phrases naturally, and leave a short comfortable pause at sentence boundaries so narration follows the visual scenes. Avoid rushing, dead air, slow lecturing, exaggerated acting, or dramatic pauses.',
       'Do not switch speakers, add sound effects, paraphrase, translate, or add any words.',
       `Read exactly this narration:\n${text}`,
     ].join("\n\n");
@@ -105,7 +113,12 @@ export const htmlVideoTtsService = {
           voice,
           format: responseFormat,
           ...(responseFormat === "pcm"
-            ? { sampleRate: DEFAULT_TTS_SAMPLE_RATE, channels: DEFAULT_TTS_CHANNELS }
+            ? {
+                sampleRate: DEFAULT_TTS_SAMPLE_RATE,
+                channels: DEFAULT_TTS_CHANNELS,
+                durationSeconds: buffer.length /
+                  (DEFAULT_TTS_SAMPLE_RATE * DEFAULT_TTS_CHANNELS * 2),
+              }
             : {}),
           playbackRate,
         };

@@ -12,7 +12,10 @@ import {
   buildSafeHtmlVideoComposition,
   type HtmlVideoSource,
 } from "./html-video-security.service";
-import { VideoRenderAdapterError } from "../video-edit/render-adapter";
+import {
+  VideoRenderAdapterError,
+  type VideoRenderVoiceSegment,
+} from "../video-edit/render-adapter";
 import { defaultVideoRenderAdapterRegistry } from "../video-edit/video-render-adapters";
 import { htmlVideoTtsService } from "./html-video-tts.service";
 import type { HtmlVideoPipelineMetadata } from "../../interface/html-video-pipeline.interface";
@@ -377,7 +380,7 @@ export const htmlVideoRenderService = {
       },
       { new: true }
     )
-      .select("+compositionHtml +voiceScript")
+      .select("+compositionHtml +voiceScript +pipelineSnapshot")
       .lean();
     if (!render) return;
 
@@ -392,6 +395,7 @@ export const htmlVideoRenderService = {
       let voiceAudioFormat: "mp3" | "pcm" | undefined;
       let voiceAudioSampleRate: number | undefined;
       let voiceAudioChannels: number | undefined;
+      let voiceSegments: VideoRenderVoiceSegment[] | undefined;
       if (voiceScript) {
         await mkdir(temporaryDirectory, { recursive: true });
         await HtmlVideoRenderModel.updateOne(
@@ -404,15 +408,47 @@ export const htmlVideoRenderService = {
             },
           }
         );
-        const voice = await htmlVideoTtsService.generate(voiceScript, { durationSeconds: render.durationSeconds });
-        voiceAudioPath = join(
-          temporaryDirectory,
-          voice.format === "pcm" ? "voice.pcm" : "voice.mp3"
-        );
-        await writeFile(voiceAudioPath, voice.buffer);
-        voiceAudioFormat = voice.format;
-        voiceAudioSampleRate = voice.sampleRate;
-        voiceAudioChannels = voice.channels;
+        const scenePlan = render.pipelineSnapshot?.scenePlan;
+        const hasSceneNarration = Array.isArray(scenePlan) &&
+          scenePlan.length > 0 &&
+          scenePlan.every((scene) => String(scene.narration || "").trim());
+        if (hasSceneNarration) {
+          voiceSegments = [];
+          for (const [index, scene] of scenePlan.entries()) {
+            const durationSeconds = scene.endSeconds - scene.startSeconds;
+            const voice = await htmlVideoTtsService.generate(scene.narration, {
+              durationSeconds,
+            });
+            const audioPath = join(
+              temporaryDirectory,
+              `voice-scene-${String(index + 1).padStart(2, "0")}.${voice.format}`
+            );
+            await writeFile(audioPath, voice.buffer);
+            voiceSegments.push({
+              audioPath,
+              audioFormat: voice.format,
+              ...(voice.sampleRate ? { audioSampleRate: voice.sampleRate } : {}),
+              ...(voice.channels ? { audioChannels: voice.channels } : {}),
+              startSeconds: scene.startSeconds,
+              durationSeconds,
+              ...(voice.durationSeconds
+                ? { sourceDurationSeconds: voice.durationSeconds }
+                : {}),
+            });
+          }
+        } else {
+          const voice = await htmlVideoTtsService.generate(voiceScript, {
+            durationSeconds: render.durationSeconds,
+          });
+          voiceAudioPath = join(
+            temporaryDirectory,
+            voice.format === "pcm" ? "voice.pcm" : "voice.mp3"
+          );
+          await writeFile(voiceAudioPath, voice.buffer);
+          voiceAudioFormat = voice.format;
+          voiceAudioSampleRate = voice.sampleRate;
+          voiceAudioChannels = voice.channels;
+        }
       }
       const result = await adapter.render(
         {
@@ -421,6 +457,7 @@ export const htmlVideoRenderService = {
           aspectRatio: render.aspectRatio,
           resolution: render.resolution,
           durationSeconds: render.durationSeconds,
+          ...(voiceSegments ? { voiceSegments } : {}),
           ...(voiceAudioPath
             ? {
                 voiceAudioPath,
