@@ -26,6 +26,8 @@ import sharp from "sharp";
 const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
 const HTML_VIDEO_MODEL = process.env.HTML_VIDEO_MODEL || process.env.GEMINI_MODEL || "google/gemini-2.5-flash";
+const AI_REPLY_MESSAGE_MODEL = process.env.AI_REPLY_MESSAGE_MODEL || process.env.GEMINI_MODEL || "deepseek-v4-flash-0731";
+const AI_REPLY_COMMENT_MODEL = process.env.AI_REPLY_COMMENT_MODEL || process.env.GEMINI_MODEL || "deepseek-v4-flash-0731";
 
 const Type = {
   OBJECT: "object",
@@ -807,7 +809,7 @@ STYLE OVERRIDE:
     });
 
     try {
-      const selectedModel = aiConfig?.model || GEMINI_TEXT_MODEL;
+      const selectedModel = aiConfig?.model || AI_REPLY_MESSAGE_MODEL;
       const fallbackNoKnowledgeReply =
         shouldRequireStrictKnowledge && !hasCompanyKnowledge
           ? `Dạ, hiện tại em chưa có đủ dữ liệu xác nhận chính xác thông tin này từ tài liệu nội bộ của ${companyName}. Em xin phép chuyển nhân viên hỗ trợ để tư vấn đúng và đầy đủ hơn ạ.`
@@ -914,7 +916,7 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
     };
 
     try {
-      const selectedModel = aiConfig?.model || GEMINI_TEXT_MODEL;
+      const selectedModel = aiConfig?.model || AI_REPLY_COMMENT_MODEL;
       const response = await generateText(
         selectedModel,
         `Nội dung bình luận của khách hàng:\n"${message}"`,

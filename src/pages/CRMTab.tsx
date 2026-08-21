@@ -304,7 +304,7 @@ export default function CRMTab() {
     replyDelay: 15,
     advancedInstructions: "Luôn ưu tiên xưng hô lịch thiệp. Hỏi thăm nhu cầu chăm sóc sức khỏe của doanh nghiệp.",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "gemini-3.5-flash"
+    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
   });
 
   // Synchronize AI Config based on selected page/channel or fallback to userProfile
@@ -337,7 +337,7 @@ export default function CRMTab() {
         replyDelay: config.replyDelay ?? 15,
         advancedInstructions: config.advancedInstructions ?? "",
         trainingKnowledge: config.trainingKnowledge ?? "",
-        model: config.model || localStorage.getItem("selected_ai_model") || "gemini-3.5-flash"
+        model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
       });
       return;
     }
@@ -353,7 +353,7 @@ export default function CRMTab() {
         replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
         advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
         trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "gemini-3.5-flash"
+        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
       });
     }
   }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer]);

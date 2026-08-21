@@ -101,9 +101,9 @@ export const realEstateMapVideoController = {
     if (!draft) {
       const created = await RealEstateMapVideoDraftModel.create({
         ...identity(req),
-        name: "Dự án bất động sản",
-        address: "TP. Hồ Chí Minh",
-        location: { lat: 10.7719, lng: 106.7212 },
+        name: "Khu đô thị Starlake Tây Hồ Tây",
+        address: "Phường Xuân La, Quận Tây Hồ, TP. Hà Nội",
+        location: { lat: 21.0558, lng: 105.7992 },
         boundary: [],
         pois: [],
         routes: [],
