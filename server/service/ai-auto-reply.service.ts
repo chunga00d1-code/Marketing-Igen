@@ -591,6 +591,25 @@ export const aiAutoReplyService = {
       const userDelayMs = (aiConfig.replyDelay || 15) * 1000;
       const groupingDelayMs = getMessageGroupingDelayMs();
       const delayMs = groupingDelayMs + userDelayMs;
+
+      // Cập nhật trạng thái tin nhắn mới từ khách hàng để theo dõi follow-up
+      try {
+        const customerStateUpdate = {
+          lastSender: "user",
+          followUpStatus: "responded",
+          followUpCount: 0,
+        };
+        if (channel === "zalo") {
+          void ZaloConversationModel.findByIdAndUpdate(conversationId, customerStateUpdate);
+        } else if (channel === "tiktok") {
+          void TikTokConversationModel.findByIdAndUpdate(conversationId, customerStateUpdate);
+        } else {
+          void FBConversationModel.findByIdAndUpdate(conversationId, customerStateUpdate);
+        }
+      } catch (err) {
+        console.warn("[AI AutoReply] Failed to update customer lastSender state:", err);
+      }
+
       console.log(
         `[AI AutoReply] Schedule reply: channel=${channel}, conversationId=${conversationId}, ` +
         `groupingDelayMs=${groupingDelayMs}, userDelayMs=${userDelayMs}, totalDelayMs=${delayMs}, ` +
@@ -820,13 +839,19 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            const queryText = `${history.map((h) => h.text).join("\n")}\n${groupedCustomerMessage}`.trim();
+            // Trọng tâm tìm kiếm là tin nhắn mới nhất của khách hàng (hoặc kèm 1-2 tin gần nhất của khách để giữ ngữ cảnh ngắn gọn)
+            const recentCustomerMessages = history
+              .filter((h) => h.sender === "user")
+              .slice(-2)
+              .map((h) => h.text);
+            const queryParts = [...recentCustomerMessages, groupedCustomerMessage].filter(Boolean);
+            const queryText = queryParts.length > 0 ? queryParts.join(" ") : groupedCustomerMessage;
             const ragContext = await aiKnowledgeService.searchRelevantContext({
               companyCode,
               query: queryText,
               channel,
               pageId: channel === "facebook" ? resolvedPlatformId : undefined,
-              topK: 5,
+              topK: 8,
             });
 
             const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
@@ -944,6 +969,25 @@ export const aiAutoReplyService = {
                 latencyMs: Date.now() - startedAt,
                 status: "sent",
               });
+
+              // Cập nhật trạng thái hội thoại sau khi Bot trả lời để theo dõi follow-up
+              try {
+                const assistantStateUpdate = {
+                  lastSender: "assistant",
+                  lastAssistantMessageAt: new Date(),
+                  followUpStatus: "pending",
+                };
+                if (channel === "zalo") {
+                  void ZaloConversationModel.findByIdAndUpdate(conversationId, assistantStateUpdate);
+                } else if (channel === "tiktok") {
+                  void TikTokConversationModel.findByIdAndUpdate(conversationId, assistantStateUpdate);
+                } else {
+                  void FBConversationModel.findByIdAndUpdate(conversationId, assistantStateUpdate);
+                }
+              } catch (stateErr) {
+                console.warn("[AI AutoReply] Failed to update assistant state:", stateErr);
+              }
+
               console.log(`[AI AutoReply] Reply sent: conversationId=${conversationId}, channel=${channel}, latencyMs=${Date.now() - startedAt}`);
               console.log(`[AI AutoReply] ✅ THÀNH CÔNG: Đã gửi phản hồi tự động thành công cho hội thoại: ${conversationId} trong ${Date.now() - startedAt}ms`);
             } catch (sendErr: any) {
@@ -987,5 +1031,204 @@ export const aiAutoReplyService = {
     } catch (error: any) {
       console.error("[AI AutoReply triggerAutoReply] ❌ LỖI HỆ THỐNG khi xử lý trigger:", error.message || error);
     }
-  }
+  },
+
+  /**
+   * Chu kỳ quét tự động Follow-up cho các khách hàng im lặng
+   */
+  async processAutoFollowUpCycle() {
+    try {
+      const now = Date.now();
+
+      // 1. Quét Facebook Conversations
+      const fbCutoff = new Date(now - 30 * 60 * 1000); // Tối thiểu 30 phút kể từ tin nhắn cuối
+      const candidateFbConversations = await FBConversationModel.find({
+        lastSender: "assistant",
+        followUpStatus: "pending",
+        followUpCount: { $lt: 1 },
+        lastAssistantMessageAt: { $lte: fbCutoff },
+        status: "open",
+        $or: [
+          { aiPausedUntil: null },
+          { aiPausedUntil: { $exists: false } },
+          { aiPausedUntil: { $lte: new Date() } },
+        ],
+      }).limit(10).lean();
+
+      for (const conv of candidateFbConversations) {
+        try {
+          const owner = await resolveAutoReplyOwner("facebook", conv.pageId);
+          if (!owner.aiConfig?.autoFollowUpEnabled) continue;
+
+          const delayHours = owner.aiConfig?.followUpDelayHours || 2;
+          const requiredDelayMs = delayHours * 60 * 60 * 1000;
+          const lastMsgTime = conv.lastAssistantMessageAt ? new Date(conv.lastAssistantMessageAt).getTime() : 0;
+          if (now - lastMsgTime < requiredDelayMs) continue;
+
+          const messages = await FBMessageModel.find({ conversationId: conv._id })
+            .sort({ createdAt: 1 })
+            .limit(10)
+            .lean();
+
+          if (messages.length === 0) continue;
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg.direction === "inbound") continue; // Khách đã nhắn, bỏ qua
+
+          const history = messages.map((m) => ({
+            sender: m.direction === "inbound" ? "user" as const : "ai" as const,
+            text: m.text,
+          }));
+
+          const ragContext = await aiKnowledgeService.searchRelevantContext({
+            companyCode: owner.companyCode,
+            query: messages.map((m) => m.text).join(" "),
+            channel: "facebook",
+            pageId: conv.pageId,
+            topK: 4,
+          });
+
+          const followUpRes = await geminiService.generateFollowUpMessage({
+            history,
+            aiConfig: owner.aiConfig,
+            ragContext,
+          });
+
+          if (followUpRes?.text) {
+            await fbMessengerService.sendReply(
+              conv.pageId,
+              String(conv._id),
+              followUpRes.text,
+              "ai"
+            );
+
+            await FBConversationModel.findByIdAndUpdate(conv._id, {
+              $set: {
+                followUpStatus: "sent",
+                followUpCount: 1,
+                lastAssistantMessageAt: new Date(),
+              },
+            });
+
+            await aiKnowledgeService.createReplyLog({
+              companyCode: owner.companyCode,
+              channel: "facebook",
+              conversationId: String(conv._id),
+              customerMessage: "[AUTO_FOLLOWUP_TRIGGERED]",
+              aiResponse: followUpRes.text,
+              contextText: ragContext.contextText,
+              contextMatches: ragContext.matches,
+              latencyMs: 0,
+              status: "sent",
+            });
+
+            console.log(`[AI AutoReply] 🎯 FOLLOW-UP ĐÃ GỬI cho khách Facebook: ${conv.senderName} (${conv._id})`);
+          }
+        } catch (convErr: any) {
+          console.error(`[AI AutoReply] Error processing FB follow-up for conv ${conv._id}:`, convErr.message || convErr);
+        }
+      }
+
+      // 2. Quét Zalo Conversations
+      const candidateZaloConversations = await ZaloConversationModel.find({
+        lastSender: "assistant",
+        followUpStatus: "pending",
+        followUpCount: { $lt: 1 },
+        lastAssistantMessageAt: { $lte: fbCutoff },
+        status: "open",
+        $or: [
+          { aiPausedUntil: null },
+          { aiPausedUntil: { $exists: false } },
+          { aiPausedUntil: { $lte: new Date() } },
+        ],
+      }).limit(10).lean();
+
+      for (const conv of candidateZaloConversations) {
+        try {
+          const owner = await resolveAutoReplyOwner("zalo", conv.oaId);
+          if (!owner.aiConfig?.autoFollowUpEnabled) continue;
+
+          const delayHours = owner.aiConfig?.followUpDelayHours || 2;
+          const requiredDelayMs = delayHours * 60 * 60 * 1000;
+          const lastMsgTime = conv.lastAssistantMessageAt ? new Date(conv.lastAssistantMessageAt).getTime() : 0;
+          if (now - lastMsgTime < requiredDelayMs) continue;
+
+          const messages = await ZaloMessageModel.find({ conversationId: conv._id })
+            .sort({ createdAt: 1 })
+            .limit(10)
+            .lean();
+
+          if (messages.length === 0) continue;
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg.direction === "inbound") continue;
+
+          const history = messages.map((m) => ({
+            sender: m.direction === "inbound" ? "user" as const : "ai" as const,
+            text: m.text,
+          }));
+
+          const ragContext = await aiKnowledgeService.searchRelevantContext({
+            companyCode: owner.companyCode,
+            query: messages.map((m) => m.text).join(" "),
+            channel: "zalo",
+            topK: 4,
+          });
+
+          const followUpRes = await geminiService.generateFollowUpMessage({
+            history,
+            aiConfig: owner.aiConfig,
+            ragContext,
+          });
+
+          if (followUpRes?.text) {
+            await zaloMessengerService.sendReply(
+              conv.oaId,
+              String(conv._id),
+              followUpRes.text,
+              "ai"
+            );
+
+            await ZaloConversationModel.findByIdAndUpdate(conv._id, {
+              $set: {
+                followUpStatus: "sent",
+                followUpCount: 1,
+                lastAssistantMessageAt: new Date(),
+              },
+            });
+
+            await aiKnowledgeService.createReplyLog({
+              companyCode: owner.companyCode,
+              channel: "zalo",
+              conversationId: String(conv._id),
+              customerMessage: "[AUTO_FOLLOWUP_TRIGGERED]",
+              aiResponse: followUpRes.text,
+              contextText: ragContext.contextText,
+              contextMatches: ragContext.matches,
+              latencyMs: 0,
+              status: "sent",
+            });
+
+            console.log(`[AI AutoReply] 🎯 FOLLOW-UP ĐÃ GỬI cho khách Zalo: ${conv.senderName} (${conv._id})`);
+          }
+        } catch (convErr: any) {
+          console.error(`[AI AutoReply] Error processing Zalo follow-up for conv ${conv._id}:`, convErr.message || convErr);
+        }
+      }
+    } catch (cycleErr: any) {
+      console.error("[AI AutoReply] Error in processAutoFollowUpCycle:", cycleErr.message || cycleErr);
+    }
+  },
 };
+
+// Khởi động background worker tự động Follow-up định kỳ mỗi 3 phút
+let followUpWorkerStarted = false;
+export function startAutoFollowUpWorker() {
+  if (followUpWorkerStarted) return;
+  followUpWorkerStarted = true;
+  console.log("[AI AutoReply] 🚀 Khởi động background worker Tự động Follow-up khách hàng...");
+  setInterval(() => {
+    void aiAutoReplyService.processAutoFollowUpCycle();
+  }, 180_000);
+}
+
+// Tự động kích hoạt khi service được load
+startAutoFollowUpWorker();

@@ -11,7 +11,7 @@ const managerOnly = requireRole(["superadmin", "admin", "manager"]);
 const pageScope = Joi.string().valid("all", "selected");
 const pageIds = Joi.array().items(Joi.string().trim().min(1)).max(100);
 const documentType = Joi.string().valid(
-  "company_profile", "product", "service", "policy", "pricing", "faq", "brand_guideline", "general"
+  "company_profile", "product", "service", "policy", "pricing", "promotion", "faq", "brand_guideline", "general"
 );
 const scopeSchema = {
   body: Joi.object({
@@ -75,10 +75,28 @@ const syncSchema = {
   }),
 };
 
+const testSearchSchema = {
+  body: Joi.object({
+    query: Joi.string().required(),
+    channel: Joi.string().valid("facebook", "zalo", "tiktok", "all").optional(),
+    pageId: Joi.string().allow("").optional(),
+    topK: Joi.number().min(1).max(20).optional(),
+  }),
+};
+
 companyKnowledgeRouter.use(requireAuth as never);
 companyKnowledgeRouter.get(
   "/health",
   geminiController.getKnowledgeHealth as never
+);
+companyKnowledgeRouter.get(
+  "/conflicts",
+  companyKnowledgeController.getConflicts as never
+);
+companyKnowledgeRouter.post(
+  "/test-search",
+  validateRequest(testSearchSchema),
+  companyKnowledgeController.testSearch as never
 );
 companyKnowledgeRouter.get(
   "/documents",

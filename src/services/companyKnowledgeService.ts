@@ -18,6 +18,7 @@ export type KnowledgeDocumentType =
   | "service"
   | "policy"
   | "pricing"
+  | "promotion"
   | "faq"
   | "brand_guideline"
   | "general";
@@ -30,12 +31,24 @@ export type KnowledgeScopes = {
   documentType: KnowledgeDocumentType;
 };
 
+export type KnowledgeConflict = {
+  id: string;
+  type: "pricing" | "contact" | "policy" | "duplicate";
+  severity: "warning" | "error";
+  title: string;
+  description: string;
+  documentA: { id: string; title: string; documentType?: string };
+  documentB: { id: string; title: string; documentType?: string };
+  conflictingValues: { a: string; b: string };
+};
+
 export type CompanyKnowledgeHealth = {
   companyCode: string;
   mode: "trained" | "default";
   documentsCount: number;
   chunksCount: number;
   warnings: string[];
+  conflicts?: KnowledgeConflict[];
   latestSyncAt?: string | null;
 };
 
@@ -150,4 +163,33 @@ export const companyKnowledgeService = {
       { method: "DELETE" }
     );
   },
+
+  getConflicts() {
+    return requestJson<{ status: "success"; conflicts: KnowledgeConflict[] }>(
+      "/api/v1/company-knowledge/conflicts"
+    );
+  },
+
+  testSearch(query: string, options?: { channel?: string; topK?: number; pageId?: string }) {
+    return requestJson<TestSearchResult>("/api/v1/company-knowledge/test-search", {
+      method: "POST",
+      body: JSON.stringify({ query, ...options }),
+    });
+  },
 };
+
+export interface TestSearchResult {
+  status: "success" | "error";
+  query: string;
+  detectedDocumentTypes: string[];
+  matches: number;
+  bestScore: number;
+  items: Array<{
+    title: string;
+    documentType: string;
+    score: number;
+    text: string;
+    sourceUrl?: string;
+  }>;
+  simulatedAnswer: string;
+}

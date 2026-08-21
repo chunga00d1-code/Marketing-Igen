@@ -262,6 +262,14 @@ export const VIDEO_STUDIO_SEO_MAP: Record<VideoStudioTool, SeoMeta> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
+  "real-estate-map-video": {
+    title: "Video B\u0110S ban do",
+    description: "Tao video gioi thieu vi tri du an, ranh khu dat va tien ich xung quanh.",
+    keywords: "video bat dong san, video ban do, gioi thieu du an",
+    path: "/video-studio/video-bat-dong-san",
+    priority: "0.8",
+    changeFrequency: "weekly",
+  },
   "ai-video": {
     title: "Tạo video từ nội dung",
     description: "Tạo video marketing bằng AI từ nội dung mô tả hoặc hình ảnh.",

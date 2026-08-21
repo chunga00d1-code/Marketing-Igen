@@ -83,4 +83,39 @@ export const companyKnowledgeController = {
       });
     }
   },
+
+  async getConflicts(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const conflicts = await aiKnowledgeService.detectKnowledgeConflicts(companyCode);
+      return res.status(200).json({ status: "success", conflicts });
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] getConflicts error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Không thể kiểm tra mâu thuẫn tri thức.",
+      });
+    }
+  },
+
+  async testSearch(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const { query, channel, pageId, topK } = req.body || {};
+      const result = await aiKnowledgeService.testSearchKnowledge({
+        companyCode,
+        query: String(query || "").trim(),
+        channel,
+        pageId,
+        topK: typeof topK === "number" ? topK : 5,
+      });
+      return res.status(200).json({ status: "success", ...result });
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] testSearch error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Không thể thử nghiệm tìm kiếm tri thức.",
+      });
+    }
+  },
 };

@@ -11,7 +11,7 @@ export interface IAIKnowledgeDocument extends Document {
   purposeScope: Array<"sales" | "support" | "marketing" | "caption" | "all">;
   pageScope: "all" | "selected";
   pageIds: string[];
-  documentType: "company_profile" | "product" | "service" | "policy" | "pricing" | "faq" | "brand_guideline" | "general";
+  documentType: "company_profile" | "product" | "service" | "policy" | "pricing" | "promotion" | "faq" | "brand_guideline" | "general";
   contentHash: string;
   createdBy?: string;
   createdAt: Date;
@@ -52,7 +52,7 @@ const AIKnowledgeDocumentSchema = new Schema<IAIKnowledgeDocument>(
     pageIds: { type: [String], default: [] },
     documentType: {
       type: String,
-      enum: ["company_profile", "product", "service", "policy", "pricing", "faq", "brand_guideline", "general"],
+      enum: ["company_profile", "product", "service", "policy", "pricing", "promotion", "faq", "brand_guideline", "general"],
       default: "general",
     },
     contentHash: { type: String, required: true },
