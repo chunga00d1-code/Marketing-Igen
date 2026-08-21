@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * OpenRouter Service
- * ������������������������������������
- * OpenAI-compatible client trỏ t�:i https://openrouter.ai/api/v1.
- * H� trợ: chat completions (text + vision), image generation.
+ * ─────────────────────────────────────────────────────────────────
+ * OpenAI-compatible client trỏ tới https://openrouter.ai/api/v1.
+ * Hỗ trợ: chat completions (text + vision), image generation.
  */
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
@@ -14,8 +14,9 @@ function getApiKey(): string {
 
 /**
  * Thêm provider prefix nếu chưa có.
- * "gemini-2.5-flash" �  "google/gemini-2.5-flash"
- * "claude-opus-4-5"  �  "anthropic/claude-opus-4-5"
+ * "gemini-2.5-flash" -> "google/gemini-2.5-flash"
+ * "claude-opus-4-5"  -> "anthropic/claude-opus-4-5"
+ * "deepseek-v4-flash-0731" -> "deepseek/deepseek-v4-flash-0731"
  */
 export function mapModelName(modelName: string): string {
   if (!modelName) return "google/gemini-2.5-flash";
@@ -23,6 +24,7 @@ export function mapModelName(modelName: string): string {
 
   if (modelName.startsWith("gemini-")) return `google/${modelName}`;
   if (modelName.startsWith("claude-")) return `anthropic/${modelName}`;
+  if (modelName.startsWith("deepseek-") || modelName.startsWith("deepseek")) return `deepseek/${modelName}`;
 
   return modelName;
 }
@@ -44,13 +46,13 @@ export interface OpenRouterChatParams {
   timeoutMs?: number;
   /** Return JSON object (response_format: json_object) */
   jsonMode?: boolean;
-  /** Optional JSON schema � injected into system prompt as instruction */
+  /** Optional JSON schema — injected into system prompt as instruction */
   responseSchema?: object;
   maxRetries?: number;
 }
 
 /**
- * Chat completions � text và/hoặc vision (base64 images).
+ * Chat completions — text và/hoặc vision (base64 images).
  */
 export async function openrouterChat(params: OpenRouterChatParams): Promise<{ text: string }> {
   const {
@@ -65,7 +67,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
   const apiKey = getApiKey();
 
   if (!apiKey) {
-    throw new Error("[OpenRouter] OPENROUTER_API_KEY chưa �ược cấu hình trong .env");
+    throw new Error("[OpenRouter] OPENROUTER_API_KEY chưa được cấu hình trong .env");
   }
 
   const mappedModel = mapModelName(model);
@@ -268,8 +270,8 @@ function shouldSanitizePrompt(error: any): boolean {
 }
 
 /**
- * Image generation qua OpenRouter /chat/completions v�:i modalities: ["image", "text"]
- * Đây là cách chính thức theo OpenRouter SDK � /images endpoint b�9 geo-block Vietnam
+ * Image generation qua OpenRouter /chat/completions với modalities: ["image", "text"]
+ * Đây là cách chính thức theo OpenRouter SDK vì /images endpoint bị geo-block Vietnam
  */
 function sanitizePrompt(prompt: string): string {
   let cleaned = prompt;

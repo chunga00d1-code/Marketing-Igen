@@ -85,6 +85,19 @@ export type RealEstateMapBranding = {
   brandColor?: string;
 };
 
+export type RealEstateMapVfxTheme = "cyan-neon" | "gold-luxury" | "emerald" | "ruby";
+
+export type RealEstateMapVfxConfig = {
+  boundaryTheme?: RealEstateMapVfxTheme;
+  boundaryGlowIntensity?: number;
+  boundaryLedSpeed?: number;
+  showRadiusPulse?: boolean;
+  radiusMeters?: number;
+  showAnimatedRoutes?: boolean;
+  cameraTrajectory?: "cinematic-flyin-orbit" | "dynamic-tilt" | "smooth-glide";
+  show3DBillboards?: boolean;
+};
+
 export type RealEstateMapProjectSnapshot = {
   name: string;
   address: string;
@@ -94,6 +107,7 @@ export type RealEstateMapProjectSnapshot = {
   pois: RealEstateMapPoi[];
   routes: RealEstateMapRoute[];
   branding?: RealEstateMapBranding;
+  vfxConfig?: RealEstateMapVfxConfig;
   scenes: RealEstateMapScene[];
   provider: RealEstateMapProviderSnapshot;
   videoSpec: RealEstateMapVideoSpec;
@@ -130,7 +144,7 @@ export type RouteInput = {
 };
 
 export type MapStyleDescriptor = {
-  provider: "vietmap" | "mock";
+  provider: "vietmap" | "mock" | "openstreetmap";
   styleUrl?: string;
   attribution: string[];
   tileSize?: number;
@@ -139,7 +153,7 @@ export type MapStyleDescriptor = {
 };
 
 export interface RealEstateMapProvider {
-  readonly providerName: "vietmap" | "mock";
+  readonly providerName: "vietmap" | "mock" | "openstreetmap";
   geocode(query: string): Promise<MapLocationResult[]>;
   reverseGeocode(location: RealEstateMapCoordinate): Promise<MapLocationResult>;
   searchPlaces(input: PlaceSearchInput): Promise<RealEstateMapPoi[]>;

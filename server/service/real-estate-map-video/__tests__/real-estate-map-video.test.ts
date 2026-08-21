@@ -94,22 +94,30 @@ test("map-scene-engine builds snapshot and composes valid HTML/CSS/voice", () =>
       hotline: "0909 123 456",
       ctaText: "Đăng ký nhận ưu đãi VIP SwanBay",
     },
+    vfxConfig: {
+      boundaryTheme: "gold-luxury",
+      showRadiusPulse: true,
+      showAnimatedRoutes: true,
+      show3DBillboards: true,
+    },
   });
 
   assert.equal(snapshot.name, "Khu đô thị SwanBay");
   assert.equal(snapshot.scenes.length, 4);
   assert.ok(snapshot.verifiedFields.includes("pois"));
   assert.ok(snapshot.verifiedFields.includes("boundary"));
+  assert.equal(snapshot.vfxConfig?.boundaryTheme, "gold-luxury");
 
   const composition = composeRealEstateMapSnapshot(snapshot);
   assert.ok(composition.html.includes("Khu đô thị SwanBay"));
   assert.ok(composition.css.includes("@keyframes map-camera-1"));
+  assert.ok(composition.css.includes("--vfx-primary: #ffd700"));
   assert.ok(composition.voiceScript.includes("SwanBay"));
   assert.ok(composition.voiceScript.includes("0909 123 456") || composition.voiceScript.includes("Đăng ký nhận"));
   assert.equal(composition.scenePlan.length, 4);
 });
 
-test("Joi validation accepts valid draft and rejects invalid coordinates", () => {
+test("Joi validation accepts valid draft with vfxConfig and rejects invalid coordinates", () => {
   const validDraft = {
     name: "Dự án Grand Garden",
     address: "Quận 2, TP. Thủ Đức",
@@ -128,6 +136,10 @@ test("Joi validation accepts valid draft and rejects invalid coordinates", () =>
         location: { lat: 10.785, lng: 106.745 },
       },
     ],
+    vfxConfig: {
+      boundaryTheme: "cyan-neon",
+      showRadiusPulse: true,
+    },
   };
 
   const { error: validErr } = saveRealEstateMapVideoDraftBodySchema.validate(validDraft);

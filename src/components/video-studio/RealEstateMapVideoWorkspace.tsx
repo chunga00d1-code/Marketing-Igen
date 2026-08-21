@@ -1,36 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
-  Building2,
-  Check,
-  CheckCircle2,
-  Download,
-  Film,
-  Globe,
-  GraduationCap,
   History,
-  Hospital,
   Layers,
-  Loader2,
   MapPin,
-  MapPinned,
-  Maximize2,
-  Navigation,
   PanelLeftClose,
-  PanelLeftOpen,
-  PencilRuler,
-  Phone,
-  Play,
+  PanelRightClose,
   Plus,
-  RefreshCw,
+  Route,
   Save,
-  Search,
-  ShoppingBag,
-  Sparkles,
-  Trees,
-  Video,
-  X,
+  Settings,
 } from "lucide-react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -46,278 +25,57 @@ import {
   type RealEstateMapSceneSnapshot,
   realEstateMapVideoService,
 } from "../../services/realEstateMapVideoService";
-
-const DEFAULT_LOCATION: RealEstateMapCoordinate = { lat: 10.7719, lng: 106.7212 };
-
-export type MapTheme = "street" | "satellite" | "dark";
-
-// Bản đồ tổng hợp cả 3 nguồn: Đường phố (Carto), Vệ tinh (Esri), Tối (Carto Dark)
-const UNIFIED_MAP_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    "carto-voyager": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-      ],
-      tileSize: 256,
-      attribution: "© OpenStreetMap © CARTO",
-      maxzoom: 19,
-    },
-    "esri-satellite": {
-      type: "raster",
-      tiles: [
-        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      ],
-      tileSize: 256,
-      attribution: "Esri, Maxar, Earthstar Geographics",
-      maxzoom: 18,
-    },
-    "carto-dark": {
-      type: "raster",
-      tiles: [
-        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-      ],
-      tileSize: 256,
-      attribution: "© OpenStreetMap © CARTO",
-      maxzoom: 19,
-    },
-  },
-  layers: [
-    {
-      id: "background-layer",
-      type: "background",
-      paint: { "background-color": "#f1f5f9" },
-    },
-    {
-      id: "esri-satellite-layer",
-      type: "raster",
-      source: "esri-satellite",
-      layout: { visibility: "none" },
-      minzoom: 0,
-      maxzoom: 24,
-    },
-    {
-      id: "carto-dark-layer",
-      type: "raster",
-      source: "carto-dark",
-      layout: { visibility: "none" },
-      minzoom: 0,
-      maxzoom: 24,
-    },
-    {
-      id: "carto-voyager-layer",
-      type: "raster",
-      source: "carto-voyager",
-      layout: { visibility: "visible" },
-      minzoom: 0,
-      maxzoom: 24,
-    },
-  ],
-};
-
-function createBoundary({ lat, lng }: RealEstateMapCoordinate) {
-  const delta = 0.002;
-  return [
-    [lng - delta, lat - delta],
-    [lng + delta, lat - delta],
-    [lng + delta, lat + delta],
-    [lng - delta, lat + delta],
-    [lng - delta, lat - delta],
-  ];
-}
-
-const CATEGORY_ICONS: Record<string, typeof MapPin> = {
-  school: GraduationCap,
-  hospital: Hospital,
-  shopping: ShoppingBag,
-  park: Trees,
-  transport: Navigation,
-  other: Building2,
-};
-
-function RealEstateVideoHistoryCard({
-  item,
-  onRetry,
-}: {
-  item: RealEstateMapRenderPublic;
-  onRetry: (id: string) => void;
-}) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  const handleMouseEnter = () => {
-    if (videoRef.current && item.status === "completed" && item.outputUrl) {
-      videoRef.current
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {});
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setIsPlaying(false);
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
-  };
-
-  const duration = item.outputDurationSeconds || item.videoSpec?.durationSeconds || 24;
-  const isCompleted = item.status === "completed" && !!item.outputUrl;
-  const isFailed = item.status === "failed";
-  const isProcessing = !isCompleted && !isFailed;
-
-  return (
-    <div
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xs transition-all duration-300 hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md"
-    >
-      {/* Video Media Container dạng 16:9 với Hover Preview */}
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-slate-950">
-        {isCompleted ? (
-          <>
-            <video
-              ref={videoRef}
-              src={item.outputUrl}
-              muted
-              loop
-              playsInline
-              preload="metadata"
-              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            />
-
-            {/* Play Button Overlay (Ẩn đi khi đang hover preview) */}
-            <div
-              className={`absolute inset-0 flex items-center justify-center bg-slate-950/30 transition-opacity duration-300 ${
-                isPlaying ? "opacity-0" : "opacity-100"
-              }`}
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-indigo-600 shadow-lg backdrop-blur-xs transition-transform duration-300 group-hover:scale-110">
-                <Play className="h-4 w-4 fill-indigo-600 ml-0.5" />
-              </div>
-            </div>
-
-            {/* Badge Đang xem thử */}
-            {isPlaying && (
-              <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-slate-900/85 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-xs">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Đang xem thử
-              </div>
-            )}
-          </>
-        ) : isProcessing ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-4 text-center text-white space-y-2">
-            <Loader2 className="h-6 w-6 animate-spin text-indigo-400" />
-            <p className="text-[11px] font-semibold text-slate-300 line-clamp-1">
-              {item.stageMessage || "Đang kết xuất video..."}
-            </p>
-            <div className="h-1.5 w-3/4 overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-indigo-500 transition-all duration-300"
-                style={{ width: `${item.progress}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-bold text-indigo-300">{item.progress}%</span>
-          </div>
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-3 text-center text-rose-300 space-y-1">
-            <p className="text-[11px] font-bold">Lỗi tạo video</p>
-            <p className="text-[10px] text-slate-400 line-clamp-2">{item.error || "Không xác định"}</p>
-          </div>
-        )}
-
-        {/* Floating Badges */}
-        <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-none">
-          <span className="rounded-md bg-slate-900/80 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-xs">
-            {duration}s · {item.videoSpec?.aspectRatio || "9:16"}
-          </span>
-
-          {isCompleted ? (
-            <span className="rounded-md bg-emerald-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-xs">
-              Hoàn tất
-            </span>
-          ) : isProcessing ? (
-            <span className="rounded-md bg-amber-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-xs flex items-center gap-1">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" /> Xử lý
-            </span>
-          ) : (
-            <span className="rounded-md bg-rose-500/90 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs backdrop-blur-xs">
-              Lỗi
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Card Details & Actions */}
-      <div className="mt-2.5 space-y-2">
-        <div className="flex items-center justify-between px-0.5">
-          <div>
-            <p className="text-xs font-bold text-slate-900 line-clamp-1">
-              Video Bất Động Sản · {duration}s
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              {new Date(item.createdAt).toLocaleString("vi-VN")}
-            </p>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        {isCompleted && (
-          <div className="flex gap-1.5 pt-0.5">
-            <a
-              href={item.outputUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-indigo-700"
-            >
-              <Play className="h-3.5 w-3.5" /> Xem toàn màn hình
-            </a>
-            <a
-              href={item.outputUrl}
-              download="video-bat-dong-san.mp4"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
-              title="Tải video MP4"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </a>
-          </div>
-        )}
-
-        {isFailed && (
-          <button
-            type="button"
-            onClick={() => onRetry(item.id)}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-50 py-2 text-xs font-bold text-rose-700 border border-rose-200 hover:bg-rose-100 transition"
-          >
-            <RefreshCw className="h-3.5 w-3.5" /> Thử lại kết xuất
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
+import type {
+  AspectRatioType,
+  BoundaryStrokeType,
+  BoundaryTheme,
+  DrawMode,
+  GisMapLayer,
+  GisSceneKeyframe,
+  GisToolTab,
+  MapTheme,
+} from "./real-estate-map/map-video.types";
+import { DEFAULT_LOCATION } from "./real-estate-map/map-video.types";
+import {
+  calculatePolygonAreaMeters,
+  calculatePolygonPerimeterMeters,
+  createBoundary,
+  createCirclePolygon,
+  createRectangleBoundary,
+  UNIFIED_MAP_STYLE,
+} from "./real-estate-map/map-video.utils";
+import { RealEstateVideoHistoryCard } from "./real-estate-map/RealEstateVideoHistoryCard";
+import { RealEstateMapStep1Location } from "./real-estate-map/RealEstateMapStep1Location";
+import { RealEstateMapStep2Pois } from "./real-estate-map/RealEstateMapStep2Pois";
+import { RealEstateMapStep3Script } from "./real-estate-map/RealEstateMapStep3Script";
+import { RealEstateMapRouteABPanel } from "./real-estate-map/RealEstateMapRouteABPanel";
+import { RealEstateMapLayerManager } from "./real-estate-map/RealEstateMapLayerManager";
+import { RealEstateMapTimeline } from "./real-estate-map/RealEstateMapTimeline";
+import {
+  RealEstateMapFloatingPolygonBar,
+  RealEstateMapFloatingTopToolbar,
+  RealEstateMapSafeAreaOverlay,
+  RealEstateMapStatusBadge,
+} from "./real-estate-map/RealEstateMapFloatingControls";
+import { RealEstateMapRenderModal } from "./real-estate-map/RealEstateMapRenderModal";
 
 interface RealEstateMapVideoWorkspaceProps {
   onBack?: () => void;
 }
 
 export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorkspaceProps = {}) {
-  // Tabs: 1. Vị trí -> 2. Tiện ích -> 3. Kịch bản -> "history". Lịch sử tích hợp trực tiếp trong sidebar
-  const [activeTab, setActiveTab] = useState<1 | 2 | 3 | "history">(1);
+  // Sidebar & Layout Controls
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [activeGisTool, setActiveGisTool] = useState<GisToolTab>("polygon");
   const [mapTheme, setMapTheme] = useState<MapTheme>("street");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatioType>("9:16");
+  const [showPlaceLabels, setShowPlaceLabels] = useState(true);
   const [isDrawingBoundary, setIsDrawingBoundary] = useState(false);
 
-  const [name, setName] = useState("Khu đô thị Thủ Thiêm");
-  const [address, setAddress] = useState("Phường An Khánh, TP. Thủ Đức, TP. Hồ Chí Minh");
+  // Core Project State
+  const [name, setName] = useState("Khu đô thị Starlake Tây Hồ Tây");
+  const [address, setAddress] = useState("Phường Xuân La, Quận Tây Hồ, TP. Hà Nội");
   const [location, setLocation] = useState<RealEstateMapCoordinate>(DEFAULT_LOCATION);
   const [boundary, setBoundary] = useState<number[][]>(() => createBoundary(DEFAULT_LOCATION));
   const [pois, setPois] = useState<RealEstateMapPoi[]>([]);
@@ -325,7 +83,44 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
   const [hotline, setHotline] = useState("0909 123 456");
   const [ctaText, setCtaText] = useState("Đăng ký nhận bảng giá & ưu đãi ngay");
 
-  // Search & Loading state
+  // Multi-layer GIS State
+  const [layers, setLayers] = useState<GisMapLayer[]>([
+    {
+      id: "boundary_main",
+      name: "Vùng quy hoạch #7ccc",
+      type: "polygon",
+      visible: true,
+      color: "#00f2fe",
+      strokeWidth: 4,
+      opacity: 0.35,
+      coordinates: createBoundary(DEFAULT_LOCATION),
+      metadata: { areaM2: calculatePolygonAreaMeters(createBoundary(DEFAULT_LOCATION)) },
+    },
+  ]);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>("boundary_main");
+
+  // Timeline Keyframe Scenes State (Rỗng ban đầu, chỉ thêm khi người dùng bấm Ghim Cảnh Hiện Tại)
+  const [scenes, setScenes] = useState<GisSceneKeyframe[]>([]);
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null);
+  const [isPreviewingScenes, setIsPreviewingScenes] = useState(false);
+
+  // VFX 3D Studio Customization
+  const [boundaryTheme, setBoundaryTheme] = useState<BoundaryTheme>("cyan-neon");
+  const [boundaryOpacity, setBoundaryOpacity] = useState(0.35);
+  const [boundaryStrokeWidth, setBoundaryStrokeWidth] = useState(3.5);
+  const [boundaryStrokeType, setBoundaryStrokeType] = useState<BoundaryStrokeType>("glow");
+  const [drawMode, setDrawMode] = useState<DrawMode>("none");
+  const [showRadiusPulse, setShowRadiusPulse] = useState(true);
+  const [showAnimatedRoutes, setShowAnimatedRoutes] = useState(true);
+  const [show3DBillboards, setShow3DBillboards] = useState(true);
+  const [showSafeArea, setShowSafeArea] = useState(false);
+  const [isPlaying3DCamera, setIsPlaying3DCamera] = useState(false);
+
+  // Live Calculations
+  const polygonArea = calculatePolygonAreaMeters(boundary);
+  const polygonPerimeter = calculatePolygonPerimeterMeters(boundary);
+
+  // Search & Loading State
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MapLocationResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -341,6 +136,7 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
   const [showRenderModal, setShowRenderModal] = useState(false);
   const [renderHistory, setRenderHistory] = useState<RealEstateMapRenderPublic[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<1 | 2 | 3 | "history">(1);
 
   const workspaceContainerRef = useRef<HTMLDivElement | null>(null);
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -361,11 +157,31 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         if (draft.name) setName(draft.name);
         if (draft.address) setAddress(draft.address);
         if (draft.location) setLocation(draft.location);
-        if (draft.boundary && draft.boundary.length >= 3) setBoundary(draft.boundary);
+        if (draft.boundary && draft.boundary.length >= 3) {
+          setBoundary(draft.boundary);
+          setLayers((prev) => [
+            {
+              id: "boundary_main",
+              name: draft.name ? `Ranh ${draft.name}` : "Vùng quy hoạch #7ccc",
+              type: "polygon",
+              visible: true,
+              color: "#00f2fe",
+              strokeWidth: 4,
+              opacity: 0.35,
+              coordinates: draft.boundary,
+              metadata: { areaM2: calculatePolygonAreaMeters(draft.boundary) },
+            },
+            ...prev.filter((l) => l.id !== "boundary_main"),
+          ]);
+        }
         if (draft.pois && draft.pois.length > 0) setPois(draft.pois);
         if (draft.routes && draft.routes.length > 0) setRoutes(draft.routes);
         if (draft.branding?.hotline) setHotline(draft.branding.hotline);
         if (draft.branding?.ctaText) setCtaText(draft.branding.ctaText);
+        if (draft.vfxConfig?.boundaryTheme) setBoundaryTheme(draft.vfxConfig.boundaryTheme);
+        if (draft.vfxConfig?.showRadiusPulse !== undefined) setShowRadiusPulse(draft.vfxConfig.showRadiusPulse);
+        if (draft.vfxConfig?.showAnimatedRoutes !== undefined) setShowAnimatedRoutes(draft.vfxConfig.showAnimatedRoutes);
+        if (draft.vfxConfig?.show3DBillboards !== undefined) setShow3DBillboards(draft.vfxConfig.show3DBillboards);
       })
       .catch(() => {});
     return () => {
@@ -373,7 +189,7 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
     };
   }, []);
 
-  // 2. Tải lịch sử video an toàn
+  // 2. Tải lịch sử video
   const loadRenderHistory = useCallback(async () => {
     setIsLoadingHistory(true);
     try {
@@ -407,28 +223,22 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
     return () => clearInterval(interval);
   }, [activeRender, loadRenderHistory]);
 
-  // Lưu bản nháp
-  const handleSaveDraft = async () => {
-    setIsSaving(true);
+  // Đổi Map Theme
+  const handleChangeMapTheme = (theme: MapTheme) => {
+    setMapTheme(theme);
+    const map = mapRef.current;
+    if (!map) return;
+
     try {
-      await realEstateMapVideoService.saveDraft({
-        name,
-        address,
-        location,
-        boundary,
-        pois,
-        routes,
-        branding: { hotline, ctaText },
-        videoSpec: { aspectRatio: "9:16", resolution: "1080p", durationSeconds: 24 },
-      });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
-    } finally {
-      setIsSaving(false);
+      map.setLayoutProperty("carto-voyager-layer", "visibility", theme === "street" ? "visible" : "none");
+      map.setLayoutProperty("esri-satellite-layer", "visibility", theme === "satellite" ? "visible" : "none");
+      map.setLayoutProperty("carto-dark-layer", "visibility", theme === "dark" ? "visible" : "none");
+    } catch {
+      // ignore
     }
   };
 
-  // Tải kịch bản AI khi vào bước 3
+  // Tải Kịch bản & Dựng cảnh Video
   const handleLoadSnapshot = useCallback(async () => {
     setIsLoadingSnapshot(true);
     try {
@@ -440,42 +250,50 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         pois,
         routes,
         branding: { hotline, ctaText },
-        videoSpec: { aspectRatio: "9:16", resolution: "1080p", durationSeconds: 24 },
+        vfxConfig: {
+          boundaryTheme,
+          showRadiusPulse,
+          showAnimatedRoutes,
+          show3DBillboards,
+        },
       });
-      const data = await realEstateMapVideoService.createSceneSnapshot();
-      setSnapshotData(data);
-    } catch (err) {
-      console.error("Không thể tạo snapshot kịch bản:", err);
+      const snap = await realEstateMapVideoService.createSceneSnapshot();
+      setSnapshotData(snap);
+    } catch (error) {
+      console.error("Lỗi dựng kịch bản:", error);
     } finally {
       setIsLoadingSnapshot(false);
     }
-  }, [name, address, location, boundary, pois, routes, hotline, ctaText]);
+  }, [name, address, location, boundary, pois, routes, hotline, ctaText, boundaryTheme, showRadiusPulse, showAnimatedRoutes, show3DBillboards]);
 
-  // Chuyển tab mượt mà trong Sidebar
+  // Chuyển tab
   const handleTabChange = async (tab: 1 | 2 | 3 | "history") => {
     setActiveTab(tab);
-    setIsSidebarOpen(true);
-    if (tab === 3 && !snapshotData) {
-      await handleLoadSnapshot();
+    if (!isLeftSidebarOpen) {
+      setIsLeftSidebarOpen(true);
     }
-    if (tab === "history") {
+    if (tab === 1) {
+      setActiveGisTool("polygon");
+    } else if (tab === 2) {
+      setActiveGisTool("marker");
+    } else if (tab === 3) {
+      setActiveGisTool("settings");
+      if (!snapshotData) {
+        await handleLoadSnapshot();
+      }
+    } else if (tab === "history") {
+      setActiveGisTool("history");
       void loadRenderHistory();
     }
   };
 
-  // Auto load snapshot if on step 3 without data
-  useEffect(() => {
-    if (activeTab === 3 && !snapshotData && !isLoadingSnapshot) {
-      void handleLoadSnapshot();
-    }
-  }, [activeTab, snapshotData, isLoadingSnapshot, handleLoadSnapshot]);
-
   // Tìm kiếm địa chỉ
-  const handleSearchAddress = async () => {
-    if (!searchQuery.trim()) return;
+  const handleSearchAddress = async (queryOverride?: string) => {
+    const q = (queryOverride !== undefined ? queryOverride : searchQuery).trim();
+    if (!q) return;
     setIsSearching(true);
     try {
-      const results = await realEstateMapVideoService.geocode(searchQuery);
+      const results = await realEstateMapVideoService.geocode(q);
       setSearchResults(results || []);
     } finally {
       setIsSearching(false);
@@ -484,11 +302,56 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
 
   const handleSelectLocation = (result: MapLocationResult) => {
     setLocation(result.location);
-    if (result.name && !name) setName(result.name);
+    if (result.name) setName(result.name);
     if (result.address) setAddress(result.address);
-    setBoundary(createBoundary(result.location));
+    const newBoundary = createBoundary(result.location);
+    setBoundary(newBoundary);
+    setLayers((prev) => [
+      {
+        id: "boundary_main",
+        name: result.name ? `Ranh ${result.name}` : "Vùng quy hoạch #7ccc",
+        type: "polygon",
+        visible: true,
+        color: "#00f2fe",
+        strokeWidth: 4,
+        opacity: 0.35,
+        coordinates: newBoundary,
+        metadata: { areaM2: calculatePolygonAreaMeters(newBoundary) },
+      },
+      ...prev.filter((l) => l.id !== "boundary_main"),
+    ]);
+    setPois([]);
+    setRoutes([]);
+    setSnapshotData(null);
     setSearchResults([]);
     setSearchQuery("");
+  };
+
+  const handleCreateNewProject = () => {
+    setName("Khu đô thị Starlake Tây Hồ Tây");
+    setAddress("Phường Xuân La, Quận Tây Hồ, TP. Hà Nội");
+    setLocation(DEFAULT_LOCATION);
+    const newBoundary = createBoundary(DEFAULT_LOCATION);
+    setBoundary(newBoundary);
+    setLayers([
+      {
+        id: "boundary_main",
+        name: "Vùng quy hoạch #7ccc",
+        type: "polygon",
+        visible: true,
+        color: "#00f2fe",
+        strokeWidth: 4,
+        opacity: 0.35,
+        coordinates: newBoundary,
+        metadata: { areaM2: calculatePolygonAreaMeters(newBoundary) },
+      },
+    ]);
+    setPois([]);
+    setRoutes([]);
+    setScenes([]);
+    setSelectedSceneId(null);
+    setSnapshotData(null);
+    void handleTabChange(1);
   };
 
   // Tự động tìm tiện ích
@@ -501,39 +364,206 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         limit: 5,
       });
       setPois(foundPois || []);
+      setRoutes([]);
+      setSnapshotData(null);
     } finally {
       setIsLoadingPois(false);
     }
   };
 
-  // Tính tuyến đường đến tiện ích
-  const handleSelectRouteToPoi = async (poi: RealEstateMapPoi) => {
+  // Lấy lộ trình tuyến đường
+  const handleSelectRouteToPoi = useCallback(async (poi: RealEstateMapPoi) => {
     try {
       const route = await realEstateMapVideoService.getRoute({
         from: location,
         to: poi.location,
         toName: poi.name,
       });
-      if (route) setRoutes([route]);
+      if (route) {
+        setRoutes([route]);
+        setSnapshotData(null);
+      }
     } catch (error) {
-      console.error("Không thể lấy route:", error);
+      console.error("Lỗi lấy lộ trình:", error);
+    }
+  }, [location]);
+
+  // Thêm Layer Lộ Trình A-B từ panel
+  const handleAddRouteLayer = (newLayer: GisMapLayer) => {
+    setLayers((prev) => [...prev, newLayer]);
+    setSelectedLayerId(newLayer.id);
+  };
+
+  // Các thao tác trên Layer Manager
+  const handleToggleLayerVisibility = (layerId: string) => {
+    setLayers((prev) =>
+      prev.map((l) => (l.id === layerId ? { ...l, visible: !l.visible } : l))
+    );
+  };
+
+  const handleChangeLayerColor = (layerId: string, colorHex: string) => {
+    setLayers((prev) =>
+      prev.map((l) => (l.id === layerId ? { ...l, color: colorHex } : l))
+    );
+  };
+
+  const handleDuplicateLayer = (layerId: string) => {
+    const layer = layers.find((l) => l.id === layerId);
+    if (!layer) return;
+    const duplicated: GisMapLayer = {
+      ...layer,
+      id: `layer_${Date.now()}`,
+      name: `${layer.name} (Bản sao)`,
+    };
+    setLayers((prev) => [...prev, duplicated]);
+    setSelectedLayerId(duplicated.id);
+  };
+
+  const handleDeleteLayer = (layerId: string) => {
+    setLayers((prev) => prev.filter((l) => l.id !== layerId));
+    if (selectedLayerId === layerId) {
+      setSelectedLayerId(layers[0]?.id || null);
     }
   };
 
-  // Bắt đầu Render MP4
-  const handleStartRender = async () => {
-    await handleSaveDraft();
-    setIsRendering(true);
-    setShowRenderModal(true);
-    try {
-      const render = await realEstateMapVideoService.createRender({
-        idempotencyKey: `remv_${Date.now()}`,
-      });
-      setActiveRender(render);
-    } catch (error) {
-      setIsRendering(false);
-      console.error("Lỗi khởi tạo render:", error);
+  const handleMoveLayer = (layerId: string, direction: "up" | "down") => {
+    const idx = layers.findIndex((l) => l.id === layerId);
+    if (idx === -1) return;
+    const newLayers = [...layers];
+    if (direction === "up" && idx > 0) {
+      const temp = newLayers[idx];
+      newLayers[idx] = newLayers[idx - 1];
+      newLayers[idx - 1] = temp;
+    } else if (direction === "down" && idx < newLayers.length - 1) {
+      const temp = newLayers[idx];
+      newLayers[idx] = newLayers[idx + 1];
+      newLayers[idx + 1] = temp;
     }
+    setLayers(newLayers);
+  };
+
+  const handleRenameLayer = (layerId: string, newName: string) => {
+    setLayers((prev) =>
+      prev.map((l) => (l.id === layerId ? { ...l, name: newName } : l))
+    );
+  };
+
+  // Các thao tác trên Timeline Phân Cảnh
+  const handlePinCurrentCameraScene = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const pitch = map.getPitch();
+    const bearing = map.getBearing();
+
+    const newScene: GisSceneKeyframe = {
+      id: `scene_${Date.now()}`,
+      order: scenes.length + 1,
+      durationSeconds: 4,
+      camera: {
+        center: { lat: center.lat, lng: center.lng },
+        zoom,
+        pitch,
+        bearing,
+      },
+      activeLayerIds: layers.filter((l) => l.visible).map((l) => l.id),
+      caption: `Cảnh ${scenes.length + 1}`,
+    };
+
+    setScenes((prev) => [...prev, newScene]);
+    setSelectedSceneId(newScene.id);
+  };
+
+  const handleDeleteScene = (sceneId: string) => {
+    setScenes((prev) => prev.filter((s) => s.id !== sceneId));
+    if (selectedSceneId === sceneId) {
+      setSelectedSceneId(scenes[0]?.id || null);
+    }
+  };
+
+  const handleDuplicateScene = (sceneId: string) => {
+    const scene = scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
+    const duplicated: GisSceneKeyframe = {
+      ...scene,
+      id: `scene_${Date.now()}`,
+      order: scenes.length + 1,
+    };
+    setScenes((prev) => [...prev, duplicated]);
+    setSelectedSceneId(duplicated.id);
+  };
+
+  const handleUpdateSceneDuration = (sceneId: string, durationSeconds: number) => {
+    setScenes((prev) =>
+      prev.map((s) => (s.id === sceneId ? { ...s, durationSeconds } : s))
+    );
+  };
+
+  const handlePreviewAllScenes = async () => {
+    const map = mapRef.current;
+    if (!map || scenes.length === 0 || isPreviewingScenes) return;
+    setIsPreviewingScenes(true);
+
+    for (let i = 0; i < scenes.length; i++) {
+      const sc = scenes[i];
+      setSelectedSceneId(sc.id);
+      map.easeTo({
+        center: [sc.camera.center.lng, sc.camera.center.lat],
+        zoom: sc.camera.zoom,
+        pitch: sc.camera.pitch,
+        bearing: sc.camera.bearing,
+        duration: (sc.durationSeconds || 4) * 850,
+      });
+      await new Promise((resolve) => setTimeout(resolve, (sc.durationSeconds || 4) * 1000));
+    }
+    setIsPreviewingScenes(false);
+  };
+
+  // Mô phỏng góc quay Camera 3D
+  const handlePlay3DCameraTour = () => {
+    const map = mapRef.current;
+    if (!map || isPlaying3DCamera) return;
+
+    setIsPlaying3DCamera(true);
+    map.easeTo({
+      center: [location.lng, location.lat],
+      zoom: 14.5,
+      pitch: 0,
+      bearing: 0,
+      duration: 1000,
+    });
+
+    setTimeout(() => {
+      map.easeTo({
+        center: [location.lng, location.lat],
+        zoom: 16.5,
+        pitch: 58,
+        bearing: 45,
+        duration: 3500,
+      });
+    }, 1200);
+
+    setTimeout(() => {
+      map.easeTo({
+        center: [location.lng, location.lat],
+        zoom: 16.2,
+        pitch: 55,
+        bearing: 140,
+        duration: 4000,
+      });
+    }, 5000);
+
+    setTimeout(() => {
+      map.easeTo({
+        center: [location.lng, location.lat],
+        zoom: 15.5,
+        pitch: 35,
+        bearing: 0,
+        duration: 2000,
+      });
+      setIsPlaying3DCamera(false);
+    }, 9500);
   };
 
   // Toggle Fullscreen
@@ -560,7 +590,6 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
       pitch: 30,
     });
 
-    // Đặt điều khiển phóng to/thu nhỏ ở góc dưới bên phải
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
       "bottom-right"
@@ -580,62 +609,90 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         const ring = (feature.geometry.coordinates[0] || []) as unknown as number[][];
         if (ring.length >= 3) {
           setBoundary(ring);
+          setLayers((prev) => [
+            {
+              id: `polygon_${Date.now()}`,
+              name: `Vùng vẽ #${Math.random().toString(16).slice(2, 6)}`,
+              type: "polygon",
+              visible: true,
+              color: "#00f2fe",
+              strokeWidth: 4,
+              opacity: 0.35,
+              coordinates: ring,
+              metadata: { areaM2: calculatePolygonAreaMeters(ring) },
+            },
+            ...prev,
+          ]);
           setIsDrawingBoundary(false);
         }
       }
     });
 
-    map.on("click", (event) => {
-      // Chỉ đổi tâm khi không ở chế độ vẽ ranh đất
+    map.on("click", async (event) => {
       if (!isDrawingBoundaryRef.current) {
-        setLocation({ lat: event.lngLat.lat, lng: event.lngLat.lng });
+        const newCoord = { lat: event.lngLat.lat, lng: event.lngLat.lng };
+        setLocation(newCoord);
+        try {
+          const res = await realEstateMapVideoService.reverseGeocode(newCoord);
+          if (res?.address) {
+            setAddress(res.address);
+          }
+          if (res?.name && res.name !== "Vị trí đã chọn") {
+            setName(res.name);
+          }
+        } catch {
+          // ignore
+        }
       }
     });
 
     map.on("load", () => {
-      // Source & Layer cho Ranh đất
-      if (!map.getSource("project-boundary")) {
-        map.addSource("project-boundary", {
+      // Dynamic Layers Source
+      if (!map.getSource("gis-polygons")) {
+        map.addSource("gis-polygons", {
           type: "geojson",
           data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "Polygon", coordinates: [createBoundary(DEFAULT_LOCATION)] },
+            type: "FeatureCollection",
+            features: [],
           },
         });
 
         map.addLayer({
-          id: "project-boundary-fill",
+          id: "gis-polygons-fill",
           type: "fill",
-          source: "project-boundary",
-          paint: { "fill-color": "#4f46e5", "fill-opacity": 0.35 },
+          source: "gis-polygons",
+          paint: {
+            "fill-color": ["coalesce", ["get", "color"], "#00f2fe"],
+            "fill-opacity": 0.35,
+          },
         });
 
         map.addLayer({
-          id: "project-boundary-line",
+          id: "gis-polygons-line",
           type: "line",
-          source: "project-boundary",
-          paint: { "line-color": "#4338ca", "line-width": 3.5 },
+          source: "gis-polygons",
+          paint: {
+            "line-color": ["coalesce", ["get", "color"], "#00c6ff"],
+            "line-width": 3.5,
+          },
         });
       }
 
-      // Source & Layer cho Tuyến đường
-      if (!map.getSource("route-line")) {
-        map.addSource("route-line", {
+      if (!map.getSource("gis-routes")) {
+        map.addSource("gis-routes", {
           type: "geojson",
           data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: [] },
+            type: "FeatureCollection",
+            features: [],
           },
         });
 
         map.addLayer({
-          id: "route-line-layer",
+          id: "gis-routes-line",
           type: "line",
-          source: "route-line",
+          source: "gis-routes",
           paint: {
-            "line-color": "#f59e0b",
+            "line-color": ["coalesce", ["get", "color"], "#ffd700"],
             "line-width": 4.5,
             "line-dasharray": [2, 1],
           },
@@ -643,11 +700,10 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
       }
     });
 
-    // Custom Project Marker
     const markerEl = document.createElement("div");
     markerEl.className =
-      "flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white shadow-2xl ring-4 ring-indigo-200 animate-bounce";
-    markerEl.innerHTML = `<span class="text-base">📍</span>`;
+      "flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500 text-white shadow-2xl ring-4 ring-cyan-200/50 animate-bounce";
+    markerEl.innerHTML = `<span class="text-sm">📍</span>`;
 
     markerRef.current = new maplibregl.Marker({ element: markerEl })
       .setLngLat([DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat])
@@ -656,887 +712,591 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
     mapRef.current = map;
 
     return () => {
-      markerRef.current?.remove();
-      markerRef.current = null;
-      poiMarkersRef.current.forEach((m) => m.remove());
-      poiMarkersRef.current = [];
-      drawControlRef.current = null;
       map.remove();
       mapRef.current = null;
     };
   }, []);
 
-  // Thay đổi Theme mượt mà bằng cách bật/tắt layer visibility
-  const handleChangeMapTheme = (theme: MapTheme) => {
-    setMapTheme(theme);
+  // Cập nhật Marker tâm theo Location
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (markerRef.current) {
+      markerRef.current.setLngLat([location.lng, location.lat]);
+    }
+  }, [location]);
+
+  // Đồng bộ toàn bộ Layers (Polygons + Routes) lên MapLibre
+  useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    try {
-      if (map.getLayer("carto-voyager-layer")) {
-        map.setLayoutProperty(
-          "carto-voyager-layer",
-          "visibility",
-          theme === "street" ? "visible" : "none"
-        );
-      }
-      if (map.getLayer("esri-satellite-layer")) {
-        map.setLayoutProperty(
-          "esri-satellite-layer",
-          "visibility",
-          theme === "satellite" ? "visible" : "none"
-        );
-      }
-      if (map.getLayer("carto-dark-layer")) {
-        map.setLayoutProperty(
-          "carto-dark-layer",
-          "visibility",
-          theme === "dark" ? "visible" : "none"
-        );
-      }
-    } catch (err) {
-      console.warn("Lỗi chuyển đổi layer bản đồ:", err);
+    const polygonFeatures = layers
+      .filter((l) => l.type === "polygon" && l.visible && l.coordinates && l.coordinates.length >= 3)
+      .map((l) => ({
+        type: "Feature" as const,
+        properties: { id: l.id, color: l.color, name: l.name },
+        geometry: { type: "Polygon" as const, coordinates: [l.coordinates as number[][]] },
+      }));
+
+    const routeFeatures = layers
+      .filter((l) => l.type === "route" && l.visible && l.coordinates && l.coordinates.length >= 2)
+      .map((l) => ({
+        type: "Feature" as const,
+        properties: { id: l.id, color: l.color, name: l.name },
+        geometry: { type: "LineString" as const, coordinates: l.coordinates as number[][] },
+      }));
+
+    const polySource = map.getSource("gis-polygons") as maplibregl.GeoJSONSource;
+    if (polySource) {
+      polySource.setData({ type: "FeatureCollection", features: polygonFeatures });
     }
-  };
 
-  // Cập nhật marker & camera
-  useEffect(() => {
-    markerRef.current?.setLngLat([location.lng, location.lat]);
-    mapRef.current?.easeTo({ center: [location.lng, location.lat], duration: 400 });
-  }, [location]);
-
-  // Cập nhật ranh đất
-  useEffect(() => {
-    const source = mapRef.current?.getSource("project-boundary") as maplibregl.GeoJSONSource | undefined;
-    if (source && boundary.length >= 3) {
-      source.setData({
-        type: "Feature",
-        properties: {},
-        geometry: { type: "Polygon", coordinates: [boundary] },
-      });
+    const routeSource = map.getSource("gis-routes") as maplibregl.GeoJSONSource;
+    if (routeSource) {
+      routeSource.setData({ type: "FeatureCollection", features: routeFeatures });
     }
-  }, [boundary]);
+  }, [layers]);
 
-  // Cập nhật POIs trên map
+  // Cập nhật Markers Tiện ích (POIs)
   useEffect(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
+
     poiMarkersRef.current.forEach((m) => m.remove());
     poiMarkersRef.current = [];
 
-    (pois || []).forEach((poi) => {
+    pois.forEach((poi) => {
       const el = document.createElement("div");
       el.className =
-        "flex items-center gap-1 rounded-full bg-slate-900/90 border border-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-300 shadow-md";
-      el.innerHTML = `<span>📍</span><span>${poi.name}</span>`;
+        "flex items-center gap-1.5 rounded-full bg-slate-900/90 text-white px-2.5 py-1 text-[11px] font-bold shadow-xl border border-slate-700 backdrop-blur-xs cursor-pointer hover:scale-110 transition-transform";
+      el.innerHTML = `<span>📍</span><span class="truncate max-w-[120px]">${poi.name}</span>`;
+      el.onclick = () => void handleSelectRouteToPoi(poi);
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([poi.location.lng, poi.location.lat])
-        .addTo(mapRef.current!);
+        .addTo(map);
+
       poiMarkersRef.current.push(marker);
     });
-  }, [pois]);
+  }, [pois, handleSelectRouteToPoi]);
 
-  // Cập nhật route trên map
-  useEffect(() => {
-    const source = mapRef.current?.getSource("route-line") as maplibregl.GeoJSONSource | undefined;
-    if (source && routes && routes.length > 0) {
-      source.setData({
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "LineString",
-          coordinates: routes[0].geometry.coordinates,
+  // Bộ điều khiển chế độ vẽ Polygon
+  const handleStartDrawPolygon = () => {
+    const instance = drawControlRef.current?.getTerraDrawInstance();
+    if (!instance) return;
+    instance.setMode("polygon");
+    setIsDrawingBoundary(true);
+    setDrawMode("draw-polygon");
+  };
+
+  const handleStartEditVertices = () => {
+    const instance = drawControlRef.current?.getTerraDrawInstance();
+    if (!instance) return;
+    instance.setMode("select");
+    setIsDrawingBoundary(true);
+    setDrawMode("select-edit");
+  };
+
+  const handleStopDrawing = () => {
+    const instance = drawControlRef.current?.getTerraDrawInstance();
+    if (!instance) return;
+    instance.setMode("render");
+    setIsDrawingBoundary(false);
+    setDrawMode("none");
+  };
+
+  const handleDeleteSelected = () => {
+    const instance = drawControlRef.current?.getTerraDrawInstance();
+    if (!instance) return;
+    instance.setMode("delete-selection");
+    setTimeout(() => {
+      instance.setMode("select");
+    }, 150);
+  };
+
+  const handleCreatePresetRectangle = (widthMeters = 240, heightMeters = 240) => {
+    const rect = createRectangleBoundary(location, widthMeters, heightMeters);
+    setBoundary(rect);
+    setLayers((prev) => [
+      {
+        id: `polygon_rect_${Date.now()}`,
+        name: "Thửa chữ nhật mẫu",
+        type: "polygon",
+        visible: true,
+        color: "#ffd700",
+        strokeWidth: 4,
+        opacity: 0.35,
+        coordinates: rect,
+        metadata: { areaM2: calculatePolygonAreaMeters(rect) },
+      },
+      ...prev,
+    ]);
+    handleStopDrawing();
+  };
+
+  const handleCreatePresetCircle = (radiusMeters = 160) => {
+    const circle = createCirclePolygon(location, radiusMeters, 24);
+    setBoundary(circle);
+    setLayers((prev) => [
+      {
+        id: `polygon_circle_${Date.now()}`,
+        name: "Phân khu tròn mẫu",
+        type: "polygon",
+        visible: true,
+        color: "#10b981",
+        strokeWidth: 4,
+        opacity: 0.35,
+        coordinates: circle,
+        metadata: { areaM2: calculatePolygonAreaMeters(circle) },
+      },
+      ...prev,
+    ]);
+    handleStopDrawing();
+  };
+
+  const handleResetDefaultBoundary = () => {
+    const def = createBoundary(location);
+    setBoundary(def);
+    setLayers(() => [
+      {
+        id: "boundary_main",
+        name: "Vùng quy hoạch #7ccc",
+        type: "polygon",
+        visible: true,
+        color: "#00f2fe",
+        strokeWidth: 4,
+        opacity: 0.35,
+        coordinates: def,
+        metadata: { areaM2: calculatePolygonAreaMeters(def) },
+      },
+    ]);
+    handleStopDrawing();
+  };
+
+  const handleClearBoundary = () => {
+    setBoundary([]);
+    setLayers((prev) => prev.filter((l) => l.id !== "boundary_main"));
+    handleStopDrawing();
+  };
+
+  // Lưu bản nháp
+  const handleSaveDraft = async () => {
+    setIsSaving(true);
+    try {
+      await realEstateMapVideoService.saveDraft({
+        name,
+        address,
+        location,
+        boundary,
+        pois,
+        routes,
+        branding: { hotline, ctaText },
+        vfxConfig: {
+          boundaryTheme,
+          showRadiusPulse,
+          showAnimatedRoutes,
+          show3DBillboards,
         },
       });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } finally {
+      setIsSaving(false);
     }
-  }, [routes]);
+  };
+
+  // Bắt đầu Render MP4
+  const handleStartRender = async () => {
+    await handleSaveDraft();
+    setIsRendering(true);
+    setShowRenderModal(true);
+    try {
+      const render = await realEstateMapVideoService.createRender({
+        idempotencyKey: `render_${Date.now()}`,
+      });
+      setActiveRender(render);
+    } catch (error) {
+      setIsRendering(false);
+      console.error("Lỗi khởi tạo render:", error);
+    }
+  };
 
   return (
     <div
       ref={workspaceContainerRef}
-      data-testid="real-estate-map-video-workspace"
-      className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-white text-slate-800 font-sans"
+      className="fixed inset-0 z-50 flex h-screen w-screen overflow-hidden bg-slate-100 select-none font-sans text-slate-800"
     >
-      {/* Ẩn các nút default control của Terradraw & định vị lại zoom control */}
-      <style>{`
-        .maplibregl-ctrl-top-left {
-          display: none !important;
-        }
-        .maplibregl-ctrl-bottom-right {
-          margin-bottom: 56px !important;
-          margin-right: 16px !important;
-        }
-      `}</style>
+      {/* 1. Header Toolbar Nhỏ Phía Trên */}
+      <div className="absolute top-0 left-0 right-0 z-20 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md text-slate-800">
+        <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition"
+              title="Quay lại"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          )}
 
-      {/* 1. Left Nav Rail: Đồng bộ màu nền trắng và biểu tượng thương hiệu của Web */}
-      <nav className="flex w-[76px] shrink-0 flex-col items-center justify-between border-r border-slate-200 bg-white py-3 z-30">
-        <div className="flex flex-col items-center space-y-2.5 w-full">
-          <button
-            type="button"
-            onClick={onBack || (() => window.history.back())}
-            className="mb-2 flex items-center justify-center transition-transform hover:scale-105"
-            title="Quay lại Video Studio"
-          >
-            <div className="relative">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-md">
               <img
                 src={BRAND_LOGO_PATH}
                 alt={BRAND_NAME}
-                className="h-11 w-11 rounded-2xl border border-blue-100 bg-white object-cover shadow-md shadow-blue-500/10"
+                className="h-5 w-5 object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = "none";
+                }}
               />
-              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white">
-                <ArrowLeft className="h-2.5 w-2.5" />
-              </span>
             </div>
-          </button>
-
-          {/* Step 1 Button */}
-          <button
-            type="button"
-            onClick={() => void handleTabChange(1)}
-            title="Bước 1: Vị trí & Dự án"
-            className={`mx-2 flex min-h-[64px] w-[60px] flex-col items-center justify-center gap-1 rounded-2xl text-xs font-bold transition ${
-              activeTab === 1 && isSidebarOpen
-                ? "bg-indigo-50 text-indigo-700 shadow-xs ring-1 ring-indigo-200"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            }`}
-          >
-            <MapPinned className="h-5 w-5" />
-            <span className="text-[10px]">Vị trí</span>
-          </button>
-
-          {/* Step 2 Button */}
-          <button
-            type="button"
-            onClick={() => void handleTabChange(2)}
-            title="Bước 2: Tiện ích xung quanh"
-            className={`mx-2 flex min-h-[64px] w-[60px] flex-col items-center justify-center gap-1 rounded-2xl text-xs font-bold transition ${
-              activeTab === 2 && isSidebarOpen
-                ? "bg-indigo-50 text-indigo-700 shadow-xs ring-1 ring-indigo-200"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            }`}
-          >
-            <Hospital className="h-5 w-5" />
-            <span className="text-[10px]">Tiện ích</span>
-          </button>
-
-          {/* Step 3 Button */}
-          <button
-            type="button"
-            onClick={() => void handleTabChange(3)}
-            title="Bước 3: Kịch bản & Xuất video"
-            className={`mx-2 flex min-h-[64px] w-[60px] flex-col items-center justify-center gap-1 rounded-2xl text-xs font-bold transition ${
-              activeTab === 3 && isSidebarOpen
-                ? "bg-indigo-50 text-indigo-700 shadow-xs ring-1 ring-indigo-200"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            }`}
-          >
-            <Film className="h-5 w-5" />
-            <span className="text-[10px]">Kịch bản</span>
-          </button>
-
-          {/* Lịch sử Video (Mở ngay trong Sidebar) */}
-          <button
-            type="button"
-            onClick={() => void handleTabChange("history")}
-            title="Lịch sử video đã tạo"
-            className={`mx-2 flex min-h-[64px] w-[60px] flex-col items-center justify-center gap-1 rounded-2xl text-xs font-bold transition ${
-              activeTab === "history" && isSidebarOpen
-                ? "bg-indigo-50 text-indigo-700 shadow-xs ring-1 ring-indigo-200"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-            }`}
-          >
-            <History className="h-5 w-5" />
-            <span className="text-[10px]">Lịch sử</span>
-          </button>
+            <div>
+              <h1 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <span>BDS MapTour Studio</span>
+                <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700 border border-indigo-200">
+                  GIS 3D
+                </span>
+              </h1>
+              <p className="text-[10px] text-slate-500">
+                Xây dựng video bản đồ BĐS chuyên nghiệp với đa lớp GIS & Keyframe Camera
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-col items-center w-full px-2">
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCreateNewProject}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition shadow-xs"
+          >
+            <Plus className="h-3.5 w-3.5" /> Tạo dự án mới
+          </button>
           <button
             type="button"
             onClick={handleSaveDraft}
             disabled={isSaving}
-            title="Lưu bản nháp"
-            className="flex min-h-[52px] w-full flex-col items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition"
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600 border border-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition shadow-xs"
           >
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin text-indigo-600" /> : <Save className="h-4 w-4" />}
-            <span className="text-[9px] font-bold">{saved ? "Đã lưu" : "Lưu"}</span>
+            <Save className="h-3.5 w-3.5" />
+            {saved ? "Đã lưu bản nháp!" : "Lưu dự án"}
           </button>
         </div>
-      </nav>
+      </div>
 
-      {/* 2. Left Form Sidebar: Tinh gọn, hiện đại, hỗ trợ cả 3 bước tạo video lẫn xem Lịch sử trực tiếp */}
+      {/* 2. Cột Trái: Thanh Công Cụ GIS & Bảng Nhập Liệu */}
       <aside
-        className={`relative flex h-full shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-300 ease-in-out z-20 overflow-hidden ${
-          isSidebarOpen ? "w-[380px] lg:w-[420px] opacity-100" : "w-0 opacity-0 border-r-0"
+        className={`relative z-10 mt-14 flex h-[calc(100%-3.5rem)] border-r border-slate-200 bg-white transition-all duration-300 shadow-lg ${
+          isLeftSidebarOpen ? "w-[380px]" : "w-0 overflow-hidden opacity-0 border-none"
         }`}
       >
-        {/* Header Sidebar: Tùy theo tab đang mở (Stepper hoặc Lịch sử) */}
-        <div className="border-b border-slate-100 p-4 space-y-3 shrink-0">
-          {activeTab === "history" ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
-                  <History className="h-4 w-4" />
-                </span>
-                <div>
-                  <h1 className="text-sm font-bold text-slate-900">Lịch sử video đã tạo</h1>
-                  <p className="text-[11px] text-slate-500">
-                    {renderHistory.length} video trong danh sách
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => void loadRenderHistory()}
-                  disabled={isLoadingHistory}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                  title="Làm mới danh sách"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isLoadingHistory ? "animate-spin text-indigo-600" : ""}`} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                  title="Thu gọn bảng điều khiển"
-                >
-                  <PanelLeftClose className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 pr-2">
-                  <h1 className="text-sm font-bold text-slate-900 truncate">
-                    Tạo Video Bất Động Sản
-                  </h1>
-                  <p className="text-[11px] text-slate-500 truncate">
-                    Bản đồ vệ tinh & giọng đọc AI tiếng Việt
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-extrabold text-indigo-700">
-                    {activeTab}/3
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsSidebarOpen(false)}
-                    className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition"
-                    title="Thu gọn bảng điều khiển"
-                  >
-                    <PanelLeftClose className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Stepper Tabs: Clean Pill Design */}
-              <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100/90 p-1">
-                {[
-                  { step: 1, label: "1. Vị trí" },
-                  { step: 2, label: "2. Tiện ích" },
-                  { step: 3, label: "3. Kịch bản" },
-                ].map((s) => (
-                  <button
-                    key={s.step}
-                    type="button"
-                    onClick={() => void handleTabChange(s.step as 1 | 2 | 3)}
-                    className={`rounded-lg py-1.5 text-center text-xs font-bold transition ${
-                      activeTab === s.step
-                        ? "bg-white text-indigo-700 shadow-xs"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+        {/* Thanh Icon Tool bên trái */}
+        <div className="flex w-14 flex-col items-center border-r border-slate-100 bg-slate-50/70 py-3 gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setActiveGisTool("polygon")}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+              activeGisTool === "polygon"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                : "text-slate-500 hover:bg-slate-200/60 hover:text-slate-900"
+            }`}
+            title="Vẽ Đa giác / Vùng đất"
+          >
+            <Layers className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveGisTool("route-ab")}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+              activeGisTool === "route-ab"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                : "text-slate-500 hover:bg-slate-200/60 hover:text-slate-900"
+            }`}
+            title="Tự động vẽ Lộ trình (A -> B)"
+          >
+            <Route className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveGisTool("marker")}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+              activeGisTool === "marker"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                : "text-slate-500 hover:bg-slate-200/60 hover:text-slate-900"
+            }`}
+            title="Điểm mốc & Tiện ích"
+          >
+            <MapPin className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveGisTool("settings")}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+              activeGisTool === "settings"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                : "text-slate-500 hover:bg-slate-200/60 hover:text-slate-900"
+            }`}
+            title="Cài đặt Video & Voice AI"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveGisTool("history");
+              void loadRenderHistory();
+            }}
+            className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+              activeGisTool === "history"
+                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
+                : "text-slate-500 hover:bg-slate-200/60 hover:text-slate-900"
+            }`}
+            title="Lịch sử Video đã xuất"
+          >
+            <History className="h-4 w-4" />
+          </button>
         </div>
 
-        {/* Body Sidebar: Scrollable */}
+        {/* Nội dung chi tiết của Tool đang chọn */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* TAB LỊCH SỬ VIDEO */}
-          {activeTab === "history" && (
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              {activeGisTool === "polygon" && "⬡ Vẽ Vùng Đa Giác & Dự Án"}
+              {activeGisTool === "route-ab" && "🛣️ Vẽ Lộ Trình (A ➜ B)"}
+              {activeGisTool === "marker" && "📍 Tiện Ích & Điểm Ghim"}
+              {activeGisTool === "settings" && "⚙️ Kịch Bản & Cài Đặt"}
+              {activeGisTool === "history" && "🎬 Lịch Sử Render Video"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsLeftSidebarOpen(false)}
+              className="rounded p-1 text-slate-400 hover:text-slate-700"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
+
+          {activeGisTool === "polygon" && (
+            <RealEstateMapStep1Location
+              name={name}
+              setName={setName}
+              address={address}
+              setAddress={setAddress}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchResults={searchResults}
+              setSearchResults={setSearchResults}
+              isSearching={isSearching}
+              handleSearchAddress={handleSearchAddress}
+              handleSelectLocation={handleSelectLocation}
+              boundary={boundary}
+              polygonArea={polygonArea}
+              polygonPerimeter={polygonPerimeter}
+              drawMode={drawMode}
+              handleStartDrawPolygon={handleStartDrawPolygon}
+              handleStartEditVertices={handleStartEditVertices}
+              handleCreatePresetRectangle={handleCreatePresetRectangle}
+              handleCreatePresetCircle={handleCreatePresetCircle}
+              handleResetDefaultBoundary={handleResetDefaultBoundary}
+              handleClearBoundary={handleClearBoundary}
+              boundaryOpacity={boundaryOpacity}
+              setBoundaryOpacity={setBoundaryOpacity}
+              boundaryStrokeWidth={boundaryStrokeWidth}
+              setBoundaryStrokeWidth={setBoundaryStrokeWidth}
+              boundaryStrokeType={boundaryStrokeType}
+              setBoundaryStrokeType={setBoundaryStrokeType}
+              onNext={() => setActiveGisTool("route-ab")}
+            />
+          )}
+
+          {activeGisTool === "route-ab" && (
+            <RealEstateMapRouteABPanel
+              currentLocation={location}
+              projectName={name}
+              onAddRouteLayer={handleAddRouteLayer}
+            />
+          )}
+
+          {activeGisTool === "marker" && (
+            <RealEstateMapStep2Pois
+              pois={pois}
+              setPois={setPois}
+              routes={routes}
+              setRoutes={setRoutes}
+              isLoadingPois={isLoadingPois}
+              handleSearchPois={handleSearchPois}
+              handleSelectRouteToPoi={handleSelectRouteToPoi}
+              hotline={hotline}
+              setHotline={setHotline}
+              ctaText={ctaText}
+              setCtaText={setCtaText}
+              onBack={() => setActiveGisTool("polygon")}
+              onNext={() => setActiveGisTool("settings")}
+            />
+          )}
+
+          {activeGisTool === "settings" && (
+            <RealEstateMapStep3Script
+              boundaryTheme={boundaryTheme}
+              setBoundaryTheme={setBoundaryTheme}
+              showRadiusPulse={showRadiusPulse}
+              setShowRadiusPulse={setShowRadiusPulse}
+              showAnimatedRoutes={showAnimatedRoutes}
+              setShowAnimatedRoutes={setShowAnimatedRoutes}
+              isPlaying3DCamera={isPlaying3DCamera}
+              handlePlay3DCameraTour={handlePlay3DCameraTour}
+              showSafeArea={showSafeArea}
+              setShowSafeArea={setShowSafeArea}
+              isLoadingSnapshot={isLoadingSnapshot}
+              snapshotData={snapshotData}
+              handleLoadSnapshot={handleLoadSnapshot}
+              isRendering={isRendering}
+              handleStartRender={handleStartRender}
+              onBack={() => setActiveGisTool("marker")}
+            />
+          )}
+
+          {activeGisTool === "history" && (
             <div className="space-y-3">
-              <button
-                type="button"
-                onClick={() => void handleTabChange(1)}
-                className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-50 py-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition shadow-xs"
-              >
-                <Plus className="h-4 w-4" /> Tạo dự án video mới
-              </button>
-
               {isLoadingHistory ? (
-                <div className="flex flex-col items-center justify-center py-12 text-slate-400 space-y-2">
-                  <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
-                  <span className="text-xs">Đang tải lịch sử video...</span>
-                </div>
-              ) : !renderHistory || renderHistory.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 space-y-2">
-                  <p>Chưa có video nào được xuất bản.</p>
-                  <p className="text-[11px] text-slate-400">
-                    Hãy hoàn tất 3 bước để bắt đầu tạo video BĐS đầu tiên!
-                  </p>
+                <div className="p-4 text-center text-xs text-slate-400">Đang tải lịch sử render...</div>
+              ) : renderHistory.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-400">
+                  Chưa có video nào được render. Hãy tạo dự án và bấm &quot;Xuất Video MP4&quot;.
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {renderHistory.map((item) => (
-                    <RealEstateVideoHistoryCard
-                      key={item.id}
-                      item={item}
-                      onRetry={(id) => {
-                        realEstateMapVideoService
-                          .retryRender(id)
-                          .then(() => void loadRenderHistory())
-                          .catch(() => {});
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* BƯỚC 1: VỊ TRÍ & DỰ ÁN */}
-          {activeTab === 1 && (
-            <div className="space-y-3.5">
-              <div>
-                <h2 className="text-xs font-bold text-slate-900">
-                  Bước 1: Chọn vị trí & Nhập thông tin
-                </h2>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Tìm kiếm hoặc click trực tiếp lên bản đồ bên phải
-                </p>
-              </div>
-
-              {/* Tìm địa chỉ */}
-              <div>
-                <label className="block text-[11px] font-semibold text-slate-700">
-                  Tìm nhanh dự án hoặc địa chỉ:
-                </label>
-                <div className="mt-1 flex gap-1.5">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSearchAddress()}
-                      placeholder="Gõ tên dự án, đường, quận..."
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2 pl-8 pr-3 text-xs outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleSearchAddress}
-                    disabled={isSearching}
-                    className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {isSearching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Tìm"}
-                  </button>
-                </div>
-
-                {searchResults && searchResults.length > 0 && (
-                  <div className="mt-2 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white shadow-xl max-h-44 overflow-y-auto">
-                    {searchResults.map((res, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => handleSelectLocation(res)}
-                        className="flex w-full flex-col p-2.5 text-left text-xs hover:bg-indigo-50/70 transition"
-                      >
-                        <span className="font-bold text-slate-900">{res.name || res.address}</span>
-                        <span className="text-slate-500 text-[10px] mt-0.5">{res.address}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Tên & Địa chỉ */}
-              <div className="space-y-2.5 pt-0.5">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700">
-                    Tên dự án hiển thị trong video:
-                  </label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ví dụ: Khu đô thị SwanBay"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                renderHistory.map((item) => (
+                  <RealEstateVideoHistoryCard
+                    key={item.id}
+                    item={item}
+                    onRetry={() => {
+                      void realEstateMapVideoService.retryRender(item.id);
+                      void loadRenderHistory();
+                    }}
                   />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700">
-                    Địa chỉ chi tiết:
-                  </label>
-                  <input
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Ví dụ: Phường An Khánh, TP. Thủ Đức"
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-800 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                  />
-                </div>
-              </div>
-
-              {/* Gợi ý tương tác: Clean Card */}
-              <div className="rounded-2xl bg-indigo-50/60 p-3.5 text-xs text-indigo-950 border border-indigo-100 space-y-1">
-                <p className="font-bold text-indigo-900 flex items-center gap-1.5">
-                  <span>💡</span> Thao tác trên bản đồ:
-                </p>
-                <p className="text-slate-600 text-[11px] leading-relaxed">
-                  • Click bất kỳ đâu trên bản đồ để đổi vị trí tâm dự án.<br />
-                  • Bấm <strong>&quot;Vẽ lại ranh đất&quot;</strong> để tùy chỉnh ranh đất.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => void handleTabChange(2)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition"
-              >
-                Tiếp tục: Chọn tiện ích <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-          {/* BƯỚC 2: TIỆN ÍCH & LIÊN HỆ */}
-          {activeTab === 2 && (
-            <div className="space-y-3.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xs font-bold text-slate-900">
-                    Bước 2: Tiện ích xung quanh
-                  </h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Các điểm nổi bật gần dự án
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSearchPois}
-                  disabled={isLoadingPois}
-                  className="inline-flex items-center gap-1 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 shadow-xs transition"
-                >
-                  {isLoadingPois ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-3.5 w-3.5" />
-                  )}
-                  Quét tự động
-                </button>
-              </div>
-
-              {/* Danh sách tiện ích */}
-              {!pois || pois.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-5 text-center text-xs text-slate-500">
-                  Chưa có tiện ích nào. Bấm nút <strong>&quot;Quét tự động&quot;</strong> để hệ thống tìm trường học, bệnh viện, TTTM lân cận dự án.
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {pois.map((poi) => {
-                    const Icon = CATEGORY_ICONS[poi.category] || Building2;
-                    return (
-                      <div
-                        key={poi.id}
-                        className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 text-xs hover:bg-white transition"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-700 shadow-xs border border-slate-100">
-                            <Icon className="h-3.5 w-3.5" />
-                          </span>
-                          <div>
-                            <p className="font-bold text-slate-900">{poi.name}</p>
-                            <p className="text-[10px] text-slate-500">
-                              {poi.distanceMeters ? `~${poi.distanceMeters}m` : ""}{" "}
-                              {poi.durationMinutes ? `· ${poi.durationMinutes}p` : ""}
-                            </p>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleSelectRouteToPoi(poi)}
-                          className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-indigo-700 border border-slate-200 hover:bg-indigo-50 shadow-xs transition"
-                        >
-                          Lộ trình
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                ))
               )}
-
-              {/* Thông tin liên hệ */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-100">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700">
-                    Số điện thoại Hotline:
-                  </label>
-                  <div className="relative mt-1">
-                    <Phone className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      value={hotline}
-                      onChange={(e) => setHotline(e.target.value)}
-                      placeholder="0909..."
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50/60 py-2 pl-8 pr-3 text-xs text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700">
-                    Lời kêu gọi hành động (CTA):
-                  </label>
-                  <input
-                    value={ctaText}
-                    onChange={(e) => setCtaText(e.target.value)}
-                    placeholder="Đăng ký ngay..."
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-xs text-slate-900 outline-none transition focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => void handleTabChange(1)}
-                  className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleTabChange(3)}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-700 transition"
-                >
-                  Tiếp tục: Kịch bản <ArrowRight className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* BƯỚC 3: KỊCH BẢN & XUẤT VIDEO */}
-          {activeTab === 3 && (
-            <div className="space-y-3.5">
-              <div>
-                <h2 className="text-xs font-bold text-slate-900">
-                  Bước 3: Kịch bản & Xuất Video
-                </h2>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  4 cảnh quay và thuyết minh tiếng Việt chuẩn
-                </p>
-              </div>
-
-              {isLoadingSnapshot ? (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-500 space-y-2">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-600" />
-                  <p className="font-semibold text-slate-700">AI đang phân tích và dựng kịch bản video...</p>
-                </div>
-              ) : snapshotData?.composition ? (
-                <div className="space-y-3">
-                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                    {(snapshotData.composition.scenePlan || []).map((scene, idx) => (
-                      <div
-                        key={scene.id}
-                        className="rounded-xl border border-slate-100 bg-slate-50/80 p-2.5 text-xs"
-                      >
-                        <div className="flex items-center justify-between text-slate-500 font-bold">
-                          <span>Cảnh 0{idx + 1}</span>
-                          <span>{scene.startSeconds}s - {scene.endSeconds}s</span>
-                        </div>
-                        <p className="mt-1 font-semibold text-indigo-900 text-[11px]">
-                          📺 {(scene.onScreenText || []).join(" · ")}
-                        </p>
-                        <p className="mt-0.5 text-slate-600 italic text-[11px] leading-relaxed">
-                          🎙️ &quot;{scene.narration}&quot;
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-xl bg-slate-900 p-3 text-white">
-                    <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
-                      Giọng đọc AI (TTS Thuyết minh)
-                    </p>
-                    <p className="mt-1 text-xs text-slate-300 leading-relaxed">
-                      {snapshotData.composition.voiceScript || ""}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500 space-y-2">
-                  <p>Chưa có kịch bản hoặc đang tải lại.</p>
-                  <button
-                    type="button"
-                    onClick={() => void handleLoadSnapshot()}
-                    className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:underline"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" /> Tạo lại kịch bản
-                  </button>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => void handleTabChange(2)}
-                  className="rounded-xl border border-slate-200 px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleStartRender}
-                  disabled={isRendering || isLoadingSnapshot}
-                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-xs font-bold text-white shadow-lg shadow-indigo-600/25 hover:brightness-110 disabled:opacity-50 transition"
-                >
-                  {isRendering ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Video className="h-4 w-4" />
-                  )}
-                  Bắt đầu xuất video MP4 (24s)
-                </button>
-              </div>
             </div>
           )}
         </div>
       </aside>
 
-      {/* 3. Main Stage: Bản đồ chiếm 100% diện tích còn lại của màn hình */}
+      {/* 3. Khu Vực Bản Đồ Trung Tâm */}
       <main className="relative flex-1 h-full overflow-hidden bg-slate-100">
-        {/* Map Canvas */}
         <div ref={mapContainerRef} className="absolute inset-0 h-full w-full" />
 
-        {/* Floating Drawing Guide Banner */}
-        {isDrawingBoundary && (
-          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl bg-slate-900/95 px-4 py-2 text-xs font-bold text-white shadow-2xl backdrop-blur-md border border-indigo-500/40 animate-pulse">
-            <span>✏️ Đang vẽ ranh đất: Click các góc trên bản đồ, click đúp để hoàn tất.</span>
+        {/* Floating Safe Area 9:16 / 16:9 Frame */}
+        {showSafeArea && <RealEstateMapSafeAreaOverlay aspectRatio={aspectRatio} />}
+
+        {/* Floating 3D Camera Active Banner */}
+        {isPlaying3DCamera && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-2xl backdrop-blur-md border border-indigo-400 animate-bounce">
+            <span className="flex h-2 w-2 rounded-full bg-white animate-ping" />
+            <span>🎥 Đang mô phỏng chuyển động Camera 3D điện ảnh (Fly-in & Orbit)</span>
           </div>
         )}
 
+        {/* Floating Drawing & Editing Action Toolbar */}
+        {isDrawingBoundary && (
+          <RealEstateMapFloatingPolygonBar
+            drawMode={drawMode}
+            polygonArea={polygonArea}
+            boundary={boundary}
+            handleStartDrawPolygon={handleStartDrawPolygon}
+            handleStartEditVertices={handleStartEditVertices}
+            handleDeleteSelected={handleDeleteSelected}
+            handleStopDrawing={handleStopDrawing}
+          />
+        )}
+
         {/* Floating Top Toolbar */}
-        <div className="absolute left-4 right-4 top-4 z-10 flex flex-wrap items-center justify-between gap-2.5 pointer-events-none">
-          <div className="flex items-center gap-2 pointer-events-auto">
-            {/* Nút Hiện Bảng điều khiển khi đang ẩn */}
-            {!isSidebarOpen && (
-              <button
-                type="button"
-                onClick={() => setIsSidebarOpen(true)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/95 text-slate-700 shadow-md border border-slate-200 hover:bg-white hover:text-indigo-600 transition"
-                title="Mở bảng điều khiển"
-              >
-                <PanelLeftOpen className="h-4 w-4 text-indigo-600" />
-              </button>
-            )}
-
-            {/* Map Theme Switcher */}
-            <div className="flex items-center gap-1 rounded-2xl bg-white/95 p-1 shadow-lg backdrop-blur-md border border-slate-200">
-              <button
-                type="button"
-                onClick={() => handleChangeMapTheme("street")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                  mapTheme === "street"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Navigation className="h-3.5 w-3.5" />
-                Đường phố
-              </button>
-              <button
-                type="button"
-                onClick={() => handleChangeMapTheme("satellite")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                  mapTheme === "satellite"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Globe className="h-3.5 w-3.5" />
-                Ảnh vệ tinh
-              </button>
-              <button
-                type="button"
-                onClick={() => handleChangeMapTheme("dark")}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                  mapTheme === "dark"
-                    ? "bg-indigo-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <Layers className="h-3.5 w-3.5" />
-                Tối
-              </button>
-            </div>
-          </div>
-
-          {/* Map Quick Actions */}
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <button
-              type="button"
-              onClick={() => {
-                const instance = drawControlRef.current?.getTerraDrawInstance();
-                if (!instance) return;
-                if (isDrawingBoundary) {
-                  instance.setMode("render");
-                  setIsDrawingBoundary(false);
-                } else {
-                  instance.setMode("polygon");
-                  setIsDrawingBoundary(true);
-                }
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold text-white shadow-md transition ${
-                isDrawingBoundary
-                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25 ring-2 ring-white"
-                  : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/20"
-              }`}
-            >
-              {isDrawingBoundary ? <Check className="h-4 w-4" /> : <PencilRuler className="h-4 w-4" />}
-              {isDrawingBoundary ? "Hoàn tất vẽ" : "Vẽ lại ranh đất"}
-            </button>
-            <button
-              type="button"
-              onClick={handleToggleFullscreen}
-              title="Toàn màn hình trình duyệt"
-              className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white/95 text-slate-700 shadow-md backdrop-blur-md border border-slate-200 hover:bg-slate-50 transition"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleTabChange("history")}
-              className={`inline-flex items-center gap-1.5 rounded-2xl px-3.5 py-2 text-xs font-bold transition shadow-md backdrop-blur-md border ${
-                activeTab === "history" && isSidebarOpen
-                  ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                  : "bg-white/95 text-slate-700 border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              <History className="h-4 w-4 text-indigo-600" />
-              Lịch sử
-            </button>
-            <button
-              type="button"
-              onClick={handleStartRender}
-              disabled={isRendering}
-              className="inline-flex items-center gap-1.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-indigo-600/25 hover:brightness-110 disabled:opacity-50 transition"
-            >
-              {isRendering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-              Xuất MP4
-            </button>
-          </div>
-        </div>
+        <RealEstateMapFloatingTopToolbar
+          isSidebarOpen={isLeftSidebarOpen}
+          setIsSidebarOpen={setIsLeftSidebarOpen}
+          isRightSidebarOpen={isRightSidebarOpen}
+          setIsRightSidebarOpen={setIsRightSidebarOpen}
+          mapTheme={mapTheme}
+          handleChangeMapTheme={handleChangeMapTheme}
+          aspectRatio={aspectRatio}
+          onChangeAspectRatio={setAspectRatio}
+          showPlaceLabels={showPlaceLabels}
+          onTogglePlaceLabels={() => setShowPlaceLabels(!showPlaceLabels)}
+          isPlaying3DCamera={isPlaying3DCamera}
+          handlePlay3DCameraTour={handlePlay3DCameraTour}
+          isDrawingBoundary={isDrawingBoundary}
+          handleStartDrawPolygon={handleStartDrawPolygon}
+          handleStopDrawing={handleStopDrawing}
+          handleToggleFullscreen={handleToggleFullscreen}
+          activeTab={activeTab}
+          handleTabChange={handleTabChange}
+          handleStartRender={handleStartRender}
+          isRendering={isRendering}
+        />
 
         {/* Floating Bottom Status Bar */}
-        <div className="absolute right-4 bottom-4 z-10 flex items-center gap-3 rounded-2xl bg-slate-900/85 backdrop-blur-md px-3.5 py-2 text-xs text-white shadow-xl border border-slate-800">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>
-              📍 Tâm: <strong>{location.lat.toFixed(4)}, {location.lng.toFixed(4)}</strong>
-            </span>
-          </div>
-          <span className="text-slate-600">|</span>
-          <span>
-            📐 Ranh: <strong>{(boundary || []).length} điểm</strong>
-          </span>
-        </div>
+        <RealEstateMapStatusBadge
+          location={location}
+          layerCount={layers.length}
+        />
       </main>
 
-      {/* Render Modal */}
-      {showRenderModal && activeRender && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 text-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <Film className="h-5 w-5 text-indigo-400" />
-                <h3 className="font-bold text-sm">Đang tạo Video Bất Động Sản</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowRenderModal(false)}
-                className="rounded-xl p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-5">
-              {activeRender.status === "completed" && activeRender.outputUrl ? (
-                <div className="space-y-4 text-center">
-                  <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm font-bold">
-                    <CheckCircle2 className="h-5 w-5" />
-                    <span>Video đã tạo xong!</span>
-                  </div>
-
-                  <div className="aspect-[9/16] max-h-[360px] w-full mx-auto overflow-hidden rounded-2xl border border-slate-700 bg-black shadow-2xl">
-                    <video
-                      src={activeRender.outputUrl}
-                      controls
-                      autoPlay
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <a
-                      href={activeRender.outputUrl}
-                      download="video-bat-dong-san.mp4"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 font-bold text-white shadow-md hover:bg-indigo-500 text-xs transition"
-                    >
-                      <Download className="h-4 w-4" /> Tải video về máy
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => setShowRenderModal(false)}
-                      className="rounded-xl bg-slate-800 px-4 py-3 font-semibold text-slate-200 hover:bg-slate-700 text-xs"
-                    >
-                      Đóng
-                    </button>
-                  </div>
-                </div>
-              ) : activeRender.status === "failed" ? (
-                <div className="space-y-3 text-center">
-                  <p className="text-xs text-rose-400 font-semibold">
-                    {activeRender.error || "Quá trình tạo video gặp lỗi."}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => realEstateMapVideoService.retryRender(activeRender.id)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-xs font-bold text-white hover:bg-rose-500"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" /> Thử lại
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>{activeRender.stageMessage}</span>
-                    <span className="font-bold text-indigo-400">{activeRender.progress}%</span>
-                  </div>
-
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-800">
-                    <div
-                      className="h-full rounded-full bg-indigo-500 transition-all duration-500"
-                      style={{ width: `${activeRender.progress}%` }}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400" />
-                    <span>Hệ thống đang tự động xử lý. Bạn có thể đóng cửa sổ này.</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+      {/* 4. Cột Phải: Quản Lý Lớp (Layer Manager) & Timeline Phân Cảnh */}
+      <aside
+        className={`relative z-10 mt-14 flex h-[calc(100%-3.5rem)] flex-col border-l border-slate-200 bg-slate-50/70 transition-all duration-300 shadow-lg ${
+          isRightSidebarOpen ? "w-[340px]" : "w-0 overflow-hidden opacity-0 border-none"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3.5 py-2">
+          <span className="text-xs font-bold text-slate-800">Studio Panel</span>
+          <button
+            type="button"
+            onClick={() => setIsRightSidebarOpen(false)}
+            className="rounded p-1 text-slate-400 hover:text-slate-700"
+          >
+            <PanelRightClose className="h-4 w-4" />
+          </button>
         </div>
-      )}
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {/* 1. Layer Manager */}
+          <RealEstateMapLayerManager
+            layers={layers}
+            selectedLayerId={selectedLayerId}
+            onSelectLayer={setSelectedLayerId}
+            onToggleLayerVisibility={handleToggleLayerVisibility}
+            onChangeLayerColor={handleChangeLayerColor}
+            onDuplicateLayer={handleDuplicateLayer}
+            onDeleteLayer={handleDeleteLayer}
+            onMoveLayer={handleMoveLayer}
+            onRenameLayer={handleRenameLayer}
+          />
+
+          {/* 2. Timeline Phân Cảnh */}
+          <RealEstateMapTimeline
+            scenes={scenes}
+            selectedSceneId={selectedSceneId}
+            onSelectScene={setSelectedSceneId}
+            onPinCurrentCameraScene={handlePinCurrentCameraScene}
+            onDeleteScene={handleDeleteScene}
+            onDuplicateScene={handleDuplicateScene}
+            onUpdateSceneDuration={handleUpdateSceneDuration}
+            onPreviewAllScenes={handlePreviewAllScenes}
+            isPreviewing={isPreviewingScenes}
+            onStartRender={handleStartRender}
+            isRendering={isRendering}
+          />
+        </div>
+      </aside>
+
+      {/* Render Modal */}
+      <RealEstateMapRenderModal
+        show={showRenderModal}
+        onClose={() => setShowRenderModal(false)}
+        activeRender={activeRender}
+      />
     </div>
   );
 }

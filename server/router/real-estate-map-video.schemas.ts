@@ -44,6 +44,17 @@ const videoSpecSchema = Joi.object({
   durationSeconds: Joi.number().min(15).max(60).default(24),
 });
 
+const vfxConfigSchema = Joi.object({
+  boundaryTheme: Joi.string().valid("cyan-neon", "gold-luxury", "emerald", "ruby").optional(),
+  boundaryGlowIntensity: Joi.number().min(1).max(10).optional(),
+  boundaryLedSpeed: Joi.number().min(1).max(10).optional(),
+  showRadiusPulse: Joi.boolean().optional(),
+  radiusMeters: Joi.number().min(100).max(50000).optional(),
+  showAnimatedRoutes: Joi.boolean().optional(),
+  cameraTrajectory: Joi.string().valid("cinematic-flyin-orbit", "dynamic-tilt", "smooth-glide").optional(),
+  show3DBillboards: Joi.boolean().optional(),
+});
+
 export const saveRealEstateMapVideoDraftBodySchema = Joi.object({
   name: Joi.string().trim().max(180).allow("").required(),
   address: Joi.string().trim().max(300).allow("").optional(),
@@ -52,6 +63,7 @@ export const saveRealEstateMapVideoDraftBodySchema = Joi.object({
   pois: Joi.array().items(poiSchema).max(10).optional(),
   routes: Joi.array().items(routeSchema).max(5).optional(),
   branding: brandingSchema.optional(),
+  vfxConfig: vfxConfigSchema.optional(),
   templatePreset: Joi.string().valid("zoom-to-project", "project-boundary", "route-follow", "all").optional(),
   videoSpec: videoSpecSchema.optional(),
 });
