@@ -54,6 +54,7 @@ export type VideoRenderInput = {
   voiceAudioChannels?: number;
   voiceDurationSeconds?: number;
   voicePlaybackRate?: number;
+  verificationTimesSeconds?: number[];
   voiceSegments?: VideoRenderVoiceSegment[];
 } & (VideoRenderBlueprintSource | VideoRenderHtmlSource);
 

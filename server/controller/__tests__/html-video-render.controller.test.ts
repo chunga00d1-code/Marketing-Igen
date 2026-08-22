@@ -23,7 +23,7 @@ const validBody = {
 };
 
 function responseRecorder() {
-  const state: { status: number; body?: unknown } = { status: 200 };
+  const state: { status: number; body?: unknown; headers: Record<string, string> } = { status: 200, headers: {} };
   const response = {
     status(code: number) {
       state.status = code;
@@ -31,6 +31,10 @@ function responseRecorder() {
     },
     json(body: unknown) {
       state.body = body;
+      return response;
+    },
+    setHeader(name: string, value: string) {
+      state.headers[name] = value;
       return response;
     },
   };
@@ -64,6 +68,15 @@ type DependencyOverrides = {
 const validPromptHistoryBody = {
   projectName: "Video giới thiệu sản phẩm",
   prompt: "Tạo video giới thiệu sản phẩm mới với ưu đãi và CTA mua ngay.",
+  masterPrompt: "# VIDEO BRIEF\n# STORYBOARD\n## SCENE 1\n- Voice-over: Giới thiệu sản phẩm.",
+  inferredAssumptions: {
+    contentMode: "product",
+    narrationLanguage: "Vietnamese",
+    durationSeconds: 15,
+    aspectRatio: "9:16",
+    imagePolicy: "none",
+    inputImageCount: 0,
+  },
   aspectRatio: "9:16",
   referenceNames: ["brand-guideline.md"],
 };
@@ -81,6 +94,12 @@ function dependencies(overrides: DependencyOverrides = {}) {
       getRender: async () => ({
         id: new Types.ObjectId().toString(),
         status: "completed",
+      }),
+      getRenderEditSource: async () => ({
+        html: "<main>source</main>",
+        css: "",
+        voiceScript: "",
+        snapshotHash: "a".repeat(64),
       }),
       listRenders: async () => [],
     },
@@ -108,6 +127,78 @@ function dependencies(overrides: DependencyOverrides = {}) {
     },
   };
 }
+
+test("accepts a 15-item jobs timeline for preview", () => {
+  const scenePlan = Array.from({ length: 15 }, (_, index) => ({
+    id: "scene-" + (index + 1),
+    order: index,
+    purpose: "content",
+    sourceUnitIds: ["unit-" + (index + 1)],
+    onScreenText: ["Job " + (index + 1)],
+    narration: "Job " + (index + 1),
+    startSeconds: index * 2,
+    endSeconds: (index + 1) * 2,
+    transition: "crossfade",
+    assetIds: ["jobs-reference"],
+  }));
+  const { idempotencyKey: _idempotencyKey, ...previewBody } = validBody;
+  assert.equal(
+    htmlVideoPreviewBodySchema.validate({
+      ...previewBody,
+      durationSeconds: 30,
+      assets: [{
+        id: "jobs-reference",
+        name: "jobs.png",
+        kind: "image",
+        url: "data:image/png;base64,AA==",
+        role: "background",
+        includeInVideo: true,
+      }],
+      scenePlan,
+    }).error,
+    undefined
+  );
+  const pipeline = {
+    version: "2.0",
+    sourceText: "15 jobs in source order",
+    sourceContextRefs: [{ id: "source-current-prompt", type: "prompt", label: "Prompt" }],
+    videoBrief: {
+      objective: "Teach 15 job names",
+      tone: "educational",
+      visualStyle: "reference image background",
+      voiceRequired: true,
+      exactPhrases: [],
+      videoSpec: {
+        aspectRatio: "16:9",
+        resolution: "720p",
+        durationSeconds: 30,
+        language: "English",
+        audience: "learners",
+        platform: "generic",
+        cta: "",
+      },
+    },
+    contentUnits: scenePlan.map((scene, index) => ({
+      id: scene.sourceUnitIds[0],
+      order: index,
+      sourceText: scene.onScreenText[0],
+      normalizedText: scene.onScreenText[0],
+      sourceRefs: ["source-current-prompt"],
+      required: true,
+      requiredVerbatim: true,
+    })),
+    scenePlan,
+    findings: [],
+  };
+  assert.equal(
+    createHtmlVideoRenderBodySchema.validate({
+      ...validBody,
+      durationSeconds: 30,
+      pipeline,
+    }).error,
+    undefined
+  );
+});
 
 test("validates preview and render request bounds", () => {
   const { idempotencyKey: _idempotencyKey, ...previewBody } = validBody;
@@ -366,6 +457,39 @@ test("reads render status through the scoped service", async () => {
     renderId,
   ]);
   assert.equal(state.status, 200);
+});
+
+test("reads the render edit source through the same ownership-scoped service", async () => {
+  const renderId = new Types.ObjectId().toString();
+  let received: unknown[] = [];
+  const editSource = {
+    html: "<main>source</main>",
+    css: ".scene{position:absolute}",
+    voiceScript: "Teacher.",
+    snapshotHash: "b".repeat(64),
+  };
+  const controller = createHtmlVideoRenderController(
+    dependencies({
+      service: {
+        getRenderEditSource: async (...args: unknown[]) => {
+          received = args;
+          return editSource;
+        },
+      },
+    })
+  );
+  const { response, state } = responseRecorder();
+  const req = request({ params: { renderId } });
+
+  await controller.getEditSource(req as never, response as never);
+
+  assert.deepEqual(received, [
+    { id: req.user.id, companyCode: "ACME" },
+    renderId,
+  ]);
+  assert.deepEqual(state.body, { success: true, data: editSource });
+  assert.equal(state.headers["Cache-Control"], "private, no-store");
+  assert.equal(state.headers.Pragma, "no-cache");
 });
 
 test("maps missing ownership-scoped records to 404", async () => {

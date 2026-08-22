@@ -103,6 +103,26 @@ test("isolates multi-scene compositions on one server-owned timeline", () => {
   assert.match(result.compositionHtml, /@keyframes html-video-scene-2/);
 });
 
+test("preserves safe per-scene motion recipes on the shared render clock", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    html: [
+      '<main class="scene-deck">',
+      '<section class="scene motion-kinetic-slide"><h1 class="scene-headline">One</h1><div class="scene-pattern"></div><div class="scene-band"></div></section>',
+      '<section class="scene motion-scale-pop"><h1 class="scene-headline">Two</h1><div class="scene-pattern"></div><div class="scene-band"></div></section>',
+      "</main>",
+    ].join(""),
+    css: ".scene{position:absolute;inset:0}",
+    durationSeconds: 10,
+  });
+
+  assert.match(result.compositionHtml, /html-video-scene-0-headline\{[^}]*translateX\(-86px\)/);
+  assert.match(result.compositionHtml, /html-video-scene-1-headline\{[^}]*scale\(\.68\)/);
+  assert.match(result.compositionHtml, /html-video-scene-0-pattern 10s/);
+  assert.match(result.compositionHtml, /html-video-scene-1-band 10s/);
+  assert.doesNotMatch(result.compositionHtml, /animation-delay:[^0]/);
+});
+
 test("maps every supported aspect ratio and resolution", () => {
   const cases = [
     ["16:9", "720p", 1280, 720],

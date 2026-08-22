@@ -11,6 +11,19 @@ export interface MarketingDevelopPost {
   motionText?: string;
 }
 
+export type HtmlVideoMasterPromptOptimization = {
+  masterPrompt: string;
+  assumptions?: {
+    contentMode?: string;
+    narrationLanguage?: string;
+    durationSeconds?: number;
+    aspectRatio?: '9:16' | '1:1' | '16:9';
+    imagePolicy?: 'none' | 'embed' | 'reference' | 'mixed';
+    inputImageCount?: number;
+  };
+  isLocalFallback: boolean;
+};
+
 function getJwtHeaders(withContentType: boolean = true) {
   const headers: Record<string, string> = {};
   if (withContentType) {
@@ -517,8 +530,9 @@ export const geminiApi = {
     videoSpec?: {
       durationSeconds?: number;
       aspectRatio?: '9:16' | '1:1' | '16:9';
+      mode?: 'create' | 'revision';
     }
-  ): Promise<string> {
+  ): Promise<HtmlVideoMasterPromptOptimization> {
     const headers = await getHeaders(true);
     const response = await fetch('/api/v1/gemini/optimize-master-prompt', {
       method: 'POST',
@@ -529,13 +543,20 @@ export const geminiApi = {
         imageUris,
         durationSeconds: videoSpec?.durationSeconds,
         aspectRatio: videoSpec?.aspectRatio,
+        mode: videoSpec?.mode,
       }),
     });
     if (!response.ok) {
       await handleErrorResponse(response, 'Lỗi khi tối ưu Master Prompt video');
     }
     const data = await response.json();
-    return data.master_prompt || '';
+    return {
+      masterPrompt: typeof data.master_prompt === 'string' ? data.master_prompt : '',
+      assumptions: data.assumptions && typeof data.assumptions === 'object'
+        ? data.assumptions
+        : undefined,
+      isLocalFallback: data.isLocalFallback === true,
+    };
   },
 
   async analyzeVideoStyle(

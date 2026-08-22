@@ -145,6 +145,7 @@ test("generates and passes scene-aligned voice segments to the renderer", async 
   mockClaim(context, claimedRender({
     voiceScript: "Scene one. Scene two.",
     pipelineSnapshot: {
+      videoBrief: { videoSpec: { language: "English" } },
       scenePlan: [
         { narration: "Scene one.", startSeconds: 0, endSeconds: 2 },
         { narration: "Scene two.", startSeconds: 2, endSeconds: 5 },
@@ -154,12 +155,12 @@ test("generates and passes scene-aligned voice segments to the renderer", async 
   context.mock.method(HtmlVideoRenderModel, "updateOne", async () => ({
     matchedCount: 1,
   }));
-  const generated: Array<{ text: string; durationSeconds?: number }> = [];
+  const generated: Array<{ text: string; durationSeconds?: number; language?: string }> = [];
   context.mock.method(
     htmlVideoTtsService,
     "generate",
-    async (text, options: { durationSeconds?: number } = {}) => {
-      generated.push({ text, durationSeconds: options.durationSeconds });
+    async (text, options: { durationSeconds?: number; language?: string } = {}) => {
+      generated.push({ text, durationSeconds: options.durationSeconds, language: options.language });
       return {
         buffer: Buffer.alloc(480, 1),
         model: "test-tts",
@@ -192,8 +193,8 @@ test("generates and passes scene-aligned voice segments to the renderer", async 
   await htmlVideoRenderService.processRender(renderId);
 
   assert.deepEqual(generated, [
-    { text: "Scene one.", durationSeconds: 2 },
-    { text: "Scene two.", durationSeconds: 3 },
+    { text: "Scene one.", durationSeconds: 2, language: "English" },
+    { text: "Scene two.", durationSeconds: 3, language: "English" },
   ]);
   assert.equal(receivedInput?.voiceAudioPath, undefined);
   assert.deepEqual(

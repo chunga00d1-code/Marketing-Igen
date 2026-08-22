@@ -4,10 +4,13 @@ import {
   type HtmlVideoPromptHistoryDocument,
 } from "../../model/html-video-prompt-history.model";
 import type { HtmlVideoActor } from "./html-video-render.service";
+import type { HtmlVideoPromptAssumptions } from "../../interface/html-video-pipeline.interface";
 
 type PromptHistoryInput = {
   projectName: string;
   prompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
   aspectRatio: "16:9" | "9:16" | "1:1";
   referenceNames: string[];
   parentHistoryId?: string;
@@ -17,6 +20,8 @@ export type HtmlVideoPromptHistoryPublic = {
   id: string;
   projectName: string;
   prompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
   aspectRatio: "16:9" | "9:16" | "1:1";
   referenceNames: string[];
   parentHistoryId: string | null;
@@ -37,6 +42,10 @@ function serializeHistory(
     id: String(history._id),
     projectName: history.projectName,
     prompt: history.prompt,
+    ...(history.masterPrompt ? { masterPrompt: history.masterPrompt } : {}),
+    ...(history.inferredAssumptions
+      ? { inferredAssumptions: history.inferredAssumptions }
+      : {}),
     aspectRatio: history.aspectRatio,
     referenceNames: history.referenceNames || [],
     parentHistoryId: history.parentHistoryId ? String(history.parentHistoryId) : null,
@@ -71,6 +80,8 @@ export const htmlVideoPromptHistoryService = {
       companyCode: actor.companyCode,
       projectName: input.projectName,
       prompt: input.prompt,
+      masterPrompt: input.masterPrompt,
+      inferredAssumptions: input.inferredAssumptions,
       aspectRatio: input.aspectRatio,
       referenceNames: input.referenceNames,
       parentHistoryId: parent?._id,

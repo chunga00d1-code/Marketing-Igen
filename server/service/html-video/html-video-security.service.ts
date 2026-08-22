@@ -13,6 +13,8 @@ export type HtmlVideoAsset = {
   url: string;
   role?: HtmlVideoAssetRole;
   includeInVideo?: boolean;
+  width?: number;
+  height?: number;
 };
 
 export type HtmlVideoSource = {
@@ -168,13 +170,15 @@ function normalizeAssets(value: unknown): HtmlVideoAsset[] {
       url,
       role: asset.role,
       includeInVideo: asset.includeInVideo !== false,
+      width: Number.isInteger(asset.width) && Number(asset.width) > 0 ? Number(asset.width) : undefined,
+      height: Number.isInteger(asset.height) && Number(asset.height) > 0 ? Number(asset.height) : undefined,
     };
   });
 }
 
 function injectMediaAssets(html: string, assets: HtmlVideoAsset[]) {
   let result = html;
-  for (const asset of assets.filter((item) => item.includeInVideo !== false)) {
+  for (const asset of assets) {
     const slotPattern = new RegExp(
       `<([a-z][a-z0-9-]*)\\b[^>]*\\s${mediaSlotAttribute}=["']${escapeRegExp(asset.id)}["'][^>]*>\\s*<\\/\\1>`,
       "gi"
@@ -183,6 +187,7 @@ function injectMediaAssets(html: string, assets: HtmlVideoAsset[]) {
     const image = `<div class="html-video-media-slot html-video-media-slot-${role}" ${mediaSlotAttribute}="${escapeHtmlAttribute(asset.id)}"><img src="${escapeHtmlAttribute(asset.url)}" alt="${escapeHtmlAttribute(asset.name)}" /></div>`;
     const hadSlot = slotPattern.test(result);
     slotPattern.lastIndex = 0;
+    if (!hadSlot && asset.includeInVideo === false) continue;
     result = result.replace(slotPattern, image);
     if (!hadSlot) {
       const fallbackSlot = `<div ${mediaSlotAttribute}="${escapeHtmlAttribute(asset.id)}"></div>`;
@@ -212,6 +217,7 @@ function normalizeCss(value: string) {
 
 function annotateVideoScenes(html: string) {
   let sceneCount = 0;
+  const motionPresets: string[] = [];
   const annotatedHtml = html.replace(
     /<([a-z][a-z0-9-]*)\b([^>]*)>/gi,
     (tag, _name: string, attributes: string) => {
@@ -219,10 +225,14 @@ function annotateVideoScenes(html: string) {
       if (!className.split(/\s+/).includes("scene")) return tag;
       const sceneIndex = sceneCount;
       sceneCount += 1;
+      motionPresets.push(
+        className.split(/\s+/).find((name) => name.startsWith("motion-"))?.slice(7)
+          || "soft-reveal"
+      );
       return tag.replace(/>$/, ` data-html-video-scene="${sceneIndex}">`);
     }
   );
-  return { annotatedHtml, sceneCount };
+  return { annotatedHtml, sceneCount, motionPresets };
 }
 
 type NormalizedSceneMetadata = {
@@ -290,7 +300,8 @@ function normalizeSceneRanges(
 function buildSceneIsolationCss(
   sceneCount: number,
   durationSeconds: number,
-  scenePlan?: HtmlVideoScenePlanItem[]
+  scenePlan?: HtmlVideoScenePlanItem[],
+  motionPresets: string[] = []
 ) {
   if (sceneCount < 2) return "";
   const ranges = normalizeSceneRanges(sceneCount, durationSeconds, scenePlan);
@@ -307,6 +318,7 @@ function buildSceneIsolationCss(
     const fadePercent = Math.min(interval * 0.12, (0.35 / durationSeconds) * 100);
     const startIn = Math.min(end - 0.01, start + fadePercent);
     const endOut = Math.max(start + 0.01, end - fadePercent);
+    const motionPreset = motionPresets[index] || "soft-reveal";
 
     let frames: string;
     if (range.transition === "slide-left") {
@@ -335,7 +347,13 @@ function buildSceneIsolationCss(
       }
     }
 
-    const headlineKeyframe = range.purpose === "opening"
+    const headlineKeyframe = motionPreset === "kinetic-slide"
+      ? `0%,${start.toFixed(4)}%{opacity:0;transform:translateX(-86px) scale(.9);filter:blur(2px)}${Math.min(end - 0.01,start + Math.min(interval * .2,(.55 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(10px) scale(1.03);filter:blur(0)}${Math.min(end - 0.01,start + Math.min(interval * .34,(.82 / durationSeconds) * 100)).toFixed(4)}%{transform:translateX(0) scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(32px)}`
+      : motionPreset === "scale-pop"
+        ? `0%,${start.toFixed(4)}%{opacity:0;transform:scale(.68);filter:blur(6px)}${Math.min(end - 0.01,start + Math.min(interval * .2,(.55 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1.08);filter:blur(0)}${Math.min(end - 0.01,start + Math.min(interval * .34,(.82 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.92)}`
+        : motionPreset === "spotlight-sweep"
+          ? `0%,${start.toFixed(4)}%{opacity:0;transform:translateX(52px);filter:blur(12px)}${Math.min(end - 0.01,start + Math.min(interval * .3,(.9 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0);filter:blur(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(-18px)}`
+          : range.purpose === "opening"
       ? `0%,${start.toFixed(4)}%{opacity:0;transform:translateX(-36px) scale(.92);filter:blur(10px)}${Math.min(end - 0.01, start + Math.min(interval * 0.28, (0.8 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0) scale(1);filter:blur(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(20px)}`
       : range.purpose === "closing"
         ? `0%,${start.toFixed(4)}%{opacity:0;transform:scale(1.06);filter:blur(4px)}${Math.min(end - 0.01, start + Math.min(interval * 0.24, (0.7 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1);filter:blur(0)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.95)}`
@@ -352,8 +370,18 @@ function buildSceneIsolationCss(
       `@keyframes html-video-scene-${index}-body{0%,${Math.min(end - 0.01, start + (0.12 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:translateX(-24px)}${Math.min(end - 0.01, start + Math.min(interval * 0.36, (0.9 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(14px)}}`,
       `[data-html-video-scene="${index}"] .scene-media{animation:html-video-scene-${index}-media ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
       `@keyframes html-video-scene-${index}-media{0%,${start.toFixed(4)}%{opacity:0;transform:scale(.88)}${Math.min(end - 0.01, start + Math.min(interval * 0.32, (0.8 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.92)}}`,
+      `[data-html-video-scene="${index}"] .scene-background-media{animation:html-video-scene-${index}-background ${durationSeconds}s cubic-bezier(.65,0,.35,1) both!important}`,
+      `@keyframes html-video-scene-${index}-background{0%,${start.toFixed(4)}%{transform:scale(1)}${Math.min(end - 0.01, start + Math.min(interval * 0.24, (0.35 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.08)}${endOut.toFixed(4)}%{transform:scale(1.1)}${end.toFixed(4)}%,100%{transform:scale(1.06)}}`,
+      `[data-html-video-scene="${index}"] .scene-focus{animation:html-video-scene-${index}-focus ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-focus{0%,${start.toFixed(4)}%{opacity:0;transform:scale(.94)}${Math.min(end - 0.01, start + Math.min(interval * 0.18, (0.22 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1.06)}${Math.min(end - 0.01, start + Math.min(interval * 0.34, (0.42 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.98)}}`,
+      `[data-html-video-scene="${index}"] .scene-speaker{animation:html-video-scene-${index}-speaker ${durationSeconds}s ease-in-out both!important}`,
+      `@keyframes html-video-scene-${index}-speaker{0%,${start.toFixed(4)}%{transform:scale(.85)}${Math.min(end - 0.01, start + Math.min(interval * 0.22, (0.3 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.15)}${Math.min(end - 0.01, start + Math.min(interval * 0.4, (0.55 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%,100%{transform:scale(1)}}`,
       `[data-html-video-scene="${index}"] .scene-cta{animation:html-video-scene-${index}-cta ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
-      `@keyframes html-video-scene-${index}-cta{0%,${Math.min(end - 0.01, start + (0.18 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:scale(.9)}${Math.min(end - 0.01, start + Math.min(interval * 0.3, (0.7 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${Math.min(end - 0.01, start + Math.min(interval * 0.6, (1.8 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.06)}${Math.min(end - 0.01, start + Math.min(interval * 0.85, (2.6 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.95)}}`
+      `@keyframes html-video-scene-${index}-cta{0%,${Math.min(end - 0.01, start + (0.18 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:scale(.9)}${Math.min(end - 0.01, start + Math.min(interval * 0.3, (0.7 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${Math.min(end - 0.01, start + Math.min(interval * 0.6, (1.8 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.06)}${Math.min(end - 0.01, start + Math.min(interval * 0.85, (2.6 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.95)}}`,
+      `[data-html-video-scene="${index}"] .scene-pattern{animation:html-video-scene-${index}-pattern ${durationSeconds}s ease-in-out both!important}`,
+      `@keyframes html-video-scene-${index}-pattern{0%,${start.toFixed(4)}%{opacity:.12;transform:translateX(-18px) scale(1)}${Math.min(end - .01,start + interval * .3).toFixed(4)}%{opacity:.48;transform:translateX(0) scale(1.04)}${endOut.toFixed(4)}%{opacity:.4;transform:translateX(12px) scale(1.06)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(18px) scale(1.06)}}`,
+      `[data-html-video-scene="${index}"] .scene-band{animation:html-video-scene-${index}-band ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-band{0%,${start.toFixed(4)}%{opacity:0;transform:translateX(-64px) scaleX(.45)}${Math.min(end - .01,start + interval * .24).toFixed(4)}%{opacity:.9;transform:translateX(0) scaleX(1)}${endOut.toFixed(4)}%{opacity:.75;transform:translateX(18px) scaleX(1.08)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(30px) scaleX(1.08)}}`
     );
   }
   return rules.join("");
@@ -395,7 +423,7 @@ export function buildSafeHtmlVideoComposition(
   const assets = normalizeAssets(source.assets);
   const sanitizedHtml = injectMediaAssets(normalizeHtml(source.html), assets);
   const sanitizedCss = normalizeCss(source.css);
-  const { annotatedHtml, sceneCount } = annotateVideoScenes(sanitizedHtml);
+  const { annotatedHtml, sceneCount, motionPresets } = annotateVideoScenes(sanitizedHtml);
   const [width, height] = dimensions[source.aspectRatio][source.resolution];
   const mediaCss = assets.length > 0
     ? ".html-video-media-slot{position:relative;display:block;overflow:hidden;z-index:0;pointer-events:none}.html-video-media-slot img{display:block;width:100%;height:100%;object-fit:contain;object-position:center}.html-video-media-slot.html-video-media-slot-background{position:absolute;inset:0;width:100%;height:100%;z-index:0}.html-video-media-slot.html-video-media-slot-hero{position:relative!important;inset:auto!important;width:72%!important;height:46%!important;max-width:78%!important;max-height:48%!important;margin:3% auto!important;z-index:0;flex:0 0 auto}.html-video-media-slot-hero img{filter:drop-shadow(0 24px 28px rgba(15,23,42,.2))}.html-video-media-slot.html-video-media-slot-logo{position:absolute;top:6%;right:7%;width:28%;height:14%;max-height:18%;z-index:3}.html-video-media-slot.html-video-media-slot-overlay{position:absolute;inset:0;width:100%;height:100%;z-index:2}"
@@ -403,7 +431,8 @@ export function buildSafeHtmlVideoComposition(
   const sceneIsolationCss = buildSceneIsolationCss(
     sceneCount,
     source.durationSeconds,
-    source.scenePlan
+    source.scenePlan,
+    motionPresets
   );
   const ambientMotionCss = buildAmbientMotionCss(source.durationSeconds);
 

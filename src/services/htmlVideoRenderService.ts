@@ -17,11 +17,29 @@ export type HtmlVideoReferenceSlot = {
   kind: "image";
   role?: HtmlVideoAssetRole;
   includeInVideo?: boolean;
+  width?: number;
+  height?: number;
 };
 
 export type HtmlVideoAsset = HtmlVideoReferenceSlot & {
   url: string;
 };
+
+export type HtmlVideoPromptAssumptions = {
+  contentMode?: string;
+  narrationLanguage?: string;
+  durationSeconds?: number;
+  aspectRatio?: HtmlVideoAspectRatio;
+  imagePolicy?: "none" | "embed" | "reference" | "mixed";
+  inputImageCount?: number;
+};
+
+export type HtmlVideoPromptProvenance = {
+  rawUserPrompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
+};
+
 
 export type HtmlVideoScenePlanItem = {
   id: string;
@@ -39,6 +57,7 @@ export type HtmlVideoScenePlanItem = {
 export type HtmlVideoPipelineMetadata = {
   version: "2.0";
   sourceText: string;
+  promptProvenance?: HtmlVideoPromptProvenance;
   sourceContextRefs: Array<{
     id: string;
     type: "prompt" | "prompt_file" | "reference" | "asset" | "history";
@@ -66,6 +85,15 @@ export type HtmlVideoPipelineMetadata = {
     sourceText: string;
     normalizedText: string;
     sourceRefs: string[];
+    sourceKind?: "prompt" | "document" | "image_ocr" | "history";
+    confidence?: number;
+    region?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      coordinateSpace: "normalized";
+    };
     required: boolean;
     requiredVerbatim: boolean;
   }>;
@@ -91,6 +119,7 @@ export type HtmlVideoPreviewRequest = {
 
 export type HtmlVideoDraftRequest = {
   prompt: string;
+  promptProvenance?: HtmlVideoPromptProvenance;
   durationSeconds: number;
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
@@ -99,6 +128,17 @@ export type HtmlVideoDraftRequest = {
   primaryPromptContext?: string;
   primaryPromptFileName?: string;
   referenceAssets?: HtmlVideoReferenceSlot[];
+  editSource?: {
+    html: string;
+    css: string;
+    voiceScript?: string;
+    snapshotHash?: string;
+    pipeline?: HtmlVideoPipelineMetadata;
+  };
+};
+
+export type HtmlVideoRenderEditSource = NonNullable<HtmlVideoDraftRequest["editSource"]> & {
+  assets?: HtmlVideoAsset[];
 };
 
 export type HtmlVideoGenerationStatus =
@@ -189,6 +229,8 @@ export type HtmlVideoPromptHistory = {
   id: string;
   projectName: string;
   prompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
   aspectRatio: HtmlVideoAspectRatio;
   referenceNames: string[];
   parentHistoryId: string | null;
@@ -200,6 +242,8 @@ export type HtmlVideoPromptHistory = {
 export type CreateHtmlVideoPromptHistoryRequest = {
   projectName: string;
   prompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
   aspectRatio: HtmlVideoAspectRatio;
   referenceNames: string[];
   parentHistoryId?: string;
@@ -459,6 +503,10 @@ function parseHtmlVideoPipeline(value: unknown): HtmlVideoPipelineMetadata | und
     !isRecord(value) ||
     value.version !== "2.0" ||
     typeof value.sourceText !== "string" ||
+    (value.promptProvenance !== undefined && (
+      !isRecord(value.promptProvenance) ||
+      typeof value.promptProvenance.rawUserPrompt !== "string"
+    )) ||
     !isRecord(value.videoBrief) ||
     !Array.isArray(value.sourceContextRefs) ||
     !Array.isArray(value.contentUnits) ||
@@ -483,6 +531,8 @@ function parseHtmlVideoPromptHistory(raw: unknown): HtmlVideoPromptHistory {
     typeof raw.id !== "string" ||
     typeof raw.projectName !== "string" ||
     typeof raw.prompt !== "string" ||
+    (raw.masterPrompt !== undefined && typeof raw.masterPrompt !== "string") ||
+    (raw.inferredAssumptions !== undefined && !isRecord(raw.inferredAssumptions)) ||
     !validAspectRatios.has(raw.aspectRatio as HtmlVideoAspectRatio) ||
     !Array.isArray(raw.referenceNames) ||
     !raw.referenceNames.every((name) => typeof name === "string") ||
@@ -497,6 +547,10 @@ function parseHtmlVideoPromptHistory(raw: unknown): HtmlVideoPromptHistory {
     id: raw.id,
     projectName: raw.projectName,
     prompt: raw.prompt,
+    ...(typeof raw.masterPrompt === "string" ? { masterPrompt: raw.masterPrompt } : {}),
+    ...(isRecord(raw.inferredAssumptions)
+      ? { inferredAssumptions: raw.inferredAssumptions as HtmlVideoPromptAssumptions }
+      : {}),
     aspectRatio: raw.aspectRatio as HtmlVideoAspectRatio,
     referenceNames: raw.referenceNames,
     parentHistoryId: raw.parentHistoryId as string | null,
@@ -692,6 +746,7 @@ export const htmlVideoRenderService = {
         headers: authHeaders(true),
         body: JSON.stringify({
           prompt: input.prompt,
+          promptProvenance: input.promptProvenance,
           durationSeconds: input.durationSeconds,
           aspectRatio: input.aspectRatio,
           resolution: input.resolution,
@@ -700,6 +755,7 @@ export const htmlVideoRenderService = {
           primaryPromptContext: input.primaryPromptContext,
           primaryPromptFileName: input.primaryPromptFileName,
           referenceAssets: input.referenceAssets,
+          editSource: input.editSource,
         }),
         signal,
       }
@@ -761,6 +817,40 @@ export const htmlVideoRenderService = {
       throw requestError(payload, "Không thể tải trạng thái kết xuất video.");
     }
     return parseHtmlVideoRenderResponse(payload);
+  },
+
+  async getEditSource(
+    renderId: string,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoRenderEditSource> {
+    const response = await fetch(
+      `/api/v1/html-video-renders/${encodeURIComponent(renderId)}/edit-source`,
+      { headers: authHeaders(), signal }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải bản dựng gốc để chỉnh sửa video.");
+    }
+    const raw = envelopeData(payload);
+    if (!raw || typeof raw !== "object") {
+      throw new Error("Bản dựng chỉnh sửa video không hợp lệ.");
+    }
+    const value = raw as Record<string, unknown>;
+    if (typeof value.html !== "string" || !value.html.trim() || typeof value.css !== "string") {
+      throw new Error("Bản dựng gốc của video không còn khả dụng để chỉnh sửa.");
+    }
+    return {
+      html: value.html,
+      css: value.css,
+      ...(typeof value.voiceScript === "string" ? { voiceScript: value.voiceScript } : {}),
+      ...(typeof value.snapshotHash === "string" && /^[a-f0-9]{64}$/i.test(value.snapshotHash)
+        ? { snapshotHash: value.snapshotHash }
+        : {}),
+      ...(value.pipeline && typeof value.pipeline === "object"
+        ? { pipeline: value.pipeline as HtmlVideoPipelineMetadata }
+        : {}),
+      ...(Array.isArray(value.assets) ? { assets: value.assets as HtmlVideoAsset[] } : {}),
+    };
   },
 
   async delete(

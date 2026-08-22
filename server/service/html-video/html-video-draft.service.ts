@@ -1,7 +1,10 @@
 import { openrouterChat } from "../openrouter.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { htmlVideoPromptHistoryService } from "./html-video-prompt-history.service";
-import type { HtmlVideoPipelineMetadata } from "../../interface/html-video-pipeline.interface";
+import type {
+  HtmlVideoPipelineMetadata,
+  HtmlVideoPromptProvenance,
+} from "../../interface/html-video-pipeline.interface";
 import {
   HtmlVideoPipelineProviderError,
   runHtmlVideoStructuredPipeline,
@@ -13,6 +16,7 @@ import {
   type HtmlVideoAspectRatio,
   type HtmlVideoResolution,
 } from "./html-video-security.service";
+import { classifyHtmlVideoRevisionIntent } from "./html-video-revision.service";
 
 const MAX_PROMPT_LENGTH = 4_000;
 const MAX_PRIMARY_PROMPT_LENGTH = 23_000;
@@ -26,6 +30,7 @@ export type HtmlVideoDraftErrorCode =
   | "MODEL_REQUEST_REJECTED"
   | "AI_UNAVAILABLE"
   | "INVALID_OUTPUT"
+  | "LEGACY_REVISION_UNAVAILABLE"
   | "INTERNAL";
 
 const draftErrorMessages: Record<HtmlVideoDraftErrorCode, string> = {
@@ -39,6 +44,8 @@ const draftErrorMessages: Record<HtmlVideoDraftErrorCode, string> = {
     "Dịch vụ AI hiện không khả dụng. Vui lòng thử lại sau.",
   INVALID_OUTPUT:
     "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại.",
+  LEGACY_REVISION_UNAVAILABLE:
+    "Video cũ không có dữ liệu scene/timeline để chỉnh sửa an toàn. Hãy yêu cầu dựng lại toàn bộ hoặc tạo video mới.",
   INTERNAL:
     "Không thể tạo HTML/CSS video lúc này. Vui lòng thử lại sau.",
 };
@@ -72,10 +79,13 @@ export type HtmlVideoDraftReferenceSlot = {
   kind: "image";
   role?: "background" | "hero" | "logo" | "overlay";
   includeInVideo?: boolean;
+  width?: number;
+  height?: number;
 };
 
 export type HtmlVideoDraftInput = {
   prompt: string;
+  promptProvenance?: HtmlVideoPromptProvenance;
   durationSeconds: number;
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
@@ -84,6 +94,13 @@ export type HtmlVideoDraftInput = {
   primaryPromptContext?: string;
   primaryPromptFileName?: string;
   referenceAssets?: HtmlVideoDraftReferenceSlot[];
+  editSource?: {
+    html: string;
+    css: string;
+    voiceScript?: string;
+    snapshotHash?: string;
+    pipeline?: HtmlVideoPipelineMetadata;
+  };
 };
 
 export type HtmlVideoDraft = {
@@ -509,9 +526,10 @@ function buildGenerationPromptWithContext(
   referenceContext: string,
   referenceAssets: HtmlVideoDraftReferenceSlot[],
   primaryPromptContext: string,
-  primaryPromptFileName: string
+  primaryPromptFileName: string,
+  editSource?: HtmlVideoDraftInput["editSource"]
 ) {
-  if (!primaryPromptContext && !referenceContext && referenceAssets.length === 0) {
+  if (!primaryPromptContext && !referenceContext && referenceAssets.length === 0 && !editSource) {
     return buildGenerationPrompt(prompt, previousPrompts);
   }
   const historyText = previousPrompts
@@ -520,62 +538,62 @@ function buildGenerationPromptWithContext(
   const boundedHistoryText = historyText.length > MAX_HISTORY_CONTEXT_LENGTH
     ? historyText.slice(-MAX_HISTORY_CONTEXT_LENGTH)
     : historyText;
-  const historySection = boundedHistoryText
-    ? [
+  const sections: string[] = [];
+  if (boundedHistoryText) {
+    sections.push([
       "PROMPT HISTORY — preserve the user's previous topic and style decisions:",
       boundedHistoryText,
-    ].join("\n")
-    : "";
-  const primaryPromptSection = primaryPromptContext
-    ? [
+    ].join("\n"));
+  }
+  if (primaryPromptContext) {
+    sections.push([
       "PRIMARY USER PROMPT FILE — this is the complete authoritative request from the user:",
       `File: ${primaryPromptFileName}`,
       "Use every relevant requirement in this file. Do not summarize, omit, or treat it as optional reference material.",
       primaryPromptContext,
-    ].join("\n")
-    : "";
-  const assetSection = referenceAssets.length > 0
-    ? [
+    ].join("\n"));
+  }
+  if (referenceContext) {
+    sections.push([
+      "VISUAL/DOCUMENT REFERENCE CONTEXT — extracted from the files attached by the user:",
+      referenceContext.slice(0, 12_000),
+      "Treat a video reference as a reusable HTML/CSS template. Preserve composition, layer order, safe zones, typography hierarchy, transitions, and motion language while the current request controls new content.",
+    ].join("\n"));
+  }
+  if (referenceAssets.length > 0) {
+    sections.push([
       "AVAILABLE IMAGE REFERENCE SLOTS:",
       referenceAssets.map((asset) =>
         `slot=${asset.id}; name=${asset.name}; role=${asset.role || "hero"}; recommended_include=${asset.includeInVideo !== false ? "yes" : "no"}`
       ).join("\n"),
-      "For recommended_include=no, keep the image as style/content reference only and do not add its slot. For recommended_include=yes, add the slot inside every storyboard scene that needs it, or once in the most useful non-overlapping region for a non-storyboard composition.",
-    ].join("\n")
-    : "";
-  const currentRequestSection = [
-    "CURRENT USER REQUEST — highest priority:",
+      "Use only recommended slots and never invent an asset ID.",
+    ].join("\n"));
+  }
+  if (editSource) {
+    const revisionPayload = JSON.stringify({
+      html: editSource.html.slice(0, 9_000),
+      css: editSource.css.slice(0, 9_000),
+      voiceScript: String(editSource.voiceScript || "").slice(0, 3_000),
+      pipeline: editSource.pipeline || null,
+    }).slice(0, 24_000);
+    sections.push([
+      "EXISTING VIDEO REVISION SOURCE — this is the current approved composition, not a loose reference:",
+      "Preserve every scene, visual choice, animation, timing decision, and narration that the current edit request does not explicitly change.",
+      "Apply the requested changes directly to this composition. Do not redesign or recreate the whole video unless explicitly asked.",
+      revisionPayload,
+    ].join("\n"));
+  }
+  sections.push([
+    editSource ? "CURRENT EDIT REQUEST — highest priority:" : "CURRENT USER REQUEST — highest priority:",
     prompt,
-  ].join("\n");
-  const buildReferenceSection = (context: string) => [
-    "VISUAL/DOCUMENT REFERENCE CONTEXT — extracted from the files attached by the user:",
-    context,
-    "Treat a video reference in this context as a reusable HTML/CSS template, not as a fixed theme. Preserve its composition skeleton: scene/region structure, relative timing, layer order, safe zones, typography hierarchy, subtitle/CTA placement, transitions, and motion language. Let the current user request control the new theme, colors, text, images, and factual content. Keep every text block in its own non-overlapping region. Never embed the original file directly; recreate the template with safe HTML/CSS.",
-  ].join("\n");
-  const referencePlaceholder = "__REFERENCE_CONTEXT__";
-  const templateSections = [
-    historySection,
-    primaryPromptSection,
-    referenceContext ? buildReferenceSection(referencePlaceholder) : "",
-    assetSection,
-    currentRequestSection,
-  ].filter(Boolean);
-  const availableReferenceLength = Math.max(
-    0,
-    MAX_GENERATION_CONTEXT_LENGTH - templateSections.join("\n\n").length + referencePlaceholder.length
-  );
-  const boundedReferenceContext = referenceContext.slice(0, availableReferenceLength);
-  const sections: string[] = [];
-  if (historySection) sections.push(historySection);
-  if (primaryPromptSection) sections.push(primaryPromptSection);
-  if (boundedReferenceContext) {
-    sections.push(buildReferenceSection(boundedReferenceContext));
-  }
-  if (referenceAssets.length > 0) {
-    sections.push(assetSection);
-  }
-  sections.push(currentRequestSection);
-  return sections.join("\n\n");
+  ].join("\n"));
+  const combined = sections.join("\n\n");
+  if (combined.length <= MAX_GENERATION_CONTEXT_LENGTH) return combined;
+  return [
+    combined.slice(0, MAX_GENERATION_CONTEXT_LENGTH - 8_200),
+    "[AUXILIARY CONTEXT BOUNDED]",
+    combined.slice(-8_000),
+  ].join("\n\n");
 }
 
 export function createHtmlVideoDraftService(
@@ -588,6 +606,19 @@ export function createHtmlVideoDraftService(
       options: HtmlVideoDraftGenerateOptions = {}
     ): Promise<HtmlVideoDraft> {
       const prompt = normalizePrompt(input.prompt);
+      const rawUserPrompt = normalizePrimaryPromptContext(
+        input.promptProvenance?.rawUserPrompt
+      ) || prompt;
+      const productionPrompt = normalizePrimaryPromptContext(
+        input.promptProvenance?.masterPrompt
+      ) || prompt;
+      if (
+        input.editSource
+        && !input.editSource.pipeline
+        && !classifyHtmlVideoRevisionIntent(rawUserPrompt).fullRedesign
+      ) {
+        throw new HtmlVideoDraftError("LEGACY_REVISION_UNAVAILABLE");
+      }
       const primaryPromptContext = normalizePrimaryPromptContext(input.primaryPromptContext);
       const primaryPromptFileName = String(input.primaryPromptFileName || "prompt-day-du.txt")
         .trim()
@@ -610,7 +641,7 @@ export function createHtmlVideoDraftService(
             input.promptHistoryId
           );
           const historyWithoutCurrent =
-            history.at(-1)?.id === input.promptHistoryId || history.at(-1)?.prompt.trim() === prompt
+            history.at(-1)?.id === input.promptHistoryId || history.at(-1)?.prompt.trim() === rawUserPrompt
               ? history.slice(0, -1)
               : history;
           previousPrompts = historyWithoutCurrent
@@ -622,12 +653,13 @@ export function createHtmlVideoDraftService(
         }
       }
       const generationPrompt = buildGenerationPromptWithContext(
-        prompt,
+        productionPrompt,
         previousPrompts,
         referenceContext,
         referenceAssets,
         primaryPromptContext,
-        primaryPromptFileName
+        primaryPromptFileName,
+        input.editSource
       );
 
       let lastRejectionReason = "";
@@ -719,9 +751,17 @@ export function createHtmlVideoDraftService(
           }
         } catch (error) {
           lastRejectionReason = error instanceof Error ? error.message : "invalid_output";
+          const resetCompositionKeys: Array<keyof HtmlVideoPipelineCheckpoint> = [];
           if (pipelineCheckpoint.visual) {
             delete pipelineCheckpoint.visual;
-            await options.onPipelineCheckpointReset?.(["visual"]);
+            resetCompositionKeys.push("visual");
+          }
+          if (pipelineCheckpoint.revision) {
+            delete pipelineCheckpoint.revision;
+            resetCompositionKeys.push("revision");
+          }
+          if (resetCompositionKeys.length > 0) {
+            await options.onPipelineCheckpointReset?.(resetCompositionKeys);
           }
           console.warn("[HTML Video] Draft output rejected", {
             attempt: attempt + 1,

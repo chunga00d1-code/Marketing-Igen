@@ -1634,7 +1634,7 @@ export const geminiController = {
    */
   async optimizeMasterVideoPrompt(req: Request, res: Response) {
     try {
-      const { prompt, description, context, imageUris, durationSeconds, aspectRatio } = req.body;
+      const { prompt, description, context, imageUris, durationSeconds, aspectRatio, mode } = req.body;
       const rawPrompt = String(prompt || description || "").trim();
       const userId = (req as any).user?.id;
       if (!userId) {
@@ -1650,6 +1650,7 @@ export const geminiController = {
       const result = await geminiService.optimizeMasterVideoPrompt(rawPrompt, context, imageUris, {
         durationSeconds,
         aspectRatio,
+        mode,
       });
 
       if (result?.isLocalFallback !== true) {

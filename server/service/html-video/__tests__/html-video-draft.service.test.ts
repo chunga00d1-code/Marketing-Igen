@@ -107,6 +107,24 @@ test("checks balance, validates generated source, then deducts exactly once", as
   assert.equal(harness.deductCalls(), 1);
 });
 
+test("rejects a legacy revision before checking balance or calling AI", async () => {
+  const harness = createHarness();
+
+  await assert.rejects(
+    harness.service.generate(actor, {
+      ...validInput,
+      prompt: "Đổi animation tiêu đề",
+      editSource: { html: "<main>Legacy</main>", css: "" },
+    }),
+    (error: unknown) => (
+      error instanceof Error
+      && (error as Error & { code?: string }).code === "LEGACY_REVISION_UNAVAILABLE"
+    )
+  );
+  assert.equal(harness.balanceCalls(), 0);
+  assert.equal(harness.chatCalls(), 0);
+  assert.equal(harness.deductCalls(), 0);
+});
 test("sends the trimmed prompt and requested video settings to the model", async () => {
   const harness = createHarness();
 
@@ -127,6 +145,10 @@ test("sends the trimmed prompt and requested video settings to the model", async
   assert.equal(params.temperature, 0.2);
   assert.equal(params.jsonMode, true);
   assert.deepEqual(params.responseSchema, {
+    contentUnits: [{
+      id: "string", sourceText: "string", normalizedText: "string",
+      required: "boolean", requiredVerbatim: "boolean",
+    }],
     videoBrief: {
       objective: "string", tone: "string", visualStyle: "string", voiceRequired: "boolean",
       language: "string", audience: "string", cta: "string", exactPhrases: ["string"],
@@ -319,7 +341,7 @@ test("passes analyzed reference context to the model as a reusable template cons
   assert.match(String(userMessage), /VISUAL\/DOCUMENT REFERENCE CONTEXT/);
   assert.match(String(userMessage), /warm cream/);
   assert.match(String(userMessage), /reusable HTML\/CSS template/);
-  assert.match(String(userMessage), /current user request control the new theme/);
+  assert.match(String(userMessage), /current request controls new content/);
 });
 
 test("passes a long prompt as an authoritative primary prompt file context", async () => {

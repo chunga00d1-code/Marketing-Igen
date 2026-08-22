@@ -6,6 +6,7 @@ import {
   createHyperframesRenderAdapter,
   sanitizeRenderDiagnostic,
   validateProbePayload,
+  validateRepresentativeFrameSamples,
   type HyperframesRenderProcess,
   type HyperframesRenderAdapterDependencies,
 } from "../hyperframes-render-adapter";
@@ -764,4 +765,92 @@ test("sanitizes local paths and bounds renderer diagnostics", () => {
 
   assert.equal(sanitized.includes(localPath), false);
   assert.ok(sanitized.length <= 8192);
+});
+
+
+test("accepts three non-blank representative frames with visible motion", () => {
+  const sample = (timeSeconds: number, values: number[]) => ({
+    timeSeconds,
+    stdevLuma: 20,
+    edgeRatio: 0.04,
+    darkRatio: 0.01,
+    lightRatio: 0.01,
+    luma: Uint8Array.from(values),
+  });
+  assert.deepEqual(
+    validateRepresentativeFrameSamples([
+      sample(1, [20, 40, 80, 120]),
+      sample(5, [40, 60, 100, 140]),
+      sample(9, [80, 100, 140, 180]),
+    ]),
+    {
+      representativeFramesChecked: 3,
+      minimumFrameEdgeRatio: 0.04,
+      maximumFrameDifference: 60,
+    }
+  );
+});
+
+test("rejects blank and frozen representative frames", () => {
+  const visible = {
+    timeSeconds: 1,
+    stdevLuma: 20,
+    edgeRatio: 0.04,
+    darkRatio: 0.01,
+    lightRatio: 0.01,
+    luma: Uint8Array.from([20, 40, 80, 120]),
+  };
+  assert.throws(
+    () => validateRepresentativeFrameSamples([
+      visible,
+      { ...visible, timeSeconds: 5, stdevLuma: 0, edgeRatio: 0, lightRatio: 1, luma: Uint8Array.from([255, 255, 255, 255]) },
+      { ...visible, timeSeconds: 9, luma: Uint8Array.from([80, 100, 140, 180]) },
+    ]),
+    (error: unknown) => error instanceof VideoRenderAdapterError && error.code === "RENDER_OUTPUT_INVALID"
+  );
+  assert.throws(
+    () => validateRepresentativeFrameSamples([
+      visible,
+      { ...visible, timeSeconds: 5 },
+      { ...visible, timeSeconds: 9 },
+    ]),
+    (error: unknown) => error instanceof VideoRenderAdapterError && error.code === "RENDER_OUTPUT_INVALID"
+  );
+});
+
+test("runs representative frame verification before uploading", async () => {
+  const child = new FakeRenderProcess();
+  const events: string[] = [];
+  const adapter = createHyperframesRenderAdapter(createDependencies({
+    spawnProcess: () => {
+      queueMicrotask(() => child.emit("close", 0));
+      return child;
+    },
+    verifyFrames: async () => {
+      events.push("verify");
+      return {
+        representativeFramesChecked: 3,
+        minimumFrameEdgeRatio: 0.02,
+        maximumFrameDifference: 12,
+      };
+    },
+    uploadOutput: async () => {
+      events.push("upload");
+      return "https://cdn.example/verified.mp4";
+    },
+  }));
+
+  const result = await adapter.render(validInput, {
+    signal: new AbortController().signal,
+    timeoutMs: 5_000,
+    temporaryDirectory: "C:/tmp/render-frame-qa",
+    onProgress: () => undefined,
+  });
+
+  assert.deepEqual(events, ["verify", "upload"]);
+  assert.deepEqual(result.diagnostics, {
+    representativeFramesChecked: 3,
+    minimumFrameEdgeRatio: 0.02,
+    maximumFrameDifference: 12,
+  });
 });

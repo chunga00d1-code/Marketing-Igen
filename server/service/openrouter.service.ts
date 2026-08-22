@@ -49,6 +49,11 @@ export interface OpenRouterChatParams {
   /** Optional JSON schema — injected into system prompt as instruction */
   responseSchema?: object;
   maxRetries?: number;
+  reasoning?: {
+    effort?: "none" | "minimal" | "low" | "medium" | "high";
+    maxTokens?: number;
+    exclude?: boolean;
+  };
 }
 
 /**
@@ -63,6 +68,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
     maxRetries = 4,
     maxTokens,
     timeoutMs = 45_000,
+    reasoning,
   } = params;
   const apiKey = getApiKey();
 
@@ -93,6 +99,13 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
     temperature,
   };
   if (maxTokens) body.max_tokens = maxTokens;
+  if (reasoning) {
+    body.reasoning = {
+      ...(reasoning.effort ? { effort: reasoning.effort } : {}),
+      ...(reasoning.maxTokens ? { max_tokens: reasoning.maxTokens } : {}),
+      ...(reasoning.exclude !== undefined ? { exclude: reasoning.exclude } : {}),
+    };
+  }
 
   if (jsonMode || responseSchema) {
     if (!mappedModel.includes("perplexity")) {
@@ -129,12 +142,22 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
         const err = new Error(publicMessage) as any;
         err.providerMessage = errText;
         err.status = response.status;
+        const retryAfterSeconds = Number(response.headers.get("retry-after"));
+        if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+          err.retryAfterMs = retryAfterSeconds * 1_000;
+        }
         throw err;
       }
 
       const data = (await response.json()) as any;
       const text: string = data.choices?.[0]?.message?.content || "";
       const elapsed = Date.now() - startTime;
+      if (!text.trim()) {
+        const emptyError = new Error("OpenRouter returned an empty completion.") as any;
+        emptyError.status = 502;
+        emptyError.providerCode = "EMPTY_COMPLETION";
+        throw emptyError;
+      }
       console.log(`[OpenRouter] Success | model=${data.model || mappedModel} | ${elapsed}ms | len=${text.length}`);
       return { text };
     } catch (error: any) {
@@ -148,8 +171,9 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
         msg.includes("aborted") || msg.includes("timed out");
 
       if (isRetryable && attempt < maxRetries) {
-        console.warn(`[OpenRouter] Attempt ${attempt} failed, retrying in ${delay}ms... Error: ${msg}`);
-        await new Promise((r) => setTimeout(r, delay));
+        const retryDelay = Math.max(delay, Number(error?.retryAfterMs) || 0);
+        console.warn(`[OpenRouter] Attempt ${attempt} failed, retrying in ${retryDelay}ms... Error: ${msg}`);
+        await new Promise((r) => setTimeout(r, retryDelay));
         delay *= 2;
       } else {
         break;

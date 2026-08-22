@@ -23,6 +23,9 @@ type HtmlVideoRenderServiceContract = {
   getRender(
     ...args: Parameters<typeof htmlVideoRenderService.getRender>
   ): Promise<unknown>;
+  getRenderEditSource(
+    ...args: Parameters<typeof htmlVideoRenderService.getRenderEditSource>
+  ): Promise<unknown>;
   listRenders(
     ...args: Parameters<typeof htmlVideoRenderService.listRenders>
   ): Promise<unknown>;
@@ -107,6 +110,10 @@ const draftErrorResponses: Record<
   INVALID_OUTPUT: {
     status: 422,
     message: "AI không tạo được HTML/CSS video hợp lệ. Vui lòng thử lại.",
+  },
+  LEGACY_REVISION_UNAVAILABLE: {
+    status: 409,
+    message: "Video cũ không có dữ liệu scene/timeline để chỉnh sửa an toàn. Hãy yêu cầu dựng lại toàn bộ hoặc tạo video mới.",
   },
   INTERNAL: {
     status: 500,
@@ -194,6 +201,20 @@ export function createHtmlVideoRenderController(
           req.params.renderId
         );
         return res.json({ success: true, data: render });
+      } catch (error) {
+        return respondError(res, error);
+      }
+    },
+
+    async getEditSource(req: AuthenticatedRequest, res: Response) {
+      try {
+        const editSource = await dependencies.service.getRenderEditSource(
+          actorFrom(req),
+          req.params.renderId
+        );
+        res.setHeader("Cache-Control", "private, no-store");
+        res.setHeader("Pragma", "no-cache");
+        return res.json({ success: true, data: editSource });
       } catch (error) {
         return respondError(res, error);
       }

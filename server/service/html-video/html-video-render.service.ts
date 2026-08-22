@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,7 @@ import {
 } from "../../model/html-video-render.model";
 import {
   buildSafeHtmlVideoComposition,
+  type HtmlVideoAsset,
   type HtmlVideoSource,
 } from "./html-video-security.service";
 import {
@@ -73,6 +74,15 @@ export type HtmlVideoRenderPublic = {
   promptHistoryId: string | null;
   voiceEnabled: boolean;
   voiceStatus: "disabled" | "queued" | "generating" | "ready" | "failed";
+};
+
+export type HtmlVideoRenderEditSource = {
+  html: string;
+  css: string;
+  voiceScript: string;
+  snapshotHash: string;
+  pipeline?: HtmlVideoPipelineMetadata;
+  assets?: HtmlVideoAsset[];
 };
 
 export type HtmlVideoRenderHistoryFilter = "all" | "active" | "completed" | "failed";
@@ -212,6 +222,33 @@ function logRenderFailure(renderId: string, error: unknown) {
   console.error("[HTML Video] Render attempt failed", diagnostic);
 }
 
+function decodeHtmlAttribute(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function assetsFromCompositionSnapshot(compositionHtml: string) {
+  const assets = new Map<string, HtmlVideoAsset>();
+  const pattern = /<div class="html-video-media-slot html-video-media-slot-(background|hero|logo|overlay)" data-media-slot="([a-zA-Z0-9_-]{1,80})"><img src="([^"]+)" alt="([^"]*)"\s*\/><\/div>/gi;
+  for (const match of compositionHtml.matchAll(pattern)) {
+    const id = match[2];
+    if (assets.has(id) || assets.size >= 6) continue;
+    assets.set(id, {
+      id,
+      name: decodeHtmlAttribute(match[4]) || "Ảnh tham chiếu",
+      kind: "image",
+      url: decodeHtmlAttribute(match[3]),
+      role: match[1].toLowerCase() as HtmlVideoAsset["role"],
+      includeInVideo: true,
+    });
+  }
+  return [...assets.values()];
+}
+
 export const htmlVideoRenderService = {
   async createRender(
     actor: HtmlVideoActor,
@@ -238,6 +275,7 @@ export const htmlVideoRenderService = {
         sanitizedCss: safeComposition.sanitizedCss,
         compositionHtml: safeComposition.compositionHtml,
         ...(input.pipeline ? { pipelineSnapshot: input.pipeline } : {}),
+        ...(input.assets?.length ? { assetsSnapshot: input.assets } : {}),
         voiceScript,
         voiceStatus: voiceScript ? "queued" : "disabled",
         durationSeconds: input.durationSeconds,
@@ -277,6 +315,53 @@ export const htmlVideoRenderService = {
       );
     }
     return serializeRender(render);
+  },
+
+  async getRenderEditSource(
+    actor: HtmlVideoActor,
+    renderId: string
+  ): Promise<HtmlVideoRenderEditSource> {
+    if (!mongoose.isValidObjectId(renderId)) {
+      throw new Error("Mã lần kết xuất video không hợp lệ.");
+    }
+    const render = await HtmlVideoRenderModel.findOne({
+      _id: renderId,
+      userId: actor.id,
+      companyCode: actor.companyCode,
+    })
+      .select("+sanitizedHtml +sanitizedCss +voiceScript +pipelineSnapshot +assetsSnapshot +compositionHtml")
+      .lean();
+    if (!render) {
+      throw new Error(
+        "Không tìm thấy lần kết xuất video hoặc bạn không có quyền truy cập."
+      );
+    }
+    const html = String(render.sanitizedHtml || "").trim();
+    if (!html) {
+      throw new Error("Bản dựng gốc của video không còn khả dụng để chỉnh sửa.");
+    }
+    return {
+      html,
+      css: String(render.sanitizedCss || ""),
+      voiceScript: String(render.voiceScript || ""),
+      snapshotHash: createHash("sha256")
+        .update(JSON.stringify({
+          html,
+          css: String(render.sanitizedCss || ""),
+          voiceScript: String(render.voiceScript || ""),
+          pipeline: render.pipelineSnapshot || null,
+        }))
+        .digest("hex"),
+      ...(render.pipelineSnapshot
+        ? { pipeline: render.pipelineSnapshot as HtmlVideoPipelineMetadata }
+        : {}),
+      ...(() => {
+        const assets = render.assetsSnapshot?.length
+          ? render.assetsSnapshot
+          : assetsFromCompositionSnapshot(String(render.compositionHtml || ""));
+        return assets.length > 0 ? { assets } : {};
+      })(),
+    };
   },
 
   async deleteRender(
@@ -396,6 +481,15 @@ export const htmlVideoRenderService = {
       let voiceAudioSampleRate: number | undefined;
       let voiceAudioChannels: number | undefined;
       let voiceSegments: VideoRenderVoiceSegment[] | undefined;
+      let voiceProvenance: {
+        voiceModel: string;
+        voiceName: string;
+        voiceFormat: "mp3" | "pcm";
+        voiceSampleRate?: number;
+        voiceChannels?: number;
+        voicePlaybackRate: number;
+        voiceGeneratedAt: Date;
+      } | undefined;
       if (voiceScript) {
         await mkdir(temporaryDirectory, { recursive: true });
         await HtmlVideoRenderModel.updateOne(
@@ -408,7 +502,14 @@ export const htmlVideoRenderService = {
             },
           }
         );
+        const narrationLanguage = render.pipelineSnapshot?.videoBrief?.videoSpec?.language;
         const scenePlan = render.pipelineSnapshot?.scenePlan;
+        const verificationTimesSeconds = Array.isArray(scenePlan) && scenePlan.length >= 3
+          ? Array.from(new Set([0, Math.floor(scenePlan.length / 2), scenePlan.length - 1]))
+              .map((index) => scenePlan[index])
+              .filter(Boolean)
+              .map((scene) => (scene.startSeconds + scene.endSeconds) / 2)
+          : undefined;
         const hasSceneNarration = Array.isArray(scenePlan) &&
           scenePlan.length > 0 &&
           scenePlan.every((scene) => String(scene.narration || "").trim());
@@ -418,7 +519,17 @@ export const htmlVideoRenderService = {
             const durationSeconds = scene.endSeconds - scene.startSeconds;
             const voice = await htmlVideoTtsService.generate(scene.narration, {
               durationSeconds,
+              language: narrationLanguage,
             });
+            voiceProvenance = {
+              voiceModel: voice.model,
+              voiceName: voice.voice,
+              voiceFormat: voice.format,
+              ...(voice.sampleRate ? { voiceSampleRate: voice.sampleRate } : {}),
+              ...(voice.channels ? { voiceChannels: voice.channels } : {}),
+              voicePlaybackRate: voice.playbackRate,
+              voiceGeneratedAt: new Date(),
+            };
             const audioPath = join(
               temporaryDirectory,
               `voice-scene-${String(index + 1).padStart(2, "0")}.${voice.format}`
@@ -439,7 +550,18 @@ export const htmlVideoRenderService = {
         } else {
           const voice = await htmlVideoTtsService.generate(voiceScript, {
             durationSeconds: render.durationSeconds,
+          ...(verificationTimesSeconds ? { verificationTimesSeconds } : {}),
+            language: narrationLanguage,
           });
+          voiceProvenance = {
+            voiceModel: voice.model,
+            voiceName: voice.voice,
+            voiceFormat: voice.format,
+            ...(voice.sampleRate ? { voiceSampleRate: voice.sampleRate } : {}),
+            ...(voice.channels ? { voiceChannels: voice.channels } : {}),
+            voicePlaybackRate: voice.playbackRate,
+            voiceGeneratedAt: new Date(),
+          };
           voiceAudioPath = join(
             temporaryDirectory,
             voice.format === "pcm" ? "voice.pcm" : "voice.mp3"
@@ -449,6 +571,12 @@ export const htmlVideoRenderService = {
           voiceAudioSampleRate = voice.sampleRate;
           voiceAudioChannels = voice.channels;
         }
+      }
+      if (voiceProvenance) {
+        await HtmlVideoRenderModel.updateOne(
+          { _id: renderId, status: "rendering" },
+          { $set: voiceProvenance }
+        );
       }
       const result = await adapter.render(
         {

@@ -1,6 +1,7 @@
 import Joi from "joi";
 
 const maximumSourceBytes = 100 * 1024;
+const maximumContentUnits = 24;
 
 function byteLimitedString(label: "HTML" | "CSS", allowEmpty: boolean) {
   let schema = Joi.string().custom((value: string, helpers) => {
@@ -35,6 +36,8 @@ const htmlVideoAssetFields = {
     .required(),
   role: Joi.string().valid("background", "hero", "logo", "overlay").optional(),
   includeInVideo: Joi.boolean().default(true),
+  width: Joi.number().integer().min(1).max(20_000).optional(),
+  height: Joi.number().integer().min(1).max(20_000).optional(),
 };
 
 const htmlVideoReferenceSlotFields = {
@@ -43,13 +46,15 @@ const htmlVideoReferenceSlotFields = {
   kind: Joi.string().valid("image").required(),
   role: Joi.string().valid("background", "hero", "logo", "overlay").optional(),
   includeInVideo: Joi.boolean().default(true),
+  width: Joi.number().integer().min(1).max(20_000).optional(),
+  height: Joi.number().integer().min(1).max(20_000).optional(),
 };
 
 const htmlVideoScenePlanItemSchema = Joi.object({
   id: Joi.string().pattern(/^[a-zA-Z0-9_-]{1,80}$/).required(),
-  order: Joi.number().integer().min(0).max(15).required(),
+  order: Joi.number().integer().min(0).max(maximumContentUnits - 1).required(),
   purpose: Joi.string().valid("opening", "content", "closing").required(),
-  sourceUnitIds: Joi.array().items(Joi.string().max(80)).max(12).required(),
+  sourceUnitIds: Joi.array().items(Joi.string().max(80)).max(maximumContentUnits).required(),
   onScreenText: Joi.array().items(Joi.string().max(1_000)).max(5).required(),
   narration: Joi.string().max(2_000).allow("").required(),
   startSeconds: Joi.number().min(0).max(180).required(),
@@ -61,6 +66,18 @@ const htmlVideoScenePlanItemSchema = Joi.object({
 const htmlVideoPipelineSchema = Joi.object({
   version: Joi.string().valid("2.0").required(),
   sourceText: Joi.string().max(23_000).required(),
+  promptProvenance: Joi.object({
+    rawUserPrompt: Joi.string().trim().min(1).max(23_000).required(),
+    masterPrompt: Joi.string().trim().min(1).max(23_000).optional(),
+    inferredAssumptions: Joi.object({
+      contentMode: Joi.string().max(80).optional(),
+      narrationLanguage: Joi.string().max(80).optional(),
+      durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+      aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").optional(),
+      imagePolicy: Joi.string().valid("none", "embed", "reference", "mixed").optional(),
+      inputImageCount: Joi.number().integer().min(0).max(6).optional(),
+    }).optional(),
+  }).optional(),
   sourceContextRefs: Joi.array().items(Joi.object({
     id: Joi.string().max(120).required(),
     type: Joi.string().valid("prompt", "prompt_file", "reference", "asset", "history").required(),
@@ -84,14 +101,23 @@ const htmlVideoPipelineSchema = Joi.object({
   }).required(),
   contentUnits: Joi.array().items(Joi.object({
     id: Joi.string().max(80).required(),
-    order: Joi.number().integer().min(0).max(11).required(),
+    order: Joi.number().integer().min(0).max(maximumContentUnits - 1).required(),
     sourceText: Joi.string().max(4_000).required(),
     normalizedText: Joi.string().max(4_000).required(),
     sourceRefs: Joi.array().items(Joi.string().max(120)).max(8).required(),
+    sourceKind: Joi.string().valid("prompt", "document", "image_ocr", "history").optional(),
+    confidence: Joi.number().min(0).max(1).optional(),
+    region: Joi.object({
+      x: Joi.number().min(0).max(1).required(),
+      y: Joi.number().min(0).max(1).required(),
+      width: Joi.number().greater(0).max(1).required(),
+      height: Joi.number().greater(0).max(1).required(),
+      coordinateSpace: Joi.string().valid("normalized").required(),
+    }).optional(),
     required: Joi.boolean().required(),
     requiredVerbatim: Joi.boolean().required(),
-  })).min(1).max(12).required(),
-  scenePlan: Joi.array().items(htmlVideoScenePlanItemSchema).min(1).max(16).required(),
+  })).min(1).max(maximumContentUnits).required(),
+  scenePlan: Joi.array().items(htmlVideoScenePlanItemSchema).min(1).max(maximumContentUnits).required(),
   findings: Joi.array().items(Joi.object({
     stage: Joi.string().valid("grounding", "planning", "visual", "voice", "validation").required(),
     code: Joi.string().max(120).required(),
@@ -101,16 +127,25 @@ const htmlVideoPipelineSchema = Joi.object({
   })).max(40).required(),
 });
 
+const htmlVideoEditSourceSchema = Joi.object({
+  html: byteLimitedString("HTML", false),
+  css: byteLimitedString("CSS", true),
+  voiceScript: Joi.string().trim().max(8_000).allow("").optional(),
+  snapshotHash: Joi.string().hex().length(64).optional(),
+  pipeline: htmlVideoPipelineSchema.optional(),
+});
+
 const htmlVideoFields = {
   html: byteLimitedString("HTML", false),
   css: byteLimitedString("CSS", true),
   assets: Joi.array().items(Joi.object(htmlVideoAssetFields)).max(6).default([]),
-  scenePlan: Joi.array().items(htmlVideoScenePlanItemSchema).min(1).max(16).optional(),
+  scenePlan: Joi.array().items(htmlVideoScenePlanItemSchema).min(1).max(maximumContentUnits).optional(),
   ...htmlVideoSettingFields,
 };
 
 const htmlVideoDraftKeys = new Set([
   "prompt",
+  "promptProvenance",
   "durationSeconds",
   "aspectRatio",
   "resolution",
@@ -119,6 +154,7 @@ const htmlVideoDraftKeys = new Set([
   "primaryPromptContext",
   "primaryPromptFileName",
   "referenceAssets",
+  "editSource",
   "idempotencyKey",
 ]);
 
@@ -132,8 +168,21 @@ export const htmlVideoContextPreviewBodySchema = Joi.object({
   referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(6).default([]),
 });
 
+
 export const htmlVideoDraftBodySchema = Joi.object({
   prompt: Joi.string().trim().min(1).max(4_000).required(),
+  promptProvenance: Joi.object({
+    rawUserPrompt: Joi.string().trim().min(1).max(23_000).required(),
+    masterPrompt: Joi.string().trim().min(1).max(23_000).optional(),
+    inferredAssumptions: Joi.object({
+      contentMode: Joi.string().max(80).optional(),
+      narrationLanguage: Joi.string().max(80).optional(),
+      durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+      aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").optional(),
+      imagePolicy: Joi.string().valid("none", "embed", "reference", "mixed").optional(),
+      inputImageCount: Joi.number().integer().min(0).max(6).optional(),
+    }).optional(),
+  }).optional(),
   promptHistoryId: Joi.string().hex().length(24).optional(),
   referenceContext: Joi.string().trim().max(24_000).optional(),
   primaryPromptContext: Joi.string().trim().max(23_000).optional(),
@@ -142,6 +191,7 @@ export const htmlVideoDraftBodySchema = Joi.object({
     .items(Joi.object(htmlVideoReferenceSlotFields))
     .max(6)
     .default([]),
+  editSource: htmlVideoEditSourceSchema.optional(),
   ...htmlVideoSettingFields,
 }).custom((value, helpers) => {
   const unknownKey = Object.keys(value).find(
@@ -171,6 +221,7 @@ export const retryHtmlVideoGenerationBodySchema = Joi.object({
 export const createHtmlVideoRenderBodySchema = Joi.object({
   ...htmlVideoFields,
   voiceScript: Joi.string().trim().max(8_000).allow("").optional(),
+  snapshotHash: Joi.string().hex().length(64).optional(),
   pipeline: htmlVideoPipelineSchema.optional(),
   idempotencyKey: Joi.string()
     .pattern(/^[a-zA-Z0-9_-]{12,100}$/)
@@ -191,6 +242,15 @@ export const htmlVideoRenderListQuerySchema = Joi.object({
 export const createHtmlVideoPromptHistoryBodySchema = Joi.object({
   projectName: Joi.string().trim().min(1).max(180).required(),
   prompt: Joi.string().trim().min(3).max(23_000).required(),
+  masterPrompt: Joi.string().trim().min(1).max(23_000).optional(),
+  inferredAssumptions: Joi.object({
+    contentMode: Joi.string().max(80).optional(),
+    narrationLanguage: Joi.string().max(80).optional(),
+    durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+    aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").optional(),
+    imagePolicy: Joi.string().valid("none", "embed", "reference", "mixed").optional(),
+    inputImageCount: Joi.number().integer().min(0).max(6).optional(),
+  }).optional(),
   aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
   referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(7).default([]),
   parentHistoryId: Joi.string().hex().length(24).optional(),
