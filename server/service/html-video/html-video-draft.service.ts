@@ -1,7 +1,10 @@
 import { openrouterChat } from "../openrouter.service";
 import { API_COSTS, walletService } from "../wallet.service";
 import { htmlVideoPromptHistoryService } from "./html-video-prompt-history.service";
-import type { HtmlVideoPipelineMetadata } from "../../interface/html-video-pipeline.interface";
+import type {
+  HtmlVideoPipelineMetadata,
+  HtmlVideoPromptProvenance,
+} from "../../interface/html-video-pipeline.interface";
 import {
   HtmlVideoPipelineProviderError,
   runHtmlVideoStructuredPipeline,
@@ -82,6 +85,7 @@ export type HtmlVideoDraftReferenceSlot = {
 
 export type HtmlVideoDraftInput = {
   prompt: string;
+  promptProvenance?: HtmlVideoPromptProvenance;
   durationSeconds: number;
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
@@ -602,10 +606,16 @@ export function createHtmlVideoDraftService(
       options: HtmlVideoDraftGenerateOptions = {}
     ): Promise<HtmlVideoDraft> {
       const prompt = normalizePrompt(input.prompt);
+      const rawUserPrompt = normalizePrimaryPromptContext(
+        input.promptProvenance?.rawUserPrompt
+      ) || prompt;
+      const productionPrompt = normalizePrimaryPromptContext(
+        input.promptProvenance?.masterPrompt
+      ) || prompt;
       if (
         input.editSource
         && !input.editSource.pipeline
-        && !classifyHtmlVideoRevisionIntent(prompt).fullRedesign
+        && !classifyHtmlVideoRevisionIntent(rawUserPrompt).fullRedesign
       ) {
         throw new HtmlVideoDraftError("LEGACY_REVISION_UNAVAILABLE");
       }
@@ -631,7 +641,7 @@ export function createHtmlVideoDraftService(
             input.promptHistoryId
           );
           const historyWithoutCurrent =
-            history.at(-1)?.id === input.promptHistoryId || history.at(-1)?.prompt.trim() === prompt
+            history.at(-1)?.id === input.promptHistoryId || history.at(-1)?.prompt.trim() === rawUserPrompt
               ? history.slice(0, -1)
               : history;
           previousPrompts = historyWithoutCurrent
@@ -643,7 +653,7 @@ export function createHtmlVideoDraftService(
         }
       }
       const generationPrompt = buildGenerationPromptWithContext(
-        prompt,
+        productionPrompt,
         previousPrompts,
         referenceContext,
         referenceAssets,

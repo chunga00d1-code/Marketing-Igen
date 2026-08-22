@@ -22,6 +22,7 @@ import {
   inferHtmlVideoAspectRatio,
   inferExplicitHtmlVideoDuration,
   automaticDuration,
+  inferHtmlVideoReferenceDuration,
   estimateHtmlVideoGenerationProgress,
   formatHtmlVideoElapsedTime,
   getHtmlVideoGenerationStage,
@@ -101,7 +102,7 @@ test("renders prompt generation controls and the exact wallet cost", () => {
     source,
     /if \(!aspectRatioLocked && effectiveAspectRatio !== aspectRatio\)[\s\S]*?setAspectRatioState\(effectiveAspectRatio\);\s*}\s*if \(!trimmedPrompt \|\| isCreating \|\| referencesAnalyzing\) return;/
   );
-  assert.match(source, /automaticDuration\(trimmedPrompt\)/);
+  assert.match(source, /automaticDuration\(trimmedPrompt, referenceContext\)/);
   assert.doesNotMatch(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration|html-video-duration/);
   assert.doesNotMatch(source, /type="number"/);
   assert.doesNotMatch(source, /Tùy chỉnh cài đặt/);
@@ -150,6 +151,15 @@ test("recognizes explicit numeric and Vietnamese word durations", () => {
   assert.equal(automaticDuration("Create a 20-second product teaser"), 20);
   assert.equal(automaticDuration("Video dài mười lăm giây với CTA cuối"), 15);
   assert.equal(automaticDuration("Thời lượng: 45 giây"), 45);
+  const orderedImageContext = JSON.stringify({
+    ordered_content_units: Array.from({ length: 15 }, (_, index) => ({
+      order: index + 1,
+      text: `job-${index + 1}`,
+      confidence: 0.99,
+    })),
+  });
+  assert.equal(inferHtmlVideoReferenceDuration(orderedImageContext), 30);
+  assert.equal(automaticDuration("Đọc lần lượt bảng này", orderedImageContext), 30);
   assert.equal(inferExplicitHtmlVideoDuration("Đổi animation của tiêu đề"), null);
   assert.equal(inferExplicitHtmlVideoDuration("Cho animation tiêu đề chạy trong 2s"), null);
   assert.equal(inferExplicitHtmlVideoDuration("Video có animation tiêu đề chạy trong 2s"), null);
@@ -535,8 +545,15 @@ test("renders the optimize master prompt button and undo button in the prompt pa
 
   assert.match(
     source,
-    /const masterPromptDuration = explicitDuration[\s\S]{0,240}referenceContext\.length > 420[\s\S]{0,240}optimizeMasterPrompt\(rawPrompt, referenceContext, imageUris, \{[\s\S]{0,120}durationSeconds: masterPromptDuration,[\s\S]{0,100}aspectRatio: effectiveAspectRatio/
+    /const masterPromptDuration = explicitDuration[\s\S]{0,420}referenceContext\.length > 420[\s\S]{0,300}optimizeMasterPrompt\(rawPrompt, referenceContext, imageUris, \{[\s\S]{0,120}durationSeconds: masterPromptDuration/
   );
+  assert.match(source, /rawUserPrompt: rawPrompt/);
+  assert.match(source, /masterPrompt: optimized\.masterPrompt\.trim\(\)/);
+  assert.match(source, /prompt: authoritativePrompt/);
+  assert.match(source, /promptProvenance: candidate\.promptProvenance/);
+  assert.match(source, /mode: revisionMode \? "revision" : "create"/);
+  assert.match(source, /setPrompt\(editingExistingVideo \? "" : editableCandidate\.prompt\)/);
+  assert.match(source, /editingCandidate && explicitlyRequestedDuration === null[\s\S]{0,120}editingCandidate\.durationSeconds/);
   assert.match(markup, /Tối ưu prompt/);
   assert.match(markup, /html-video-optimize-prompt-btn/);
 });

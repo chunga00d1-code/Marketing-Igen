@@ -11,6 +11,21 @@ export type HtmlVideoSourceReference = {
   label: string;
 };
 
+export type HtmlVideoPromptAssumptions = {
+  contentMode?: string;
+  narrationLanguage?: string;
+  durationSeconds?: number;
+  aspectRatio?: HtmlVideoAspectRatio;
+  imagePolicy?: "none" | "embed" | "reference" | "mixed";
+  inputImageCount?: number;
+};
+
+export type HtmlVideoPromptProvenance = {
+  rawUserPrompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
+};
+
 export type HtmlVideoSpec = {
   aspectRatio: HtmlVideoAspectRatio;
   resolution: HtmlVideoResolution;
@@ -36,6 +51,15 @@ export type HtmlVideoContentUnit = {
   sourceText: string;
   normalizedText: string;
   sourceRefs: string[];
+  sourceKind?: "prompt" | "document" | "image_ocr" | "history";
+  confidence?: number;
+  region?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    coordinateSpace: "normalized";
+  };
   required: boolean;
   requiredVerbatim: boolean;
 };
@@ -75,6 +99,10 @@ export type HtmlVideoVisualScene = {
   layout: "centered" | "split-left" | "split-right" | "statement" | "cta";
   emphasis?: "hero" | "standard" | "climax";
   accentStyle?: "glow" | "border" | "gradient-shift" | "minimal";
+  compositionStyle?: "editorial" | "kinetic" | "spotlight" | "showcase" | "minimal";
+  surfaceStyle?: "glass" | "solid" | "outline" | "none";
+  backgroundStyle?: "mesh" | "grid" | "rays" | "spotlight" | "gradient";
+  motionPreset?: "soft-reveal" | "kinetic-slide" | "scale-pop" | "spotlight-sweep";
   eyebrow: string;
   headline: string;
   body: string;
@@ -109,6 +137,7 @@ export type HtmlVideoPipelineFinding = {
 export type HtmlVideoPipelineMetadata = {
   version: typeof HTML_VIDEO_PIPELINE_VERSION;
   sourceText: string;
+  promptProvenance?: HtmlVideoPromptProvenance;
   sourceContextRefs: HtmlVideoSourceReference[];
   videoBrief: HtmlVideoBrief;
   contentUnits: HtmlVideoContentUnit[];

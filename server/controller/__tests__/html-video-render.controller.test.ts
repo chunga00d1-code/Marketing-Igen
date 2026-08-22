@@ -68,6 +68,15 @@ type DependencyOverrides = {
 const validPromptHistoryBody = {
   projectName: "Video giới thiệu sản phẩm",
   prompt: "Tạo video giới thiệu sản phẩm mới với ưu đãi và CTA mua ngay.",
+  masterPrompt: "# VIDEO BRIEF\n# STORYBOARD\n## SCENE 1\n- Voice-over: Giới thiệu sản phẩm.",
+  inferredAssumptions: {
+    contentMode: "product",
+    narrationLanguage: "Vietnamese",
+    durationSeconds: 15,
+    aspectRatio: "9:16",
+    imagePolicy: "none",
+    inputImageCount: 0,
+  },
   aspectRatio: "9:16",
   referenceNames: ["brand-guideline.md"],
 };

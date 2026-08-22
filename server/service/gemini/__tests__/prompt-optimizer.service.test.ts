@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   buildHtmlVideoMasterPromptFallback,
+  geminiPromptOptimizerService,
   isValidHtmlVideoMasterPrompt,
+  normalizeHtmlVideoReferenceAnalysis,
 } from "../prompt-optimizer.service";
 
 test("builds a source-faithful storyboard for the requested duration and aspect ratio", () => {
@@ -121,4 +124,84 @@ test("rejects optimized storyboards with timing gaps or rushed scene narration",
     ),
     false
   );
+});
+
+test("turns a short follow-up into an in-place revision contract without resetting duration", async () => {
+  const result = await geminiPromptOptimizerService.optimizeMasterVideoPrompt(
+    "Làm khung highlight nhỏ hơn và giữ nguyên các phần khác",
+    undefined,
+    undefined,
+    { durationSeconds: 90, aspectRatio: "9:16", mode: "revision" }
+  );
+
+  assert.match(result.master_prompt, /VIDEO REVISION REQUEST/);
+  assert.match(result.master_prompt, /Modify the current approved video in place/);
+  assert.match(result.master_prompt, /90 seconds/);
+  assert.equal(result.assumptions?.durationSeconds, 90);
+  assert.equal(result.isLocalFallback, true);
+});
+
+
+test("normalizes ordered OCR units and clamps image bounding boxes", () => {
+  const result = normalizeHtmlVideoReferenceAnalysis({
+    detectedLanguage: "English",
+    orderedContentUnits: [
+      {
+        order: 2,
+        text: " singer ",
+        confidence: 1.4,
+        boundingBox: { x: 0.82, y: 0.1, width: 0.4, height: 0.2 },
+      },
+      {
+        order: 1,
+        label: "teacher",
+        confidence: 0.98,
+        region: { left: 0.05, top: 0.1, w: 0.2, h: 0.2 },
+      },
+      { order: 3, text: "   ", confidence: 0.5 },
+    ],
+  });
+
+  assert.equal(result.detected_language, "English");
+  assert.deepEqual(result.ordered_content_units, [
+    {
+      order: 1,
+      text: "teacher",
+      confidence: 0.98,
+      bounding_box: { x: 0.05, y: 0.1, width: 0.2, height: 0.2 },
+    },
+    {
+      order: 2,
+      text: "singer",
+      confidence: 1,
+      bounding_box: { x: 0.82, y: 0.1, width: 0.18, height: 0.2 },
+    },
+  ]);
+});
+
+test("keeps the image-analysis response contract stable when OCR finds no items", () => {
+  assert.deepEqual(
+    normalizeHtmlVideoReferenceAnalysis({ motion_analysis: "subtle motion" }),
+    {
+      motion_analysis: "subtle motion",
+      detected_language: "",
+      ordered_content_units: [],
+    }
+  );
+});
+
+
+test("requests ordered OCR units and normalized bounding boxes in the provider schema", () => {
+  const source = readFileSync(
+    new URL("../prompt-optimizer.service.ts", import.meta.url),
+    "utf8"
+  );
+  const videoOptimizer = source.slice(
+    source.indexOf("async optimizeVideoPrompt"),
+    source.indexOf("async optimizeEditPrompt")
+  );
+
+  assert.match(videoOptimizer, /Return detected_language and ordered_content_units even when the array is empty/);
+  assert.match(videoOptimizer, /"ordered_content_units": \[/);
+  assert.match(videoOptimizer, /"bounding_box": \{ "x": 0\.05, "y": 0\.10, "width": 0\.20, "height": 0\.18 \}/);
 });

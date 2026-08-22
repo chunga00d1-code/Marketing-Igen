@@ -7,6 +7,7 @@ import {
   compileHtmlVideoComposition,
   fitHtmlVideoSceneTimeline,
   inferHtmlVideoNarrationLanguage,
+  normalizePlan,
   runHtmlVideoStructuredPipeline,
   type HtmlVideoPipelineCheckpoint,
   type HtmlVideoPipelineStage,
@@ -19,6 +20,46 @@ test("detects an explicit English voice request without being confused by Vietna
       primaryPromptContext: "S\u1eed d\u1ee5ng gi\u1ecdng \u0111\u1ecdc ti\u1ebfng Anh. Kh\u00f4ng b\u1eaft bu\u1ed9c hi\u1ec3n th\u1ecb ngh\u0129a ti\u1ebfng Vi\u1ec7t.",
     }),
     "English"
+  );
+});
+
+test("keeps the raw user prompt authoritative over an expanded master prompt", () => {
+  const rawUserPrompt = "Tạo video hướng dẫn quản lý công việc, dùng giọng đọc tiếng Việt.";
+  const masterPrompt = [
+    "# VIDEO BRIEF",
+    "- Language: English",
+    "# STORYBOARD",
+    "## SCENE 1",
+    "- Voice-over: Manage your work efficiently.",
+  ].join("\n");
+  const grounding = buildHtmlVideoGrounding({
+    prompt: masterPrompt,
+    promptProvenance: {
+      rawUserPrompt,
+      masterPrompt,
+      inferredAssumptions: {
+        narrationLanguage: "Vietnamese",
+        durationSeconds: 10,
+        aspectRatio: "9:16",
+        imagePolicy: "none",
+        inputImageCount: 0,
+      },
+    },
+    durationSeconds: 10,
+    aspectRatio: "9:16",
+    resolution: "720p",
+  });
+
+  assert.equal(grounding.sourceText, rawUserPrompt);
+  assert.equal(grounding.contentUnits[0]?.sourceText, rawUserPrompt);
+  assert.equal(grounding.promptProvenance.masterPrompt, masterPrompt);
+  assert.equal(
+    inferHtmlVideoNarrationLanguage({
+      prompt: masterPrompt,
+      primaryPromptContext: masterPrompt,
+      promptProvenance: grounding.promptProvenance,
+    }),
+    "Vietnamese"
   );
 });
 
@@ -41,6 +82,50 @@ test("grounds the longest ordered vocabulary list without truncating fifteen ite
   );
 });
 
+test("uses ordered OCR content units from an image reference for animation and voice planning", () => {
+  const grounding = buildHtmlVideoGrounding({
+    prompt: "Dùng ảnh làm nền, highlight và đọc lần lượt từng nghề trong bảng.",
+    referenceContext: [
+      "--- BEGIN REFERENCE: jobs.png (image) ---",
+      JSON.stringify({
+        should_include_source_image: true,
+        source_image_role: "background",
+        detected_language: "English",
+        ordered_content_units: [
+          { order: 1, text: "teacher", confidence: 0.99, bounding_box: { x: 0.08, y: 0.16, width: 0.14, height: 0.2 } },
+          { order: 2, text: "singer", confidence: 0.98, bounding_box: { x: 0.25, y: 0.16, width: 0.14, height: 0.2 } },
+          { order: 3, text: "doctor", confidence: 0.97, bounding_box: { x: 0.42, y: 0.16, width: 0.14, height: 0.2 } },
+        ],
+      }),
+      "--- END REFERENCE: jobs.png ---",
+    ].join("\n"),
+    durationSeconds: 12,
+    aspectRatio: "9:16",
+    resolution: "720p",
+  });
+
+  assert.deepEqual(
+    grounding.contentUnits.map((unit) => unit.normalizedText),
+    ["teacher", "singer", "doctor"]
+  );
+  assert.deepEqual(
+    grounding.contentUnits.map((unit) => unit.sourceKind),
+    ["image_ocr", "image_ocr", "image_ocr"]
+  );
+  assert.deepEqual(
+    grounding.contentUnits.map((unit) => unit.confidence),
+    [0.99, 0.98, 0.97]
+  );
+  assert.deepEqual(grounding.contentUnits[0]?.region, {
+    x: 0.08,
+    y: 0.16,
+    width: 0.14,
+    height: 0.2,
+    coordinateSpace: "normalized",
+  });
+  assert.ok(grounding.contentUnits.every((unit) => unit.requiredVerbatim));
+});
+
 test("keeps an explicitly requested source image full-canvas across an ordered background sequence", () => {
   const words = [
     "teacher", "singer", "doctor", "firefighter", "office worker",
@@ -53,6 +138,13 @@ test("keeps an explicitly requested source image full-canvas across an ordered b
     sourceText: word,
     normalizedText: word,
     sourceRefs: ["source-current-prompt"],
+    region: {
+      x: 0.07 + (index % 5) * 0.18,
+      y: 0.15 + Math.floor(index / 5) * 0.25,
+      width: 0.14,
+      height: 0.2,
+      coordinateSpace: "normalized" as const,
+    },
     required: true,
     requiredVerbatim: true,
   }));
@@ -125,6 +217,7 @@ test("keeps an explicitly requested source image full-canvas across an ordered b
   assert.match(composition.html, /class="scene-focus"/);
   assert.match(composition.html, /15 \/ 15/);
   assert.match(composition.css, /scene-1 \.scene-focus/);
+  assert.match(composition.css, /scene-1 \.scene-focus\{display:block;left:5\.320%;top:13\.200%;width:17\.360%;height:23\.600%/);
   assert.match(composition.css, /scene-15 \.scene-focus/);
   assert.match(composition.css, /object-fit:contain!important/);
   assert.match(composition.css, /@keyframes sceneProgressFill/);
@@ -366,6 +459,10 @@ test("plans content first, composes visual and voice in parallel roles, then com
         {
           sceneId: "scene-1",
           layout: "split-left",
+          compositionStyle: "showcase",
+          surfaceStyle: "solid",
+          backgroundStyle: "mesh",
+          motionPreset: "scale-pop",
           eyebrow: "",
           headline: "Giải thích lợi ích đầu tiên",
           body: "",
@@ -375,6 +472,10 @@ test("plans content first, composes visual and voice in parallel roles, then com
         {
           sceneId: "scene-2",
           layout: "statement",
+          compositionStyle: "editorial",
+          surfaceStyle: "outline",
+          backgroundStyle: "grid",
+          motionPreset: "soft-reveal",
           eyebrow: "",
           headline: "Giải thích lợi ích thứ hai",
           body: "",
@@ -419,7 +520,7 @@ test("plans content first, composes visual and voice in parallel roles, then com
   assert.ok(checkpoint.visual);
   assert.ok(checkpoint.voice);
   assert.match(String(calls[0].messages[0].content), /Storyboard Planner/);
-  assert.match(String(calls[1].messages[0].content), /Visual Composer/);
+  assert.match(String(calls[1].messages[0].content), /Visual Director/);
   assert.match(String(calls[2].messages[0].content), /Voice Writer/);
   assert.equal(result.pipeline.contentUnits.length, 2);
   assert.deepEqual(result.pipeline.scenePlan.map((scene) => [scene.startSeconds, scene.endSeconds]), [
@@ -434,6 +535,12 @@ test("plans content first, composes visual and voice in parallel roles, then com
   assert.match(result.html, /data-media-slot="product-1"/);
   assert.match(result.html, /scene scene-1[^"]*has-media/);
   assert.match(result.html, /scene scene-2[^"]*no-media/);
+  assert.match(result.html, /scene scene-1[^"]*composition-showcase[^"]*surface-solid[^"]*background-mesh[^"]*motion-scale-pop/);
+  assert.match(result.html, /scene scene-2[^"]*composition-editorial[^"]*surface-outline[^"]*background-grid[^"]*motion-soft-reveal/);
+  assert.match(result.html, /class="scene-pattern"/);
+  assert.match(result.html, /class="scene-band"/);
+  assert.match(result.css, /\.composition-showcase \.scene-frame/);
+  assert.match(result.css, /\.background-grid \.scene-pattern/);
   assert.doesNotMatch(result.html, /scene-illustration/);
   assert.match(result.voiceScript, /lợi ích thứ hai/i);
 
@@ -451,6 +558,8 @@ test("plans content first, composes visual and voice in parallel roles, then com
   });
   assert.match(safe.compositionHtml, /html-video-scene-0/);
   assert.match(safe.compositionHtml, /40\.0000%/);
+  assert.match(safe.compositionHtml, /html-video-scene-0-headline\{[^}]*scale\(\.68\)/);
+  assert.match(safe.compositionHtml, /html-video-scene-0-pattern/);
 
   const resumedCalls: Parameters<typeof openrouterChat>[0][] = [];
   const checkpointWithoutVoice = { ...checkpoint, voice: undefined };
@@ -681,4 +790,69 @@ test("revises the existing HTML/CSS composition in place", async () => {
   assert.equal(voiceOnlyResult.html, existingHtml);
   assert.equal(voiceOnlyResult.css, existingCss);
   assert.match(voiceOnlyResult.voiceScript, /Mới 1/);
+});
+
+
+test("deterministically maps every ordered OCR unit to exactly one scene", () => {
+  const contentUnits = ["teacher", "singer", "doctor", "firefighter"].map((text, index) => ({
+    id: `unit-${index + 1}`,
+    order: index,
+    sourceText: text,
+    normalizedText: text,
+    sourceRefs: ["source-reference-context"],
+    sourceKind: "image_ocr" as const,
+    required: true,
+    requiredVerbatim: true,
+  }));
+  const plan = normalizePlan({
+    videoBrief: {
+      objective: "Read the board in order",
+      language: "English",
+      voiceRequired: true,
+    },
+    scenePlan: [
+      {
+        id: "duplicate-scene",
+        purpose: "opening",
+        sourceUnitIds: ["unit-1", "unit-2"],
+        onScreenText: ["wrong planner text"],
+        narration: "wrong planner narration",
+        startSeconds: 0,
+        endSeconds: 6,
+      },
+      {
+        id: "duplicate-scene",
+        purpose: "closing",
+        sourceUnitIds: ["unit-1"],
+        onScreenText: ["another wrong item"],
+        narration: "another wrong narration",
+        startSeconds: 6,
+        endSeconds: 12,
+      },
+    ],
+  }, {
+    prompt: "Read every item in order.",
+    durationSeconds: 12,
+    aspectRatio: "9:16",
+    resolution: "720p",
+  }, contentUnits, new Set());
+
+  assert.deepEqual(
+    plan.scenePlan.map((scene) => ({
+      id: scene.id,
+      sourceUnitIds: scene.sourceUnitIds,
+      onScreenText: scene.onScreenText,
+      narration: scene.narration,
+      startSeconds: scene.startSeconds,
+      endSeconds: scene.endSeconds,
+    })),
+    contentUnits.map((unit, index) => ({
+      id: `scene-${index + 1}`,
+      sourceUnitIds: [unit.id],
+      onScreenText: [unit.normalizedText],
+      narration: unit.normalizedText,
+      startSeconds: index * 3,
+      endSeconds: (index + 1) * 3,
+    }))
+  );
 });

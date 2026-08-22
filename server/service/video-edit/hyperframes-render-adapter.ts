@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import sharp from "sharp";
 import { cloudinaryService } from "../cloudinary.service";
 import { resolveMediaBinary } from "../media-binary.service";
 import { hyperframeService } from "./hyperframe";
@@ -58,6 +59,12 @@ export interface HyperframesRenderAdapterDependencies {
     context: VideoRenderExecutionContext,
     environment?: NodeJS.ProcessEnv
   ) => Promise<void>;
+  verifyFrames?: (
+    outputPath: string,
+    input: VideoRenderInput,
+    context: VideoRenderExecutionContext,
+    environment?: NodeJS.ProcessEnv
+  ) => Promise<Record<string, number>>;
 }
 
 export type HyperframesRuntimeConfiguration = {
@@ -437,6 +444,168 @@ async function probeRenderedOutput(
   }
 }
 
+export type RepresentativeFrameSample = {
+  timeSeconds: number;
+  stdevLuma: number;
+  edgeRatio: number;
+  darkRatio: number;
+  lightRatio: number;
+  luma: Uint8Array;
+};
+
+function meanAbsoluteFrameDifference(left: Uint8Array, right: Uint8Array) {
+  if (left.length === 0 || left.length !== right.length) return Number.POSITIVE_INFINITY;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference += Math.abs(left[index] - right[index]);
+  return difference / left.length;
+}
+
+export function validateRepresentativeFrameSamples(samples: RepresentativeFrameSample[]) {
+  if (samples.length < 3) {
+    throw new VideoRenderAdapterError("RENDER_OUTPUT_INVALID", "Rendered MP4 does not contain enough representative frames.");
+  }
+  const blankFrame = samples.find((sample) =>
+    sample.luma.length === 0 || sample.darkRatio >= 0.995 || sample.lightRatio >= 0.995 ||
+    (sample.stdevLuma < 1.25 && sample.edgeRatio < 0.0005)
+  );
+  if (blankFrame) {
+    throw new VideoRenderAdapterError(
+      "RENDER_OUTPUT_INVALID",
+      "Rendered MP4 contains a blank or visually empty representative frame.",
+      { frameTimeSeconds: Number(blankFrame.timeSeconds.toFixed(3)) }
+    );
+  }
+  let maximumFrameDifference = 0;
+  for (let left = 0; left < samples.length; left += 1) {
+    for (let right = left + 1; right < samples.length; right += 1) {
+      maximumFrameDifference = Math.max(
+        maximumFrameDifference,
+        meanAbsoluteFrameDifference(samples[left].luma, samples[right].luma)
+      );
+    }
+  }
+  if (maximumFrameDifference < 0.12) {
+    throw new VideoRenderAdapterError(
+      "RENDER_OUTPUT_INVALID",
+      "Rendered MP4 representative frames are frozen or missing visible animation.",
+      { maximumFrameDifference: Number(maximumFrameDifference.toFixed(4)) }
+    );
+  }
+  return {
+    representativeFramesChecked: samples.length,
+    minimumFrameEdgeRatio: Number(Math.min(...samples.map((sample) => sample.edgeRatio)).toFixed(5)),
+    maximumFrameDifference: Number(maximumFrameDifference.toFixed(4)),
+  };
+}
+
+function representativeFrameTimes(input: VideoRenderInput) {
+  const durationSeconds = Math.max(1, Number(input.durationSeconds) || Number(input.voiceDurationSeconds) || 10);
+  const requested = input.verificationTimesSeconds?.length
+    ? input.verificationTimesSeconds
+    : [durationSeconds * 0.08, durationSeconds * 0.5, durationSeconds * 0.92];
+  const normalized = requested
+    .map((time) => Math.min(Math.max(0.05, Number(time) || 0.05), Math.max(0.05, durationSeconds - 0.05)))
+    .filter((time, index, values) => values.findIndex((candidate) => Math.abs(candidate - time) < 0.01) === index);
+  return normalized.length >= 3
+    ? normalized.slice(0, 3)
+    : [durationSeconds * 0.08, durationSeconds * 0.5, durationSeconds * 0.92];
+}
+
+async function readRepresentativeFrame(framePath: string, timeSeconds: number): Promise<RepresentativeFrameSample> {
+  const { data, info } = await sharp(framePath).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  const pixelCount = info.width * info.height;
+  const luma = new Uint8Array(pixelCount);
+  let total = 0;
+  let squaredTotal = 0;
+  let darkPixels = 0;
+  let lightPixels = 0;
+  for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+    const offset = pixel * info.channels;
+    const value = Math.round(data[offset] * 0.2126 + data[offset + 1] * 0.7152 + data[offset + 2] * 0.0722);
+    luma[pixel] = value;
+    total += value;
+    squaredTotal += value * value;
+    if (value <= 8) darkPixels += 1;
+    if (value >= 247) lightPixels += 1;
+  }
+  let strongEdges = 0;
+  let comparedEdges = 0;
+  for (let y = 0; y < info.height; y += 1) {
+    for (let x = 0; x < info.width; x += 1) {
+      const index = y * info.width + x;
+      if (x + 1 < info.width) {
+        comparedEdges += 1;
+        if (Math.abs(luma[index] - luma[index + 1]) >= 12) strongEdges += 1;
+      }
+      if (y + 1 < info.height) {
+        comparedEdges += 1;
+        if (Math.abs(luma[index] - luma[index + info.width]) >= 12) strongEdges += 1;
+      }
+    }
+  }
+  const meanLuma = total / Math.max(1, pixelCount);
+  const variance = squaredTotal / Math.max(1, pixelCount) - meanLuma * meanLuma;
+  return {
+    timeSeconds,
+    stdevLuma: Math.sqrt(Math.max(0, variance)),
+    edgeRatio: strongEdges / Math.max(1, comparedEdges),
+    darkRatio: darkPixels / Math.max(1, pixelCount),
+    lightRatio: lightPixels / Math.max(1, pixelCount),
+    luma,
+  };
+}
+
+async function verifyRenderedFrames(
+  outputPath: string,
+  input: VideoRenderInput,
+  context: VideoRenderExecutionContext,
+  environment?: NodeJS.ProcessEnv
+) {
+  const ffmpegPath = environment?.HYPERFRAMES_FFMPEG_PATH || environment?.VIDEO_CAPTION_FFMPEG_PATH || "ffmpeg";
+  const samples: RepresentativeFrameSample[] = [];
+  for (const [index, timeSeconds] of representativeFrameTimes(input).entries()) {
+    const framePath = join(context.temporaryDirectory, `qa-frame-${index + 1}.png`);
+    let child: HyperframesRenderProcess;
+    try {
+      child = spawn(ffmpegPath, [
+        "-y", "-ss", timeSeconds.toFixed(3), "-i", outputPath,
+        "-frames:v", "1", "-vf", "scale=160:-2:flags=area", framePath,
+      ], {
+        cwd: context.temporaryDirectory,
+        ...(environment ? { env: environment } : {}),
+        shell: false,
+        windowsHide: true,
+      }) as HyperframesRenderProcess;
+    } catch (error) {
+      throw new VideoRenderAdapterError(
+        "RENDER_OUTPUT_INVALID",
+        "Representative frame verification could not start.",
+        { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown frame verifier error." }
+      );
+    }
+    const result = await waitForRenderer(
+      child, context.signal, context.timeoutMs, [context.temporaryDirectory, process.cwd()], () => undefined
+    );
+    if (result.code !== 0) {
+      throw new VideoRenderAdapterError(
+        "RENDER_OUTPUT_INVALID",
+        "Representative frame extraction failed.",
+        { exitCode: result.code, stderr: result.stderr }
+      );
+    }
+    try {
+      samples.push(await readRepresentativeFrame(framePath, timeSeconds));
+    } catch (error) {
+      throw new VideoRenderAdapterError(
+        "RENDER_OUTPUT_INVALID",
+        "Representative frame could not be inspected.",
+        { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown frame inspection error." }
+      );
+    }
+  }
+  return validateRepresentativeFrameSamples(samples);
+}
+
 export function createHyperframesRenderAdapter(
   dependencies: HyperframesRenderAdapterDependencies
 ): VideoRenderAdapter {
@@ -716,6 +885,14 @@ export function createHyperframesRenderAdapter(
             runtime?.environment
           );
         }
+        const visualDiagnostics = dependencies.verifyFrames
+          ? await dependencies.verifyFrames(
+              finalOutputPath,
+              input,
+              context,
+              runtime?.environment
+            )
+          : undefined;
         let output: Buffer;
         try {
           output = await dependencies.fileSystem.readFile(finalOutputPath);
@@ -749,6 +926,7 @@ export function createHyperframesRenderAdapter(
         return {
           engine: "hyperframes",
           outputUrl,
+          ...(visualDiagnostics ? { diagnostics: visualDiagnostics } : {}),
         };
       } finally {
         await dependencies.fileSystem.rm(context.temporaryDirectory, {
@@ -780,4 +958,5 @@ export const hyperframesRenderAdapter = createHyperframesRenderAdapter({
     cloudinaryService.uploadMediaBuffer(buffer, "igen_erp/marketing/video"),
   prepareRuntime: createDefaultRuntimeConfiguration,
   probeOutput: probeRenderedOutput,
+  verifyFrames: verifyRenderedFrames,
 });
