@@ -258,6 +258,7 @@ const optimizeMasterPromptSchema = {
     imageUris: Joi.array().items(Joi.string().max(2_000_000)).max(6).optional(),
     durationSeconds: Joi.number().integer().min(1).max(180).optional(),
     aspectRatio: Joi.string().valid("9:16", "1:1", "16:9").optional(),
+    mode: Joi.string().valid("create", "revision").optional(),
   }).or("prompt", "description"),
 };
 

@@ -1,4 +1,5 @@
 import { model, Schema, type Types } from "mongoose";
+import type { HtmlVideoPromptAssumptions } from "../interface/html-video-pipeline.interface";
 
 export type HtmlVideoPromptHistoryDocument = {
   _id: Types.ObjectId;
@@ -6,6 +7,8 @@ export type HtmlVideoPromptHistoryDocument = {
   companyCode: string;
   projectName: string;
   prompt: string;
+  masterPrompt?: string;
+  inferredAssumptions?: HtmlVideoPromptAssumptions;
   aspectRatio: "16:9" | "9:16" | "1:1";
   referenceNames: string[];
   parentHistoryId?: Types.ObjectId;
@@ -27,6 +30,8 @@ const HtmlVideoPromptHistorySchema = new Schema<HtmlVideoPromptHistoryDocument>(
     companyCode: { type: String, required: true, index: true, immutable: true },
     projectName: { type: String, required: true, trim: true, maxlength: 180 },
     prompt: { type: String, required: true, trim: true, maxlength: 23_000 },
+    masterPrompt: { type: String, trim: true, maxlength: 23_000 },
+    inferredAssumptions: { type: Schema.Types.Mixed },
     aspectRatio: {
       type: String,
       enum: ["16:9", "9:16", "1:1"],

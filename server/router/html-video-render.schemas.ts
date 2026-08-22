@@ -66,6 +66,18 @@ const htmlVideoScenePlanItemSchema = Joi.object({
 const htmlVideoPipelineSchema = Joi.object({
   version: Joi.string().valid("2.0").required(),
   sourceText: Joi.string().max(23_000).required(),
+  promptProvenance: Joi.object({
+    rawUserPrompt: Joi.string().trim().min(1).max(23_000).required(),
+    masterPrompt: Joi.string().trim().min(1).max(23_000).optional(),
+    inferredAssumptions: Joi.object({
+      contentMode: Joi.string().max(80).optional(),
+      narrationLanguage: Joi.string().max(80).optional(),
+      durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+      aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").optional(),
+      imagePolicy: Joi.string().valid("none", "embed", "reference", "mixed").optional(),
+      inputImageCount: Joi.number().integer().min(0).max(6).optional(),
+    }).optional(),
+  }).optional(),
   sourceContextRefs: Joi.array().items(Joi.object({
     id: Joi.string().max(120).required(),
     type: Joi.string().valid("prompt", "prompt_file", "reference", "asset", "history").required(),
@@ -93,6 +105,15 @@ const htmlVideoPipelineSchema = Joi.object({
     sourceText: Joi.string().max(4_000).required(),
     normalizedText: Joi.string().max(4_000).required(),
     sourceRefs: Joi.array().items(Joi.string().max(120)).max(8).required(),
+    sourceKind: Joi.string().valid("prompt", "document", "image_ocr", "history").optional(),
+    confidence: Joi.number().min(0).max(1).optional(),
+    region: Joi.object({
+      x: Joi.number().min(0).max(1).required(),
+      y: Joi.number().min(0).max(1).required(),
+      width: Joi.number().greater(0).max(1).required(),
+      height: Joi.number().greater(0).max(1).required(),
+      coordinateSpace: Joi.string().valid("normalized").required(),
+    }).optional(),
     required: Joi.boolean().required(),
     requiredVerbatim: Joi.boolean().required(),
   })).min(1).max(maximumContentUnits).required(),
@@ -124,6 +145,7 @@ const htmlVideoFields = {
 
 const htmlVideoDraftKeys = new Set([
   "prompt",
+  "promptProvenance",
   "durationSeconds",
   "aspectRatio",
   "resolution",
@@ -149,6 +171,18 @@ export const htmlVideoContextPreviewBodySchema = Joi.object({
 
 export const htmlVideoDraftBodySchema = Joi.object({
   prompt: Joi.string().trim().min(1).max(4_000).required(),
+  promptProvenance: Joi.object({
+    rawUserPrompt: Joi.string().trim().min(1).max(23_000).required(),
+    masterPrompt: Joi.string().trim().min(1).max(23_000).optional(),
+    inferredAssumptions: Joi.object({
+      contentMode: Joi.string().max(80).optional(),
+      narrationLanguage: Joi.string().max(80).optional(),
+      durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+      aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").optional(),
+      imagePolicy: Joi.string().valid("none", "embed", "reference", "mixed").optional(),
+      inputImageCount: Joi.number().integer().min(0).max(6).optional(),
+    }).optional(),
+  }).optional(),
   promptHistoryId: Joi.string().hex().length(24).optional(),
   referenceContext: Joi.string().trim().max(24_000).optional(),
   primaryPromptContext: Joi.string().trim().max(23_000).optional(),
@@ -208,6 +242,15 @@ export const htmlVideoRenderListQuerySchema = Joi.object({
 export const createHtmlVideoPromptHistoryBodySchema = Joi.object({
   projectName: Joi.string().trim().min(1).max(180).required(),
   prompt: Joi.string().trim().min(3).max(23_000).required(),
+  masterPrompt: Joi.string().trim().min(1).max(23_000).optional(),
+  inferredAssumptions: Joi.object({
+    contentMode: Joi.string().max(80).optional(),
+    narrationLanguage: Joi.string().max(80).optional(),
+    durationSeconds: Joi.number().integer().min(1).max(180).optional(),
+    aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").optional(),
+    imagePolicy: Joi.string().valid("none", "embed", "reference", "mixed").optional(),
+    inputImageCount: Joi.number().integer().min(0).max(6).optional(),
+  }).optional(),
   aspectRatio: Joi.string().valid("16:9", "9:16", "1:1").required(),
   referenceNames: Joi.array().items(Joi.string().trim().max(180)).max(7).default([]),
   parentHistoryId: Joi.string().hex().length(24).optional(),

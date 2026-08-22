@@ -504,6 +504,12 @@ export const htmlVideoRenderService = {
         );
         const narrationLanguage = render.pipelineSnapshot?.videoBrief?.videoSpec?.language;
         const scenePlan = render.pipelineSnapshot?.scenePlan;
+        const verificationTimesSeconds = Array.isArray(scenePlan) && scenePlan.length >= 3
+          ? Array.from(new Set([0, Math.floor(scenePlan.length / 2), scenePlan.length - 1]))
+              .map((index) => scenePlan[index])
+              .filter(Boolean)
+              .map((scene) => (scene.startSeconds + scene.endSeconds) / 2)
+          : undefined;
         const hasSceneNarration = Array.isArray(scenePlan) &&
           scenePlan.length > 0 &&
           scenePlan.every((scene) => String(scene.narration || "").trim());
@@ -544,6 +550,7 @@ export const htmlVideoRenderService = {
         } else {
           const voice = await htmlVideoTtsService.generate(voiceScript, {
             durationSeconds: render.durationSeconds,
+          ...(verificationTimesSeconds ? { verificationTimesSeconds } : {}),
             language: narrationLanguage,
           });
           voiceProvenance = {

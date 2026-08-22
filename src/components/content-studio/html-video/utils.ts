@@ -86,12 +86,53 @@ export function inferExplicitHtmlVideoDuration(prompt: string): number | null {
   return null;
 }
 
-export function automaticDuration(prompt: string) {
+export function inferHtmlVideoReferenceDuration(referenceContext?: string) {
+  const source = String(referenceContext || "");
+  const keyMatch = /"(?:ordered_content_units|orderedContentUnits|ordered_items|orderedItems|content_units|contentUnits)"\s*:\s*\[/g.exec(source);
+  if (!keyMatch) return null;
+  const start = source.indexOf("[", keyMatch.index);
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+      continue;
+    }
+    if (character === '"') quoted = true;
+    else if (character === "[") depth += 1;
+    else if (character === "]") {
+      depth -= 1;
+      if (depth !== 0) continue;
+      try {
+        const items = JSON.parse(source.slice(start, index + 1)) as unknown[];
+        if (!Array.isArray(items) || items.length < 2) return null;
+        const texts = items.map((item) => {
+          if (typeof item === "string") return item;
+          if (!item || typeof item !== "object" || Array.isArray(item)) return "";
+          const record = item as Record<string, unknown>;
+          return String(record.text ?? record.label ?? record.name ?? record.content ?? "");
+        }).filter(Boolean);
+        if (texts.length < 2) return null;
+        const wordCount = texts.join(" ").split(/\s+/).filter(Boolean).length;
+        const seconds = Math.max(texts.length * 1.8, wordCount / 2.2 + texts.length * 0.4);
+        return Math.max(10, Math.min(180, Math.ceil(seconds / 5) * 5));
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+export function automaticDuration(prompt: string, referenceContext?: string) {
   const explicitDuration = inferExplicitHtmlVideoDuration(prompt);
   if (explicitDuration !== null) return explicitDuration;
-  if (prompt.length > 420) return 30;
-  if (prompt.length > 160) return 15;
-  return 10;
+  const promptDuration = prompt.length > 420 ? 30 : prompt.length > 160 ? 15 : 10;
+  return Math.max(promptDuration, inferHtmlVideoReferenceDuration(referenceContext) || 0);
 }
 
 export function formatVideoTime(seconds: number) {
