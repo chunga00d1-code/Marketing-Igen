@@ -17,11 +17,14 @@ export type HtmlVideoReferenceSlot = {
   kind: "image";
   role?: HtmlVideoAssetRole;
   includeInVideo?: boolean;
+  width?: number;
+  height?: number;
 };
 
 export type HtmlVideoAsset = HtmlVideoReferenceSlot & {
   url: string;
 };
+
 
 export type HtmlVideoScenePlanItem = {
   id: string;
@@ -99,6 +102,17 @@ export type HtmlVideoDraftRequest = {
   primaryPromptContext?: string;
   primaryPromptFileName?: string;
   referenceAssets?: HtmlVideoReferenceSlot[];
+  editSource?: {
+    html: string;
+    css: string;
+    voiceScript?: string;
+    snapshotHash?: string;
+    pipeline?: HtmlVideoPipelineMetadata;
+  };
+};
+
+export type HtmlVideoRenderEditSource = NonNullable<HtmlVideoDraftRequest["editSource"]> & {
+  assets?: HtmlVideoAsset[];
 };
 
 export type HtmlVideoGenerationStatus =
@@ -700,6 +714,7 @@ export const htmlVideoRenderService = {
           primaryPromptContext: input.primaryPromptContext,
           primaryPromptFileName: input.primaryPromptFileName,
           referenceAssets: input.referenceAssets,
+          editSource: input.editSource,
         }),
         signal,
       }
@@ -761,6 +776,40 @@ export const htmlVideoRenderService = {
       throw requestError(payload, "Không thể tải trạng thái kết xuất video.");
     }
     return parseHtmlVideoRenderResponse(payload);
+  },
+
+  async getEditSource(
+    renderId: string,
+    signal?: AbortSignal
+  ): Promise<HtmlVideoRenderEditSource> {
+    const response = await fetch(
+      `/api/v1/html-video-renders/${encodeURIComponent(renderId)}/edit-source`,
+      { headers: authHeaders(), signal }
+    );
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      throw requestError(payload, "Không thể tải bản dựng gốc để chỉnh sửa video.");
+    }
+    const raw = envelopeData(payload);
+    if (!raw || typeof raw !== "object") {
+      throw new Error("Bản dựng chỉnh sửa video không hợp lệ.");
+    }
+    const value = raw as Record<string, unknown>;
+    if (typeof value.html !== "string" || !value.html.trim() || typeof value.css !== "string") {
+      throw new Error("Bản dựng gốc của video không còn khả dụng để chỉnh sửa.");
+    }
+    return {
+      html: value.html,
+      css: value.css,
+      ...(typeof value.voiceScript === "string" ? { voiceScript: value.voiceScript } : {}),
+      ...(typeof value.snapshotHash === "string" && /^[a-f0-9]{64}$/i.test(value.snapshotHash)
+        ? { snapshotHash: value.snapshotHash }
+        : {}),
+      ...(value.pipeline && typeof value.pipeline === "object"
+        ? { pipeline: value.pipeline as HtmlVideoPipelineMetadata }
+        : {}),
+      ...(Array.isArray(value.assets) ? { assets: value.assets as HtmlVideoAsset[] } : {}),
+    };
   },
 
   async delete(

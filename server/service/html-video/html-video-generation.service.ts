@@ -34,6 +34,9 @@ function safeGenerationError(error: unknown) {
   };
 }
 
+export function isRetryableHtmlVideoGenerationError(error: unknown) {
+  return error instanceof HtmlVideoDraftError && error.code === "AI_UNAVAILABLE";
+}
 function serializeGeneration(document: Record<string, unknown>) {
   const status = String(document.status) as HtmlVideoGenerationStage;
   const data: Record<string, unknown> = {
@@ -213,22 +216,26 @@ export const htmlVideoGenerationService = {
       );
     } catch (error) {
       const safe = safeGenerationError(error);
+      const retryable = isRetryableHtmlVideoGenerationError(error);
       await HtmlVideoGenerationModel.updateOne(
         { _id: generationId, leaseOwner },
         {
           $set: {
-            status: "queued",
-            currentStage: "queued",
+            status: retryable ? "queued" : "failed",
+            currentStage: retryable ? "queued" : "failed",
             progress: 0,
-            stageMessage: "Tác vụ tạo bản dựng sẽ được thử lại.",
+            stageMessage: retryable
+              ? "Dịch vụ AI đang giới hạn hoặc tạm gián đoạn. Tác vụ sẽ được thử lại."
+              : "Tạo bản dựng HTML-to-video thất bại.",
             errorCode: safe.code,
             error: safe.message,
             leaseOwner: "",
+            ...(!retryable ? { completedAt: new Date() } : {}),
           },
           $unset: { leaseExpiresAt: "" },
         }
       );
-      throw error;
+      if (retryable) throw error;
     }
   },
 

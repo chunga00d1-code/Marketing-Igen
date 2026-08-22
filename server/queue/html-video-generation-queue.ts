@@ -13,6 +13,22 @@ let queue: Queue | null = null;
 let worker: Worker | null = null;
 let redisAvailable: boolean | null = null;
 const fallbackPending = new Set<string>();
+const fallbackRetryBaseDelayMs = 15_000;
+
+export function htmlVideoGenerationRetryDelayMs(error: unknown, attempt: number) {
+  let current = error;
+  let providerDelayMs = 0;
+  for (let depth = 0; depth < 4 && current && typeof current === "object"; depth += 1) {
+    const record = current as { retryAfterMs?: unknown; cause?: unknown };
+    const retryAfterMs = Number(record.retryAfterMs);
+    if (Number.isFinite(retryAfterMs) && retryAfterMs > 0) {
+      providerDelayMs = Math.max(providerDelayMs, retryAfterMs);
+    }
+    current = record.cause;
+  }
+  const exponentialDelayMs = fallbackRetryBaseDelayMs * (2 ** Math.max(0, attempt));
+  return Math.min(120_000, Math.max(exponentialDelayMs, providerDelayMs));
+}
 
 function checkRedis() {
   return new Promise<boolean>((resolve) => {
@@ -58,7 +74,10 @@ function processInBackground(generationId: string) {
         } catch (error) {
           lastError = error;
           if (attempt < 2) {
-            await new Promise((resolve) => setTimeout(resolve, 1_000 * (attempt + 1)));
+            await new Promise((resolve) => setTimeout(
+              resolve,
+              htmlVideoGenerationRetryDelayMs(error, attempt)
+            ));
           }
         }
       }
@@ -79,7 +98,7 @@ export async function enqueueHtmlVideoGeneration(generationId: string) {
       {
         jobId: `html-video-generation:${generationId}`,
         attempts: 3,
-        backoff: { type: "exponential", delay: 1_000 },
+        backoff: { type: "exponential", delay: fallbackRetryBaseDelayMs },
         removeOnComplete: true,
         removeOnFail: false,
       }

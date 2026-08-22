@@ -1,5 +1,6 @@
 import { model, Schema, type Types } from "mongoose";
 import type { HtmlVideoPipelineMetadata } from "../interface/html-video-pipeline.interface";
+import type { HtmlVideoAsset } from "../service/html-video/html-video-security.service";
 
 export type HtmlVideoRenderStatus =
   | "queued"
@@ -27,8 +28,16 @@ export type HtmlVideoRenderDocument = {
   sanitizedCss: string;
   compositionHtml: string;
   pipelineSnapshot?: HtmlVideoPipelineMetadata;
+  assetsSnapshot?: HtmlVideoAsset[];
   voiceScript: string;
   voiceStatus: HtmlVideoVoiceStatus;
+  voiceModel?: string;
+  voiceName?: string;
+  voiceFormat?: "mp3" | "pcm";
+  voiceSampleRate?: number;
+  voiceChannels?: number;
+  voicePlaybackRate?: number;
+  voiceGeneratedAt?: Date;
   durationSeconds: number;
   aspectRatio: "16:9" | "9:16" | "1:1";
   resolution: "720p" | "1080p";
@@ -44,6 +53,20 @@ export type HtmlVideoRenderDocument = {
   createdAt: Date;
   updatedAt: Date;
 };
+
+const HtmlVideoAssetSnapshotSchema = new Schema<HtmlVideoAsset>(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    kind: { type: String, enum: ["image"], required: true },
+    url: { type: String, required: true },
+    role: { type: String, enum: ["background", "hero", "logo", "overlay"] },
+    includeInVideo: { type: Boolean, default: true },
+    width: { type: Number },
+    height: { type: Number },
+  },
+  { _id: false }
+);
 
 const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
   {
@@ -87,6 +110,12 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
       immutable: true,
       select: false,
     },
+    assetsSnapshot: {
+      type: [HtmlVideoAssetSnapshotSchema],
+      default: undefined,
+      immutable: true,
+      select: false,
+    },
     voiceScript: {
       type: String,
       default: "",
@@ -98,6 +127,13 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
       enum: ["disabled", "queued", "generating", "ready", "failed"],
       default: "disabled",
     },
+    voiceModel: { type: String, default: "", select: false },
+    voiceName: { type: String, default: "", select: false },
+    voiceFormat: { type: String, enum: ["mp3", "pcm"], select: false },
+    voiceSampleRate: { type: Number, min: 1, select: false },
+    voiceChannels: { type: Number, min: 1, select: false },
+    voicePlaybackRate: { type: Number, min: 0.1, select: false },
+    voiceGeneratedAt: { type: Date, select: false },
     durationSeconds: {
       type: Number,
       required: true,

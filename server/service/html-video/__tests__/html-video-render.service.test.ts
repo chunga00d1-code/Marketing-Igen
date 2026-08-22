@@ -128,6 +128,46 @@ test("reads a render only through user and company ownership scope", async (cont
   assert.equal("compositionHtml" in result, false);
 });
 
+test("loads a tenant-scoped edit source and restores assets from an older composition snapshot", async (context) => {
+  const renderId = new Types.ObjectId().toString();
+  let filter: Record<string, unknown> | undefined;
+  let selected = "";
+  context.mock.method(HtmlVideoRenderModel, "findOne", (received) => {
+    filter = received as Record<string, unknown>;
+    const query = {
+      select(value: string) {
+        selected = value;
+        return query;
+      },
+      lean: async () => privateRecord({
+        _id: renderId,
+        voiceScript: "Teacher. Singer.",
+        pipelineSnapshot: { version: "2.0" },
+        compositionHtml: '<div class="html-video-media-slot html-video-media-slot-background" data-media-slot="jobs-image"><img src="data:image/png;base64,aGVsbG8=" alt="Jobs &amp; careers" /></div>',
+      }),
+    };
+    return query;
+  });
+
+  const result = await htmlVideoRenderService.getRenderEditSource(actor, renderId);
+
+  assert.deepEqual(filter, {
+    _id: renderId,
+    userId: actor.id,
+    companyCode: actor.companyCode,
+  });
+  assert.match(selected, /\+sanitizedHtml/);
+  assert.doesNotMatch(selected, /\+sourceHtml/);
+  assert.match(selected, /\+compositionHtml/);
+  assert.equal(result.html, input.html);
+  assert.equal(result.css, input.css);
+  assert.equal(result.voiceScript, "Teacher. Singer.");
+  assert.match(result.snapshotHash, /^[a-f0-9]{64}$/);
+  assert.equal(result.assets?.[0]?.id, "jobs-image");
+  assert.equal(result.assets?.[0]?.name, "Jobs & careers");
+  assert.equal(result.assets?.[0]?.role, "background");
+});
+
 test("lists persisted renders through the same user and company ownership scope", async (context) => {
   let filter: Record<string, unknown> | undefined;
   const completed = privateRecord({

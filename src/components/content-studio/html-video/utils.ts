@@ -34,7 +34,7 @@ export function seekableCompositionDocument(compositionHtml: string, frameSecond
     : `${compositionHtml}${override}`;
 }
 
-export function automaticDuration(prompt: string) {
+export function inferExplicitHtmlVideoDuration(prompt: string): number | null {
   const normalized = prompt
     .toLocaleLowerCase('vi-VN')
     .normalize('NFD')
@@ -42,28 +42,30 @@ export function automaticDuration(prompt: string) {
     .replace(/[–—]/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
-  const explicit = normalized.match(/(?:^|[^\d])(\d{1,3})\s*(?:-\s*)?(?:giay|seconds?|secs?|sec|s)\b/i);
-  if (explicit) return Math.max(1, Math.min(180, Number(explicit[1])));
+  const context = '(?:video|clip|teaser|duration|thoi luong|tong thoi luong|dai)';
+  const unit = '(giay|seconds?|secs?|sec|s|phut|minutes?|mins?|min)';
+  const before = normalized.match(new RegExp(`${context}[^.!?]{0,48}?(\\d{1,3}(?:[.,]\\d+)?)\\s*(?:-\\s*)?${unit}\\b`, 'i'));
+  const after = normalized.match(new RegExp(`(?:^|[^\\d])(\\d{1,3}(?:[.,]\\d+)?)\\s*(?:-\\s*)?${unit}\\b[^.!?]{0,40}${context}`, 'i'));
+  const motionTiming = /(?:animation|animate|hieu ung|transition|delay|chuyen canh)[^.!?]{0,40}\d/i;
+  const strongVideoTiming = /(?:duration|thoi luong|tong thoi luong|video\s+dai|clip\s+dai)/i;
+  const explicit = [before, after].find((candidate) => (
+    candidate && (!motionTiming.test(candidate[0]) || strongVideoTiming.test(candidate[0]))
+  )) || null;
+  if (explicit) {
+    const value = Number(explicit[1].replace(',', '.'));
+    const seconds = /^(?:phut|minutes?|mins?|min)$/i.test(explicit[2]) ? value * 60 : value;
+    return Math.max(1, Math.min(180, Math.round(seconds)));
+  }
 
-  const contextual = normalized.match(/(?:duration|thoi luong|dai)\s*(?:la|:|=)?\s*(\d{1,3})\b/i);
+  const contextual = normalized.match(/(?:duration|thoi luong|tong thoi luong|video\s+dai|clip\s+dai)\s*(?:la|:|=)?\s*(\d{1,3})\b/i);
   if (contextual) return Math.max(1, Math.min(180, Number(contextual[1])));
 
   const numberWords = '(?:khong|mot|hai|ba|bon|tu|nam|lam|sau|bay|tam|chin|muoi|tram|linh|le)';
-  const written = normalized.match(new RegExp(`((?:${numberWords})(?:[\\s-]+${numberWords}){0,5})\\s*(?:giay|seconds?|secs?|sec)\\b`, 'i'));
+  const written = normalized.match(new RegExp(`${context}[^.!?]{0,28}?((?:${numberWords})(?:[\\s-]+${numberWords}){0,5})\\s*(?:giay|seconds?|secs?|sec)\\b`, 'i'));
   if (written) {
     const values: Record<string, number> = {
-      khong: 0,
-      mot: 1,
-      hai: 2,
-      ba: 3,
-      bon: 4,
-      tu: 4,
-      nam: 5,
-      lam: 5,
-      sau: 6,
-      bay: 7,
-      tam: 8,
-      chin: 9,
+      khong: 0, mot: 1, hai: 2, ba: 3, bon: 4, tu: 4,
+      nam: 5, lam: 5, sau: 6, bay: 7, tam: 8, chin: 9,
     };
     let total = 0;
     let current = 0;
@@ -81,6 +83,12 @@ export function automaticDuration(prompt: string) {
     if (parsed > 0) return Math.max(1, Math.min(180, parsed));
   }
 
+  return null;
+}
+
+export function automaticDuration(prompt: string) {
+  const explicitDuration = inferExplicitHtmlVideoDuration(prompt);
+  if (explicitDuration !== null) return explicitDuration;
   if (prompt.length > 420) return 30;
   if (prompt.length > 160) return 15;
   return 10;

@@ -84,6 +84,12 @@ htmlVideoRenderRouter.post(
   htmlVideoRenderController.createPromptHistory as never
 );
 htmlVideoRenderRouter.get(
+  "/html-video-renders/:renderId/edit-source",
+  requireAuth as never,
+  validateRequest({ params: htmlVideoRenderParamsSchema }),
+  htmlVideoRenderController.getEditSource as never
+);
+htmlVideoRenderRouter.get(
   "/html-video-renders/:renderId",
   requireAuth as never,
   validateRequest({ params: htmlVideoRenderParamsSchema }),

@@ -25,6 +25,7 @@ export type HtmlVideoTtsResult = {
 
 export type HtmlVideoTtsOptions = {
   durationSeconds?: number;
+  language?: string;
 };
 
 function configuredValue(name: string, fallback: string) {
@@ -36,7 +37,30 @@ function isRetryableStatus(status: number) {
   return [408, 429, 500, 502, 503, 504].includes(status);
 }
 
-function configuredPlaybackRate(text: string, targetDurationSeconds?: number) {
+function normalizedLanguage(value?: string) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function isEnglishLanguage(value?: string) {
+  return /(?:^|\b)(?:en|english|tieng anh)(?:\b|$)/.test(normalizedLanguage(value));
+}
+
+function narrationProfile(language?: string) {
+  if (isEnglishLanguage(language)) {
+    return {
+      wordsPerMinute: 150,
+      audioProfile: "One consistent adult native English narrator with a clear, neutral international English accent. Use natural English pronunciation and intonation with no Vietnamese-style pronunciation.",
+      directorNotes: "Warm, clear, confident educational delivery for a short social video. Speak naturally at around 140-155 English words per minute. Keep articulation crisp and leave a short comfortable pause at sentence boundaries so narration follows the visual scenes.",
+    };
+  }
+  return {
+    wordsPerMinute: NATURAL_VIETNAMESE_WORDS_PER_MINUTE,
+    audioProfile: "One consistent adult Vietnamese narrator with a natural native Vietnamese accent. Use neutral, standard Vietnamese pronunciation with no foreign accent and no English-style intonation.",
+    directorNotes: "Warm, clear, confident and professional delivery for a short social video. Speak naturally at around 130-145 Vietnamese words per minute. Keep articulation crisp, connect phrases naturally, and leave a short comfortable pause at sentence boundaries so narration follows the visual scenes.",
+  };
+}
+
+function configuredPlaybackRate(text: string, targetDurationSeconds?: number, language?: string) {
   const configuredText = String(process.env.OPENROUTER_HTML_VIDEO_TTS_SPEED || "").trim();
   const configured = Number(configuredText);
   if (configuredText && Number.isFinite(configured)) {
@@ -44,7 +68,7 @@ function configuredPlaybackRate(text: string, targetDurationSeconds?: number) {
   }
   if (!Number.isFinite(targetDurationSeconds) || (targetDurationSeconds || 0) <= 0) return DEFAULT_TTS_PLAYBACK_RATE;
   const wordCount = text.split(/\s+/).filter(Boolean).length;
-  const naturalDurationSeconds = wordCount / (NATURAL_VIETNAMESE_WORDS_PER_MINUTE / 60);
+  const naturalDurationSeconds = wordCount / (narrationProfile(language).wordsPerMinute / 60);
   const targetNarrationSeconds = targetDurationSeconds! * TARGET_NARRATION_FILL_RATIO;
   const targetRate = naturalDurationSeconds / targetNarrationSeconds;
   return Math.min(MAX_TTS_PLAYBACK_RATE, Math.max(MIN_TTS_PLAYBACK_RATE, targetRate));
@@ -67,12 +91,13 @@ export const htmlVideoTtsService = {
       "OPENROUTER_HTML_VIDEO_TTS_FORMAT",
       DEFAULT_TTS_FORMAT
     ) === "mp3" ? "mp3" : "pcm";
-    const playbackRate = configuredPlaybackRate(text, options.durationSeconds);
+    const profile = narrationProfile(options.language);
+    const playbackRate = configuredPlaybackRate(text, options.durationSeconds, options.language);
     const ttsInput = [
       '# AUDIO PROFILE',
-      'One consistent adult Vietnamese narrator with a natural native Vietnamese accent. Use neutral, standard Vietnamese pronunciation with no foreign accent and no English-style intonation.',
+      profile.audioProfile,
       '# DIRECTOR\'S NOTES',
-      'Warm, clear, confident and professional delivery for a short social video. Speak naturally at around 130-145 Vietnamese words per minute. Keep articulation crisp, connect phrases naturally, and leave a short comfortable pause at sentence boundaries so narration follows the visual scenes. Avoid rushing, dead air, slow lecturing, exaggerated acting, or dramatic pauses.',
+      profile.directorNotes + " Avoid rushing, dead air, slow lecturing, exaggerated acting, or dramatic pauses.",
       'Do not switch speakers, add sound effects, paraphrase, translate, or add any words.',
       `Read exactly this narration:\n${text}`,
     ].join("\n\n");
