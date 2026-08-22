@@ -1,4 +1,4 @@
-import type { HtmlVideoAspectRatio, HtmlVideoAsset, HtmlVideoGenerationDetail, HtmlVideoPipelineMetadata, HtmlVideoPreview, HtmlVideoRenderDetail, HtmlVideoResolution } from '../../../services/htmlVideoRenderService';
+import type { HtmlVideoAspectRatio, HtmlVideoAsset, HtmlVideoDraftRequest, HtmlVideoGenerationDetail, HtmlVideoPipelineMetadata, HtmlVideoPreview, HtmlVideoRenderDetail, HtmlVideoResolution } from '../../../services/htmlVideoRenderService';
 
 export type CandidateStatus = 'generating' | 'ready' | 'queued' | 'rendering' | 'uploading' | 'completed' | 'failed';
 
@@ -29,6 +29,7 @@ export type HtmlVideoCandidate = {
   primaryPromptContext?: string;
   primaryPromptFileName?: string;
   referenceAssets?: HtmlVideoAsset[];
+  editSource?: HtmlVideoDraftRequest['editSource'];
 };
 
 export type CandidateFilter = 'all' | 'active' | 'completed' | 'failed';
@@ -44,4 +45,6 @@ export type HtmlVideoReference = {
   assetUrl?: string;
   role?: 'background' | 'hero' | 'logo' | 'overlay';
   includeInVideo?: boolean;
+  width?: number;
+  height?: number;
 };

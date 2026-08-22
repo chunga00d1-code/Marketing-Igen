@@ -13,6 +13,8 @@ export type HtmlVideoAsset = {
   url: string;
   role?: HtmlVideoAssetRole;
   includeInVideo?: boolean;
+  width?: number;
+  height?: number;
 };
 
 export type HtmlVideoSource = {
@@ -168,13 +170,15 @@ function normalizeAssets(value: unknown): HtmlVideoAsset[] {
       url,
       role: asset.role,
       includeInVideo: asset.includeInVideo !== false,
+      width: Number.isInteger(asset.width) && Number(asset.width) > 0 ? Number(asset.width) : undefined,
+      height: Number.isInteger(asset.height) && Number(asset.height) > 0 ? Number(asset.height) : undefined,
     };
   });
 }
 
 function injectMediaAssets(html: string, assets: HtmlVideoAsset[]) {
   let result = html;
-  for (const asset of assets.filter((item) => item.includeInVideo !== false)) {
+  for (const asset of assets) {
     const slotPattern = new RegExp(
       `<([a-z][a-z0-9-]*)\\b[^>]*\\s${mediaSlotAttribute}=["']${escapeRegExp(asset.id)}["'][^>]*>\\s*<\\/\\1>`,
       "gi"
@@ -183,6 +187,7 @@ function injectMediaAssets(html: string, assets: HtmlVideoAsset[]) {
     const image = `<div class="html-video-media-slot html-video-media-slot-${role}" ${mediaSlotAttribute}="${escapeHtmlAttribute(asset.id)}"><img src="${escapeHtmlAttribute(asset.url)}" alt="${escapeHtmlAttribute(asset.name)}" /></div>`;
     const hadSlot = slotPattern.test(result);
     slotPattern.lastIndex = 0;
+    if (!hadSlot && asset.includeInVideo === false) continue;
     result = result.replace(slotPattern, image);
     if (!hadSlot) {
       const fallbackSlot = `<div ${mediaSlotAttribute}="${escapeHtmlAttribute(asset.id)}"></div>`;
@@ -352,6 +357,12 @@ function buildSceneIsolationCss(
       `@keyframes html-video-scene-${index}-body{0%,${Math.min(end - 0.01, start + (0.12 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:translateX(-24px)}${Math.min(end - 0.01, start + Math.min(interval * 0.36, (0.9 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:translateX(0)}${endOut.toFixed(4)}%{opacity:1;transform:translateX(0)}${end.toFixed(4)}%,100%{opacity:0;transform:translateX(14px)}}`,
       `[data-html-video-scene="${index}"] .scene-media{animation:html-video-scene-${index}-media ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
       `@keyframes html-video-scene-${index}-media{0%,${start.toFixed(4)}%{opacity:0;transform:scale(.88)}${Math.min(end - 0.01, start + Math.min(interval * 0.32, (0.8 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.92)}}`,
+      `[data-html-video-scene="${index}"] .scene-background-media{animation:html-video-scene-${index}-background ${durationSeconds}s cubic-bezier(.65,0,.35,1) both!important}`,
+      `@keyframes html-video-scene-${index}-background{0%,${start.toFixed(4)}%{transform:scale(1)}${Math.min(end - 0.01, start + Math.min(interval * 0.24, (0.35 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.08)}${endOut.toFixed(4)}%{transform:scale(1.1)}${end.toFixed(4)}%,100%{transform:scale(1.06)}}`,
+      `[data-html-video-scene="${index}"] .scene-focus{animation:html-video-scene-${index}-focus ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
+      `@keyframes html-video-scene-${index}-focus{0%,${start.toFixed(4)}%{opacity:0;transform:scale(.94)}${Math.min(end - 0.01, start + Math.min(interval * 0.18, (0.22 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1.06)}${Math.min(end - 0.01, start + Math.min(interval * 0.34, (0.42 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.98)}}`,
+      `[data-html-video-scene="${index}"] .scene-speaker{animation:html-video-scene-${index}-speaker ${durationSeconds}s ease-in-out both!important}`,
+      `@keyframes html-video-scene-${index}-speaker{0%,${start.toFixed(4)}%{transform:scale(.85)}${Math.min(end - 0.01, start + Math.min(interval * 0.22, (0.3 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.15)}${Math.min(end - 0.01, start + Math.min(interval * 0.4, (0.55 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%,100%{transform:scale(1)}}`,
       `[data-html-video-scene="${index}"] .scene-cta{animation:html-video-scene-${index}-cta ${durationSeconds}s cubic-bezier(.16,1,.3,1) both!important}`,
       `@keyframes html-video-scene-${index}-cta{0%,${Math.min(end - 0.01, start + (0.18 / durationSeconds) * 100).toFixed(4)}%{opacity:0;transform:scale(.9)}${Math.min(end - 0.01, start + Math.min(interval * 0.3, (0.7 / durationSeconds) * 100)).toFixed(4)}%{opacity:1;transform:scale(1)}${Math.min(end - 0.01, start + Math.min(interval * 0.6, (1.8 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1.06)}${Math.min(end - 0.01, start + Math.min(interval * 0.85, (2.6 / durationSeconds) * 100)).toFixed(4)}%{transform:scale(1)}${endOut.toFixed(4)}%{opacity:1;transform:scale(1)}${end.toFixed(4)}%,100%{opacity:0;transform:scale(.95)}}`
     );

@@ -102,3 +102,21 @@ test("slows short narration slightly instead of padding a large silent tail", as
   assert.equal(requestBody?.speed, 0.85);
   assert.match(String(requestBody?.input), /Avoid rushing/);
 });
+test("uses an English narrator profile when the pipeline requires English voice", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  delete process.env.OPENROUTER_HTML_VIDEO_TTS_SPEED;
+  let requestBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(Buffer.alloc(256, 7), { status: 200 });
+  }) as typeof fetch;
+
+  await htmlVideoTtsService.generate(
+    "Jobs in English. Listen and repeat. Teacher.",
+    { durationSeconds: 5, language: "English" }
+  );
+
+  assert.match(String(requestBody?.input), /native English narrator/);
+  assert.match(String(requestBody?.input), /natural English pronunciation/);
+  assert.doesNotMatch(String(requestBody?.input), /native Vietnamese accent/);
+});

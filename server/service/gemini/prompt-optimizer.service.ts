@@ -9,6 +9,8 @@ import {
 export type HtmlVideoMasterPromptSpec = {
   durationSeconds?: number;
   aspectRatio?: "9:16" | "1:1" | "16:9";
+  inputImageCount?: number;
+  imagePolicy?: "none" | "embed" | "reference" | "mixed";
 };
 
 function normalizeMasterPromptSpec(spec?: HtmlVideoMasterPromptSpec) {
@@ -19,7 +21,61 @@ function normalizeMasterPromptSpec(spec?: HtmlVideoMasterPromptSpec) {
   const aspectRatio = spec?.aspectRatio === "1:1" || spec?.aspectRatio === "16:9"
     ? spec.aspectRatio
     : "9:16";
-  return { durationSeconds, aspectRatio } as const;
+  const inputImageCount = Math.max(0, Math.min(6, Math.floor(Number(spec?.inputImageCount) || 0)));
+  const imagePolicy = inputImageCount === 0
+    ? "none"
+    : spec?.imagePolicy === "reference" || spec?.imagePolicy === "mixed"
+      ? spec.imagePolicy
+      : "embed";
+  return { durationSeconds, aspectRatio, inputImageCount, imagePolicy } as const;
+}
+
+function foldMasterPromptText(prompt: string) {
+  return prompt
+    .toLocaleLowerCase("vi-VN")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+}
+
+function inferMasterPromptLanguage(prompt: string) {
+  const normalized = prompt.toLocaleLowerCase("vi-VN");
+  const folded = foldMasterPromptText(prompt);
+  const hasVietnameseMarks = /[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệđìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/i.test(normalized);
+  const hasVietnameseWords = /(?:^|\s)(anh|doc|giong|noi|tao|lam|gioi thieu|huong dan|bang|tieng)(?:\s|$)/i.test(folded);
+  return hasVietnameseMarks || hasVietnameseWords ? "Vietnamese" : "same as the authoritative source";
+}
+
+function inferMasterPromptContentMode(prompt: string) {
+  const normalized = foldMasterPromptText(prompt);
+  if (/(bang|danh sach|lan luot|theo thu tu|tung (muc|o|tu)|table|list|in order|one by one)/i.test(normalized)) return "ordered-list";
+  if (/(bai hoc|giai thich|huong dan|day|tu vung|kien thuc|lesson|tutorial|teach|vocabulary)/i.test(normalized)) return "educational";
+  if (/(giam gia|khuyen mai|uu dai|flash sale|promotion|discount)/i.test(normalized)) return "promotion";
+  if (/(san pham|dich vu|gioi thieu|product|service|launch)/i.test(normalized)) return "product-or-service";
+  return "general-explainer";
+}
+
+function inferMasterPromptImagePolicy(context: string | undefined, inputImageCount: number) {
+  if (inputImageCount === 0) return "none" as const;
+  const normalized = String(context || "").toLowerCase();
+  const hasEmbedded = normalized.includes("include this image in the final video");
+  const hasReferenceOnly = normalized.includes("use this image only as visual reference");
+  if (hasEmbedded && hasReferenceOnly) return "mixed" as const;
+  if (hasReferenceOnly) return "reference" as const;
+  return "embed" as const;
+}
+
+function describeMasterPromptImagePolicy(policy: "none" | "embed" | "reference" | "mixed", count: number) {
+  if (policy === "none") {
+    return "No input image. Build complete HTML/CSS motion graphics; never render an empty media card or placeholder.";
+  }
+  if (policy === "reference") {
+    return `${count} input image(s), used only as visual references. Recreate the visual language with HTML/CSS and do not reserve an empty media slot.`;
+  }
+  if (policy === "mixed") {
+    return `${count} input image(s) with mixed roles. Embed only assets marked for inclusion and use the others only for visual guidance.`;
+  }
+  return `${count} input image(s) must appear in the final video. Preserve their real content and use the role requested by the user; if the request describes an ordered board or table, keep it visible and highlight each item in source order.`;
 }
 
 function sourceUnitsFromPrompt(prompt: string, maximumUnits: number) {
@@ -46,6 +102,12 @@ export function buildHtmlVideoMasterPromptFallback(
   const normalizedPrompt = String(prompt || "").trim();
   if (!normalizedPrompt) return "";
   const normalizedSpec = normalizeMasterPromptSpec(spec);
+  const language = inferMasterPromptLanguage(normalizedPrompt);
+  const contentMode = inferMasterPromptContentMode(normalizedPrompt);
+  const imagePolicyDescription = describeMasterPromptImagePolicy(
+    normalizedSpec.imagePolicy,
+    normalizedSpec.inputImageCount
+  );
   const maximumScenes = Math.max(1, Math.min(8, Math.floor(normalizedSpec.durationSeconds / 3)));
   const units = sourceUnitsFromPrompt(normalizedPrompt, maximumScenes);
   const sceneDuration = normalizedSpec.durationSeconds / units.length;
@@ -66,7 +128,7 @@ export function buildHtmlVideoMasterPromptFallback(
       `- Source facts: ${unit}`,
       `- On-screen text: ${onScreenText}`,
       `- Voice-over: ${voiceOver}`,
-      "- Visual: Build a readable full-canvas composition that supports this source unit.",
+      `- Visual: Build a readable full-canvas composition that supports this source unit. ${imagePolicyDescription}`,
       "- Motion: Use a clear entrance, a readable hold, subtle continuous motion, and a clean exit.",
       `- Transition: ${index === units.length - 1 ? "hold" : "crossfade"}`,
       "",
@@ -76,7 +138,9 @@ export function buildHtmlVideoMasterPromptFallback(
     "# VIDEO BRIEF",
     `- Duration: ${normalizedSpec.durationSeconds} seconds`,
     `- Aspect ratio: ${normalizedSpec.aspectRatio}`,
-    "- Language: Keep the same language as the authoritative source.",
+    `- Content mode: ${contentMode}`,
+    `- Language: ${language}. Use one narration language throughout; keep source foreign terms verbatim only when they are the content being taught or read.`,
+    `- Input image policy: ${imagePolicyDescription}`,
     "- Fidelity: Do not add prices, offers, claims, contact details, names, or CTA absent from the source.",
     "",
     "# AUTHORITATIVE SOURCE",
@@ -87,6 +151,7 @@ export function buildHtmlVideoMasterPromptFallback(
     "# GLOBAL DIRECTION",
     "- Keep one source unit per scene and preserve source order.",
     "- Keep voice-over at a natural pace and synchronized with the visible scene.",
+    "- Expand a short request into production direction, layout, and motion, but never invent business facts or replace the user's subject with a generic advertisement.",
     "- Use the server-owned animation timeline; do not request scrolling or vertical page transitions.",
   ].join("\n").trim();
 }
@@ -520,7 +585,21 @@ CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdo
     if (!normalizedPrompt) {
       return { master_prompt: "" };
     }
-    const normalizedSpec = normalizeMasterPromptSpec(spec);
+    const normalizedImages = imageUris
+      ?.filter((uri: string) => uri && typeof uri === "string")
+      .slice(0, 6) || [];
+    const imagePolicy = inferMasterPromptImagePolicy(context, normalizedImages.length);
+    const normalizedSpec = normalizeMasterPromptSpec({
+      ...spec,
+      inputImageCount: normalizedImages.length,
+      imagePolicy,
+    });
+    const contentMode = inferMasterPromptContentMode(normalizedPrompt);
+    const narrationLanguage = inferMasterPromptLanguage(normalizedPrompt);
+    const imagePolicyDescription = describeMasterPromptImagePolicy(
+      normalizedSpec.imagePolicy,
+      normalizedSpec.inputImageCount
+    );
 
     const getLocalFallbackMasterPrompt = () => {
       const faithfulFallback = buildHtmlVideoMasterPromptFallback(normalizedPrompt, normalizedSpec);
@@ -704,14 +783,23 @@ QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
       let userContent = `Hãy phân tích sâu và tối ưu yêu cầu sau thành một MASTER PROMPT VIDEO SIÊU CHI TIẾT theo chuẩn quy trình đạo diễn 5 phần:\n"${normalizedPrompt}"`;
       const strictStoryboardContract = `FINAL OVERRIDING CONTRACT FOR HTML-TO-VIDEO:
 - Optimize for the user's actual request, not for a generic advertisement template.
+- The request may be only a few words. Expand it into concrete production direction, scene purpose, layout, motion, and narration while preserving its exact subject and intent.
 - Never invent a pain point, feature, benefit, price, discount, scarcity claim, guarantee, contact detail, testimonial, free consultation, or CTA. Include a CTA only when the authoritative source requests or supplies one.
 - Treat the current user prompt as authoritative. Context and images may support it but may not override it or create unsupported facts.
+- Classify this request as ${contentMode}; do not force it into a product advertisement or marketing funnel.
+- Narration language is ${narrationLanguage}. Use one narration language throughout. Foreign-language terms may remain only when they are source content to teach, quote, label, or pronounce; do not add bilingual filler.
+- Input image policy: ${imagePolicyDescription}
+- With no embedded input image, design complete HTML/CSS motion graphics without blank image cards. With an embedded image, preserve the real image content and animate focus/highlights around it instead of recreating or covering it.
+- For a table, board, grid, or ordered list, preserve source order. Unless the source explicitly states another order, process left-to-right and top-to-bottom, and synchronize the visible highlight with the exact item being narrated.
 - Choose scene count from the number of distinct source units and the available duration. Do not force 4-6 scenes. Use one source unit per scene and preserve source order.
 - Target exactly ${normalizedSpec.durationSeconds} seconds at ${normalizedSpec.aspectRatio}. Scene times must be contiguous from 0.0s to ${normalizedSpec.durationSeconds.toFixed(1)}s with no gaps or overlap.
 - Write actual final on-screen copy and actual final voice-over for every scene. Do not return placeholders, options, instructions to another writer, or bracketed missing values.
 - Keep every scene voice-over at no more than 2.5 words per second, as a complete natural sentence matching only that scene.
 - Use these exact ASCII headings and field labels so the production planner can parse the result:
 # VIDEO BRIEF
+- Content mode: ${contentMode}
+- Language: ${narrationLanguage}
+- Input image policy: ${imagePolicyDescription}
 # AUTHORITATIVE SOURCE
 # STORYBOARD
 ## SCENE 1
@@ -727,7 +815,7 @@ QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
 - The last scene must end at exactly ${normalizedSpec.durationSeconds.toFixed(1)}s.
 - Output Markdown only, without greeting, explanation, HTML, CSS, JSON, or code fences.`;
       void systemInstruction;
-      userContent = `Create a faithful, production-ready HTML-to-video storyboard from this authoritative request.\n\n${normalizedPrompt}\n\nVIDEO SPEC: ${normalizedSpec.durationSeconds} seconds, ${normalizedSpec.aspectRatio}.`;
+      userContent = `Create a faithful, production-ready HTML-to-video storyboard from this authoritative request.\n\n${normalizedPrompt}\n\nVIDEO SPEC: ${normalizedSpec.durationSeconds} seconds, ${normalizedSpec.aspectRatio}.\nCONTENT MODE: ${contentMode}.\nNARRATION LANGUAGE: ${narrationLanguage}.\nASSET POLICY: ${imagePolicyDescription}`;
 
       if (context && context.trim()) {
         userContent += `\n\n--- NGỮ CẢNH VÀ TÀI LIỆU THAM CHIẾU ---\n${context.trim().slice(0, 15000)}`;
@@ -738,7 +826,7 @@ QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
         userContent,
         {
           systemInstruction: strictStoryboardContract,
-          images: imageUris?.filter((u: string) => u && typeof u === "string"),
+          images: normalizedImages,
           temperature: 0.25,
         }
       );

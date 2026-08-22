@@ -20,6 +20,7 @@ import {
 import { mergePersistedHtmlVideoRenders } from "../HtmlVideoBatchWorkspace";
 import {
   inferHtmlVideoAspectRatio,
+  inferExplicitHtmlVideoDuration,
   automaticDuration,
   estimateHtmlVideoGenerationProgress,
   formatHtmlVideoElapsedTime,
@@ -100,11 +101,32 @@ test("renders prompt generation controls and the exact wallet cost", () => {
     source,
     /if \(!aspectRatioLocked && effectiveAspectRatio !== aspectRatio\)[\s\S]*?setAspectRatioState\(effectiveAspectRatio\);\s*}\s*if \(!trimmedPrompt \|\| isCreating \|\| referencesAnalyzing\) return;/
   );
-  assert.match(source, /inferredDurationSeconds/);
-  assert.match(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration/);
-  assert.match(source, /type="number"/);
-  assert.match(source, />Lưu</);
+  assert.match(source, /automaticDuration\(trimmedPrompt\)/);
+  assert.doesNotMatch(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration|html-video-duration/);
+  assert.doesNotMatch(source, /type="number"/);
   assert.doesNotMatch(source, /Tùy chỉnh cài đặt/);
+});
+
+test("updates the selected video revision in place and preserves its references", () => {
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+
+  assert.match(source, /id: editingCandidate\?\.id \|\| `html-video-candidate-/);
+  assert.match(source, /current\.map\(\(candidate\) => candidate\.id === editingCandidate\.id \? nextCandidates\[0\]/);
+  assert.match(source, /inheritedAssets\.length > 0 \? inheritedAssets : buildReferenceAssets/);
+  assert.match(source, /editSource: editingCandidate \? \{/);
+  assert.match(source, /editingCandidate && explicitlyRequestedDuration === null/);
+  assert.match(source, /aspectRatioSource === "manual"/);
+  assert.match(source, /setAspectRatioSource\("inherited"\)/);
+  assert.match(source, /snapshotHash: editingCandidate\.editSource\?\.snapshotHash/);
+  assert.match(source, /await service\.getEditSource\(candidate\.render\.id\)/);
+  assert.match(source, /if \(!editingCandidate && selectedCandidate\?\.render\)/);
+  assert.match(source, /await service\.getEditSource\(selectedCandidate\.render\.id\)/);
+  assert.match(source, /referenceAssets: editSource\.assets \|\| candidate\.referenceAssets/);
+  assert.match(source, /setSelectedCandidateId\(isPromptHistory \? null : editableCandidate\.id\)/);
+  assert.match(source, /C\u1eadp nh\u1eadt video hi\u1ec7n t\u1ea1i/);
 });
 
 test("keeps loading numbers moving while HTML-to-video is processing", () => {
@@ -120,7 +142,7 @@ test("keeps loading numbers moving while HTML-to-video is processing", () => {
     "utf8"
   );
   assert.match(source, /LoaderCircle/);
-  assert.match(source, /Đang tạo bản dựng/);
+  assert.match(source, /\u0110ang x\u1eed l\u00fd b\u1ea3n d\u1ef1ng/);
   assert.match(source, /Đang tạo lại/);
 });
 test("recognizes explicit numeric and Vietnamese word durations", () => {
@@ -128,6 +150,10 @@ test("recognizes explicit numeric and Vietnamese word durations", () => {
   assert.equal(automaticDuration("Create a 20-second product teaser"), 20);
   assert.equal(automaticDuration("Video dài mười lăm giây với CTA cuối"), 15);
   assert.equal(automaticDuration("Thời lượng: 45 giây"), 45);
+  assert.equal(inferExplicitHtmlVideoDuration("Đổi animation của tiêu đề"), null);
+  assert.equal(inferExplicitHtmlVideoDuration("Cho animation tiêu đề chạy trong 2s"), null);
+  assert.equal(inferExplicitHtmlVideoDuration("Video có animation tiêu đề chạy trong 2s"), null);
+  assert.equal(inferExplicitHtmlVideoDuration("Đổi video thành 90 giây"), 90);
 });
 
 
@@ -509,7 +535,7 @@ test("renders the optimize master prompt button and undo button in the prompt pa
 
   assert.match(
     source,
-    /optimizeMasterPrompt\(rawPrompt, referenceContext, imageUris, \{[\s\S]{0,180}durationSeconds,[\s\S]{0,100}aspectRatio: effectiveAspectRatio/
+    /const masterPromptDuration = explicitDuration[\s\S]{0,240}referenceContext\.length > 420[\s\S]{0,240}optimizeMasterPrompt\(rawPrompt, referenceContext, imageUris, \{[\s\S]{0,120}durationSeconds: masterPromptDuration,[\s\S]{0,100}aspectRatio: effectiveAspectRatio/
   );
   assert.match(markup, /Tối ưu prompt/);
   assert.match(markup, /html-video-optimize-prompt-btn/);
