@@ -114,6 +114,35 @@ export type HtmlVideoPipelineMetadata = {
   }>;
 };
 
+const MAX_PIPELINE_CONTENT_UNIT_TEXT_LENGTH = 4_000;
+
+function boundPipelineContentUnitText(value: string) {
+  return value.trim().slice(0, MAX_PIPELINE_CONTENT_UNIT_TEXT_LENGTH);
+}
+
+export function normalizeHtmlVideoPipelineForRender(
+  pipeline?: HtmlVideoPipelineMetadata
+) {
+  if (!pipeline) return undefined;
+  return {
+    ...pipeline,
+    contentUnits: pipeline.contentUnits.map((unit) => {
+      const originalSourceText = unit.sourceText.trim();
+      const originalNormalizedText = unit.normalizedText.trim();
+      const sourceText = boundPipelineContentUnitText(unit.sourceText);
+      const normalizedText = boundPipelineContentUnitText(unit.normalizedText) || sourceText;
+      const wasBounded = sourceText.length !== originalSourceText.length
+        || normalizedText.length !== originalNormalizedText.length;
+      return {
+        ...unit,
+        sourceText,
+        normalizedText,
+        ...(wasBounded ? { required: false, requiredVerbatim: false } : {}),
+      };
+    }),
+  };
+}
+
 export type HtmlVideoPreviewRequest = {
   html: string;
   css: string;
@@ -803,10 +832,16 @@ export const htmlVideoRenderService = {
     input: CreateHtmlVideoRenderRequest,
     signal?: AbortSignal
   ): Promise<HtmlVideoRenderDetail> {
+    const renderInput = {
+      ...input,
+      ...(input.pipeline
+        ? { pipeline: normalizeHtmlVideoPipelineForRender(input.pipeline) }
+        : {}),
+    };
     const response = await fetch("/api/v1/html-video-renders", {
       method: "POST",
       headers: authHeaders(true),
-      body: JSON.stringify(input),
+      body: JSON.stringify(renderInput),
       signal,
     });
     const payload = await readPayload(response);

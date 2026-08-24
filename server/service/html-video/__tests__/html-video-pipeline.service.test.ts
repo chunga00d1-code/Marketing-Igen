@@ -136,6 +136,21 @@ test("keeps the raw user prompt authoritative over an expanded master prompt", (
   );
 });
 
+test("splits an oversized source unit before it reaches the render payload", () => {
+  const source = "nội dung dài ".repeat(500);
+  const grounding = buildHtmlVideoGrounding({
+    prompt: source,
+    durationSeconds: 30,
+    aspectRatio: "9:16",
+    resolution: "720p",
+  });
+
+  assert.ok(grounding.contentUnits.length >= 2);
+  assert.ok(grounding.contentUnits.every((unit) => unit.sourceText.length <= 4_000));
+  assert.ok(grounding.contentUnits.every((unit) => unit.normalizedText.length <= 4_000));
+  assert.equal(grounding.sourceText, source.trim());
+});
+
 test("grounds the longest ordered vocabulary list without truncating fifteen items", () => {
   const words = [
     "teacher", "singer", "doctor", "firefighter", "office worker",
@@ -858,6 +873,8 @@ test("plans content first, composes visual and voice in parallel roles, then com
   assert.match(result.html, /scene scene-1[^"]*composition-showcase[^"]*surface-solid[^"]*background-mesh[^"]*motion-scale-pop/);
   assert.match(result.html, /scene scene-2[^"]*composition-editorial[^"]*surface-outline[^"]*background-grid[^"]*motion-soft-reveal/);
   assert.match(result.html, /class="scene-pattern"/);
+  assert.match(result.html, /scene-orb-a" data-layout-allow-overflow="true"/);
+  assert.match(result.html, /scene-orb-b" data-layout-allow-overflow="true"/);
   assert.match(result.html, /class="scene-band"/);
   assert.match(result.css, /\.composition-showcase \.scene-frame/);
   assert.match(result.css, /\.background-grid \.scene-pattern/);
@@ -881,6 +898,7 @@ test("plans content first, composes visual and voice in parallel roles, then com
   assert.ok(safe.compositionHtml.includes(firstSceneEndPercent + "%"));
   assert.match(safe.compositionHtml, /html-video-scene-0-headline\{[^}]*scale\(\.68\)/);
   assert.match(safe.compositionHtml, /html-video-scene-0-pattern/);
+  assert.match(safe.compositionHtml, /scene-orb-a" data-layout-allow-overflow="true"/);
 
   const resumedCalls: Parameters<typeof openrouterChat>[0][] = [];
   const checkpointWithoutVoice = { ...checkpoint, voice: undefined };

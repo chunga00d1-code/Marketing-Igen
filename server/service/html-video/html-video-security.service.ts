@@ -38,7 +38,7 @@ export type SafeHtmlVideoComposition = {
 const maximumSourceBytes = 100 * 1024;
 const maximumAssetCount = 6;
 const mediaSlotAttribute = "data-media-slot";
-const semanticAttributes = ["data-scene-id", "data-unit-id", "data-unit-ids"];
+const semanticAttributes = ["data-scene-id", "data-unit-id", "data-unit-ids", "data-layout-allow-overflow"];
 const allowedTags = new Set([
   "article",
   "aside",
@@ -101,6 +101,15 @@ function assertSourceSize(value: string, label: "HTML" | "CSS") {
   }
 }
 
+function markKnownDecorativeOverflow(value: string) {
+  return value.replace(
+    /<div\b(?=[^>]*\bclass="[^"]*\bscene-orb\b[^"]*")[^>]*>/gi,
+    (tag) => /\bdata-layout-allow-overflow(?:\s*=|\s|>)/i.test(tag)
+      ? tag
+      : tag.replace(/>$/, ' data-layout-allow-overflow="true">')
+  );
+}
+
 function normalizeHtml(value: string) {
   if (!value.trim()) {
     throw new Error("HTML không được để trống.");
@@ -118,13 +127,14 @@ function normalizeHtml(value: string) {
     }
   }
 
-  return sanitizeHtml(value, {
+  const sanitized = sanitizeHtml(value, {
     allowedTags: [...allowedTags],
     allowedAttributes,
     allowProtocolRelative: false,
     disallowedTagsMode: "discard",
     enforceHtmlBoundary: true,
   }).trim();
+  return markKnownDecorativeOverflow(sanitized);
 }
 
 function escapeHtmlAttribute(value: string) {

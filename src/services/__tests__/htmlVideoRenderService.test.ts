@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   htmlVideoRenderService,
+  normalizeHtmlVideoPipelineForRender,
   parseHtmlVideoDraftResponse,
   parseHtmlVideoGenerationResponse,
   parseHtmlVideoPreviewResponse,
   parseHtmlVideoRenderResponse,
   pollHtmlVideoGeneration,
 } from "../htmlVideoRenderService";
+import type { HtmlVideoPipelineMetadata } from "../htmlVideoRenderService";
 
 const originalFetch = globalThis.fetch;
 const previewInput = {
@@ -338,6 +340,28 @@ test("create sends one idempotent render request", async () => {
     ...previewInput,
     idempotencyKey: "html_render_123456",
   });
+});
+
+test("bounds oversized legacy pipeline units before render validation", () => {
+  const pipeline = {
+    contentUnits: [{
+      id: "unit-18",
+      order: 17,
+      sourceText: "dữ liệu ".repeat(600),
+      normalizedText: "dữ liệu ".repeat(600),
+      sourceRefs: ["source-current-prompt"],
+      required: true,
+      requiredVerbatim: true,
+    }],
+  } as unknown as HtmlVideoPipelineMetadata;
+
+  const normalized = normalizeHtmlVideoPipelineForRender(pipeline);
+  const unit = normalized?.contentUnits[0];
+  assert.ok(unit);
+  assert.equal(unit?.sourceText.length, 4_000);
+  assert.equal(unit?.normalizedText.length, 4_000);
+  assert.equal(unit?.required, false);
+  assert.equal(unit?.requiredVerbatim, false);
 });
 
 test("create surfaces the first validation detail returned by the API", async () => {

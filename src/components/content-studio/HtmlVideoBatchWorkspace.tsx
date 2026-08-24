@@ -542,7 +542,9 @@ export function HtmlVideoBatchWorkspace({
     setAspectRatioState(nextAspectRatio);
     toast.success(`Đã chuyển tỷ lệ về tự động: ${nextAspectRatio}.`);
   };
-  const autoRender = false;
+  // A valid draft is an intermediate artifact only. Queue its MP4 render
+  // immediately so a non-technical user never has to perform a second action.
+  const autoRender = true;
   const [isCreating, setIsCreating] = useState(false);
   const [candidates, setCandidates] = useState<HtmlVideoCandidate[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -754,7 +756,7 @@ export function HtmlVideoBatchWorkspace({
         if (cancelled) return;
         const renderPage = rendersResult.status === "fulfilled" ? rendersResult.value : null;
         const sessions = sessionsResult.status === "fulfilled" ? sessionsResult.value : [];
-        if (rendersResult.status === "rejected") {
+        if (!renderPage) {
           toast.warning("Không thể tải lịch sử video từ máy chủ.");
           return;
         }
@@ -1497,7 +1499,7 @@ export function HtmlVideoBatchWorkspace({
                 ) : (
                   <>
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>Viết Master Prompt</span>
+                    <span>Tối ưu Prompt</span>
                   </>
                 )}
               </button>

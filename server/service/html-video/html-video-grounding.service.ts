@@ -8,9 +8,39 @@ import type { HtmlVideoDraftInput } from "./html-video-draft.service";
 import { filterRepeatedReferenceGridItems } from "./html-video-reference-grid.service";
 
 const MAX_CONTENT_UNITS = 24;
+const MAX_CONTENT_UNIT_TEXT_LENGTH = 4_000;
 
 function compact(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function splitContentUnitText(value: string) {
+  let remaining = compact(value);
+  if (!remaining) return [];
+  const chunks: string[] = [];
+  while (remaining.length > MAX_CONTENT_UNIT_TEXT_LENGTH) {
+    const candidate = remaining.slice(0, MAX_CONTENT_UNIT_TEXT_LENGTH + 1);
+    const sentenceBreak = Math.max(
+      candidate.lastIndexOf(". "),
+      candidate.lastIndexOf("! "),
+      candidate.lastIndexOf("? "),
+      candidate.lastIndexOf("; ")
+    );
+    const wordBreak = candidate.lastIndexOf(" ");
+    const end = sentenceBreak >= Math.floor(MAX_CONTENT_UNIT_TEXT_LENGTH * 0.5)
+      ? sentenceBreak + 1
+      : wordBreak >= Math.floor(MAX_CONTENT_UNIT_TEXT_LENGTH * 0.5)
+        ? wordBreak
+        : MAX_CONTENT_UNIT_TEXT_LENGTH;
+    chunks.push(remaining.slice(0, end).trim());
+    remaining = remaining.slice(end).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
+function boundedContentUnitText(value: string) {
+  return splitContentUnitText(value)[0] || "";
 }
 
 function sourceText(input: HtmlVideoDraftInput) {
@@ -276,14 +306,17 @@ export function buildHtmlVideoGrounding(input: HtmlVideoDraftInput) {
   const sceneCandidates = explicitSceneBlocks(currentText);
   const orderedCandidates = explicitOrderedList(currentText);
   const referenceCandidates = extractedReferenceUnits(input.referenceContext, input.referenceAssets);
-  const normalizedCandidates = (referenceCandidates.length > 0
+  const candidateTexts = referenceCandidates.length > 0
     ? referenceCandidates.map((unit) => unit.text)
     : sceneCandidates.length > 0
       ? sceneCandidates
       : orderedCandidates.length > 0
         ? orderedCandidates
         : inferredUnits(currentText)
-  ).slice(0, MAX_CONTENT_UNITS);
+  ;
+  const normalizedCandidates = candidateTexts
+    .flatMap((text) => splitContentUnitText(text))
+    .slice(0, MAX_CONTENT_UNITS);
   const fallback = compact(currentText || input.prompt);
   const inferredContentUnits: HtmlVideoContentUnit[] = (normalizedCandidates.length > 0
     ? normalizedCandidates
@@ -320,6 +353,12 @@ export function buildHtmlVideoGrounding(input: HtmlVideoDraftInput) {
     ? existingPipeline.contentUnits.slice(0, MAX_CONTENT_UNITS).map((unit, index) => ({
         ...unit,
         order: index,
+        sourceText: boundedContentUnitText(unit.sourceText),
+        normalizedText: boundedContentUnitText(unit.normalizedText) || boundedContentUnitText(unit.sourceText),
+        ...(unit.sourceText.length > MAX_CONTENT_UNIT_TEXT_LENGTH
+          || unit.normalizedText.length > MAX_CONTENT_UNIT_TEXT_LENGTH
+          ? { required: false, requiredVerbatim: false }
+          : {}),
         sourceRefs: Array.from(new Set([...(unit.sourceRefs || []), "source-existing-video"])).slice(0, 8),
       }))
     : inferredContentUnits;
