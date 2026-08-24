@@ -26,12 +26,18 @@ export type HtmlVideoAsset = HtmlVideoReferenceSlot & {
 };
 
 export type HtmlVideoPromptAssumptions = {
+  requestSpecVersion?: "1.0";
+  mode?: "create" | "revision";
   contentMode?: string;
   narrationLanguage?: string;
+  languageLock?: string;
+  durationPolicy?: "explicit" | "inferred" | "preserve-existing";
   durationSeconds?: number;
   aspectRatio?: HtmlVideoAspectRatio;
   imagePolicy?: "none" | "embed" | "reference" | "mixed";
   inputImageCount?: number;
+  sourceOrder?: "preserve";
+  preserveUnrequestedProperties?: boolean;
 };
 
 export type HtmlVideoPromptProvenance = {
@@ -82,6 +88,7 @@ export type HtmlVideoPipelineMetadata = {
   contentUnits: Array<{
     id: string;
     order: number;
+    assetId?: string;
     sourceText: string;
     normalizedText: string;
     sourceRefs: string[];
@@ -106,6 +113,35 @@ export type HtmlVideoPipelineMetadata = {
     sceneId?: string;
   }>;
 };
+
+const MAX_PIPELINE_CONTENT_UNIT_TEXT_LENGTH = 4_000;
+
+function boundPipelineContentUnitText(value: string) {
+  return value.trim().slice(0, MAX_PIPELINE_CONTENT_UNIT_TEXT_LENGTH);
+}
+
+export function normalizeHtmlVideoPipelineForRender(
+  pipeline?: HtmlVideoPipelineMetadata
+) {
+  if (!pipeline) return undefined;
+  return {
+    ...pipeline,
+    contentUnits: pipeline.contentUnits.map((unit) => {
+      const originalSourceText = unit.sourceText.trim();
+      const originalNormalizedText = unit.normalizedText.trim();
+      const sourceText = boundPipelineContentUnitText(unit.sourceText);
+      const normalizedText = boundPipelineContentUnitText(unit.normalizedText) || sourceText;
+      const wasBounded = sourceText.length !== originalSourceText.length
+        || normalizedText.length !== originalNormalizedText.length;
+      return {
+        ...unit,
+        sourceText,
+        normalizedText,
+        ...(wasBounded ? { required: false, requiredVerbatim: false } : {}),
+      };
+    }),
+  };
+}
 
 export type HtmlVideoPreviewRequest = {
   html: string;
@@ -169,6 +205,7 @@ export type HtmlVideoGenerationDetail = {
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
   promptHistoryId?: string;
+  generationId?: string;
   voiceScript?: string;
   pipeline?: HtmlVideoPipelineMetadata;
 };
@@ -565,9 +602,16 @@ async function readPayload(response: Response) {
 }
 
 function requestError(payload: unknown, fallback: string) {
+  const validationDetail = isRecord(payload) && isRecord(payload.errors)
+    ? Object.values(payload.errors)
+        .flatMap((value) => Array.isArray(value) ? value : [])
+        .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : undefined;
   return new Error(
     isRecord(payload) && typeof payload.message === "string"
-      ? payload.message
+      ? validationDetail
+        ? `${payload.message}: ${validationDetail}`
+        : payload.message
       : fallback
   );
 }
@@ -788,10 +832,16 @@ export const htmlVideoRenderService = {
     input: CreateHtmlVideoRenderRequest,
     signal?: AbortSignal
   ): Promise<HtmlVideoRenderDetail> {
+    const renderInput = {
+      ...input,
+      ...(input.pipeline
+        ? { pipeline: normalizeHtmlVideoPipelineForRender(input.pipeline) }
+        : {}),
+    };
     const response = await fetch("/api/v1/html-video-renders", {
       method: "POST",
       headers: authHeaders(true),
-      body: JSON.stringify(input),
+      body: JSON.stringify(renderInput),
       signal,
     });
     const payload = await readPayload(response);

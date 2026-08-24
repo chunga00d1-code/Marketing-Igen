@@ -38,6 +38,7 @@ export type SafeHtmlVideoComposition = {
 const maximumSourceBytes = 100 * 1024;
 const maximumAssetCount = 6;
 const mediaSlotAttribute = "data-media-slot";
+const semanticAttributes = ["data-scene-id", "data-unit-id", "data-unit-ids", "data-layout-allow-overflow"];
 const allowedTags = new Set([
   "article",
   "aside",
@@ -77,7 +78,16 @@ const allowedTags = new Set([
 const forbiddenAttributes =
   /\s(?:on[a-z0-9_-]*|style|href|src|srcset|poster|cite|action|formaction|background|xlink:href)\s*=/i;
 const allowedAttributes = {
-  "*": ["id", "class", "role", "title", "aria-label", "aria-hidden", mediaSlotAttribute],
+  "*": [
+    "id",
+    "class",
+    "role",
+    "title",
+    "aria-label",
+    "aria-hidden",
+    mediaSlotAttribute,
+    ...semanticAttributes,
+  ],
 };
 const dimensions = {
   "16:9": { "720p": [1280, 720], "1080p": [1920, 1080] },
@@ -89,6 +99,15 @@ function assertSourceSize(value: string, label: "HTML" | "CSS") {
   if (Buffer.byteLength(value, "utf8") > maximumSourceBytes) {
     throw new Error(`${label} vượt quá 100 KiB.`);
   }
+}
+
+function markKnownDecorativeOverflow(value: string) {
+  return value.replace(
+    /<div\b(?=[^>]*\bclass="[^"]*\bscene-orb\b[^"]*")[^>]*>/gi,
+    (tag) => /\bdata-layout-allow-overflow(?:\s*=|\s|>)/i.test(tag)
+      ? tag
+      : tag.replace(/>$/, ' data-layout-allow-overflow="true">')
+  );
 }
 
 function normalizeHtml(value: string) {
@@ -108,13 +127,14 @@ function normalizeHtml(value: string) {
     }
   }
 
-  return sanitizeHtml(value, {
+  const sanitized = sanitizeHtml(value, {
     allowedTags: [...allowedTags],
     allowedAttributes,
     allowProtocolRelative: false,
     disallowedTagsMode: "discard",
     enforceHtmlBoundary: true,
   }).trim();
+  return markKnownDecorativeOverflow(sanitized);
 }
 
 function escapeHtmlAttribute(value: string) {
@@ -459,7 +479,6 @@ export function buildSafeHtmlVideoComposition(
     data-start="0"
     data-duration="${source.durationSeconds}"
     data-no-timeline>${annotatedHtml}</div>
-  <script>window.__timelines = window.__timelines || {};</script>
 </body>
 </html>`;
 

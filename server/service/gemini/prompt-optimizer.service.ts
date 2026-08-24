@@ -5,6 +5,7 @@ import {
   HTML_VIDEO_MODEL,
   safeParseJson,
 } from "./core";
+import { filterRepeatedReferenceGridItems } from "../html-video/html-video-reference-grid.service";
 
 export type HtmlVideoMasterPromptSpec = {
   durationSeconds?: number;
@@ -15,12 +16,18 @@ export type HtmlVideoMasterPromptSpec = {
 };
 
 export type HtmlVideoMasterPromptAssumptions = {
+  requestSpecVersion: "1.0";
+  mode: "create" | "revision";
   contentMode: string;
   narrationLanguage: string;
+  languageLock: string;
+  durationPolicy: "explicit" | "inferred" | "preserve-existing";
   durationSeconds: number;
   aspectRatio: "9:16" | "1:1" | "16:9";
   imagePolicy: "none" | "embed" | "reference" | "mixed";
   inputImageCount: number;
+  sourceOrder: "preserve";
+  preserveUnrequestedProperties: boolean;
 };
 
 export type HtmlVideoMasterPromptResult = {
@@ -81,11 +88,15 @@ export function normalizeHtmlVideoReferenceAnalysis(value: unknown) {
     : Array.isArray(parsed.orderedContentUnits)
       ? parsed.orderedContentUnits
       : [];
-  const orderedContentUnits = rawUnits
+  const parsedContentUnits = rawUnits
     .slice(0, 100)
     .flatMap((candidate, index): HtmlVideoReferenceContentUnit[] => {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
       const record = candidate as Record<string, unknown>;
+      const unitType = String(record.unit_type ?? record.unitType ?? record.type ?? "item")
+        .trim()
+        .toLowerCase();
+      if (/^(?:title|heading|watermark|logo|publisher|decorative|section)$/.test(unitType)) return [];
       const text = String(record.text ?? record.label ?? record.name ?? "").replace(/\s+/g, " ").trim();
       if (!text) return [];
       const order = finiteNumber(record.order);
@@ -100,8 +111,11 @@ export function normalizeHtmlVideoReferenceAnalysis(value: unknown) {
         ...(boundingBox ? { bounding_box: boundingBox } : {}),
       }];
     })
-    .sort((left, right) => left.order - right.order)
-    .map((unit, index) => ({ ...unit, order: index + 1 }));
+    .sort((left, right) => left.order - right.order);
+  const orderedContentUnits = filterRepeatedReferenceGridItems(
+    parsedContentUnits,
+    (unit) => unit.bounding_box
+  ).map((unit, index) => ({ ...unit, order: index + 1 }));
 
   return {
     ...parsed,
@@ -141,6 +155,12 @@ function inferMasterPromptLanguage(prompt: string) {
   const hasVietnameseMarks = /[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệđìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/i.test(normalized);
   const hasVietnameseWords = /(?:^|\s)(anh|doc|giong|noi|tao|lam|gioi thieu|huong dan|bang|tieng)(?:\s|$)/i.test(folded);
   return hasVietnameseMarks || hasVietnameseWords ? "Vietnamese" : "same as the authoritative source";
+}
+
+function hasExplicitMasterPromptDuration(prompt: string) {
+  return /\b\d+(?:[.,]\d+)?\s*(?:s|sec|second|seconds|giay|phut|minute|minutes|min)\b/i.test(
+    foldMasterPromptText(prompt)
+  );
 }
 
 function inferMasterPromptContentMode(prompt: string) {
@@ -192,6 +212,178 @@ function sourceUnitsFromPrompt(prompt: string, maximumUnits: number) {
   return groups.map((group) => group.join(" ")).filter(Boolean);
 }
 
+type HtmlVideoCreativeProfile = {
+  goal: string;
+  audience: string;
+  platform: string;
+  tone: string;
+  visualSystem: string;
+  voiceDirection: string;
+  narrativeApproach: string;
+};
+
+function masterPromptSubject(prompt: string) {
+  const firstLine = prompt.replace(/\r\n?/g, "\n").split("\n").find((line) => line.trim()) || prompt;
+  const withoutDuration = firstLine
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:s|sec|seconds?|giây|phút|minutes?|mins?)\b/gi, "")
+    .replace(/\b(?:9\s*:\s*16|16\s*:\s*9|1\s*:\s*1)\b/g, "")
+    .replace(/^\s*(?:hãy\s+)?(?:tạo|làm|dựng|thiết kế)\s+(?:một\s+)?(?:video|clip)\s*/i, "")
+    .replace(/^\s*(?:create|make|build|design)\s+(?:a\s+)?(?:video|clip)\s*/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,.:;\-\s]+|[,.:;\-\s]+$/g, "")
+    .trim();
+  return (withoutDuration || prompt.trim()).slice(0, 180);
+}
+
+function titleCaseFirst(value: string) {
+  return value ? value.charAt(0).toLocaleUpperCase("vi-VN") + value.slice(1) : value;
+}
+
+function inferCreativeProfile(
+  prompt: string,
+  contentMode: string,
+  language: string,
+  aspectRatio: "9:16" | "1:1" | "16:9"
+): HtmlVideoCreativeProfile {
+  const subject = masterPromptSubject(prompt);
+  const vietnamese = language === "Vietnamese";
+  const platform = aspectRatio === "9:16"
+    ? "TikTok, Reels, or Shorts"
+    : aspectRatio === "1:1"
+      ? "square social feed"
+      : "landscape web or presentation";
+  const educational = contentMode === "educational";
+  const promotional = contentMode === "promotion";
+  const product = contentMode === "product-or-service";
+  return {
+    goal: vietnamese
+      ? educational
+        ? `Giúp người xem hiểu nhanh và ghi nhớ chủ đề “${subject}”.`
+        : `Giới thiệu rõ ràng chủ đề “${subject}” và giữ sự chú ý đến cuối video.`
+      : educational
+        ? `Help viewers quickly understand and remember “${subject}”.`
+        : `Clearly introduce “${subject}” and hold attention through the final scene.`,
+    audience: vietnamese ? "Người xem phổ thông, không yêu cầu kiến thức chuyên môn." : "A general audience with no assumed specialist knowledge.",
+    platform,
+    tone: educational
+      ? "clear, friendly, encouraging, and easy to follow"
+      : promotional
+        ? "energetic and persuasive without unsupported urgency"
+        : product
+          ? "confident, polished, and informative"
+          : "engaging, modern, and approachable",
+    visualSystem: educational
+      ? "structured editorial cards, clear hierarchy, progress cues, and contextual CSS illustrations"
+      : promotional
+        ? "high-energy typography, bold contrast, rhythmic accents, and purposeful focal transitions"
+        : "premium layered motion graphics with a designed gradient field, contrasting surfaces, and restrained accents",
+    voiceDirection: vietnamese
+      ? "Một giọng đọc tiếng Việt tự nhiên, rõ chữ, nhịp vừa phải, không xen câu tiếng Anh ngoài nội dung nguồn."
+      : "One natural narrator, clear diction, moderate pace, and no language mixing outside source terms.",
+    narrativeApproach: educational
+      ? "hook the topic, explain the central idea in digestible beats, then close with one memorable takeaway"
+      : promotional
+        ? "establish the subject, build visual emphasis from supplied facts, then close only with a source-supported CTA"
+        : "establish the subject, develop the core idea with increasing visual focus, then finish with a concise takeaway",
+  };
+}
+
+type HtmlVideoFallbackBeat = {
+  purpose: "OPENING" | "CONTENT" | "CLOSING";
+  onScreenText: string;
+  voiceOver: string;
+  visualFocus: string;
+};
+
+function fitFallbackVoice(text: string, maximumWords: number) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= maximumWords) return text;
+  return words.slice(0, maximumWords).join(" ").replace(/[,;:]$/, "") + ".";
+}
+
+function shortIdeaBeats(
+  prompt: string,
+  contentMode: string,
+  language: string,
+  count: number
+): HtmlVideoFallbackBeat[] {
+  const subject = masterPromptSubject(prompt);
+  const title = titleCaseFirst(subject);
+  const vietnamese = language === "Vietnamese";
+  const educational = contentMode === "educational";
+  const base = vietnamese
+    ? [
+        {
+          purpose: "OPENING" as const,
+          onScreenText: title,
+          voiceOver: educational
+            ? `Hãy cùng tìm hiểu ${subject} theo cách thật dễ hiểu.`
+            : `Hãy cùng khám phá ${subject}.`,
+          visualFocus: "Use the topic as the dominant headline with one contextual CSS motif.",
+        },
+        {
+          purpose: "CONTENT" as const,
+          onScreenText: educational ? "Từng bước rõ ràng" : "Nội dung chính",
+          voiceOver: educational
+            ? "Nội dung được chia thành từng ý ngắn, rõ ràng và dễ theo dõi."
+            : "Tập trung vào những thông tin chính đã được cung cấp trong yêu cầu.",
+          visualFocus: "Move to a structured content surface with a clear progress cue and one focal idea.",
+        },
+        {
+          purpose: "CONTENT" as const,
+          onScreenText: educational ? "Dễ nhớ · Dễ áp dụng" : "Điểm cần ghi nhớ",
+          voiceOver: educational
+            ? "Mỗi ý được nhấn mạnh vừa đủ để người xem dễ ghi nhớ."
+            : "Nhấn mạnh chủ đề bằng hình ảnh rõ ràng và nhịp chuyển động có chủ đích.",
+          visualFocus: "Increase visual emphasis through scale, contrast, and a restrained accent animation.",
+        },
+        {
+          purpose: "CLOSING" as const,
+          onScreenText: educational ? "Bắt đầu áp dụng" : title,
+          voiceOver: educational
+            ? "Hãy bắt đầu với ý phù hợp nhất và áp dụng theo nhu cầu của bạn."
+            : "Khép lại bằng một hình ảnh rõ ràng để người xem ghi nhớ chủ đề.",
+          visualFocus: "Resolve the visual system into a clean final composition without an invented CTA.",
+        },
+      ]
+    : [
+        {
+          purpose: "OPENING" as const,
+          onScreenText: title,
+          voiceOver: educational ? `Let us make ${subject} simple and easy to follow.` : `Let us explore ${subject}.`,
+          visualFocus: "Use the topic as the dominant headline with one contextual CSS motif.",
+        },
+        {
+          purpose: "CONTENT" as const,
+          onScreenText: educational ? "Clear, simple steps" : "The core idea",
+          voiceOver: educational
+            ? "Break the topic into short, clear ideas that viewers can follow."
+            : "Focus only on the key information supplied in the request.",
+          visualFocus: "Move to a structured content surface with a clear progress cue and one focal idea.",
+        },
+        {
+          purpose: "CONTENT" as const,
+          onScreenText: educational ? "Easy to remember" : "Key takeaway",
+          voiceOver: educational
+            ? "Give each idea enough visual emphasis to make it memorable."
+            : "Strengthen the subject with clear hierarchy and purposeful motion.",
+          visualFocus: "Increase visual emphasis through scale, contrast, and a restrained accent animation.",
+        },
+        {
+          purpose: "CLOSING" as const,
+          onScreenText: educational ? "Put it into practice" : title,
+          voiceOver: educational
+            ? "Start with the most relevant idea and apply it to your needs."
+            : "End on a clear visual that helps viewers remember the subject.",
+          visualFocus: "Resolve the visual system into a clean final composition without an invented CTA.",
+        },
+      ];
+  if (count <= 1) return [{ ...base[0], purpose: "CLOSING" }];
+  if (count === 2) return [base[0], base[3]];
+  if (count === 3) return [base[0], base[1], base[3]];
+  return base.slice(0, Math.min(4, count));
+}
+
 export function buildHtmlVideoMasterPromptFallback(
   prompt: string,
   spec?: HtmlVideoMasterPromptSpec
@@ -205,43 +397,77 @@ export function buildHtmlVideoMasterPromptFallback(
     normalizedSpec.imagePolicy,
     normalizedSpec.inputImageCount
   );
+  const profile = inferCreativeProfile(
+    normalizedPrompt,
+    contentMode,
+    language,
+    normalizedSpec.aspectRatio
+  );
   const maximumScenes = Math.max(1, Math.min(8, Math.floor(normalizedSpec.durationSeconds / 3)));
-  const units = sourceUnitsFromPrompt(normalizedPrompt, maximumScenes);
-  const sceneDuration = normalizedSpec.durationSeconds / units.length;
-  const scenes = units.flatMap((unit, index) => {
+  const sourceUnits = sourceUnitsFromPrompt(normalizedPrompt, maximumScenes);
+  const isShortIdea = sourceUnits.length === 1 && normalizedPrompt.split(/\s+/).filter(Boolean).length <= 24;
+  const shortSceneCount = normalizedSpec.durationSeconds <= 7
+    ? 1
+    : normalizedSpec.durationSeconds <= 12
+      ? 2
+      : normalizedSpec.durationSeconds <= 30
+        ? 3
+        : 4;
+  const fallbackBeats = isShortIdea
+    ? shortIdeaBeats(normalizedPrompt, contentMode, language, shortSceneCount)
+    : sourceUnits.map((unit, index): HtmlVideoFallbackBeat => ({
+        purpose: index === 0 ? "OPENING" : index === sourceUnits.length - 1 ? "CLOSING" : "CONTENT",
+        onScreenText: unit.split(/\s+/).filter(Boolean).slice(0, 12).join(" "),
+        voiceOver: unit,
+        visualFocus: "Build a readable full-canvas composition around this exact source unit.",
+      }));
+  const sceneDuration = normalizedSpec.durationSeconds / fallbackBeats.length;
+  const scenes = fallbackBeats.flatMap((beat, index) => {
     const start = index * sceneDuration;
-    const end = index === units.length - 1
+    const end = index === fallbackBeats.length - 1
       ? normalizedSpec.durationSeconds
       : (index + 1) * sceneDuration;
-    const purpose = index === 0 ? "OPENING" : index === units.length - 1 ? "CLOSING" : "CONTENT";
     const maxVoiceWords = Math.max(1, Math.floor((end - start) * 2.3));
-    const unitWords = unit.split(/\s+/).filter(Boolean);
-    const onScreenText = unitWords.slice(0, 12).join(" ");
-    const voiceOver = unitWords.slice(0, maxVoiceWords).join(" ");
+    const sourceFact = isShortIdea ? normalizedPrompt : sourceUnits[index];
     return [
       `## SCENE ${index + 1}`,
       `- Time: ${start.toFixed(1)}s-${end.toFixed(1)}s`,
-      `- Purpose: ${purpose}`,
-      `- Source facts: ${unit}`,
-      `- On-screen text: ${onScreenText}`,
-      `- Voice-over: ${voiceOver}`,
-      `- Visual: Build a readable full-canvas composition that supports this source unit. ${imagePolicyDescription}`,
-      "- Motion: Use a clear entrance, a readable hold, subtle continuous motion, and a clean exit.",
-      `- Transition: ${index === units.length - 1 ? "hold" : "crossfade"}`,
+      `- Purpose: ${beat.purpose}`,
+      `- Source facts: ${sourceFact}`,
+      `- On-screen text: ${beat.onScreenText}`,
+      `- Voice-over: ${fitFallbackVoice(beat.voiceOver, maxVoiceWords)}`,
+      `- Visual hierarchy: dominant headline, one supporting element, and one restrained accent layer.`,
+      `- Visual: ${beat.visualFocus} ${imagePolicyDescription}`,
+      `- Asset use: ${normalizedSpec.imagePolicy === "none" ? "CSS-only visual; no empty media placeholder." : imagePolicyDescription}`,
+      "- Motion: Reveal the focal element, hold it legibly, keep subtle background motion, then exit horizontally or crossfade.",
+      `- Transition: ${index === fallbackBeats.length - 1 ? "hold" : "crossfade"}`,
       "",
     ];
   });
   return [
     "# VIDEO BRIEF",
+    `- Video goal: ${profile.goal}`,
+    `- Audience: ${profile.audience}`,
+    `- Platform: ${profile.platform}`,
     `- Duration: ${normalizedSpec.durationSeconds} seconds`,
     `- Aspect ratio: ${normalizedSpec.aspectRatio}`,
     `- Content mode: ${contentMode}`,
+    `- Tone: ${profile.tone}`,
+    `- Visual system: ${profile.visualSystem}`,
     `- Language: ${language}. Use one narration language throughout; keep source foreign terms verbatim only when they are the content being taught or read.`,
+    `- Voice direction: ${profile.voiceDirection}`,
     `- Input image policy: ${imagePolicyDescription}`,
+    "- CTA policy: Omit the CTA unless the authoritative source explicitly supplies or requests one.",
     "- Fidelity: Do not add prices, offers, claims, contact details, names, or CTA absent from the source.",
     "",
     "# AUTHORITATIVE SOURCE",
     normalizedPrompt,
+    "",
+    "# CREATIVE DECISIONS",
+    `- Narrative approach: ${profile.narrativeApproach}.`,
+    "- Inference boundary: Creative choices may fill tone, pacing, composition, and motion. They may not create factual claims.",
+    "- Information hierarchy: one dominant message, one supporting idea, and one visual accent per scene.",
+    "- Motion hierarchy: background ambience, content entrance and hold, then a clean transition; never animate every element equally.",
     "",
     "# STORYBOARD",
     ...scenes,
@@ -250,6 +476,15 @@ export function buildHtmlVideoMasterPromptFallback(
     "- Keep voice-over at a natural pace and synchronized with the visible scene.",
     "- Expand a short request into production direction, layout, and motion, but never invent business facts or replace the user's subject with a generic advertisement.",
     "- Use the server-owned animation timeline; do not request scrolling or vertical page transitions.",
+    "- Keep all essential content inside the safe frame and readable on a phone.",
+    "- Use a complete background, content surface, and accent layer in every scene.",
+    "",
+    "# ACCEPTANCE CHECKLIST",
+    "- Every scene has final on-screen copy, final narration, visual hierarchy, asset use, motion, and transition.",
+    "- Scene timing is contiguous and ends exactly at the requested duration.",
+    "- Voice uses one language, fits naturally, and matches the visible scene.",
+    "- No unsupported fact, CTA, price, offer, contact detail, URL, or empty placeholder is present.",
+    "- The first, midpoint, and final sampled frames are complete, readable, and visually intentional.",
   ].join("\n").trim();
 }
 
@@ -259,7 +494,20 @@ export function isValidHtmlVideoMasterPrompt(
   sourcePrompt?: string
 ) {
   const normalizedSpec = normalizeMasterPromptSpec(spec);
-  if (!/^# VIDEO BRIEF\s*$/im.test(value) || !/^# STORYBOARD\s*$/im.test(value)) return false;
+  if (value.length > 23_000) return false;
+  for (const heading of [
+    "VIDEO BRIEF",
+    "AUTHORITATIVE SOURCE",
+    "CREATIVE DECISIONS",
+    "STORYBOARD",
+    "GLOBAL DIRECTION",
+    "ACCEPTANCE CHECKLIST",
+  ]) {
+    if (!new RegExp(`^# ${heading}\\s*$`, "im").test(value)) return false;
+  }
+  for (const field of ["Video goal", "Audience", "Tone", "Visual system", "Voice direction"]) {
+    if (!new RegExp(`^- ${field}:\\s*\\S`, "im").test(value)) return false;
+  }
   if (sourcePrompt?.trim()) {
     const normalizeForClaims = (text: string) => text
       .normalize("NFD")
@@ -607,6 +855,7 @@ Output MUST be a valid JSON object matching this schema:
   "ordered_content_units": [
     {
       "order": 1,
+      "unit_type": "item",
       "text": "Exact visible item text",
       "confidence": 0.99,
       "bounding_box": { "x": 0.05, "y": 0.10, "width": 0.20, "height": 0.18 }
@@ -716,13 +965,25 @@ CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdo
       normalizedSpec.imagePolicy,
       normalizedSpec.inputImageCount
     );
+    const mode = spec?.mode === "revision" ? "revision" : "create";
+    const durationPolicy = hasExplicitMasterPromptDuration(normalizedPrompt)
+      ? "explicit" as const
+      : mode === "revision"
+        ? "preserve-existing" as const
+        : "inferred" as const;
     const assumptions: HtmlVideoMasterPromptAssumptions = {
+      requestSpecVersion: "1.0",
+      mode,
       contentMode,
       narrationLanguage,
+      languageLock: narrationLanguage,
+      durationPolicy,
       durationSeconds: normalizedSpec.durationSeconds,
       aspectRatio: normalizedSpec.aspectRatio,
       imagePolicy: normalizedSpec.imagePolicy,
       inputImageCount: normalizedSpec.inputImageCount,
+      sourceOrder: "preserve",
+      preserveUnrequestedProperties: mode === "revision",
     };
 
     if (spec?.mode === "revision") {
@@ -743,110 +1004,8 @@ CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdo
       };
     }
 
-    const getLocalFallbackMasterPrompt = () => {
-      const faithfulFallback = buildHtmlVideoMasterPromptFallback(normalizedPrompt, normalizedSpec);
-      if (faithfulFallback) return faithfulFallback;
-      const lower = normalizedPrompt.toLowerCase();
-      const isFood = /món|ẩm thực|nhà hàng|quán|ăn|uống|nấu|cà phê|trà|bánh/i.test(lower);
-      const isFinanceOrRealEstate = /bất động sản|nhà|đất|căn hộ|tài chính|đầu tư|tiết kiệm|chứng khoán|bảo hiểm/i.test(lower);
-      const isEducation = /khóa học|học|tiếng anh|dạy|hướng dẫn|mẹo|kỹ năng|bài học|kiến thức/i.test(lower);
-      const isBeauty = /mỹ phẩm|spa|làm đẹp|chăm sóc da|thời trang|son|kem|skincare/i.test(lower);
-
-      let themeName = "ocean";
-      let themeColorDesc = "Nền Gradient tối sâu (#0A0F1E → #1E1B4B), Chữ chính trắng sáng (#FFFFFF), Nhấn nổi bật (#6366F1 & #EC4899), Điểm sáng Neon (#38BDF8)";
-      let hookEyebrow = "✨ GIẢI PHÁP ĐỘT PHÁ";
-
-      if (isFood) {
-        themeName = "earth";
-        themeColorDesc = "Nền Nâu ấm & Hạt dẻ (#1C1308 → #451A03), Chữ vàng kem & Trắng (#FED7AA), Nhấn Amber (#D97706)";
-        hookEyebrow = "🍲 HƯƠNG VỊ ĐẶC BIỆT";
-      } else if (isFinanceOrRealEstate) {
-        themeName = "gold";
-        themeColorDesc = "Nền Đen vàng kim sang trọng (#1C1404 → #78350F), Chữ Vàng óng (#F59E0B) & Trắng (#FFFFFF), Nhấn Amber (#FDE68A)";
-        hookEyebrow = "💎 CƠ HỘI ĐẦU TƯ ĐẮC ĐỊA";
-      } else if (isEducation) {
-        themeName = "arctic";
-        themeColorDesc = "Nền Xanh Slate & Băng tuyết (#0A192F → #1E293B), Chữ Trắng (#FFFFFF), Nhấn Sky Blue (#38BDF8)";
-        hookEyebrow = "📚 BÍ QUYẾT THÀNH CÔNG";
-      } else if (isBeauty) {
-        themeName = "coral";
-        themeColorDesc = "Nền Hồng mận & Ruby (#2A0F1D → #881337), Chữ Rose Pink (#FDA4AF), Nhấn Coral (#F43F5E)";
-        hookEyebrow = "🌸 BÍ QUYẾT TỎA SÁNG";
-      }
-
-      return [
-        `# 🎬 BẢN THIẾT KẾ & ĐỊNH HƯỚNG SẢN XUẤT VIDEO (PRODUCTION BLUEPRINT)`,
-        `- **Chủ đề & Thông điệp cốt lõi:** ${normalizedPrompt}`,
-        `- **Phân loại nội dung:** ${isFood ? "Ẩm thực & F&B" : isFinanceOrRealEstate ? "Bất động sản & Tài chính" : isEducation ? "Giáo dục & Đào tạo" : isBeauty ? "Làm đẹp & Thời trang" : "Sản phẩm & Dịch vụ chuyên nghiệp"}`,
-        `- **Góc tiếp cận (Hook & Creative Angle):** Đột phá trực diện, tập trung vào giải pháp và giá trị nổi bật nhằm giữ chân người xem trong 3 giây đầu.`,
-        `- **Thời lượng & Tỷ lệ khung hình:** 15 giây | 9:16 Vertical Video (TikTok / Reels / Shorts)`,
-        `- **Gợi ý Theme:** \`${themeName}\` (${themeColorDesc})`,
-        `- **Phong cách thị giác & Motion:** Hiện đại, Glassmorphism mờ sang trọng, Typography phân cấp rõ nét, hiệu ứng chuyển động mượt mà với keyframes slide-in, zoom và breathing pulse.`,
-        ``,
-        `# 📋 KỊCH BẢN PHÂN CẢNH CHI TIẾT (SCENE-BY-SCENE STORYBOARD)`,
-        ``,
-        `## SCENE 1: Hook Mở Đầu Gây Ấn Tượng (0s - 3s)`,
-        `- **Mục tiêu phân cảnh:** Tạo ấn tượng thị giác mạnh mẽ, giữ chân người xem ngay từ giây đầu tiên.`,
-        `- **Văn bản hiển thị (On-Screen Text):**`,
-        `  * Eyebrow: ${hookEyebrow}`,
-        `  * Headline: ${normalizedPrompt.slice(0, 45).toUpperCase()}`,
-        `  * Badge: XU HƯỚNG MỚI NHẤT`,
-        `- **Bố cục Visual & Mỹ thuật:** Tiêu đề lớn in hoa đặt tại trung tâm màn hình, bao quanh bởi khung viền phát sáng nhẹ. Lớp nền gradient sâu kết hợp quả cầu ánh sáng nền mờ.`,
-        `- **Hiệu ứng & Animation:** Tiêu đề lướt vào mượt mà (slide-in translateX(-24px) + fade-in với cubic-bezier(0.16, 1, 0.3, 1)), quả cầu nền trôi lượn nhẹ nhàng (orb float).`,
-        `- **Lời bình / Giọng đọc (Voice-over đồng bộ):** "Khám phá ngay ${normalizedPrompt}!"`,
-        ``,
-        `## SCENE 2: Vấn Đề & Thực Trạng Thực Tế (3s - 6s)`,
-        `- **Mục tiêu phân cảnh:** Đánh trúng nỗi đau và nhu cầu bức thiết của khách hàng.`,
-        `- **Văn bản hiển thị (On-Screen Text):**`,
-        `  * Eyebrow: BẠN ĐANG GẶP KHÓ KHĂN?`,
-        `  * Headline: TÌM KIẾM GIẢI PHÁP THỰC SỰ HIỆU QUẢ`,
-        `  * Subtitle: Tiết kiệm tối đa thời gian và chi phí`,
-        `- **Bố cục Visual & Mỹ thuật:** Thẻ thông tin dạng kính mờ (Glassmorphism card) với viền sáng mỏng, icon biểu tượng sắc nét, độ tương phản chữ tối ưu.`,
-        `- **Hiệu ứng & Animation:** Thẻ thông tin trượt từ bên trái vào, các dòng chữ xuất hiện so le nhịp nhàng theo nhịp đọc của giọng nói.`,
-        `- **Lời bình / Giọng đọc (Voice-over đồng bộ):** "Bạn đang tìm kiếm một giải pháp thực sự hiệu quả và đột phá?"`,
-        ``,
-        `## SCENE 3: Giải Pháp & Tính Năng Đột Phá (6s - 9s)`,
-        `- **Mục tiêu phân cảnh:** Giới thiệu giải pháp cốt lõi và các tính năng vượt trội.`,
-        `- **Văn bản hiển thị (On-Screen Text):**`,
-        `  * Eyebrow: TÍNH NĂNG VƯỢT TRỘI`,
-        `  * Headline: ĐẶC QUYỀN NỔI BẬT & GIÁ TRỊ VƯỢT TRỘI`,
-        `  * Bullet 1: ⚡ Nhanh chóng & Tiện lợi`,
-        `  * Bullet 2: 💎 Chất lượng chuẩn mực`,
-        `- **Bố cục Visual & Mỹ thuật:** Bố cục 2 cột cân đối, các thẻ tính năng độc lập, viền sáng chuyển động nhẹ.`,
-        `- **Hiệu ứng & Animation:** Thẻ tính năng phóng to nhẹ (zoom-in scale(0.95) → scale(1.0)), hiệu ứng ánh sáng lướt qua (shimmer glow).`,
-        `- **Lời bình / Giọng đọc (Voice-over đồng bộ):** "Trải nghiệm tính năng vượt trội mang lại giá trị thiết thực tức thì."`,
-        ``,
-        `## SCENE 4: Ưu Đãi Đặc Biệt & Cam Kết Giá Trị (9s - 12s)`,
-        `- **Mục tiêu phân cảnh:** Kích thích hành động bằng ưu đãi độc quyền giới hạn.`,
-        `- **Văn bản hiển thị (On-Screen Text):**`,
-        `  * Eyebrow: QUÀ TẶNG ĐỘC QUYỀN`,
-        `  * Headline: ƯU ĐÃI ĐẶC BIỆT HÔM NAY`,
-        `  * Badge: 🔥 SỐ LƯỢNG CÓ HẠN`,
-        `- **Bố cục Visual & Mỹ thuật:** Thẻ ưu đãi trung tâm nổi bật với ánh sáng neon viền ngoài, nhãn giảm giá / quà tặng bắt mắt.`,
-        `- **Hiệu ứng & Animation:** Huy hiệu ưu đãi bung nở nhẹ (badge pop-in), ánh sáng viền lan tỏa nhẹ nhàng.`,
-        `- **Lời bình / Giọng đọc (Voice-over đồng bộ):** "${normalizedPrompt}. Nhận ngay ưu đãi hấp dẫn với số lượng có hạn."`,
-        ``,
-        `## SCENE 5: Kêu Gọi Hành Động & Chốt Đơn (12s - 15s)`,
-        `- **Mục tiêu phân cảnh:** Thúc đẩy người xem bấm vào liên kết, đăng ký hoặc liên hệ ngay.`,
-        `- **Văn bản hiển thị (On-Screen Text):**`,
-        `  * Headline: ĐỪNG BỎ LỠ CƠ HỘI`,
-        `  * CTA Button: 👉 ĐĂNG KÝ NGAY HÔM NAY`,
-        `  * Subtitle: Bấm vào liên kết để nhận tư vấn miễn phí`,
-        `- **Bố cục Visual & Mỹ thuật:** Nút CTA lớn nổi bật với màu sắc đối lập rực rỡ, hiển thị thông tin liên hệ và thương hiệu rõ ràng.`,
-        `- **Hiệu ứng & Animation:** Nút CTA đập nhẹ nhàng theo chu kỳ (breathing pulse scale(1.05) + box-shadow glow), chuyển cảnh fade mượt mà.`,
-        `- **Lời bình / Giọng đọc (Voice-over đồng bộ):** "Bấm vào liên kết ngay để không bỏ lỡ cơ hội hôm nay!"`,
-        ``,
-        `# 🎙️ ĐẠO DIỄN GIỌNG ĐỌC & ÂM THANH (AUDIO DIRECTION)`,
-        `- **Tone & Phong cách:** Tự nhiên, truyền cảm, dứt khoát, hào hứng, tạo sự tin tưởng tuyệt đối.`,
-        `- **Tốc độ đọc & Nhịp điệu:** ~2.3 từ/giây, ngắt nghỉ rõ ràng theo từng phân cảnh, khớp 100% với từng slide.`,
-        `- **Phong cách âm thanh:** Nền nhạc hiện đại, sôi động vừa phải, nhịp điệu sinh động đẩy cao trào ở phân cảnh CTA.`,
-        ``,
-        `# ⚙️ CHỈ DẪN KỸ THUẬT CHO HTML-TO-VIDEO PIPELINE`,
-        `- **Cấu trúc Scene:** Sử dụng \`.scene-deck\` chứa 5 \`.scene\` độc lập, full-canvas, cố định timeline.`,
-        `- **Animation:** Sử dụng keyframes slide-in, zoom, breathing pulse và smooth crossfade giữa các cảnh.`,
-        `- **Font Size:** Headline ≥ 64px, Subtitle ≥ 30px, Badge ≥ 24px để hiển thị sắc nét trên thiết bị di động.`,
-      ].join("\n");
-    };
+    const getLocalFallbackMasterPrompt = () =>
+      buildHtmlVideoMasterPromptFallback(normalizedPrompt, normalizedSpec);
 
     if (!process.env.OPENROUTER_API_KEY && !process.env.GEMINI_API_KEY) {
       return {
@@ -857,79 +1016,13 @@ CHỈ trả về lệnh chỉnh sửa, không thêm giải thích, không markdo
     }
 
     try {
-      const systemInstruction = `Bạn là một Đạo diễn Sáng tạo & Tổng Công trình sư Kịch bản Video Marketing (Executive Creative Director & Master Prompt Engineer).
 
-Nhiệm vụ của bạn: Tiếp nhận yêu cầu hoặc câu mô tả của người dùng, phân tích sâu ngữ cảnh/tài liệu đính kèm, thực hiện tư duy chiến lược toàn diện và chấp bút tạo nên một **MASTER PROMPT VIDEO CỰC KỲ CHI TIẾT, CHUYÊN NGHIỆP, ĐẦY ĐỦ CÁC TẦNG CHỈ DẪN** để làm đầu vào hoàn hảo cho hệ thống AI sinh video (HTML-to-Video).
 
-CÁC NGUYÊN TẮC CỐT LÕI BẮT BUỘC:
-
-1. **NHẬN DIỆN LOẠI HÌNH NỘI DUNG (Content Type Classification)**:
-   - Phân tích chủ đề để chọn cấu trúc phù hợp:
-     * **Sản phẩm / Dịch vụ**: Hook → Tính năng cốt lõi (2-3 scenes) → Cam kết/Ưu đãi → Kêu gọi hành động (CTA).
-     * **Giáo dục / Bài học / Mẹo**: Hook tiêu đề → Từng bước/bài học độc lập (1 scene/bước) → Tổng kết & CTA.
-     * **Xây dựng thương hiệu**: Hook cảm xúc → Câu chuyện/Giá trị thương hiệu → Thông điệp cốt lõi → CTA.
-     * **Khuyến mãi / Flash Sale**: Hook ưu đãi sốc → Điểm nổi bật sản phẩm → Giới hạn thời gian → CTA hành động gấp.
-
-2. **CHIA PHÂN CẢNH SÂU & ĐẦY ĐỦ (Multi-Scene Storyboarding)**:
-   - TUYỆT ĐỐI KHÔNG làm video cụt ngủn chỉ có 1-2 frame đơn điệu.
-   - BẮT BUỘC chia video thành **nhiều phân cảnh liên hoàn (thông thường từ 4 đến 6+ scenes)** tùy theo độ dài thời lượng và số lượng ý/nội dung/tài liệu ngữ cảnh đưa vào.
-   - Cứ mỗi ý tưởng, mỗi luận điểm, mỗi tính năng sản phẩm, mỗi bước hướng dẫn, hoặc mỗi ưu đãi trong tài liệu tham chiếu phải được tách thành **1 SCENE độc lập (full-canvas slide)** riêng biệt. Không nhồi nhét nhiều ý vào 1 cảnh.
-
-3. **ĐỒNG BỘ 100% GIỮA GIỌNG ĐỌC & TIẾN ĐỘ VIDEO (Strict Scene-Voice Synchronization)**:
-   - Voice-over của từng cảnh BẮT BUỘC phải ăn khớp 100% về mặt nội dung và thời gian với On-Screen Text và Visual đang hiển thị tại đúng cảnh đó.
-   - TUYỆT ĐỐI KHÔNG nói lệch pha: không nói trước nội dung của cảnh sau khi cảnh trước chưa hết, không để slide chuyển sang cảnh mới mà voice vẫn nói cảnh cũ, không nói nội dung khác với text trên màn hình.
-   - Mỗi câu thoại trong Scene N chỉ được đọc đúng trong mốc thời gian (Start - End) của Scene N, với độ dài từ ngữ tính toán chuẩn xác theo tốc độ nói tự nhiên (~2.2 - 2.5 từ/giây).
-
-CẤU TRÚC MASTER PROMPT SIÊU CHI TIẾT BẮT BUỘC GỒM 5 PHẦN CHÍNH:
-
-# 🎬 BẢN THIẾT KẾ & ĐỊNH HƯỚNG SẢN XUẤT VIDEO (PRODUCTION BLUEPRINT)
-- **Chủ đề & Thông điệp cốt lõi:** Phân tích rõ mục tiêu, sản phẩm/dịch vụ, giá trị độc nhất.
-- **Phân loại nội dung & Mục tiêu tiếp thị:** Loại video, mục tiêu (chuyển đổi, nhận diện, giáo dục).
-- **Đối tượng mục tiêu & Cảm xúc chủ đạo:** Khán giả nhắm đến, cảm xúc muốn khơi gợi (tò mò, hào hứng, tin tưởng...).
-- **Góc tiếp cận sáng tạo (Creative Hook Angle):** Cách mở màn cuốn hút, giữ chân người xem 3 giây đầu.
-- **Thời lượng & Tỷ lệ khung hình:** Thời lượng đề xuất (ví dụ 15s hoặc 30s) | Tỷ lệ (9:16 cho short video hoặc 16:9/1:1).
-- **Gợi ý Theme & Bảng màu:** Chỉ định 1 theme phù hợp trong hệ thống: \`ocean\` (công nghệ/SaaS), \`midnight\` (luxury), \`sunset\` (năng lượng), \`emerald\` (sức khỏe/organic), \`violet\` (sáng tạo), \`coral\` (thời trang/mỹ phẩm), \`gold\` (tài chính/BĐS), \`arctic\` (y tế/khoa học), \`neon\` (gaming/giải trí), \`earth\` (ẩm thực/F&B), \`blush\` (đời sống/trẻ em), \`slate\` (doanh nghiệp/B2B).
-- **Phong cách thị giác & Motion Language:** Ngôn ngữ chuyển động chủ đạo (cinematic, energetic, elegant, playful).
-
-# 📋 KỊCH BẢN PHÂN CẢNH CHI TIẾT (SCENE-BY-SCENE STORYBOARD)
-Chia thành các phân cảnh với tiêu đề chuẩn: \`## SCENE 1\`, \`## SCENE 2\`, \`## SCENE 3\`, \`## SCENE 4\`... \`## SCENE N\`.
-Mỗi cảnh BẮT BUỘC phải có 5 mục cực kỳ chi tiết:
-1. **Mục tiêu phân cảnh:** Mục đích của cảnh này trong phễu tâm lý người xem (Hook / Pain Point / Solution / Proof / Offer / CTA).
-2. **Văn bản hiển thị (On-Screen Text Hierarchy):**
-   - Eyebrow (Nhãn phụ trên cùng): Ngắn gọn, in hoa, màu sắc nổi bật.
-   - Headline (Tiêu đề chính): Chữ lớn, thông điệp trọng tâm, xúc tích.
-   - Subtitle / Bullets (Nội dung hỗ trợ): Tối đa 1-2 dòng ngắn gọn hoặc danh sách điểm nhấn.
-   - Badge / Tagline (nếu có): Huy hiệu làm nổi bật tính năng / khuyến mãi.
-3. **Bố cục Visual & Mỹ thuật:**
-   - Cấu trúc layout, vị trí các khối chữ, màu sắc tương phản cao, thẻ thông tin dạng kính mờ (Glassmorphism).
-   - Nền đa tầng (Layered Background), quả cầu ánh sáng nền (floating orbs), viền phát sáng (neon border glow).
-   - Vị trí Slot ảnh/sản phẩm tham chiếu (nếu có).
-4. **Hiệu ứng & Animation Keyframes:**
-   - Entrance Motion: Tiêu đề trượt vào (slide-in translateX(-24px) + fade-in cubic-bezier), thẻ thông tin zoom nhẹ (zoom-in).
-   - Continuous Motion: Quả cầu nền trôi lượn tự nhiên (orb float), ánh sáng lướt qua thẻ (shimmer glow), nút CTA đập nhịp (breathing pulse).
-   - Transition: Chuyển cảnh mượt mà giữa các phân cảnh (smooth crossfade 0.35s hoặc slide-left/slide-right).
-5. **Lời bình / Giọng đọc (Voice-over đồng bộ 100%):**
-   - Câu thoại ngắn gọn, tự nhiên, hấp dẫn, thuyết minh chính xác nội dung đang hiện trên màn hình của cảnh đó.
-   - Độ dài từ ngữ khớp chuẩn xác với thời lượng giây của cảnh (khoảng 2.2 - 2.5 từ/giây).
-
-# 🎙️ ĐẠO DIỄN GIỌNG ĐỌC & ÂM THANH (AUDIO DIRECTION)
-- **Tone giọng:** Chỉ định tone (truyền cảm, dứt khoát, hào hứng, tin cậy...).
-- **Tốc độ đọc & Nhịp điệu:** Tốc độ chuẩn, ngắt nghỉ từng nhịp khớp với từng phân cảnh.
-- **Phong cách âm thanh:** Thể loại nhạc nền, nhịp điệu hỗ trợ cảm xúc video.
-
-# ⚙️ CHỈ DẪN KỸ THUẬT CHO HTML-TO-VIDEO PIPELINE
-- Cung cấp các thông số kỹ thuật chuẩn: font size tối thiểu cho mobile, an toàn canvas padding (8-12%), layout cô lập scene deck.
-
-QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
-- Giữ nguyên 100% tên thương hiệu, con số ưu đãi/khuyến mãi, thông tin liên hệ từ yêu cầu gốc của người dùng.
-- Trả về đúng ngôn ngữ của người dùng (tiếng Việt nếu yêu cầu bằng tiếng Việt).
-- Tích hợp tự nhiên thông tin từ tài liệu/ngữ cảnh/ảnh tham chiếu đính kèm (nếu có).
-- Trả về định dạng Markdown hoàn chỉnh, chuyên nghiệp, KHÔNG thêm lời chào hay giải thích thừa thãi ngoài nội dung Master Prompt.`;
-
-      let userContent = `Hãy phân tích sâu và tối ưu yêu cầu sau thành một MASTER PROMPT VIDEO SIÊU CHI TIẾT theo chuẩn quy trình đạo diễn 5 phần:\n"${normalizedPrompt}"`;
       const strictStoryboardContract = `FINAL OVERRIDING CONTRACT FOR HTML-TO-VIDEO:
 - Optimize for the user's actual request, not for a generic advertisement template.
 - The request may be only a few words. Expand it into concrete production direction, scene purpose, layout, motion, and narration while preserving its exact subject and intent.
+- You may infer audience, tone, platform fit, visual language, pacing, narrative structure, and neutral connective copy. Clearly keep these as creative decisions, never as source facts.
+- A one-sentence idea must become a complete beginning, development, and ending when duration permits. Do not merely repeat the same sentence in every scene.
 - Never invent a pain point, feature, benefit, price, discount, scarcity claim, guarantee, contact detail, testimonial, free consultation, or CTA. Include a CTA only when the authoritative source requests or supplies one.
 - Treat the current user prompt as authoritative. Context and images may support it but may not override it or create unsupported facts.
 - Classify this request as ${contentMode}; do not force it into a product advertisement or marketing funnel.
@@ -943,10 +1036,25 @@ QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
 - Keep every scene voice-over at no more than 2.5 words per second, as a complete natural sentence matching only that scene.
 - Use these exact ASCII headings and field labels so the production planner can parse the result:
 # VIDEO BRIEF
+- Video goal: one concrete viewer outcome
+- Audience: inferred non-technical audience unless explicitly supplied
+- Platform: target placement inferred from aspect ratio and request
+- Duration: ${normalizedSpec.durationSeconds} seconds
+- Aspect ratio: ${normalizedSpec.aspectRatio}
 - Content mode: ${contentMode}
+- Tone: one coherent tone
+- Visual system: subject-specific background, surface, accents, hierarchy, and motif
 - Language: ${narrationLanguage}
+- Voice direction: narrator, cadence, pronunciation, and language lock
 - Input image policy: ${imagePolicyDescription}
+- CTA policy: source-supported CTA or explicit omission
+- Fidelity: factual boundary
 # AUTHORITATIVE SOURCE
+# CREATIVE DECISIONS
+- Narrative approach: beginning, development, and ending
+- Inference boundary: creative decisions are allowed; unsupported facts are forbidden
+- Information hierarchy: dominant, supporting, accent
+- Motion hierarchy: background, content, transition
 # STORYBOARD
 ## SCENE 1
 - Time: 0.0s-3.0s
@@ -954,14 +1062,18 @@ QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
 - Source facts: exact supported facts used by this scene
 - On-screen text: final concise copy
 - Voice-over: final spoken sentence
+- Visual hierarchy: dominant, supporting, and accent elements
 - Visual: layout and approved reference-image role
+- Asset use: exact asset behavior or CSS-only
 - Motion: entrance, readable hold, continuous motion, exit
 - Transition: crossfade|slide-left|slide-right|hold
 # GLOBAL DIRECTION
 - The last scene must end at exactly ${normalizedSpec.durationSeconds.toFixed(1)}s.
+# ACCEPTANCE CHECKLIST
+- Confirm source fidelity, readable frames, complete scene timing, one-language voice, visual completeness, and no empty placeholder.
+- Silently self-check every required heading and field before returning.
 - Output Markdown only, without greeting, explanation, HTML, CSS, JSON, or code fences.`;
-      void systemInstruction;
-      userContent = `Create a faithful, production-ready HTML-to-video storyboard from this authoritative request.\n\n${normalizedPrompt}\n\nVIDEO SPEC: ${normalizedSpec.durationSeconds} seconds, ${normalizedSpec.aspectRatio}.\nCONTENT MODE: ${contentMode}.\nNARRATION LANGUAGE: ${narrationLanguage}.\nASSET POLICY: ${imagePolicyDescription}`;
+      let userContent = `Create a faithful, production-ready HTML-to-video storyboard from this authoritative request.\n\n${normalizedPrompt}\n\nVIDEO SPEC: ${normalizedSpec.durationSeconds} seconds, ${normalizedSpec.aspectRatio}.\nCONTENT MODE: ${contentMode}.\nNARRATION LANGUAGE: ${narrationLanguage}.\nASSET POLICY: ${imagePolicyDescription}`;
 
       if (context && context.trim()) {
         userContent += `\n\n--- NGỮ CẢNH VÀ TÀI LIỆU THAM CHIẾU ---\n${context.trim().slice(0, 15000)}`;
@@ -973,7 +1085,7 @@ QUY TẮC BẢO TOÀN DỮ LIỆU & ĐỊNH DẠNG:
         {
           systemInstruction: strictStoryboardContract,
           images: normalizedImages,
-          temperature: 0.25,
+          temperature: 0.2,
         }
       );
 

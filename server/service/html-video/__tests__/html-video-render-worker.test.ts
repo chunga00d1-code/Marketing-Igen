@@ -10,12 +10,101 @@ import type {
   VideoRenderInput,
 } from "../../video-edit/render-adapter";
 import { VideoRenderAdapterError } from "../../video-edit/render-adapter";
-import { htmlVideoRenderService } from "../html-video-render.service";
+import {
+  assertSemanticSceneMapping,
+  htmlVideoRenderService,
+  rewriteMeasuredNarrationFromApprovedText,
+} from "../html-video-render.service";
+import type { HtmlVideoPipelineMetadata } from "../../../interface/html-video-pipeline.interface";
 import { htmlVideoTtsService } from "../html-video-tts.service";
 
 const renderId = new Types.ObjectId().toString();
 const compositionHtml =
   '<!doctype html><html data-composition-id="html-video"></html>';
+
+test("uses approved on-screen text for one measured resynthesis without dropping numbers", () => {
+  const baseScene = {
+    id: "scene-1",
+    order: 0,
+    purpose: "content" as const,
+    sourceUnitIds: ["unit-1"],
+    onScreenText: ["Teacher"],
+    narration: "This is a much longer explanation about the teacher role.",
+    startSeconds: 0,
+    endSeconds: 2,
+    transition: "crossfade" as const,
+    assetIds: [],
+  };
+  const rewritten = rewriteMeasuredNarrationFromApprovedText([baseScene], [7.2], 2);
+  assert.deepEqual(rewritten.adjustedSceneIds, ["scene-1"]);
+  assert.equal(rewritten.scenes[0].narration, "Teacher.");
+
+  const numeric = rewriteMeasuredNarrationFromApprovedText([{
+    ...baseScene,
+    narration: "The verified price is 50 dollars for this teacher course.",
+  }], [7.2], 2);
+  assert.deepEqual(numeric.adjustedSceneIds, []);
+});
+
+test("semantic QA rejects a highlight mapped to a different narrated unit", () => {
+  const pipeline = {
+    version: "2.0",
+    sourceText: "Teacher",
+    sourceContextRefs: [],
+    videoBrief: {
+      objective: "Teach one job",
+      tone: "educational",
+      visualStyle: "board",
+      voiceRequired: true,
+      exactPhrases: ["Teacher"],
+      videoSpec: {
+        aspectRatio: "16:9",
+        resolution: "720p",
+        durationSeconds: 5,
+        language: "en",
+        audience: "beginners",
+        platform: "generic",
+        cta: "",
+      },
+    },
+    contentUnits: [{
+      id: "unit-1",
+      sourceText: "Teacher",
+      normalizedText: "Teacher",
+      sourceRefs: ["reference-1"],
+      sourceKind: "image_ocr",
+      required: true,
+      requiredVerbatim: true,
+      order: 0,
+      region: {
+        x: 0.1,
+        y: 0.1,
+        width: 0.2,
+        height: 0.2,
+        coordinateSpace: "normalized",
+      },
+    }],
+    scenePlan: [{
+      id: "scene-1",
+      order: 0,
+      purpose: "content",
+      sourceUnitIds: ["unit-1"],
+      onScreenText: ["Teacher"],
+      narration: "Teacher.",
+      startSeconds: 0,
+      endSeconds: 5,
+      transition: "crossfade",
+      assetIds: [],
+    }],
+    findings: [],
+  } satisfies HtmlVideoPipelineMetadata;
+  const html = '<main class="background-sequence"><section class="scene" data-scene-id="scene-1" data-unit-id="unit-1" data-unit-ids="unit-1"><div class="scene-focus" data-unit-id="unit-2"></div></section></main>';
+
+  assert.throws(
+    () => assertSemanticSceneMapping(html, pipeline),
+    /visible highlight does not match/
+  );
+});
 
 function claimedRender(overrides: Record<string, unknown> = {}) {
   return {
@@ -109,6 +198,67 @@ test("claims a queued job and renders its sanitized document directly", async (c
   );
 });
 
+test("passes representative scene midpoints to final frame verification", async (context) => {
+  mockClaim(context, claimedRender({
+    pipelineSnapshot: {
+      scenePlan: [
+        { startSeconds: 0, endSeconds: 2 },
+        { startSeconds: 2, endSeconds: 4 },
+        { startSeconds: 4, endSeconds: 5 },
+      ],
+    },
+  }));
+  context.mock.method(HtmlVideoRenderModel, "updateOne", async () => ({
+    matchedCount: 1,
+  }));
+  let receivedInput: VideoRenderInput | undefined;
+  const adapter: VideoRenderAdapter = {
+    id: "hyperframes",
+    checkCapability: async () => ({ available: true }),
+    validateInput: () => undefined,
+    async render(input) {
+      receivedInput = input;
+      return {
+        engine: "hyperframes",
+        outputUrl: "https://cdn.example/verified-scenes.mp4",
+      };
+    },
+  };
+  context.mock.method(defaultVideoRenderAdapterRegistry, "get", () => adapter);
+
+  await htmlVideoRenderService.processRender(renderId);
+
+  assert.deepEqual(receivedInput?.verificationTimesSeconds, [1, 3, 4.5]);
+});
+
+test("checks every scene midpoint for an ordered background board", async (context) => {
+  mockClaim(context, claimedRender({
+    compositionHtml: '<!doctype html><html><div class="background-sequence"></div></html>',
+    durationSeconds: 10,
+    pipelineSnapshot: {
+      scenePlan: Array.from({ length: 5 }, (_, index) => ({
+        startSeconds: index * 2,
+        endSeconds: (index + 1) * 2,
+      })),
+    },
+  }));
+  context.mock.method(HtmlVideoRenderModel, "updateOne", async () => ({ matchedCount: 1 }));
+  let receivedInput: VideoRenderInput | undefined;
+  const adapter: VideoRenderAdapter = {
+    id: "hyperframes",
+    checkCapability: async () => ({ available: true }),
+    validateInput: () => undefined,
+    async render(input) {
+      receivedInput = input;
+      return { engine: "hyperframes", outputUrl: "https://cdn.example/board.mp4" };
+    },
+  };
+  context.mock.method(defaultVideoRenderAdapterRegistry, "get", () => adapter);
+
+  await htmlVideoRenderService.processRender(renderId);
+
+  assert.deepEqual(receivedInput?.verificationTimesSeconds, [1, 3, 5, 7, 9]);
+});
 test("returns an adapter failure to queued state for capped queue retry", async (context) => {
   mockClaim(context);
   context.mock.method(console, "error", () => undefined);
@@ -163,13 +313,14 @@ test("generates and passes scene-aligned voice segments to the renderer", async 
       generated.push({ text, durationSeconds: options.durationSeconds, language: options.language });
       return {
         buffer: Buffer.alloc(480, 1),
+        provider: "openrouter" as const,
         model: "test-tts",
         voice: "test-voice",
         format: "pcm" as const,
         sampleRate: 24_000,
         channels: 1,
         playbackRate: 1,
-        durationSeconds: Number(options.durationSeconds) * 0.9,
+        durationSeconds: text.includes("one") ? 1.8 : 2.7,
       };
     }
   );
@@ -193,8 +344,8 @@ test("generates and passes scene-aligned voice segments to the renderer", async 
   await htmlVideoRenderService.processRender(renderId);
 
   assert.deepEqual(generated, [
-    { text: "Scene one.", durationSeconds: 2, language: "English" },
-    { text: "Scene two.", durationSeconds: 3, language: "English" },
+    { text: "Scene one.", durationSeconds: undefined, language: "English" },
+    { text: "Scene two.", durationSeconds: undefined, language: "English" },
   ]);
   assert.equal(receivedInput?.voiceAudioPath, undefined);
   assert.deepEqual(
@@ -204,12 +355,62 @@ test("generates and passes scene-aligned voice segments to the renderer", async 
       sourceDurationSeconds: segment.sourceDurationSeconds,
     })),
     [
-      { startSeconds: 0, durationSeconds: 2, sourceDurationSeconds: 1.8 },
-      { startSeconds: 2, durationSeconds: 3, sourceDurationSeconds: 2.7 },
+      { startSeconds: 0, durationSeconds: 2.036, sourceDurationSeconds: 1.8 },
+      { startSeconds: 2.036, durationSeconds: 2.964, sourceDurationSeconds: 2.7 },
     ]
   );
 });
 
+test("marks narration that cannot fit naturally as a terminal input failure", async (context) => {
+  mockClaim(context, claimedRender({
+    voiceScript: "A narration that is much too long.",
+    pipelineSnapshot: {
+      videoBrief: { videoSpec: { language: "English" } },
+      scenePlan: [{
+        id: "scene-1",
+        narration: "A narration that is much too long.",
+        startSeconds: 0,
+        endSeconds: 2,
+      }],
+    },
+  }));
+  context.mock.method(console, "error", () => undefined);
+  const updates: Array<Record<string, unknown>> = [];
+  context.mock.method(HtmlVideoRenderModel, "updateOne", async (_filter, update) => {
+    updates.push(update as Record<string, unknown>);
+    return { matchedCount: 1 };
+  });
+  context.mock.method(htmlVideoTtsService, "generate", async () => ({
+    buffer: Buffer.alloc(480, 1),
+    provider: "openrouter" as const,
+    model: "test-tts",
+    voice: "test-voice",
+    format: "pcm" as const,
+    sampleRate: 24_000,
+    channels: 1,
+    playbackRate: 1,
+    durationSeconds: 7.2,
+  }));
+  let rendered = false;
+  const adapter: VideoRenderAdapter = {
+    id: "hyperframes",
+    checkCapability: async () => ({ available: true }),
+    validateInput: () => undefined,
+    async render() {
+      rendered = true;
+      return { engine: "hyperframes", outputUrl: "https://cdn.example/should-not-render.mp4" };
+    },
+  };
+  context.mock.method(defaultVideoRenderAdapterRegistry, "get", () => adapter);
+
+  await htmlVideoRenderService.processRender(renderId);
+
+  assert.equal(rendered, false);
+  const serialized = JSON.stringify(updates);
+  assert.match(serialized, /"status":"failed"/);
+  assert.match(serialized, /RENDER_INPUT_INVALID/);
+  assert.doesNotMatch(serialized, /"status":"queued"/);
+});
 test("logs bounded sanitized Hyperframes diagnostics server-side", async (context) => {
   mockClaim(context);
   context.mock.method(HtmlVideoRenderModel, "updateOne", async () => ({

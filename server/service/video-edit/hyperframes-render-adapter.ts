@@ -65,6 +65,11 @@ export interface HyperframesRenderAdapterDependencies {
     context: VideoRenderExecutionContext,
     environment?: NodeJS.ProcessEnv
   ) => Promise<Record<string, number>>;
+  preflightComposition?: (
+    context: VideoRenderExecutionContext,
+    environment?: NodeJS.ProcessEnv
+  ) => Promise<void>;
+  renderProfileArgs?: () => readonly string[];
 }
 
 export type HyperframesRuntimeConfiguration = {
@@ -507,7 +512,7 @@ function representativeFrameTimes(input: VideoRenderInput) {
     .map((time) => Math.min(Math.max(0.05, Number(time) || 0.05), Math.max(0.05, durationSeconds - 0.05)))
     .filter((time, index, values) => values.findIndex((candidate) => Math.abs(candidate - time) < 0.01) === index);
   return normalized.length >= 3
-    ? normalized.slice(0, 3)
+    ? normalized.slice(0, 24)
     : [durationSeconds * 0.08, durationSeconds * 0.5, durationSeconds * 0.92];
 }
 
@@ -563,49 +568,57 @@ async function verifyRenderedFrames(
 ) {
   const ffmpegPath = environment?.HYPERFRAMES_FFMPEG_PATH || environment?.VIDEO_CAPTION_FFMPEG_PATH || "ffmpeg";
   const samples: RepresentativeFrameSample[] = [];
-  for (const [index, timeSeconds] of representativeFrameTimes(input).entries()) {
-    const framePath = join(context.temporaryDirectory, `qa-frame-${index + 1}.png`);
-    let child: HyperframesRenderProcess;
-    try {
-      child = spawn(ffmpegPath, [
-        "-y", "-ss", timeSeconds.toFixed(3), "-i", outputPath,
-        "-frames:v", "1", "-vf", "scale=160:-2:flags=area", framePath,
-      ], {
-        cwd: context.temporaryDirectory,
-        ...(environment ? { env: environment } : {}),
-        shell: false,
-        windowsHide: true,
-      }) as HyperframesRenderProcess;
-    } catch (error) {
-      throw new VideoRenderAdapterError(
-        "RENDER_OUTPUT_INVALID",
-        "Representative frame verification could not start.",
-        { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown frame verifier error." }
+  const times = representativeFrameTimes(input);
+  const verificationConcurrency = Math.min(
+    Math.max(Number(environment?.HTML_VIDEO_FRAME_QA_CONCURRENCY) || 4, 1),
+    4
+  );
+  for (let offset = 0; offset < times.length; offset += verificationConcurrency) {
+    const batch = await Promise.all(times.slice(offset, offset + verificationConcurrency).map(async (timeSeconds, batchIndex) => {
+      const index = offset + batchIndex;
+      const framePath = join(context.temporaryDirectory, `qa-frame-${index + 1}.png`);
+      let child: HyperframesRenderProcess;
+      try {
+        child = spawn(ffmpegPath, [
+          "-y", "-ss", timeSeconds.toFixed(3), "-i", outputPath,
+          "-frames:v", "1", "-vf", `scale=${Math.min(640, Math.max(240, Number(environment?.HTML_VIDEO_FRAME_QA_WIDTH) || 320))}:-2:flags=area`, framePath,
+        ], {
+          cwd: context.temporaryDirectory,
+          ...(environment ? { env: environment } : {}),
+          shell: false,
+          windowsHide: true,
+        }) as HyperframesRenderProcess;
+      } catch (error) {
+        throw new VideoRenderAdapterError(
+          "RENDER_OUTPUT_INVALID",
+          "Representative frame verification could not start.",
+          { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown frame verifier error." }
+        );
+      }
+      const result = await waitForRenderer(
+        child, context.signal, context.timeoutMs, [context.temporaryDirectory, process.cwd()], () => undefined
       );
-    }
-    const result = await waitForRenderer(
-      child, context.signal, context.timeoutMs, [context.temporaryDirectory, process.cwd()], () => undefined
-    );
-    if (result.code !== 0) {
-      throw new VideoRenderAdapterError(
-        "RENDER_OUTPUT_INVALID",
-        "Representative frame extraction failed.",
-        { exitCode: result.code, stderr: result.stderr }
-      );
-    }
-    try {
-      samples.push(await readRepresentativeFrame(framePath, timeSeconds));
-    } catch (error) {
-      throw new VideoRenderAdapterError(
-        "RENDER_OUTPUT_INVALID",
-        "Representative frame could not be inspected.",
-        { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown frame inspection error." }
-      );
-    }
+      if (result.code !== 0) {
+        throw new VideoRenderAdapterError(
+          "RENDER_OUTPUT_INVALID",
+          "Representative frame extraction failed.",
+          { exitCode: result.code, stderr: result.stderr }
+        );
+      }
+      try {
+        return await readRepresentativeFrame(framePath, timeSeconds);
+      } catch (error) {
+        throw new VideoRenderAdapterError(
+          "RENDER_OUTPUT_INVALID",
+          "Representative frame could not be inspected.",
+          { reason: error instanceof Error ? error.message.slice(0, 512) : "Unknown frame inspection error." }
+        );
+      }
+    }));
+    samples.push(...batch);
   }
   return validateRepresentativeFrameSamples(samples);
 }
-
 export function createHyperframesRenderAdapter(
   dependencies: HyperframesRenderAdapterDependencies
 ): VideoRenderAdapter {
@@ -673,6 +686,9 @@ export function createHyperframesRenderAdapter(
                 resolution: input.resolution,
               });
         await dependencies.fileSystem.writeFile(htmlPath, html);
+        if (dependencies.preflightComposition) {
+          await dependencies.preflightComposition(context, runtime?.environment);
+        }
 
         await context.onProgress({
           stage: "renderer-start",
@@ -689,6 +705,7 @@ export function createHyperframesRenderAdapter(
               "-o",
               "output.mp4",
               ...renderResolutionArgs(input),
+              ...(dependencies.renderProfileArgs?.() || []),
               "--strict",
             ],
             {
@@ -803,12 +820,15 @@ export function createHyperframesRenderAdapter(
             const voiceFilter = input.voiceSegments?.length
               ? [
                   input.voiceSegments.map((segment, index) => {
-                    const speechWindow = Math.max(0.2, segment.durationSeconds * 0.9);
+                    const speechWindow = Math.max(0.2, segment.durationSeconds * 0.98);
                     const sourceDuration = Number(segment.sourceDurationSeconds);
-                    const measuredRate = Number.isFinite(sourceDuration) && sourceDuration > 0
+                    const measuredRate = Number.isFinite(sourceDuration) && sourceDuration > speechWindow
                       ? sourceDuration / speechWindow
-                      : Number(segment.playbackRate) || 1;
-                    const rate = Math.min(2, Math.max(0.75, measuredRate));
+                      : 1;
+                    const requestedRate = Number(segment.playbackRate);
+                    const rate = Number.isFinite(requestedRate) && requestedRate > 0
+                      ? Math.min(1.25, Math.max(0.85, requestedRate))
+                      : Math.min(1.25, Math.max(1, measuredRate));
                     const delayMs = Math.max(0, Math.round(segment.startSeconds * 1_000));
                     const slotDuration = segment.durationSeconds.toFixed(3);
                     return `[${index + 1}:a]atempo=${rate.toFixed(3)},apad=pad_dur=${slotDuration},atrim=duration=${slotDuration},asetpts=PTS-STARTPTS,adelay=${delayMs}|${delayMs}[voice_${index}]`;
@@ -939,9 +959,59 @@ export function createHyperframesRenderAdapter(
 }
 
 const require = createRequire(join(process.cwd(), "package.json"));
+const hyperframesCliPath = require.resolve("hyperframes/dist/cli.js");
+
+async function preflightHyperframesComposition(
+  context: VideoRenderExecutionContext,
+  environment?: NodeJS.ProcessEnv
+) {
+  const child = spawn(process.execPath, [
+    hyperframesCliPath,
+    "check",
+    "--json",
+    "--strict",
+    "--at-transitions",
+    "--max-transition-samples",
+    "96",
+    "--timeout",
+    "15000",
+  ], {
+    cwd: context.temporaryDirectory,
+    ...(environment ? { env: environment } : {}),
+    shell: false,
+    windowsHide: true,
+  }) as HyperframesRenderProcess;
+  const result = await waitForRenderer(
+    child,
+    context.signal,
+    Math.min(context.timeoutMs, 60_000),
+    [context.temporaryDirectory, hyperframesCliPath, process.cwd()],
+    () => undefined
+  );
+  if (result.code !== 0) {
+    throw new VideoRenderAdapterError(
+      "RENDER_INPUT_INVALID",
+      "HTML composition failed visual preflight.",
+      { stdout: result.stdout, stderr: result.stderr }
+    );
+  }
+}
+
+function productionRenderProfileArgs() {
+  const quality = ["draft", "standard", "high"].includes(String(process.env.HTML_VIDEO_RENDER_QUALITY))
+    ? String(process.env.HTML_VIDEO_RENDER_QUALITY)
+    : "high";
+  const fps = [24, 25, 30, 50, 60].includes(Number(process.env.HTML_VIDEO_RENDER_FPS))
+    ? String(process.env.HTML_VIDEO_RENDER_FPS)
+    : "30";
+  const workers = /^auto$|^[1-8]$/.test(String(process.env.HTML_VIDEO_RENDER_WORKERS || ""))
+    ? String(process.env.HTML_VIDEO_RENDER_WORKERS)
+    : "1";
+  return ["--fps", fps, "--quality", quality, "--workers", workers];
+}
 
 export const hyperframesRenderAdapter = createHyperframesRenderAdapter({
-  cliPath: require.resolve("hyperframes/dist/cli.js"),
+  cliPath: hyperframesCliPath,
   nodeExecutable: process.execPath,
   compileBlueprintToHtml: (blueprint) =>
     hyperframeService.compileBlueprintToHtml(blueprint),
@@ -959,4 +1029,6 @@ export const hyperframesRenderAdapter = createHyperframesRenderAdapter({
   prepareRuntime: createDefaultRuntimeConfiguration,
   probeOutput: probeRenderedOutput,
   verifyFrames: verifyRenderedFrames,
+  preflightComposition: preflightHyperframesComposition,
+  renderProfileArgs: productionRenderProfileArgs,
 });

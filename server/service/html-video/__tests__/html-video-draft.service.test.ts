@@ -25,6 +25,7 @@ type HarnessOptions = {
   validateError?: Error;
   sanitizedHtml?: string;
   sanitizedCss?: string;
+  withReservation?: boolean;
 };
 
 function createHarness(options: HarnessOptions = {}) {
@@ -39,6 +40,7 @@ function createHarness(options: HarnessOptions = {}) {
   let chatCount = 0;
   let balanceCount = 0;
   let deductCount = 0;
+  let reserveCount = 0;
 
   const dependencies: HtmlVideoDraftDependencies = {
     chat: async (params) => {
@@ -74,6 +76,17 @@ function createHarness(options: HarnessOptions = {}) {
       assert.equal(description, "Chi phí tạo HTML/CSS video bằng AI");
     },
   };
+  if (options.withReservation) {
+    dependencies.reserveBalance = async (userId, amount, description, idempotencyKey) => {
+      events.push("reserve");
+      reserveCount += 1;
+      assert.equal(userId, actor.id);
+      assert.equal(amount, API_COSTS.AI_HTML_CHAT);
+      assert.equal(description, "Tạm giữ chi phí tạo và xác minh video HTML/CSS bằng AI");
+      assert.equal(idempotencyKey, "html-video-generation:generation-1");
+      return null;
+    };
+  }
 
   return {
     service: createHtmlVideoDraftService(dependencies),
@@ -83,6 +96,7 @@ function createHarness(options: HarnessOptions = {}) {
     chatCalls: () => chatCount,
     balanceCalls: () => balanceCount,
     deductCalls: () => deductCount,
+    reserveCalls: () => reserveCount,
   };
 }
 
@@ -105,6 +119,18 @@ test("checks balance, validates generated source, then deducts exactly once", as
   assert.deepEqual(harness.events, ["balance", "chat", "validate", "deduct"]);
   assert.equal(harness.balanceCalls(), 1);
   assert.equal(harness.deductCalls(), 1);
+});
+
+test("reserves generation credit instead of settling it before MP4 verification", async () => {
+  const harness = createHarness({ withReservation: true });
+
+  await harness.service.generate(actor, validInput, {
+    billingIdempotencyKey: "html-video-generation:generation-1",
+  });
+
+  assert.deepEqual(harness.events, ["balance", "chat", "validate", "reserve"]);
+  assert.equal(harness.reserveCalls(), 1);
+  assert.equal(harness.deductCalls(), 0);
 });
 
 test("rejects a legacy revision before checking balance or calling AI", async () => {
@@ -138,6 +164,7 @@ test("sends the trimmed prompt and requested video settings to the model", async
   const [params] = harness.chatParams;
   assert.equal(
     params.model,
+    process.env.HTML_VIDEO_PLANNER_MODEL ||
     process.env.HTML_VIDEO_MODEL ||
     process.env.GEMINI_MODEL ||
     "google/gemini-2.5-flash"

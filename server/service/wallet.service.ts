@@ -155,6 +155,133 @@ export const walletService = {
     return { wallet, transaction, charged: true };
   },
 
+  async reserveBalance(
+    userId: string,
+    amount: number,
+    description: string,
+    idempotencyKey: string
+  ): Promise<any> {
+    if (amount <= 0) return null;
+    const normalizedKey = String(idempotencyKey || "").trim();
+    if (!normalizedKey) throw new Error("Wallet reservation requires an idempotency key.");
+    const existingTransaction = await TransactionModel.findOne({
+      idempotencyKey: normalizedKey,
+      userId,
+      type: "payment",
+    });
+    if (existingTransaction?.status === "pending" || existingTransaction?.status === "success") {
+      const wallet = await this.getOrCreateWallet(userId);
+      return { wallet, transaction: existingTransaction, reserved: false };
+    }
+
+    await this.getOrCreateWallet(userId);
+    const wallet = await WalletModel.findOneAndUpdate(
+      { userId, balance: { $gte: amount } },
+      { $inc: { balance: -amount }, $set: { updatedAt: new Date() } },
+      { returnDocument: "after" }
+    );
+    if (!wallet) {
+      const error: any = new Error(
+        "Sá»‘ dÆ° vÃ­ khÃ´ng Ä‘á»§. Vui lÃ²ng náº¡p thÃªm tiá»n vÃ o vÃ­ Ä‘á»ƒ tiáº¿p tá»¥c sá»­ dá»¥ng dá»‹ch vá»¥."
+      );
+      error.statusCode = 402;
+      throw error;
+    }
+
+    try {
+      if (existingTransaction?.status === "failed") {
+        const reactivated = await TransactionModel.findOneAndUpdate(
+          { _id: existingTransaction._id, userId, status: "failed" },
+          {
+            $set: {
+              amount,
+              status: "pending",
+              description,
+              createdAt: new Date(),
+            },
+            $unset: { completedAt: "" },
+          },
+          { returnDocument: "after" }
+        );
+        if (!reactivated) {
+          await WalletModel.updateOne(
+            { userId },
+            { $inc: { balance: amount }, $set: { updatedAt: new Date() } }
+          );
+          const concurrent = await TransactionModel.findOne({ idempotencyKey: normalizedKey });
+          return { wallet: await this.getOrCreateWallet(userId), transaction: concurrent, reserved: false };
+        }
+        return { wallet, transaction: reactivated, reserved: true };
+      }
+
+      let orderCode: number;
+      let existingOrder: any;
+      do {
+        orderCode = Math.floor(10000000 + Math.random() * 90000000);
+        existingOrder = await TransactionModel.findOne({ orderCode });
+      } while (existingOrder);
+      const transaction = await TransactionModel.create({
+        userId,
+        orderCode,
+        amount,
+        type: "payment",
+        status: "pending",
+        description,
+        idempotencyKey: normalizedKey,
+        createdAt: new Date(),
+      });
+      return { wallet, transaction, reserved: true };
+    } catch (error: any) {
+      await WalletModel.updateOne(
+        { userId },
+        { $inc: { balance: amount }, $set: { updatedAt: new Date() } }
+      );
+      if (error?.code === 11000) {
+        const concurrent = await TransactionModel.findOne({ idempotencyKey: normalizedKey });
+        return { wallet: await this.getOrCreateWallet(userId), transaction: concurrent, reserved: false };
+      }
+      throw error;
+    }
+  },
+
+  async settleReservation(userId: string, idempotencyKey: string) {
+    const transaction = await TransactionModel.findOneAndUpdate(
+      {
+        userId,
+        idempotencyKey,
+        type: "payment",
+        status: "pending",
+      },
+      { $set: { status: "success", completedAt: new Date() } },
+      { returnDocument: "after" }
+    );
+    if (transaction) return { transaction, settled: true };
+    const existing = await TransactionModel.findOne({ userId, idempotencyKey, type: "payment" });
+    return { transaction: existing, settled: false };
+  },
+
+  async releaseReservation(userId: string, idempotencyKey: string) {
+    const transaction = await TransactionModel.findOneAndUpdate(
+      {
+        userId,
+        idempotencyKey,
+        type: "payment",
+        status: "pending",
+      },
+      { $set: { status: "failed", completedAt: new Date() } },
+      { returnDocument: "after" }
+    );
+    if (!transaction) {
+      const existing = await TransactionModel.findOne({ userId, idempotencyKey, type: "payment" });
+      return { transaction: existing, released: false };
+    }
+    const wallet = await this.getOrCreateWallet(userId);
+    wallet.balance += transaction.amount;
+    wallet.updatedAt = new Date();
+    await wallet.save();
+    return { wallet, transaction, released: true };
+  },
+
   async getAdminBalanceList(filters: AdminBalanceFilters = {}) {
     const userQuery: Record<string, any> = {};
     if (filters.companyCode && filters.companyCode !== "all") {
