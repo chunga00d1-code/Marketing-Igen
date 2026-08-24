@@ -30,14 +30,25 @@ test("builds a source-faithful storyboard for the requested duration and aspect 
 test("expands a short Vietnamese request without an image into a complete CSS motion brief", () => {
   const result = buildHtmlVideoMasterPromptFallback(
     "Tạo video hướng dẫn quản lý công việc",
-    { durationSeconds: 10, aspectRatio: "9:16" }
+    { durationSeconds: 20, aspectRatio: "9:16" }
   );
 
+  assert.match(result, /# VIDEO BRIEF/);
+  assert.match(result, /- Video goal:/);
+  assert.match(result, /- Audience:/);
+  assert.match(result, /- Tone:/);
+  assert.match(result, /- Visual system:/);
+  assert.match(result, /- Voice direction:/);
   assert.match(result, /- Content mode: educational/);
   assert.match(result, /- Language: Vietnamese\. Use one narration language throughout/);
   assert.match(result, /- Input image policy: No input image/);
   assert.match(result, /complete HTML\/CSS motion graphics/);
-  assert.equal(isValidHtmlVideoMasterPrompt(result, { durationSeconds: 10 }), true);
+  assert.match(result, /# CREATIVE DECISIONS/);
+  assert.match(result, /# ACCEPTANCE CHECKLIST/);
+  assert.equal((result.match(/^## SCENE /gm) || []).length, 3);
+  assert.equal((result.match(/^- Visual hierarchy:/gm) || []).length, 3);
+  assert.equal((result.match(/^- Asset use:/gm) || []).length, 3);
+  assert.equal(isValidHtmlVideoMasterPrompt(result, { durationSeconds: 20 }), true);
 });
 
 test("makes an attached ordered-board image explicit in the master prompt", () => {
@@ -83,6 +94,16 @@ test("keeps style-only reference images out of media slots", () => {
 
 test("rejects optimized storyboards with timing gaps or rushed scene narration", () => {
   const base = `# VIDEO BRIEF
+- Video goal: Explain two supported facts clearly.
+- Audience: General viewers.
+- Tone: Clear and approachable.
+- Visual system: Clean editorial motion graphics.
+- Voice direction: Natural and steady.
+# AUTHORITATIVE SOURCE
+- One supported fact.
+- Another supported fact.
+# CREATIVE DECISIONS
+- Do not invent factual claims.
 # STORYBOARD
 ## SCENE 1
 - Time: 0.0s-4.0s
@@ -90,7 +111,9 @@ test("rejects optimized storyboards with timing gaps or rushed scene narration",
 - Source facts: One supported fact.
 - On-screen text: One supported fact.
 - Voice-over: One supported fact.
+- Visual hierarchy: Fact first, supporting visual second.
 - Visual: Full canvas.
+- Asset use: CSS shapes only.
 - Motion: Reveal and hold.
 - Transition: crossfade
 ## SCENE 2
@@ -99,10 +122,15 @@ test("rejects optimized storyboards with timing gaps or rushed scene narration",
 - Source facts: Another supported fact.
 - On-screen text: Another supported fact.
 - Voice-over: Another supported fact.
+- Visual hierarchy: Fact first, supporting visual second.
 - Visual: Full canvas.
+- Asset use: CSS shapes only.
 - Motion: Reveal and hold.
 - Transition: hold
-# GLOBAL DIRECTION`;
+# GLOBAL DIRECTION
+- Keep text readable.
+# ACCEPTANCE CHECKLIST
+- The timeline covers the requested duration.`;
 
   assert.equal(isValidHtmlVideoMasterPrompt(base, { durationSeconds: 8 }), true);
   assert.equal(
@@ -138,7 +166,49 @@ test("turns a short follow-up into an in-place revision contract without resetti
   assert.match(result.master_prompt, /Modify the current approved video in place/);
   assert.match(result.master_prompt, /90 seconds/);
   assert.equal(result.assumptions?.durationSeconds, 90);
+  assert.equal(result.assumptions?.requestSpecVersion, "1.0");
+  assert.equal(result.assumptions?.mode, "revision");
+  assert.equal(result.assumptions?.durationPolicy, "preserve-existing");
+  assert.equal(result.assumptions?.sourceOrder, "preserve");
+  assert.equal(result.assumptions?.preserveUnrequestedProperties, true);
   assert.equal(result.isLocalFallback, true);
+});
+
+
+test("returns a versioned RequestSpec for a short create prompt", async () => {
+  const originalOpenRouterKey = process.env.OPENROUTER_API_KEY;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.GEMINI_API_KEY;
+  try {
+    const result = await geminiPromptOptimizerService.optimizeMasterVideoPrompt(
+      "tao video doc lan luot tung muc trong bang jobs",
+      undefined,
+      undefined,
+      { durationSeconds: 30, aspectRatio: "9:16", mode: "create" }
+    );
+
+    assert.equal(result.assumptions?.requestSpecVersion, "1.0");
+    assert.equal(result.assumptions?.mode, "create");
+    assert.equal(result.assumptions?.durationPolicy, "inferred");
+    assert.equal(result.assumptions?.languageLock, "Vietnamese");
+    assert.equal(result.assumptions?.contentMode, "ordered-list");
+    assert.equal(result.assumptions?.sourceOrder, "preserve");
+    assert.equal(result.assumptions?.preserveUnrequestedProperties, false);
+
+    const explicitDuration = await geminiPromptOptimizerService.optimizeMasterVideoPrompt(
+      "tao video 90 giay doc lan luot tung muc trong bang jobs",
+      undefined,
+      undefined,
+      { durationSeconds: 90, aspectRatio: "9:16", mode: "create" }
+    );
+    assert.equal(explicitDuration.assumptions?.durationPolicy, "explicit");
+  } finally {
+    if (originalOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = originalOpenRouterKey;
+    if (originalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalGeminiKey;
+  }
 });
 
 
@@ -177,6 +247,34 @@ test("normalizes ordered OCR units and clamps image bounding boxes", () => {
       bounding_box: { x: 0.82, y: 0.1, width: 0.18, height: 0.2 },
     },
   ]);
+});
+
+test("removes title and watermark outliers from a repeated OCR grid", () => {
+  const result = normalizeHtmlVideoReferenceAnalysis({
+    ordered_content_units: [
+      { order: 1, text: "Jobs", confidence: 0.99, bounding_box: { x: 0.04, y: 0.02, width: 0.14, height: 0.05 } },
+      ...Array.from({ length: 15 }, (_, index) => ({
+        order: index + 2,
+        text: `job-${index + 1}`,
+        confidence: 0.98,
+        bounding_box: {
+          x: 0.04 + (index % 5) * 0.19,
+          y: 0.14 + Math.floor(index / 5) * 0.25,
+          width: 0.15,
+          height: 0.19,
+        },
+      })),
+      { order: 17, unit_type: "watermark", text: "Publisher", confidence: 0.99 },
+    ],
+  });
+
+  assert.equal(result.ordered_content_units.length, 15);
+  assert.equal(result.ordered_content_units[0]?.text, "job-1");
+  assert.equal(result.ordered_content_units[14]?.text, "job-15");
+  assert.deepEqual(
+    result.ordered_content_units.map((unit) => unit.order),
+    Array.from({ length: 15 }, (_, index) => index + 1)
+  );
 });
 
 test("keeps the image-analysis response contract stable when OCR finds no items", () => {

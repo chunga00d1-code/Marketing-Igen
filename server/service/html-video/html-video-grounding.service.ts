@@ -5,11 +5,42 @@ import {
   type HtmlVideoSourceReference,
 } from "../../interface/html-video-pipeline.interface";
 import type { HtmlVideoDraftInput } from "./html-video-draft.service";
+import { filterRepeatedReferenceGridItems } from "./html-video-reference-grid.service";
 
 const MAX_CONTENT_UNITS = 24;
+const MAX_CONTENT_UNIT_TEXT_LENGTH = 4_000;
 
 function compact(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function splitContentUnitText(value: string) {
+  let remaining = compact(value);
+  if (!remaining) return [];
+  const chunks: string[] = [];
+  while (remaining.length > MAX_CONTENT_UNIT_TEXT_LENGTH) {
+    const candidate = remaining.slice(0, MAX_CONTENT_UNIT_TEXT_LENGTH + 1);
+    const sentenceBreak = Math.max(
+      candidate.lastIndexOf(". "),
+      candidate.lastIndexOf("! "),
+      candidate.lastIndexOf("? "),
+      candidate.lastIndexOf("; ")
+    );
+    const wordBreak = candidate.lastIndexOf(" ");
+    const end = sentenceBreak >= Math.floor(MAX_CONTENT_UNIT_TEXT_LENGTH * 0.5)
+      ? sentenceBreak + 1
+      : wordBreak >= Math.floor(MAX_CONTENT_UNIT_TEXT_LENGTH * 0.5)
+        ? wordBreak
+        : MAX_CONTENT_UNIT_TEXT_LENGTH;
+    chunks.push(remaining.slice(0, end).trim());
+    remaining = remaining.slice(end).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
+function boundedContentUnitText(value: string) {
+  return splitContentUnitText(value)[0] || "";
 }
 
 function sourceText(input: HtmlVideoDraftInput) {
@@ -65,9 +96,38 @@ function inferredUnits(value: string) {
 type ExtractedReferenceUnit = {
   text: string;
   order: number;
+  assetId?: string;
   confidence?: number;
   region?: HtmlVideoContentUnit["region"];
 };
+
+function referenceBlocks(value: string) {
+  const matches = [...value.matchAll(
+    /--- BEGIN REFERENCE: (.+?) \((?:image|document|video)\) ---([\s\S]*?)--- END REFERENCE: \1 ---/g
+  )];
+  return matches.length > 0
+    ? matches.map((match) => ({ label: match[1].trim(), content: match[2] }))
+    : [{ label: "", content: value }];
+}
+
+function sortReferenceUnitsByReadingOrder(units: ExtractedReferenceUnit[]) {
+  const measured = units.filter((unit) => unit.region);
+  if (measured.length < Math.max(2, Math.ceil(units.length * 0.65))) {
+    return [...units].sort((left, right) => left.order - right.order);
+  }
+  const heights = measured.map((unit) => unit.region!.height).sort((left, right) => left - right);
+  const medianHeight = heights[Math.floor(heights.length / 2)] || 0.08;
+  const rowTolerance = Math.max(0.018, medianHeight * 0.55);
+  return [...units].sort((left, right) => {
+    if (!left.region || !right.region) return left.order - right.order;
+    const leftCenterY = left.region.y + left.region.height / 2;
+    const rightCenterY = right.region.y + right.region.height / 2;
+    if (Math.abs(leftCenterY - rightCenterY) <= rowTolerance) {
+      return left.region.x - right.region.x;
+    }
+    return leftCenterY - rightCenterY;
+  });
+}
 
 function normalizedRegion(value: unknown): HtmlVideoContentUnit["region"] | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
@@ -155,43 +215,52 @@ function referenceUnitArray(value: unknown): unknown[] {
   return [];
 }
 
-function extractedReferenceUnits(value?: string): ExtractedReferenceUnit[] {
+function extractedReferenceUnits(
+  value?: string,
+  assets: HtmlVideoDraftInput["referenceAssets"] = []
+): ExtractedReferenceUnit[] {
   if (!value?.trim()) return [];
-  for (const object of jsonObjects(value)) {
-    const items = referenceUnitArray(object);
-    if (items.length < 2) continue;
-    const units = items.slice(0, MAX_CONTENT_UNITS).map((item, index) => {
-      if (typeof item === "string") {
-        const text = compact(item);
-        return text ? { text, order: index } : null;
+  const extracted: ExtractedReferenceUnit[] = [];
+  for (const block of referenceBlocks(value)) {
+    const assetId = assets.find((asset) => asset.name === block.label)?.id;
+    for (const object of jsonObjects(block.content)) {
+      const items = referenceUnitArray(object);
+      if (items.length < 2) continue;
+      const units = items.slice(0, MAX_CONTENT_UNITS - extracted.length).map((item, index) => {
+        if (typeof item === "string") {
+          const text = compact(item);
+          return text ? { text, order: index, ...(assetId ? { assetId } : {}) } : null;
+        }
+        if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+        const record = item as Record<string, unknown>;
+        const text = compact(String(
+          record.text ?? record.label ?? record.name ?? record.content ?? ""
+        ));
+        if (!text) return null;
+        const rawOrder = Number(record.order ?? record.index ?? index + 1);
+        const rawConfidence = Number(record.confidence);
+        const region = normalizedRegion(
+          record.bounding_box ?? record.boundingBox ?? record.bbox ?? record.region
+        );
+        return {
+          text,
+          order: Number.isFinite(rawOrder) ? rawOrder : index + 1,
+          ...(assetId ? { assetId } : {}),
+          ...(Number.isFinite(rawConfidence)
+            ? { confidence: Math.max(0, Math.min(1, rawConfidence)) }
+            : {}),
+          ...(region ? { region } : {}),
+        };
+      }).filter((unit): unit is ExtractedReferenceUnit => Boolean(unit));
+      const gridUnits = filterRepeatedReferenceGridItems(units, (unit) => unit.region);
+      if (gridUnits.length >= 2) {
+        extracted.push(...sortReferenceUnitsByReadingOrder(gridUnits));
+        break;
       }
-      if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-      const record = item as Record<string, unknown>;
-      const text = compact(String(
-        record.text ?? record.label ?? record.name ?? record.content ?? ""
-      ));
-      if (!text) return null;
-      const rawOrder = Number(record.order ?? record.index ?? index + 1);
-      const rawConfidence = Number(record.confidence);
-      const region = normalizedRegion(
-        record.bounding_box ?? record.boundingBox ?? record.bbox ?? record.region
-      );
-      return {
-        text,
-        order: Number.isFinite(rawOrder) ? rawOrder : index + 1,
-        ...(Number.isFinite(rawConfidence)
-          ? { confidence: Math.max(0, Math.min(1, rawConfidence)) }
-          : {}),
-        ...(region ? { region } : {}),
-      };
-    }).filter((unit): unit is ExtractedReferenceUnit => Boolean(unit));
-    if (units.length >= 2) {
-      return units
-        .sort((left, right) => left.order - right.order)
-        .map((unit, index) => ({ ...unit, order: index }));
     }
+    if (extracted.length >= MAX_CONTENT_UNITS) break;
   }
-  return [];
+  return extracted.slice(0, MAX_CONTENT_UNITS).map((unit, index) => ({ ...unit, order: index }));
 }
 
 export function buildHtmlVideoGrounding(input: HtmlVideoDraftInput) {
@@ -236,15 +305,18 @@ export function buildHtmlVideoGrounding(input: HtmlVideoDraftInput) {
 
   const sceneCandidates = explicitSceneBlocks(currentText);
   const orderedCandidates = explicitOrderedList(currentText);
-  const referenceCandidates = extractedReferenceUnits(input.referenceContext);
-  const normalizedCandidates = (referenceCandidates.length > 0
+  const referenceCandidates = extractedReferenceUnits(input.referenceContext, input.referenceAssets);
+  const candidateTexts = referenceCandidates.length > 0
     ? referenceCandidates.map((unit) => unit.text)
     : sceneCandidates.length > 0
       ? sceneCandidates
       : orderedCandidates.length > 0
         ? orderedCandidates
         : inferredUnits(currentText)
-  ).slice(0, MAX_CONTENT_UNITS);
+  ;
+  const normalizedCandidates = candidateTexts
+    .flatMap((text) => splitContentUnitText(text))
+    .slice(0, MAX_CONTENT_UNITS);
   const fallback = compact(currentText || input.prompt);
   const inferredContentUnits: HtmlVideoContentUnit[] = (normalizedCandidates.length > 0
     ? normalizedCandidates
@@ -252,6 +324,9 @@ export function buildHtmlVideoGrounding(input: HtmlVideoDraftInput) {
   ).map((text, index) => ({
     id: `unit-${index + 1}`,
     order: index,
+    ...(referenceCandidates[index]?.assetId
+      ? { assetId: referenceCandidates[index].assetId }
+      : {}),
     sourceText: text,
     normalizedText: text,
     sourceRefs: [referenceCandidates.length > 0
@@ -278,6 +353,12 @@ export function buildHtmlVideoGrounding(input: HtmlVideoDraftInput) {
     ? existingPipeline.contentUnits.slice(0, MAX_CONTENT_UNITS).map((unit, index) => ({
         ...unit,
         order: index,
+        sourceText: boundedContentUnitText(unit.sourceText),
+        normalizedText: boundedContentUnitText(unit.normalizedText) || boundedContentUnitText(unit.sourceText),
+        ...(unit.sourceText.length > MAX_CONTENT_UNIT_TEXT_LENGTH
+          || unit.normalizedText.length > MAX_CONTENT_UNIT_TEXT_LENGTH
+          ? { required: false, requiredVerbatim: false }
+          : {}),
         sourceRefs: Array.from(new Set([...(unit.sourceRefs || []), "source-existing-video"])).slice(0, 8),
       }))
     : inferredContentUnits;

@@ -131,8 +131,55 @@ export function inferHtmlVideoReferenceDuration(referenceContext?: string) {
 export function automaticDuration(prompt: string, referenceContext?: string) {
   const explicitDuration = inferExplicitHtmlVideoDuration(prompt);
   if (explicitDuration !== null) return explicitDuration;
-  const promptDuration = prompt.length > 420 ? 30 : prompt.length > 160 ? 15 : 10;
+  const normalized = prompt
+    .toLocaleLowerCase('vi-VN')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+  const promptDuration = prompt.length > 420
+    ? 30
+    : prompt.length > 160
+      ? 20
+      : /(?:huong dan|giai thich|bai hoc|kien thuc|tutorial|explain|lesson|how to)/i.test(normalized)
+        ? 20
+        : 15;
   return Math.max(promptDuration, inferHtmlVideoReferenceDuration(referenceContext) || 0);
+}
+
+export function resolveHtmlVideoDuration(input: {
+  prompt: string;
+  rawUserPrompt?: string;
+  optimizedDurationSeconds?: number;
+  existingDurationSeconds?: number;
+  referenceContext?: string;
+}) {
+  const authoritativePrompt = input.rawUserPrompt?.trim() || input.prompt.trim();
+  const explicitDuration = inferExplicitHtmlVideoDuration(authoritativePrompt);
+  if (explicitDuration !== null) return explicitDuration;
+  if (
+    Number.isInteger(input.existingDurationSeconds) &&
+    Number(input.existingDurationSeconds) >= 1 &&
+    Number(input.existingDurationSeconds) <= 180
+  ) {
+    return Number(input.existingDurationSeconds);
+  }
+  if (
+    Number.isInteger(input.optimizedDurationSeconds) &&
+    Number(input.optimizedDurationSeconds) >= 1 &&
+    Number(input.optimizedDurationSeconds) <= 180
+  ) {
+    return Number(input.optimizedDurationSeconds);
+  }
+  return automaticDuration(authoritativePrompt, input.referenceContext);
+}
+
+export function shouldAutoWriteHtmlVideoMasterPrompt(
+  prompt: string,
+  hasMasterPrompt: boolean
+) {
+  const normalized = prompt.trim();
+  if (!normalized || hasMasterPrompt || normalized.length > 800) return false;
+  return normalized.split(/\s+/).filter(Boolean).length <= 80;
 }
 
 export function formatVideoTime(seconds: number) {

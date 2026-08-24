@@ -22,6 +22,8 @@ import {
   inferHtmlVideoAspectRatio,
   inferExplicitHtmlVideoDuration,
   automaticDuration,
+  resolveHtmlVideoDuration,
+  shouldAutoWriteHtmlVideoMasterPrompt,
   inferHtmlVideoReferenceDuration,
   estimateHtmlVideoGenerationProgress,
   formatHtmlVideoElapsedTime,
@@ -94,15 +96,18 @@ test("renders prompt generation controls and the exact wallet cost", () => {
   assert.match(source, /Bạn muốn video nói gì/);
   assert.match(source, /service\.createGeneration/);
   assert.match(source, /pollHtmlVideoGeneration/);
+  assert.match(source, /const autoRender = true/);
+  assert.match(source, /if \(autoRender\) \{\s*await enqueueRender\(readyCandidate\);/);
   assert.match(source, /0,5 credit\/lần tạo/);
   assert.doesNotMatch(source, /maxLength=\{MAX_LONG_PROMPT_LENGTH\}/);
   assert.match(source, /Prompt dài sẽ tự chuyển thành/);
   assert.match(source, /Prompt vượt giới hạn, chưa thể tạo video/);
   assert.match(
     source,
-    /if \(!aspectRatioLocked && effectiveAspectRatio !== aspectRatio\)[\s\S]*?setAspectRatioState\(effectiveAspectRatio\);\s*}\s*if \(!trimmedPrompt \|\| isCreating \|\| referencesAnalyzing\) return;/
+    /if \(!aspectRatioLocked && effectiveAspectRatio !== aspectRatio\)[\s\S]*?setAspectRatioState\(effectiveAspectRatio\);\s*}\s*if \(!submittedPrompt \|\| isCreating \|\| referencesAnalyzing\) return;/
   );
-  assert.match(source, /automaticDuration\(trimmedPrompt, referenceContext\)/);
+  assert.match(source, /resolveHtmlVideoDuration\(\{/);
+  assert.match(source, /rawUserPrompt: activePromptProvenance\.rawUserPrompt/);
   assert.doesNotMatch(source, /durationOverrideSeconds|durationDraftSeconds|saveDuration|html-video-duration/);
   assert.doesNotMatch(source, /type="number"/);
   assert.doesNotMatch(source, /Tùy chỉnh cài đặt/);
@@ -118,7 +123,7 @@ test("updates the selected video revision in place and preserves its references"
   assert.match(source, /current\.map\(\(candidate\) => candidate\.id === editingCandidate\.id \? nextCandidates\[0\]/);
   assert.match(source, /inheritedAssets\.length > 0 \? inheritedAssets : buildReferenceAssets/);
   assert.match(source, /editSource: editingCandidate \? \{/);
-  assert.match(source, /editingCandidate && explicitlyRequestedDuration === null/);
+  assert.match(source, /existingDurationSeconds: editingCandidate\?\.durationSeconds/);
   assert.match(source, /aspectRatioSource === "manual"/);
   assert.match(source, /setAspectRatioSource\("inherited"\)/);
   assert.match(source, /snapshotHash: editingCandidate\.editSource\?\.snapshotHash/);
@@ -164,6 +169,58 @@ test("recognizes explicit numeric and Vietnamese word durations", () => {
   assert.equal(inferExplicitHtmlVideoDuration("Cho animation tiêu đề chạy trong 2s"), null);
   assert.equal(inferExplicitHtmlVideoDuration("Video có animation tiêu đề chạy trong 2s"), null);
   assert.equal(inferExplicitHtmlVideoDuration("Đổi video thành 90 giây"), 90);
+});
+
+test("derives duration from the original idea instead of the expanded master prompt", () => {
+  assert.equal(automaticDuration("Tạo video hướng dẫn quản lý công việc"), 20);
+  assert.equal(automaticDuration("Tạo video giới thiệu thương hiệu"), 15);
+  assert.equal(
+    resolveHtmlVideoDuration({
+      prompt: "# VIDEO BRIEF\n".repeat(100),
+      rawUserPrompt: "Tạo video hướng dẫn quản lý công việc",
+      optimizedDurationSeconds: 20,
+    }),
+    20
+  );
+  assert.equal(
+    resolveHtmlVideoDuration({
+      prompt: "# VIDEO BRIEF\n".repeat(100),
+      rawUserPrompt: "Tạo video 90 giây hướng dẫn quản lý công việc",
+      optimizedDurationSeconds: 20,
+    }),
+    90
+  );
+  assert.equal(
+    resolveHtmlVideoDuration({
+      prompt: "Làm animation mềm hơn",
+      rawUserPrompt: "Làm animation mềm hơn",
+      optimizedDurationSeconds: 15,
+      existingDurationSeconds: 90,
+    }),
+    90
+  );
+});
+
+test("automatically writes a master prompt only for a short, unoptimized idea", () => {
+  assert.equal(
+    shouldAutoWriteHtmlVideoMasterPrompt("Tạo video hướng dẫn quản lý công việc", false),
+    true
+  );
+  assert.equal(
+    shouldAutoWriteHtmlVideoMasterPrompt("Tạo video hướng dẫn quản lý công việc", true),
+    false
+  );
+  assert.equal(
+    shouldAutoWriteHtmlVideoMasterPrompt("ý ".repeat(500), false),
+    false
+  );
+
+  const source = readFileSync(
+    "src/components/content-studio/HtmlVideoBatchWorkspace.tsx",
+    "utf8"
+  );
+  assert.match(source, /const shouldAutoWriteMasterPrompt = shouldAutoWriteHtmlVideoMasterPrompt/);
+  assert.match(source, /if \(shouldAutoWriteMasterPrompt\)[\s\S]*geminiApi\.optimizeMasterPrompt/);
 });
 
 
@@ -553,7 +610,7 @@ test("renders the optimize master prompt button and undo button in the prompt pa
   assert.match(source, /promptProvenance: candidate\.promptProvenance/);
   assert.match(source, /mode: revisionMode \? "revision" : "create"/);
   assert.match(source, /setPrompt\(editingExistingVideo \? "" : editableCandidate\.prompt\)/);
-  assert.match(source, /editingCandidate && explicitlyRequestedDuration === null[\s\S]{0,120}editingCandidate\.durationSeconds/);
-  assert.match(markup, /Tối ưu prompt/);
+  assert.match(source, /existingDurationSeconds: editingCandidate\?\.durationSeconds/);
+  assert.match(markup, /Viết Master Prompt/);
   assert.match(markup, /html-video-optimize-prompt-btn/);
 });

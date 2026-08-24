@@ -39,12 +39,18 @@ test("builds a server-owned 9:16 1080p composition", () => {
     result.compositionHtml,
     /-apple-system|BlinkMacSystemFont/
   );
-  assert.match(
-    result.compositionHtml,
-    /<script>window\.__timelines = window\.__timelines \|\| \{\};<\/script>/
-  );
+  assert.doesNotMatch(result.compositionHtml, /<script/i);
   assert.match(result.compositionHtml, /<main class="hero"/);
   assert.doesNotMatch(result.sanitizedHtml, /<script/i);
+});
+
+test("marks legacy scene orb decorations as intentional overflow", () => {
+  const result = buildSafeHtmlVideoComposition({
+    ...validSource,
+    html: '<main class="scene-deck"><section class="scene"><div class="scene-orb scene-orb-a"></div><h1>One</h1></section></main>',
+  });
+
+  assert.match(result.sanitizedHtml, /scene-orb-a" data-layout-allow-overflow="true"/);
 });
 
 test("adds deterministic ambient motion when the generated source is otherwise static", () => {

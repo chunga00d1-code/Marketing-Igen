@@ -114,6 +114,7 @@ export type HtmlVideoDraftDependencies = {
   chat: typeof openrouterChat;
   checkBalance: typeof walletService.checkBalance;
   deductBalance: typeof walletService.deductBalance;
+  reserveBalance?: typeof walletService.reserveBalance;
   validateComposition: typeof buildSafeHtmlVideoComposition;
   loadPromptContext?: typeof htmlVideoPromptHistoryService.getContextChain;
 };
@@ -771,12 +772,21 @@ export function createHtmlVideoDraftService(
         }
 
         try {
-          await dependencies.deductBalance(
-            actor.id,
-            API_COSTS.AI_HTML_CHAT,
-            "Chi phí tạo HTML/CSS video bằng AI",
-            options.billingIdempotencyKey
-          );
+          if (options.billingIdempotencyKey && dependencies.reserveBalance) {
+            await dependencies.reserveBalance(
+              actor.id,
+              API_COSTS.AI_HTML_CHAT,
+              "Tạm giữ chi phí tạo và xác minh video HTML/CSS bằng AI",
+              options.billingIdempotencyKey
+            );
+          } else {
+            await dependencies.deductBalance(
+              actor.id,
+              API_COSTS.AI_HTML_CHAT,
+              "Chi phí tạo HTML/CSS video bằng AI",
+              options.billingIdempotencyKey
+            );
+          }
         } catch (error) {
           throw walletError(error);
         }
@@ -797,6 +807,7 @@ export const htmlVideoDraftService = createHtmlVideoDraftService({
   chat: openrouterChat,
   checkBalance: walletService.checkBalance.bind(walletService),
   deductBalance: walletService.deductBalance.bind(walletService),
+  reserveBalance: walletService.reserveBalance.bind(walletService),
   validateComposition: buildSafeHtmlVideoComposition,
   loadPromptContext: htmlVideoPromptHistoryService.getContextChain.bind(
     htmlVideoPromptHistoryService

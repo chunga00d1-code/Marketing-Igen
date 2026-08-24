@@ -181,6 +181,7 @@ test("accepts a 15-item jobs timeline for preview", () => {
     contentUnits: scenePlan.map((scene, index) => ({
       id: scene.sourceUnitIds[0],
       order: index,
+      assetId: "jobs-image",
       sourceText: scene.onScreenText[0],
       normalizedText: scene.onScreenText[0],
       sourceRefs: ["source-current-prompt"],
@@ -194,7 +195,26 @@ test("accepts a 15-item jobs timeline for preview", () => {
     createHtmlVideoRenderBodySchema.validate({
       ...validBody,
       durationSeconds: 30,
-      pipeline,
+      pipeline: {
+        ...pipeline,
+        promptProvenance: {
+          rawUserPrompt: "Create a jobs lesson",
+          inferredAssumptions: {
+            requestSpecVersion: "1.0",
+            mode: "create",
+            contentMode: "ordered-board",
+            narrationLanguage: "English",
+            languageLock: "English",
+            durationPolicy: "explicit",
+            durationSeconds: 30,
+            aspectRatio: "16:9",
+            imagePolicy: "embed",
+            inputImageCount: 1,
+            sourceOrder: "preserve",
+            preserveUnrequestedProperties: true,
+          },
+        },
+      },
     }).error,
     undefined
   );

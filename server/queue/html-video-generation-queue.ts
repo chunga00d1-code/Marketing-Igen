@@ -15,6 +15,17 @@ let redisAvailable: boolean | null = null;
 const fallbackPending = new Set<string>();
 const fallbackRetryBaseDelayMs = 15_000;
 
+function requiresRedis() {
+  const configured = String(process.env.HTML_VIDEO_REQUIRE_REDIS || "").trim().toLowerCase();
+  return configured ? configured === "true" : process.env.NODE_ENV === "production";
+}
+
+function redisRequiredError() {
+  return new Error(
+    "Redis is required for HTML-video generation in production; direct in-process fallback is disabled."
+  );
+}
+
 export function htmlVideoGenerationRetryDelayMs(error: unknown, attempt: number) {
   let current = error;
   let providerDelayMs = 0;
@@ -88,6 +99,7 @@ function processInBackground(generationId: string) {
 
 export async function enqueueHtmlVideoGeneration(generationId: string) {
   if (!(await ensureQueue()) || !queue) {
+    if (requiresRedis()) throw redisRequiredError();
     processInBackground(generationId);
     return { id: `direct:${generationId}` };
   }
@@ -105,6 +117,7 @@ export async function enqueueHtmlVideoGeneration(generationId: string) {
     );
   } catch (error) {
     redisAvailable = false;
+    if (requiresRedis()) throw error;
     processInBackground(generationId);
     return { id: `direct:${generationId}`, error };
   }
@@ -122,6 +135,10 @@ export function initHtmlVideoGenerationWorker() {
         }
       };
       if (!available) {
+        if (requiresRedis()) {
+          console.error("[HTML Video] Redis is required; generation worker fallback is disabled.");
+          return;
+        }
         void recover();
         return;
       }
@@ -159,5 +176,8 @@ export function initHtmlVideoGenerationWorker() {
     })
     .catch(() => {
       redisAvailable = false;
+      if (requiresRedis()) {
+        console.error("[HTML Video] Redis initialization failed; generation worker fallback is disabled.");
+      }
     });
 }

@@ -1,5 +1,8 @@
 import { model, Schema, type Types } from "mongoose";
-import type { HtmlVideoPipelineMetadata } from "../interface/html-video-pipeline.interface";
+import type {
+  HtmlVideoAudioManifest,
+  HtmlVideoPipelineMetadata,
+} from "../interface/html-video-pipeline.interface";
 import type { HtmlVideoAsset } from "../service/html-video/html-video-security.service";
 
 export type HtmlVideoRenderStatus =
@@ -22,12 +25,14 @@ export type HtmlVideoRenderDocument = {
   companyCode: string;
   idempotencyKey: string;
   promptHistoryId?: Types.ObjectId;
+  generationId?: Types.ObjectId;
   sourceHtml: string;
   sourceCss: string;
   sanitizedHtml: string;
   sanitizedCss: string;
   compositionHtml: string;
   pipelineSnapshot?: HtmlVideoPipelineMetadata;
+  audioManifest?: HtmlVideoAudioManifest;
   assetsSnapshot?: HtmlVideoAsset[];
   voiceScript: string;
   voiceStatus: HtmlVideoVoiceStatus;
@@ -85,6 +90,7 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
     },
     idempotencyKey: { type: String, required: true, immutable: true },
     promptHistoryId: { type: Schema.Types.ObjectId, ref: "HtmlVideoPromptHistory", index: true, immutable: true },
+    generationId: { type: Schema.Types.ObjectId, ref: "HtmlVideoGeneration", index: true, immutable: true },
     sourceHtml: { type: String, required: true, immutable: true, select: false },
     sourceCss: { type: String, default: "", immutable: true, select: false },
     sanitizedHtml: {
@@ -108,6 +114,10 @@ const HtmlVideoRenderSchema = new Schema<HtmlVideoRenderDocument>(
     pipelineSnapshot: {
       type: Schema.Types.Mixed,
       immutable: true,
+      select: false,
+    },
+    audioManifest: {
+      type: Schema.Types.Mixed,
       select: false,
     },
     assetsSnapshot: {
