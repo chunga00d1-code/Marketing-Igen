@@ -14,6 +14,17 @@ let worker: Worker | null = null;
 let redisAvailable: boolean | null = null;
 const fallbackPending = new Set<string>();
 
+function requiresRedis() {
+  const configured = String(process.env.HTML_VIDEO_REQUIRE_REDIS || "").trim().toLowerCase();
+  return configured ? configured === "true" : process.env.NODE_ENV === "production";
+}
+
+function redisRequiredError() {
+  return new Error(
+    "Redis is required for HTML-video rendering in production; direct in-process fallback is disabled."
+  );
+}
+
 function checkRedis() {
   return new Promise<boolean>((resolve) => {
     const socket = new net.Socket();
@@ -71,6 +82,7 @@ function processInBackground(renderId: string) {
 
 export async function enqueueHtmlVideoRender(renderId: string) {
   if (!(await ensureQueue()) || !queue) {
+    if (requiresRedis()) throw redisRequiredError();
     processInBackground(renderId);
     return { id: `direct:${renderId}` };
   }
@@ -88,6 +100,7 @@ export async function enqueueHtmlVideoRender(renderId: string) {
     );
   } catch (error) {
     redisAvailable = false;
+    if (requiresRedis()) throw error;
     processInBackground(renderId);
     return { id: `direct:${renderId}`, error };
   }
@@ -105,6 +118,10 @@ export function initHtmlVideoRenderWorker() {
         }
       };
       if (!available) {
+        if (requiresRedis()) {
+          console.error("[HTML Video] Redis is required; render worker fallback is disabled.");
+          return;
+        }
         void recover();
         return;
       }
@@ -142,5 +159,8 @@ export function initHtmlVideoRenderWorker() {
     })
     .catch(() => {
       redisAvailable = false;
+      if (requiresRedis()) {
+        console.error("[HTML Video] Redis initialization failed; render worker fallback is disabled.");
+      }
     });
 }

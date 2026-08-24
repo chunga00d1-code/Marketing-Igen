@@ -532,7 +532,7 @@ test("places measured voice segments on their exact scene timeline", async () =>
           audioChannels: 1,
           startSeconds: 0,
           durationSeconds: 2,
-          sourceDurationSeconds: 1.8,
+          sourceDurationSeconds: 1,
         },
         {
           audioPath: "C:/tmp/render-scene-voice-1/voice-scene-02.pcm",
@@ -541,7 +541,7 @@ test("places measured voice segments on their exact scene timeline", async () =>
           audioChannels: 1,
           startSeconds: 2,
           durationSeconds: 3,
-          sourceDurationSeconds: 2.7,
+          sourceDurationSeconds: 4,
         },
       ],
     },
@@ -560,7 +560,7 @@ test("places measured voice segments on their exact scene timeline", async () =>
   const filterIndex = muxArgs.indexOf("-filter_complex");
   const filter = muxArgs[filterIndex + 1];
   assert.match(filter, /\[1:a\]atempo=1\.000.*adelay=0\|0\[voice_0\]/);
-  assert.match(filter, /\[2:a\]atempo=1\.000.*adelay=2000\|2000\[voice_1\]/);
+  assert.match(filter, /\[2:a\]atempo=1\.250.*adelay=2000\|2000\[voice_1\]/);
   assert.match(filter, /\[voice_0\]\[voice_1\]amix=inputs=2.*atrim=duration=5\.000\[voice\]/);
 });
 

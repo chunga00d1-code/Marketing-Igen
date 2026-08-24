@@ -38,6 +38,7 @@ export type SafeHtmlVideoComposition = {
 const maximumSourceBytes = 100 * 1024;
 const maximumAssetCount = 6;
 const mediaSlotAttribute = "data-media-slot";
+const semanticAttributes = ["data-scene-id", "data-unit-id", "data-unit-ids"];
 const allowedTags = new Set([
   "article",
   "aside",
@@ -77,7 +78,16 @@ const allowedTags = new Set([
 const forbiddenAttributes =
   /\s(?:on[a-z0-9_-]*|style|href|src|srcset|poster|cite|action|formaction|background|xlink:href)\s*=/i;
 const allowedAttributes = {
-  "*": ["id", "class", "role", "title", "aria-label", "aria-hidden", mediaSlotAttribute],
+  "*": [
+    "id",
+    "class",
+    "role",
+    "title",
+    "aria-label",
+    "aria-hidden",
+    mediaSlotAttribute,
+    ...semanticAttributes,
+  ],
 };
 const dimensions = {
   "16:9": { "720p": [1280, 720], "1080p": [1920, 1080] },
@@ -459,7 +469,6 @@ export function buildSafeHtmlVideoComposition(
     data-start="0"
     data-duration="${source.durationSeconds}"
     data-no-timeline>${annotatedHtml}</div>
-  <script>window.__timelines = window.__timelines || {};</script>
 </body>
 </html>`;
 

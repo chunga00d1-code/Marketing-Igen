@@ -340,6 +340,26 @@ test("create sends one idempotent render request", async () => {
   });
 });
 
+test("create surfaces the first validation detail returned by the API", async () => {
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        status: "error",
+        message: "Invalid request",
+        errors: { body: ['"pipeline.contentUnits[0].assetId" is not allowed'] },
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    )) as typeof fetch;
+
+  await assert.rejects(
+    htmlVideoRenderService.create({
+      ...previewInput,
+      idempotencyKey: "html_render_123456",
+    }),
+    /pipeline\.contentUnits\[0\]\.assetId/
+  );
+});
+
 test("createGeneration submits an idempotent async generation request", async () => {
   let requestedUrl = "";
   let requestedInit: RequestInit | undefined;

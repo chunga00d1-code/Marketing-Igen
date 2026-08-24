@@ -39,10 +39,7 @@ test("builds a server-owned 9:16 1080p composition", () => {
     result.compositionHtml,
     /-apple-system|BlinkMacSystemFont/
   );
-  assert.match(
-    result.compositionHtml,
-    /<script>window\.__timelines = window\.__timelines \|\| \{\};<\/script>/
-  );
+  assert.doesNotMatch(result.compositionHtml, /<script/i);
   assert.match(result.compositionHtml, /<main class="hero"/);
   assert.doesNotMatch(result.sanitizedHtml, /<script/i);
 });

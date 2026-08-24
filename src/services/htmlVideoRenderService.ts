@@ -26,12 +26,18 @@ export type HtmlVideoAsset = HtmlVideoReferenceSlot & {
 };
 
 export type HtmlVideoPromptAssumptions = {
+  requestSpecVersion?: "1.0";
+  mode?: "create" | "revision";
   contentMode?: string;
   narrationLanguage?: string;
+  languageLock?: string;
+  durationPolicy?: "explicit" | "inferred" | "preserve-existing";
   durationSeconds?: number;
   aspectRatio?: HtmlVideoAspectRatio;
   imagePolicy?: "none" | "embed" | "reference" | "mixed";
   inputImageCount?: number;
+  sourceOrder?: "preserve";
+  preserveUnrequestedProperties?: boolean;
 };
 
 export type HtmlVideoPromptProvenance = {
@@ -82,6 +88,7 @@ export type HtmlVideoPipelineMetadata = {
   contentUnits: Array<{
     id: string;
     order: number;
+    assetId?: string;
     sourceText: string;
     normalizedText: string;
     sourceRefs: string[];
@@ -169,6 +176,7 @@ export type HtmlVideoGenerationDetail = {
 export type CreateHtmlVideoRenderRequest = HtmlVideoPreviewRequest & {
   idempotencyKey: string;
   promptHistoryId?: string;
+  generationId?: string;
   voiceScript?: string;
   pipeline?: HtmlVideoPipelineMetadata;
 };
@@ -565,9 +573,16 @@ async function readPayload(response: Response) {
 }
 
 function requestError(payload: unknown, fallback: string) {
+  const validationDetail = isRecord(payload) && isRecord(payload.errors)
+    ? Object.values(payload.errors)
+        .flatMap((value) => Array.isArray(value) ? value : [])
+        .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : undefined;
   return new Error(
     isRecord(payload) && typeof payload.message === "string"
-      ? payload.message
+      ? validationDetail
+        ? `${payload.message}: ${validationDetail}`
+        : payload.message
       : fallback
   );
 }

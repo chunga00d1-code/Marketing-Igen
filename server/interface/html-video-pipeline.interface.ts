@@ -12,12 +12,18 @@ export type HtmlVideoSourceReference = {
 };
 
 export type HtmlVideoPromptAssumptions = {
+  requestSpecVersion?: "1.0";
+  mode?: "create" | "revision";
   contentMode?: string;
   narrationLanguage?: string;
+  languageLock?: string;
+  durationPolicy?: "explicit" | "inferred" | "preserve-existing";
   durationSeconds?: number;
   aspectRatio?: HtmlVideoAspectRatio;
   imagePolicy?: "none" | "embed" | "reference" | "mixed";
   inputImageCount?: number;
+  sourceOrder?: "preserve";
+  preserveUnrequestedProperties?: boolean;
 };
 
 export type HtmlVideoPromptProvenance = {
@@ -48,6 +54,7 @@ export type HtmlVideoBrief = {
 export type HtmlVideoContentUnit = {
   id: string;
   order: number;
+  assetId?: string;
   sourceText: string;
   normalizedText: string;
   sourceRefs: string[];
@@ -103,6 +110,7 @@ export type HtmlVideoVisualScene = {
   surfaceStyle?: "glass" | "solid" | "outline" | "none";
   backgroundStyle?: "mesh" | "grid" | "rays" | "spotlight" | "gradient";
   motionPreset?: "soft-reveal" | "kinetic-slide" | "scale-pop" | "spotlight-sweep";
+  visualMotif?: "rings" | "bars" | "device" | "checklist" | "spark" | "none";
   eyebrow: string;
   headline: string;
   body: string;
@@ -132,6 +140,26 @@ export type HtmlVideoPipelineFinding = {
   severity: "info" | "warning" | "error";
   message: string;
   sceneId?: string;
+};
+
+export type HtmlVideoAudioSceneManifest = {
+  sceneId: string;
+  textHash: string;
+  sourceDurationSeconds: number;
+  playbackRate: number;
+  startSeconds: number;
+  endSeconds: number;
+  adjustedFromApprovedText?: boolean;
+};
+
+export type HtmlVideoAudioManifest = {
+  version: "1.0";
+  provider: "openrouter" | "elevenlabs";
+  model: string;
+  voice: string;
+  language: string;
+  generatedAt: string;
+  scenes: HtmlVideoAudioSceneManifest[];
 };
 
 export type HtmlVideoPipelineMetadata = {

@@ -46,6 +46,8 @@ import type {
 } from "./html-video/types";
 import {
   automaticDuration,
+  resolveHtmlVideoDuration,
+  shouldAutoWriteHtmlVideoMasterPrompt,
   inferHtmlVideoAspectRatio,
   inferExplicitHtmlVideoDuration,
   candidateStatusClass,
@@ -540,7 +542,7 @@ export function HtmlVideoBatchWorkspace({
     setAspectRatioState(nextAspectRatio);
     toast.success(`Đã chuyển tỷ lệ về tự động: ${nextAspectRatio}.`);
   };
-  const autoRender = true;
+  const autoRender = false;
   const [isCreating, setIsCreating] = useState(false);
   const [candidates, setCandidates] = useState<HtmlVideoCandidate[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
@@ -558,6 +560,7 @@ export function HtmlVideoBatchWorkspace({
   const [previewElapsed, setPreviewElapsed] = useState(0);
   const [previewFrameElapsed, setPreviewFrameElapsed] = useState(0);
   const pollControllersRef = useRef(new Map<string, AbortController>());
+  const renderSubmissionsRef = useRef(new Set<string>());
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const previewElapsedRef = useRef(0);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -656,6 +659,14 @@ export function HtmlVideoBatchWorkspace({
           "Phân tích ảnh tham chiếu cho video HTML. Hãy quyết định ảnh có nên xuất hiện trong video hay chỉ dùng làm tham chiếu phong cách. Trả về JSON có should_include_source_image (true/false), source_image_role (background/hero/logo/overlay), detected_language và ordered_content_units. ordered_content_units phải là mảng các object { order, text, confidence, bounding_box: { x, y, width, height } }, trong đó bounding_box dùng tọa độ chuẩn hóa 0..1 so với toàn bộ ảnh và bao quanh chính xác icon/chữ của mục đó. Chép đúng toàn bộ mục lặp lại trong bảng/grid theo thứ tự đọc tự nhiên từ trái sang phải, trên xuống dưới; không đưa tiêu đề trang, heading, watermark, tên nhà phát hành, nhãn trang trí hoặc logo vào mảng này trừ khi người dùng yêu cầu đọc chúng; không đưa mô tả phong cách vào mảng này. Nếu ảnh là bảng/grid/danh sách, không được bỏ sót, đổi thứ tự hoặc dùng một bounding box chung cho nhiều mục. Nếu không có nội dung chữ theo thứ tự thì trả mảng rỗng. Đồng thời mô tả phong cách, bố cục, màu sắc và animation; không bịa chi tiết không có trong ảnh.",
           [dataUrl]
         );
+        if (
+          analysis &&
+          typeof analysis === "object" &&
+          !Array.isArray(analysis) &&
+          (analysis as Record<string, unknown>).isLocalFallback === true
+        ) {
+          throw new Error("AI chưa phân tích được ảnh tham chiếu. Vui lòng thử lại trước khi tạo video.");
+        }
         const [assetUrl, dimensions] = await Promise.all([
           prepareInlineImageAsset(dataUrl),
           readImageDimensions(dataUrl),
@@ -831,9 +842,15 @@ export function HtmlVideoBatchWorkspace({
   }, [candidates, startRenderPolling]);
 
   const enqueueRender = async (candidate: HtmlVideoCandidate) => {
-    if (!candidate.html || !candidate.preview || isCandidateActive(candidate.status)) {
+    if (
+      !candidate.html ||
+      !candidate.preview ||
+      isCandidateActive(candidate.status) ||
+      renderSubmissionsRef.current.has(candidate.id)
+    ) {
       return;
     }
+    renderSubmissionsRef.current.add(candidate.id);
     updateCandidate(candidate.id, { status: "queued", error: null });
     try {
       const render = await service.create({
@@ -843,6 +860,7 @@ export function HtmlVideoBatchWorkspace({
         aspectRatio: candidate.promptAspectRatio || aspectRatio,
         resolution: candidate.resolution,
         promptHistoryId: candidate.promptHistoryId,
+        generationId: candidate.generation?.id,
         voiceScript: (candidate.voiceScript || "").trim().slice(0, 8_000),
         pipeline: candidate.pipeline,
         scenePlan: candidate.pipeline?.scenePlan,
@@ -862,6 +880,8 @@ export function HtmlVideoBatchWorkspace({
         status: "failed",
         error: errorMessage(error, "Không thể đưa video vào hàng đợi render."),
       });
+    } finally {
+      renderSubmissionsRef.current.delete(candidate.id);
     }
   };
 
@@ -921,6 +941,7 @@ export function HtmlVideoBatchWorkspace({
         css: composition.css,
         voiceScript: composition.voiceScript || candidate.voiceScript || "",
         pipeline: composition.pipeline,
+        generation: completedGeneration,
         preview,
         status: "ready",
       };
@@ -942,23 +963,39 @@ export function HtmlVideoBatchWorkspace({
     }
   };
 
+  const retryFailedCandidate = async (candidate: HtmlVideoCandidate) => {
+    if (candidate.render?.status === "failed" && candidate.preview && candidate.html) {
+      const readyCandidate: HtmlVideoCandidate = {
+        ...candidate,
+        render: null,
+        status: "ready",
+        error: null,
+      };
+      updateCandidate(candidate.id, readyCandidate);
+      await enqueueRender(readyCandidate);
+      return;
+    }
+    await generateCandidate(candidate, 1);
+  };
+
   const referencesAnalyzing = references.some(
     (reference) => reference.status === "analyzing"
   );
 
   const handleCreateBatch = async () => {
-    const trimmedPrompt = prompt.trim();
-    const activePromptProvenance: HtmlVideoPromptProvenance = promptProvenance
+    const submittedPrompt = prompt.trim();
+    let trimmedPrompt = submittedPrompt;
+    let activePromptProvenance: HtmlVideoPromptProvenance = promptProvenance
       ? {
           ...promptProvenance,
-          masterPrompt: trimmedPrompt,
+          masterPrompt: submittedPrompt,
         }
-      : { rawUserPrompt: trimmedPrompt };
+      : { rawUserPrompt: submittedPrompt };
     if (!aspectRatioLocked && effectiveAspectRatio !== aspectRatio) {
       setAspectRatioState(effectiveAspectRatio);
     }
-    if (!trimmedPrompt || isCreating || referencesAnalyzing) return;
-    if (trimmedPrompt.length > MAX_LONG_PROMPT_LENGTH) {
+    if (!submittedPrompt || isCreating || referencesAnalyzing) return;
+    if (submittedPrompt.length > MAX_LONG_PROMPT_LENGTH) {
       toast.error(`Prompt quá dài. Vui lòng giữ dưới ${MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự để đảm bảo AI nhận đủ nội dung.`);
       return;
     }
@@ -988,11 +1025,64 @@ export function HtmlVideoBatchWorkspace({
     }
     const baseReferences = references.filter((reference) => !reference.isPrimaryPrompt);
     const referenceContext = buildReferenceContext(baseReferences) || editingCandidate?.referenceContext || "";
-    const explicitlyRequestedDuration = inferExplicitHtmlVideoDuration(trimmedPrompt);
-    const nextDurationSeconds = editingCandidate && explicitlyRequestedDuration === null
-      ? editingCandidate.durationSeconds
-      : automaticDuration(trimmedPrompt, referenceContext);
-    const explicitlyRequestedAspectRatio = inferHtmlVideoAspectRatio(trimmedPrompt);
+    const shouldAutoWriteMasterPrompt = shouldAutoWriteHtmlVideoMasterPrompt(
+      submittedPrompt,
+      Boolean(activePromptProvenance.masterPrompt)
+    );
+    if (shouldAutoWriteMasterPrompt) {
+      try {
+        const explicitDuration = inferExplicitHtmlVideoDuration(submittedPrompt);
+        const revisionMode = Boolean(editingCandidate);
+        const optimizerDuration = explicitDuration
+          ?? editingCandidate?.durationSeconds
+          ?? automaticDuration(submittedPrompt, referenceContext);
+        const imageUris = baseReferences
+          .filter((reference) => reference.kind === "image" && reference.assetUrl)
+          .map((reference) => reference.assetUrl as string)
+          .slice(0, 4);
+        const optimized = await geminiApi.optimizeMasterPrompt(
+          submittedPrompt,
+          referenceContext,
+          imageUris,
+          {
+            durationSeconds: optimizerDuration,
+            aspectRatio: revisionMode
+              ? editingCandidate?.promptAspectRatio || effectiveAspectRatio
+              : effectiveAspectRatio,
+            mode: revisionMode ? "revision" : "create",
+          }
+        );
+        const generatedMasterPrompt = optimized.masterPrompt.trim();
+        if (generatedMasterPrompt) {
+          trimmedPrompt = generatedMasterPrompt;
+          activePromptProvenance = {
+            rawUserPrompt: submittedPrompt,
+            masterPrompt: generatedMasterPrompt,
+            ...(optimized.assumptions
+              ? { inferredAssumptions: optimized.assumptions }
+              : {}),
+          };
+        }
+      } catch (error) {
+        console.error("[HtmlVideoBatchWorkspace] Automatic master prompt error:", error);
+        toast.warning("Chưa thể viết Master Prompt tự động; hệ thống sẽ tiếp tục với yêu cầu gốc.");
+      }
+    }
+    if (trimmedPrompt.length > MAX_LONG_PROMPT_LENGTH) {
+      setIsCreating(false);
+      toast.error("Master Prompt tạo ra quá dài. Vui lòng rút gọn ý tưởng và thử lại.");
+      return;
+    }
+    const nextDurationSeconds = resolveHtmlVideoDuration({
+      prompt: trimmedPrompt,
+      rawUserPrompt: activePromptProvenance.rawUserPrompt,
+      optimizedDurationSeconds: activePromptProvenance.inferredAssumptions?.durationSeconds,
+      existingDurationSeconds: editingCandidate?.durationSeconds,
+      referenceContext,
+    });
+    const explicitlyRequestedAspectRatio = inferHtmlVideoAspectRatio(
+      activePromptProvenance.rawUserPrompt
+    );
     const nextAspectRatio = aspectRatioSource === "manual"
       ? effectiveAspectRatio
       : explicitlyRequestedAspectRatio || editingCandidate?.promptAspectRatio || effectiveAspectRatio;
@@ -1382,7 +1472,7 @@ export function HtmlVideoBatchWorkspace({
           <div className="relative mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 transition focus-within:border-indigo-400 focus-within:bg-white focus-within:ring-4 focus-within:ring-indigo-100">
             {references.length > 0 ? <div className="flex max-h-28 flex-wrap gap-2 overflow-y-auto border-b border-slate-200/80 bg-white/70 px-3 py-2">{references.map((reference) => <div key={reference.id} className="flex max-w-full items-center gap-1.5 rounded-lg border border-slate-200 bg-white py-1 pl-1.5 pr-1 text-xs shadow-sm"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">{reference.kind === "image" ? <ImageIcon className="h-3 w-3" /> : reference.kind === "video" ? <MonitorPlay className="h-3 w-3" /> : <FileText className="h-3 w-3" />}</span><span className="max-w-28 truncate font-medium text-slate-700">{reference.name}</span>{reference.status === "analyzing" ? <LoaderCircle className="h-3 w-3 animate-spin text-indigo-500" /> : reference.status === "failed" ? <span className="text-[10px] text-rose-600">Lỗi</span> : reference.kind === "image" && reference.includeInVideo ? <span className="text-[10px] text-sky-600">Sẽ dùng ảnh</span> : <span className="text-[10px] text-emerald-600">Đã đọc</span>}<button type="button" onClick={() => setReferences((current) => current.filter((item) => item.id !== reference.id))} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-rose-600" title="Bỏ tài liệu"><X className="h-3 w-3" /></button></div>)}</div> : null}
             {references.some((reference) => reference.isPrimaryPrompt) ? <p className="border-b border-indigo-100 bg-indigo-50 px-3 py-1.5 text-[10px] font-semibold text-indigo-700">Tệp prompt chính đã sẵn sàng: {PRIMARY_PROMPT_FILE_NAME}</p> : null}
-            <textarea id="html-video-prompt" value={prompt} onChange={(event) => handlePromptChange(event.target.value)} placeholder={selectedCandidate?.html || selectedCandidate?.render ? "Nhập phần cần sửa trên video hiện tại, ví dụ: làm highlight nhỏ hơn và giữ nguyên toàn bộ nội dung, voice, thời lượng..." : "Ví dụ: Video 15 giây giới thiệu ưu đãi khai trương, nhấn mạnh giảm 30%, CTA đăng ký ngay..."} className="min-h-36 w-full resize-y bg-transparent px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400" disabled={isCreating || isOptimizingPrompt} />
+            <textarea id="html-video-prompt" value={prompt} onChange={(event) => handlePromptChange(event.target.value)} placeholder={selectedCandidate?.html || selectedCandidate?.render ? "Nhập phần cần sửa trên video hiện tại, ví dụ: làm highlight nhỏ hơn và giữ nguyên toàn bộ nội dung, voice, thời lượng..." : "Chỉ cần nhập một câu ý tưởng, ví dụ: Tạo video hướng dẫn quản lý công việc cho người mới"} className="min-h-36 w-full resize-y bg-transparent px-3 py-3 text-sm font-normal leading-6 text-slate-700 outline-none placeholder:font-normal placeholder:text-slate-400" disabled={isCreating || isOptimizingPrompt} />
             <div className="flex h-10 items-center justify-between border-t border-slate-200/80 px-2 bg-slate-50/50">
               <div className="flex items-center">
                 <label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-indigo-700" title="Đính kèm PDF, Word, Sheet, Markdown, ảnh hoặc video mẫu">
@@ -1407,7 +1497,7 @@ export function HtmlVideoBatchWorkspace({
                 ) : (
                   <>
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>Tối ưu prompt</span>
+                    <span>Viết Master Prompt</span>
                   </>
                 )}
               </button>
@@ -1417,7 +1507,7 @@ export function HtmlVideoBatchWorkspace({
             <span className={prompt.length > MAX_LONG_PROMPT_LENGTH ? "font-semibold text-rose-600" : ""}>{prompt.length.toLocaleString("vi-VN")}/{MAX_LONG_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>
             {prompt.length > MAX_LONG_PROMPT_LENGTH ? <span className="font-semibold text-rose-600">Prompt vượt giới hạn, chưa thể tạo video</span> : isLongHtmlVideoPrompt(prompt) ? <span className="font-semibold text-indigo-600">Prompt dài sẽ tự chuyển thành {PRIMARY_PROMPT_FILE_NAME}</span> : <span>Prompt gửi trực tiếp khi không quá {MAX_DIRECT_PROMPT_LENGTH.toLocaleString("vi-VN")} ký tự</span>}
           </div>
-          <p className="mt-3 text-xs text-slate-500">{effectiveAspectRatio} · {aspectRatioLocked ? "đã cố định tỷ lệ" : "AI tự chọn tỷ lệ theo prompt/nền tảng"}</p>
+          <p className="mt-3 text-xs text-slate-500">Một câu ý tưởng là đủ: AI sẽ viết mục tiêu, storyboard, hình ảnh, animation và voice · {effectiveAspectRatio} · {aspectRatioLocked ? "đã cố định tỷ lệ" : "AI tự chọn tỷ lệ theo prompt/nền tảng"}</p>
           {parentPromptHistoryId ? <div className="mt-3 flex items-start justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-800"><span>AI sẽ tiếp tục ngữ cảnh từ tối đa 6 prompt trước trong cùng chuỗi phiên bản.</span><button type="button" onClick={() => setParentPromptHistoryId(null)} className="shrink-0 font-black text-indigo-700 hover:underline">Ngắt ngữ cảnh</button></div> : null}
           {references.some((reference) => reference.status === "ready" && reference.kind === "image") ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">AI sẽ tự quyết định ảnh tham chiếu nên xuất hiện trong video hay chỉ dùng để học phong cách. Nếu ảnh được chọn, ảnh sẽ được chèn qua một vùng an toàn trong composition.</p> : null}
           {references.some((reference) => reference.status === "ready" && reference.kind === "video") ? <p className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-[11px] leading-5 text-indigo-800">Video mẫu được dùng như template HTML/CSS: AI giữ bố cục, nhịp, chuyển động và vùng an toàn, rồi thay theme và nội dung theo prompt mới.</p> : null}
@@ -1553,7 +1643,7 @@ export function HtmlVideoBatchWorkspace({
                   <p className="mt-2 text-xs leading-5 text-slate-600">{selectedCandidate.error || "Quá trình tạo HTML/CSS hoặc render đã thất bại."}</p>
                   <button
                     type="button"
-                    onClick={() => void generateCandidate(selectedCandidate, 1)}
+                    onClick={() => void retryFailedCandidate(selectedCandidate)}
                     disabled={isCandidateActive(selectedCandidate.status)}
                     className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-rose-600 px-4 text-xs font-black text-white shadow-sm transition-all hover:bg-rose-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                   >

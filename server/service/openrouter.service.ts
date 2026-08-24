@@ -48,6 +48,8 @@ export interface OpenRouterChatParams {
   jsonMode?: boolean;
   /** Optional JSON schema — injected into system prompt as instruction */
   responseSchema?: object;
+  /** Prefer provider-enforced JSON Schema, with one json_object compatibility retry on HTTP 400. */
+  strictJsonSchema?: boolean;
   maxRetries?: number;
   reasoning?: {
     effort?: "none" | "minimal" | "low" | "medium" | "high";
@@ -65,6 +67,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
     temperature = 0.7,
     jsonMode,
     responseSchema,
+    strictJsonSchema,
     maxRetries = 4,
     maxTokens,
     timeoutMs = 45_000,
@@ -109,14 +112,25 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
 
   if (jsonMode || responseSchema) {
     if (!mappedModel.includes("perplexity")) {
-      body.response_format = { type: "json_object" };
+      body.response_format = strictJsonSchema && responseSchema
+        ? {
+            type: "json_schema",
+            json_schema: {
+              name: "structured_response",
+              strict: true,
+              schema: exampleToJsonSchema(responseSchema),
+            },
+          }
+        : { type: "json_object" };
     }
   }
 
   let lastError: any;
   let delay = 1000;
+  let strictSchemaActive = body.response_format?.type === "json_schema";
+  const totalAttempts = maxRetries + (strictSchemaActive ? 1 : 0);
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
     try {
       const startTime = Date.now();
       console.log(`[OpenRouter] POST /chat/completions | model=${mappedModel} | attempt=${attempt}`);
@@ -135,6 +149,12 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
 
       if (!response.ok) {
         const errText = await response.text();
+        if (response.status === 400 && strictSchemaActive) {
+          strictSchemaActive = false;
+          body.response_format = { type: "json_object" };
+          console.warn(`[OpenRouter] JSON Schema unsupported for model=${mappedModel}; retrying with json_object`);
+          continue;
+        }
         const publicMessage =
           response.status === 402
             ? "Dịch vụ AI đang tạm thời không khả dụng. Vui lòng thử lại sau."
@@ -170,7 +190,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
         msg.includes("ECONNRESET") || msg.includes("ETIMEDOUT") ||
         msg.includes("aborted") || msg.includes("timed out");
 
-      if (isRetryable && attempt < maxRetries) {
+      if (isRetryable && attempt < totalAttempts) {
         const retryDelay = Math.max(delay, Number(error?.retryAfterMs) || 0);
         console.warn(`[OpenRouter] Attempt ${attempt} failed, retrying in ${retryDelay}ms... Error: ${msg}`);
         await new Promise((r) => setTimeout(r, retryDelay));
@@ -182,6 +202,39 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
   }
 
   throw lastError ?? new Error("[OpenRouter] Chat completions failed with no error details.");
+}
+
+function exampleToJsonSchema(value: unknown): Record<string, any> {
+  if (Array.isArray(value)) {
+    return {
+      type: "array",
+      items: value.length > 0 ? exampleToJsonSchema(value[0]) : {},
+    };
+  }
+  if (value && typeof value === "object") {
+    const properties = Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+        key,
+        exampleToJsonSchema(child),
+      ])
+    );
+    return {
+      type: "object",
+      properties,
+      required: Object.keys(properties),
+      additionalProperties: false,
+    };
+  }
+  if (typeof value === "boolean" || value === "boolean") return { type: "boolean" };
+  if (typeof value === "number" || value === "number") return { type: "number" };
+  if (value === "integer") return { type: "integer" };
+  if (typeof value === "string" && value.includes("|")) {
+    return {
+      type: "string",
+      enum: value.split("|").map((item) => item.trim()).filter(Boolean),
+    };
+  }
+  return { type: "string" };
 }
 
 export interface OpenRouterImageParams {

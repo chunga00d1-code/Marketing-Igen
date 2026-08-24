@@ -12,6 +12,7 @@ import {
 } from "../../interface/html-video-pipeline.interface";
 import type { HtmlVideoDraftInput, HtmlVideoDraftReferenceSlot } from "./html-video-draft.service";
 import { buildHtmlVideoGrounding } from "./html-video-grounding.service";
+import { filterRepeatedReferenceGridItems } from "./html-video-reference-grid.service";
 import {
   classifyHtmlVideoRevisionIntent,
   isVoiceOnlyRevision,
@@ -53,10 +54,48 @@ export type HtmlVideoStructuredPipelineResult =
       pipeline: HtmlVideoPipelineMetadata;
     };
 
-const modelName = () =>
-  process.env.HTML_VIDEO_MODEL ||
-  process.env.GEMINI_MODEL ||
-  "google/gemini-2.5-flash";
+export type HtmlVideoPipelineModelStage =
+  | "planner"
+  | "visual"
+  | "voice"
+  | "revision";
+
+const stageModelEnvironmentNames: Record<HtmlVideoPipelineModelStage, string> = {
+  planner: "HTML_VIDEO_PLANNER_MODEL",
+  visual: "HTML_VIDEO_VISUAL_MODEL",
+  voice: "HTML_VIDEO_VOICE_MODEL",
+  revision: "HTML_VIDEO_REVISION_MODEL",
+};
+
+const stageFallbackModelEnvironmentNames: Record<HtmlVideoPipelineModelStage, string> = {
+  planner: "HTML_VIDEO_PLANNER_FALLBACK_MODEL",
+  visual: "HTML_VIDEO_VISUAL_FALLBACK_MODEL",
+  voice: "HTML_VIDEO_VOICE_FALLBACK_MODEL",
+  revision: "HTML_VIDEO_REVISION_FALLBACK_MODEL",
+};
+
+export function resolveHtmlVideoPipelineModels(
+  stage: HtmlVideoPipelineModelStage,
+  environment: Record<string, string | undefined> = process.env
+) {
+  return [
+    environment[stageModelEnvironmentNames[stage]],
+    environment[stageFallbackModelEnvironmentNames[stage]],
+    environment.HTML_VIDEO_FALLBACK_MODEL,
+    environment.HTML_VIDEO_MODEL,
+    environment.GEMINI_MODEL,
+    "google/gemini-2.5-flash",
+  ].map((model) => String(model || "").trim()).filter(
+    (model, index, models) => Boolean(model) && models.indexOf(model) === index
+  );
+}
+
+export function resolveHtmlVideoPipelineModel(
+  stage: HtmlVideoPipelineModelStage,
+  environment: Record<string, string | undefined> = process.env
+) {
+  return resolveHtmlVideoPipelineModels(stage, environment)[0];
+}
 
 const timeoutMs = () => Math.max(
   Number(process.env.HTML_VIDEO_DRAFT_TIMEOUT_MS) || 120_000,
@@ -105,6 +144,12 @@ function inferPlatform(prompt: string, aspectRatio: HtmlVideoDraftInput["aspectR
 export function inferHtmlVideoNarrationLanguage(
   input: Pick<HtmlVideoDraftInput, "prompt" | "primaryPromptContext" | "promptProvenance">
 ) {
+  const languageLock = String(
+    input.promptProvenance?.inferredAssumptions?.languageLock ||
+    input.promptProvenance?.inferredAssumptions?.narrationLanguage ||
+    ""
+  ).trim();
+  if (languageLock && !/^same as\b/i.test(languageLock)) return languageLock;
   const source = String(
     input.promptProvenance?.rawUserPrompt ||
     input.primaryPromptContext ||
@@ -153,12 +198,21 @@ function normalizeBrief(value: unknown, input: HtmlVideoDraftInput): HtmlVideoBr
   const record = isRecord(value) ? value : {};
   const requestedLanguage = inferHtmlVideoNarrationLanguage(input);
   const authoritativePrompt = input.promptProvenance?.rawUserPrompt?.trim() || input.prompt.trim();
+  const sourceCorpus = [
+    authoritativePrompt,
+    input.primaryPromptContext || "",
+    input.referenceContext || "",
+  ].join("\n").replace(/\s+/g, " ").toLocaleLowerCase();
+  const supportedExactPhrases = stringArray(record.exactPhrases, 20).filter((phrase) =>
+    sourceCorpus.includes(phrase.replace(/\s+/g, " ").toLocaleLowerCase())
+  );
+  const proposedCta = stringValue(record.cta, 500);
   return {
     objective: stringValue(record.objective) || authoritativePrompt,
     tone: stringValue(record.tone, 200) || "clear and engaging",
     visualStyle: stringValue(record.visualStyle, 300) || "premium social video",
     voiceRequired: record.voiceRequired !== false,
-    exactPhrases: stringArray(record.exactPhrases, 20),
+    exactPhrases: supportedExactPhrases,
     videoSpec: {
       aspectRatio: input.aspectRatio,
       resolution: input.resolution,
@@ -166,7 +220,9 @@ function normalizeBrief(value: unknown, input: HtmlVideoDraftInput): HtmlVideoBr
       language: requestedLanguage || stringValue(record.language, 80) || "same as the user request",
       audience: stringValue(record.audience, 300) || "the intended audience in the request",
       platform: inferPlatform(authoritativePrompt, input.aspectRatio),
-      cta: stringValue(record.cta, 500),
+      cta: proposedCta && sourceCorpus.includes(proposedCta.replace(/\s+/g, " ").toLocaleLowerCase())
+        ? proposedCta
+        : "",
     },
   };
 }
@@ -183,27 +239,14 @@ function normalizeTransition(value: unknown): HtmlVideoScenePlanItem["transition
 
 export function fitHtmlVideoSceneTimeline(
   scenes: HtmlVideoScenePlanItem[],
-  durationSeconds: number
+  durationSeconds: number,
+  language = ""
 ) {
-  let previousEnd = 0;
-  const alreadyContiguous = scenes.every((scene, index) => {
-    const startsAtExpectedTime = index === 0
-      ? scene.startSeconds === 0
-      : Math.abs(scene.startSeconds - previousEnd) <= 0.001;
-    const hasPositiveBoundedDuration = scene.endSeconds > scene.startSeconds &&
-      scene.endSeconds <= durationSeconds + 0.001;
-    previousEnd = scene.endSeconds;
-    return startsAtExpectedTime && hasPositiveBoundedDuration;
-  }) && Math.abs(previousEnd - durationSeconds) <= 0.001;
-  if (alreadyContiguous) return { scenes, adjusted: false };
-
+  const wordsPerSecond = (isEnglishNarrationLanguage(language) ? 150 : 140) / 60;
   const weights = scenes.map((scene) => {
-    const proposedDuration = scene.endSeconds - scene.startSeconds;
-    if (Number.isFinite(proposedDuration) && proposedDuration > 0) {
-      return proposedDuration;
-    }
     const narrationWords = scene.narration.split(/\s+/).filter(Boolean).length;
-    return Math.max(1, narrationWords);
+    const speechSeconds = narrationWords / wordsPerSecond;
+    return Math.max(1.6, speechSeconds / 0.88 + 0.35);
   });
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
   let cursor = 0;
@@ -215,7 +258,11 @@ export function fitHtmlVideoSceneTimeline(
     cursor = endSeconds;
     return { ...scene, startSeconds, endSeconds };
   });
-  return { scenes: fittedScenes, adjusted: true };
+  const adjusted = fittedScenes.some((scene, index) => (
+    Math.abs(scene.startSeconds - scenes[index].startSeconds) > 0.001 ||
+    Math.abs(scene.endSeconds - scenes[index].endSeconds) > 0.001
+  ));
+  return { scenes: adjusted ? fittedScenes : scenes, adjusted };
 }
 
 export function normalizePlan(
@@ -227,44 +274,69 @@ export function normalizePlan(
   if (!isRecord(value) || !Array.isArray(value.scenePlan)) {
     throw new Error("Planner did not return a scenePlan.");
   }
+  const videoBrief = normalizeBrief(value.videoBrief, input);
   const plannerScenes = value.scenePlan.slice(0, 24);
   if (plannerScenes.length === 0) throw new Error("Planner returned no scenes.");
   const orderedImageSequence = contentUnits.length >= 3 && contentUnits.every(
     (unit) => unit.sourceKind === "image_ocr"
   );
-  const rawScenes = orderedImageSequence
+  const authoritativeRequest = String(
+    input.promptProvenance?.rawUserPrompt || input.primaryPromptContext || input.prompt
+  );
+  const referencedPlannerUnitIds = plannerScenes.flatMap((candidate) => (
+    isRecord(candidate) ? stringArray(candidate.sourceUnitIds, contentUnits.length) : []
+  )).filter((id) => contentUnits.some((unit) => unit.id === id));
+  const uniquePlannerUnitIds = new Set(referencedPlannerUnitIds);
+  const repairDegenerateMultiUnitSequence = contentUnits.length >= 3
+    && plannerScenes.length >= contentUnits.length
+    && uniquePlannerUnitIds.size < Math.ceil(contentUnits.length * 0.5);
+  const deterministicMultiUnitSequence = orderedImageSequence || (
+    contentUnits.length >= 3 && (
+      requestsExplicitOrderedUnitSequence(authoritativeRequest) ||
+      requestsOrderedBackgroundSequence(authoritativeRequest)
+    )
+  ) || repairDegenerateMultiUnitSequence;
+  const singleSourceUnit = contentUnits.length === 1;
+  const oneUnitPerScene = contentUnits.length > 1 && contentUnits.length === plannerScenes.length;
+  const rawScenes = deterministicMultiUnitSequence
     ? contentUnits.map((_, index) => plannerScenes[index] || {})
     : plannerScenes;
   const validUnitIds = new Set(contentUnits.map((unit) => unit.id));
   const parsedScenePlan = rawScenes.map((candidate, index): HtmlVideoScenePlanItem => {
     if (!isRecord(candidate)) throw new Error("Planner returned an invalid scene.");
-    const orderedUnit = orderedImageSequence ? contentUnits[index] : undefined;
-    const sourceUnitIds = orderedUnit
-      ? [orderedUnit.id]
-      : stringArray(candidate.sourceUnitIds, contentUnits.length)
+    const sequenceUnit = deterministicMultiUnitSequence ? contentUnits[index] : undefined;
+    const sourceUnitIds = sequenceUnit
+      ? [sequenceUnit.id]
+      : singleSourceUnit
+        ? [contentUnits[0].id]
+        : oneUnitPerScene
+          ? [contentUnits[index].id]
+          : stringArray(candidate.sourceUnitIds, contentUnits.length)
           .filter((id) => validUnitIds.has(id));
     const fallbackStart = (input.durationSeconds * index) / rawScenes.length;
     const fallbackEnd = (input.durationSeconds * (index + 1)) / rawScenes.length;
-    const startSeconds = orderedImageSequence ? fallbackStart : Number(candidate.startSeconds);
-    const endSeconds = orderedImageSequence ? fallbackEnd : Number(candidate.endSeconds);
+    const startSeconds = deterministicMultiUnitSequence ? fallbackStart : Number(candidate.startSeconds);
+    const endSeconds = deterministicMultiUnitSequence ? fallbackEnd : Number(candidate.endSeconds);
     if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) {
       throw new Error("Planner returned invalid scene timing.");
     }
     return {
-      id: orderedImageSequence
+      id: deterministicMultiUnitSequence
         ? `scene-${index + 1}`
         : stringValue(candidate.id, 80) || `scene-${index + 1}`,
       order: index,
-      purpose: orderedImageSequence
+      purpose: deterministicMultiUnitSequence
         ? "content"
         : normalizePurpose(candidate.purpose, index, rawScenes.length),
       sourceUnitIds,
-      onScreenText: orderedUnit
-        ? [orderedUnit.normalizedText]
-        : stringArray(candidate.onScreenText, 5),
-      narration: orderedUnit
-        ? orderedUnit.normalizedText
-        : stringValue(candidate.narration, 2_000),
+      onScreenText: orderedImageSequence
+        ? [sequenceUnit!.normalizedText]
+        : stringArray(candidate.onScreenText, 5).length > 0
+          ? stringArray(candidate.onScreenText, 5)
+          : [sequenceUnit?.normalizedText || ""].filter(Boolean),
+      narration: orderedImageSequence
+        ? sequenceUnit!.normalizedText
+        : stringValue(candidate.narration, 2_000) || sequenceUnit?.normalizedText || "",
       startSeconds,
       endSeconds,
       transition: normalizeTransition(candidate.transition),
@@ -273,7 +345,8 @@ export function normalizePlan(
   });
   const { scenes: scenePlan } = fitHtmlVideoSceneTimeline(
     parsedScenePlan,
-    input.durationSeconds
+    input.durationSeconds,
+    videoBrief.videoSpec.language
   );
 
   const ids = new Set<string>();
@@ -306,13 +379,14 @@ export function normalizePlan(
     throw new Error("Scene timing does not cover the full video duration.");
   }
   for (const unit of contentUnits.filter((item) => item.required)) {
-    if (unitUseCount.get(unit.id) !== 1) {
-      throw new Error(`Required content unit ${unit.id} must appear exactly once.`);
+    const usageCount = unitUseCount.get(unit.id) || 0;
+    if (usageCount < 1) {
+      throw new Error(`Required content unit ${unit.id} must appear at least once.`);
     }
   }
 
   return {
-    videoBrief: normalizeBrief(value.videoBrief, input),
+    videoBrief,
     contentUnits,
     scenePlan,
   };
@@ -383,7 +457,7 @@ function revisionPrompt(input: HtmlVideoDraftInput, plan: HtmlVideoPlan) {
     ? source.html
     : `${source.html.slice(0, 16_000)}\n<!-- BOUNDED MIDDLE -->\n${source.html.slice(-8_000)}`;
   const payload = {
-    currentEditRequest: input.prompt,
+    currentEditRequest: input.promptProvenance?.rawUserPrompt || input.prompt,
     baseSnapshotHash: source.snapshotHash || "",
     approvedPlan,
     existingComposition: {
@@ -497,16 +571,19 @@ function visualSystemPrompt() {
     "Make each scene visually complete and readable on a phone.",
     "Select the most fitting theme for the subject from: ocean (tech/SaaS), midnight (luxury), sunset (energy/passion), emerald (health/nature), violet (creative/arts), coral (fashion/beauty), gold (finance/real-estate), arctic (medical/science), neon (gaming/entertainment), earth (food/organic), blush (parenting/lifestyle), slate (corporate/B2B).",
     "For each scene, choose: layout (centered|split-left|split-right|statement|cta), emphasis (hero for opening/hook, standard for content, climax for CTA/offer), and accentStyle (glow|border|gradient-shift|minimal).",
-    "Also choose compositionStyle (editorial|kinetic|spotlight|showcase|minimal), surfaceStyle (glass|solid|outline|none), backgroundStyle (mesh|grid|rays|spotlight|gradient), and motionPreset (soft-reveal|kinetic-slide|scale-pop|spotlight-sweep).",
+    "Also choose compositionStyle (editorial|kinetic|spotlight|showcase|minimal), surfaceStyle (glass|solid|outline|none), backgroundStyle (mesh|grid|rays|spotlight|gradient), motionPreset (soft-reveal|kinetic-slide|scale-pop|spotlight-sweep), and visualMotif (rings|bars|device|checklist|spark|none).",
+    "When a scene has no approved image asset, choose a meaningful visualMotif so the composition is not only animated text. Use none only for a deliberate typographic statement.",
     "Do not use glass surfaces for every scene. Kinetic scenes should favor none/outline, editorial scenes solid/outline, showcase scenes solid/glass, and minimal scenes none.",
     "Vary adjacent content scenes when the subject supports it, while keeping one theme and a coherent art direction across the video.",
   ].join("\n");
 }
 
+const NARRATION_WORDS_PER_SECOND = 2.1;
+
 function voiceSystemPrompt(input: HtmlVideoDraftInput, plan: HtmlVideoPlan) {
   const sceneBudgets = plan.scenePlan.map((scene) => ({
     sceneId: scene.id,
-    maximumWords: Math.max(1, Math.floor((scene.endSeconds - scene.startSeconds) * 2.5)),
+    maximumWords: Math.max(1, Math.floor((scene.endSeconds - scene.startSeconds) * NARRATION_WORDS_PER_SECOND)),
   }));
   return [
     "You are the Voice Writer for one continuous social-video narrator.",
@@ -516,9 +593,9 @@ function voiceSystemPrompt(input: HtmlVideoDraftInput, plan: HtmlVideoPlan) {
     ] : []),
     "REQUIRED NARRATION LANGUAGE: " + plan.videoBrief.videoSpec.language + ". Write all narration exclusively in this language. Do not code-switch or translate. A foreign word may appear only when it is explicitly present in the approved scene text or exact phrases.",
     "Use only facts and phrases in the approved scene plan. Do not add labels, timestamps, directions, sound effects, URLs, prices, or claims.",
-    `Keep the complete narration under ${Math.ceil(input.durationSeconds * 2.5)} words and in scene order.`,
+    `Keep the complete narration under ${Math.ceil(input.durationSeconds * NARRATION_WORDS_PER_SECOND)} words and in scene order.`,
     "Return one non-empty narration segment for every scene and one fullScript containing those segments in the same order.",
-    "Each scene segment must fit its own startSeconds..endSeconds interval at no more than 2.5 spoken words per second. End each segment as a complete sentence so the narrator can pause naturally at scene boundaries.",
+    "Each scene segment must fit its own startSeconds..endSeconds interval at no more than 2.1 spoken words per second. End each segment as a complete sentence so the narrator can pause naturally at scene boundaries.",
     `Hard per-scene word limits: ${JSON.stringify(sceneBudgets)}. Count words before returning and never exceed these limits.`,
   ].join("\n");
 }
@@ -541,6 +618,7 @@ function normalizeVisual(
   const surfaceStyles = new Set(["glass", "solid", "outline", "none"]);
   const backgroundStyles = new Set(["mesh", "grid", "rays", "spotlight", "gradient"]);
   const motionPresets = new Set(["soft-reveal", "kinetic-slide", "scale-pop", "spotlight-sweep"]);
+  const visualMotifs = new Set(["rings", "bars", "device", "checklist", "spark", "none"]);
   const byId = new Map<string, Record<string, unknown>>();
   value.scenes.forEach((scene) => {
     if (isRecord(scene)) byId.set(stringValue(scene.sceneId, 80), scene);
@@ -569,6 +647,7 @@ function normalizeVisual(
     const rawSurface = String(raw.surfaceStyle || "").toLowerCase().trim();
     const rawBackground = String(raw.backgroundStyle || "").toLowerCase().trim();
     const rawMotion = String(raw.motionPreset || "").toLowerCase().trim();
+    const rawMotif = String(raw.visualMotif || "").toLowerCase().trim();
     return {
       sceneId: scene.id,
       layout: layouts.has(String(raw.layout))
@@ -597,6 +676,12 @@ function normalizeVisual(
             ? "spotlight-sweep"
             : compositionStyle === "showcase" ? "scale-pop" : "soft-reveal"
       ) as HtmlVideoVisualScene["motionPreset"],
+      visualMotif: (visualMotifs.has(rawMotif)
+        ? rawMotif
+        : scene.assetIds.length > 0
+          ? "none"
+          : (["rings", "bars", "device", "checklist", "spark"] as const)[index % 5]
+      ) as HtmlVideoVisualScene["visualMotif"],
       eyebrow: takeApproved(raw.eyebrow),
       headline: takeApproved(raw.headline, available[0] || ""),
       body: takeApproved(raw.body, available[1] || ""),
@@ -612,11 +697,53 @@ function normalizeVisual(
   };
 }
 
+function usesDeterministicOrderedBoardTemplate(
+  plan: HtmlVideoPlan,
+  sourceText: string,
+  assets: HtmlVideoDraftReferenceSlot[]
+) {
+  const regionCount = plan.contentUnits.filter((unit) => Boolean(unit.region)).length;
+  return assets.some((asset) => asset.kind === "image")
+    && requestsImageBackground(sourceText)
+    && requestsOrderedBackgroundSequence(sourceText)
+    && plan.contentUnits.length >= 4
+    && plan.contentUnits.every((unit) => unit.sourceKind === "image_ocr")
+    && regionCount >= Math.ceil(plan.contentUnits.length * 0.8)
+    && plan.scenePlan.length === plan.contentUnits.length
+    && plan.scenePlan.every((scene) => scene.purpose === "content" && scene.sourceUnitIds.length === 1);
+}
+
+function buildDeterministicOrderedBoardVisual(plan: HtmlVideoPlan): HtmlVideoVisualComposition {
+  const unitsById = new Map(plan.contentUnits.map((unit) => [unit.id, unit]));
+  return {
+    theme: "arctic",
+    scenes: plan.scenePlan.map((scene): HtmlVideoVisualScene => {
+      const unit = unitsById.get(scene.sourceUnitIds[0]);
+      const headline = unit?.normalizedText || scene.onScreenText[0] || "";
+      return {
+        sceneId: scene.id,
+        layout: "statement",
+        emphasis: "standard",
+        accentStyle: "border",
+        compositionStyle: "minimal",
+        surfaceStyle: "none",
+        backgroundStyle: "gradient",
+        motionPreset: "spotlight-sweep",
+        visualMotif: "none",
+        eyebrow: "",
+        headline,
+        body: "",
+        cta: "",
+        assetIds: [],
+      };
+    }),
+  };
+}
 export function fitHtmlVideoSceneNarration(
   requestedText: string,
   scene: HtmlVideoScenePlanItem
 ) {
-  const maximumWords = Math.max(1, Math.floor((scene.endSeconds - scene.startSeconds) * 2.5));
+  const maximumWords = Math.max(1, Math.floor((scene.endSeconds - scene.startSeconds) * NARRATION_WORDS_PER_SECOND));
   const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
   const words = (text: string) => normalize(text).split(/\s+/).filter(Boolean);
   const requested = normalize(requestedText);
@@ -659,7 +786,7 @@ function normalizeVoice(value: unknown, plan: HtmlVideoPlan, durationSeconds: nu
   });
   const fullScript = scenes.map((scene) => scene.text).filter(Boolean).join(" ").trim();
   const wordCount = fullScript.split(/\s+/).filter(Boolean).length;
-  if (!fullScript || wordCount > Math.ceil(durationSeconds * 2.5)) {
+  if (!fullScript || wordCount > Math.ceil(durationSeconds * NARRATION_WORDS_PER_SECOND)) {
     throw new Error("Voice narration does not fit the requested duration.");
   }
   assertNarrationLanguage(
@@ -702,25 +829,18 @@ function requestsImageBackground(sourceText: string) {
   return /\bbackground\b|(?:image|\u1ea3nh).{0,100}(?:l\u00e0m|d\u00f9ng|s\u1eed\s+d\u1ee5ng|as).{0,60}(?:n\u1ec1n|background)|(?:n\u1ec1n|background).{0,100}(?:image|\u1ea3nh)/iu.test(sourceText);
 }
 
-function chooseSequenceGridColumns(itemCount: number) {
-  const target = Math.sqrt(itemCount * 1.5);
-  let bestColumns = Math.max(1, Math.ceil(target));
-  let bestScore = Number.POSITIVE_INFINITY;
-  for (let columns = 2; columns <= Math.min(itemCount, 8); columns += 1) {
-    const rows = Math.ceil(itemCount / columns);
-    if (columns < rows) continue;
-    const emptyCells = columns * rows - itemCount;
-    const score = Math.abs(columns - target) + emptyCells * 0.12;
-    if (score < bestScore) {
-      bestColumns = columns;
-      bestScore = score;
-    }
-  }
-  return bestColumns;
-}
-
 function requestsOrderedBackgroundSequence(sourceText: string) {
   return /(?:highlight|spotlight|focus|sequence|in\s+order|read.{0,60}order|l\u1ea7n\s+l\u01b0\u1ee3t|theo\s+th\u1ee9\s+t\u1ef1|\u0111\u1ecdc.{0,60}th\u1ee9\s+t\u1ef1)/iu.test(sourceText);
+}
+
+function requestsExplicitOrderedUnitSequence(sourceText: string) {
+  const orderedLines = sourceText.split(/\r?\n/).filter((line) => /^\s*\d{1,3}[.)]\s+\S/.test(line));
+  return orderedLines.length >= 3;
+}
+
+function visualMotifMarkup(motif: HtmlVideoVisualScene["visualMotif"]) {
+  if (!motif || motif === "none") return "";
+  return `<div class="scene-motif motif-${motif}" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>`;
 }
 
 function containedBackgroundFrame(
@@ -742,70 +862,51 @@ function containedBackgroundFrame(
   return { left: (100 - width) / 2, top: 0, width, height: 100 };
 }
 
-function buildBackgroundFocusMap(plan: HtmlVideoPlan, enabled: boolean) {  if (!enabled) return new Map<number, {
-    order: number;
-    total: number;
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-    centerX: number;
-    centerY: number;
-  }>();
-  const candidates = plan.scenePlan
-    .map((scene, sceneIndex) => ({
-      sceneIndex,
-      hasVisibleText: scene.onScreenText.some((text) => text.trim()),
-      hasSourceUnit: scene.sourceUnitIds.length > 0,
-    }))
-    .filter((scene) => scene.hasSourceUnit && scene.hasVisibleText);
-  const result = new Map<number, {
-    order: number;
-    total: number;
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-    centerX: number;
-    centerY: number;
-  }>();
-  if (candidates.length < 4) return result;
-  const columns = chooseSequenceGridColumns(candidates.length);
-  const rows = Math.ceil(candidates.length / columns);
-  const cellWidth = 84 / columns;
-  const cellHeight = 79 / rows;
-  candidates.forEach((candidate, order) => {
-    const region = plan.scenePlan[candidate.sceneIndex]?.sourceUnitIds
-      .map((unitId) => plan.contentUnits.find((unit) => unit.id === unitId)?.region)
-      .find(Boolean);
-    if (region) {
-      const paddingX = Math.min(0.018, region.width * 0.12);
-      const paddingY = Math.min(0.018, region.height * 0.12);
-      const left = Math.max(0, (region.x - paddingX) * 100);
-      const top = Math.max(0, (region.y - paddingY) * 100);
-      const width = Math.min(100 - left, (region.width + paddingX * 2) * 100);
-      const height = Math.min(100 - top, (region.height + paddingY * 2) * 100);
-      result.set(candidate.sceneIndex, {
-        order: order + 1,
-        total: candidates.length,
-        left,
-        top,
-        width,
-        height,
-        centerX: left + width / 2,
-        centerY: top + height / 2,
-      });
-      return;
-    }
-    const column = order % columns;
-    const row = Math.floor(order / columns);
-    const left = 8 + column * cellWidth + cellWidth * 0.05;
-    const top = 14 + row * cellHeight + cellHeight * 0.05;
-    const width = cellWidth * 0.9;
-    const height = cellHeight * 0.9;
+type HtmlVideoBackgroundFocus = {
+  order: number;
+  total: number;
+  unitId: string;
+  assetId?: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+};
+
+function buildBackgroundFocusMap(plan: HtmlVideoPlan, enabled: boolean) {
+  const result = new Map<number, HtmlVideoBackgroundFocus>();
+  if (!enabled) return result;
+
+  const candidates = plan.scenePlan.flatMap((scene, sceneIndex) => {
+    if (scene.purpose !== "content" || !scene.onScreenText.some((text) => text.trim())) return [];
+    const unit = scene.sourceUnitIds
+      .map((unitId) => plan.contentUnits.find((candidate) => candidate.id === unitId))
+      .find((candidate) => candidate?.region);
+    return unit?.region
+      ? [{ sceneIndex, unitId: unit.id, region: unit.region, assetId: unit.assetId }]
+      : [];
+  });
+  const validatedCandidates = filterRepeatedReferenceGridItems(
+    candidates,
+    (candidate) => candidate.region
+  );
+  if (validatedCandidates.length < 4) return result;
+
+  validatedCandidates.forEach((candidate, order) => {
+    const { region } = candidate;
+    const paddingX = Math.min(0.018, region.width * 0.12);
+    const paddingY = Math.min(0.018, region.height * 0.12);
+    const left = Math.max(0, (region.x - paddingX) * 100);
+    const top = Math.max(0, (region.y - paddingY) * 100);
+    const width = Math.min(100 - left, (region.width + paddingX * 2) * 100);
+    const height = Math.min(100 - top, (region.height + paddingY * 2) * 100);
     result.set(candidate.sceneIndex, {
       order: order + 1,
-      total: candidates.length,
+      total: validatedCandidates.length,
+      unitId: candidate.unitId,
+      ...(candidate.assetId ? { assetId: candidate.assetId } : {}),
       left,
       top,
       width,
@@ -816,7 +917,6 @@ function buildBackgroundFocusMap(plan: HtmlVideoPlan, enabled: boolean) {  if (!
   });
   return result;
 }
-
 export function compileHtmlVideoComposition(
   visual: HtmlVideoVisualComposition,
   plan: HtmlVideoPlan,
@@ -846,10 +946,22 @@ export function compileHtmlVideoComposition(
   const backgroundSlots = backgroundAssets
     .map((asset) => `<div data-media-slot="${escapeHtml(asset.id)}"></div>`)
     .join("");
-  const backgroundFrame = containedBackgroundFrame(plan, backgroundAssets[0]);
+  const containedFrame = containedBackgroundFrame(plan, backgroundAssets[0]);
+  const backgroundFrame = backgroundFocusMap.size > 0 && containedFrame.height < 72
+    ? {
+        left: 4,
+        width: 92,
+        height: containedFrame.height * 0.92,
+        top: 95 - containedFrame.height * 0.92,
+      }
+    : containedFrame;
+  const focusCardHeight = Math.max(22, Math.min(42, backgroundFrame.top - 18));
+  const sequenceCopyTop = Math.max(48, Math.min(54, backgroundFrame.top - 7));
   const focusCss = [...backgroundFocusMap.entries()].map(([sceneIndex, focus]) => [
     `.scene-deck.has-background-media .scene-${sceneIndex + 1} .scene-focus{display:block;left:${focus.left.toFixed(3)}%;top:${focus.top.toFixed(3)}%;width:${focus.width.toFixed(3)}%;height:${focus.height.toFixed(3)}%}`,
     `.scene-deck.has-background-media .scene-${sceneIndex + 1} .scene-background-media{transform-origin:${focus.centerX.toFixed(3)}% ${focus.centerY.toFixed(3)}%}`,
+    `.scene-deck.has-background-media .scene-${sceneIndex + 1} .scene-focus-card{display:block}`,
+    `.scene-deck.has-background-media .scene-${sceneIndex + 1} .scene-focus-card .html-video-media-slot{position:absolute!important;left:${(-focus.left / focus.width * 100).toFixed(3)}%!important;top:${(-focus.top / focus.height * 100).toFixed(3)}%!important;width:${(10000 / focus.width).toFixed(3)}%!important;height:${(10000 / focus.height).toFixed(3)}%!important;max-width:none!important;max-height:none!important;margin:0!important}`,
   ].join("\n")).join("\n");
   const deckClasses = [
     "scene-deck",
@@ -857,10 +969,14 @@ export function compileHtmlVideoComposition(
     backgroundFocusMap.size > 0 ? "background-sequence" : "",
   ].filter(Boolean).join(" ");
   const html = `<main class="${deckClasses}">${visual.scenes.map((scene, index) => {
+    const plannedScene = plan.scenePlan[index];
+    const primaryUnitId = plannedScene?.sourceUnitIds[0] || "";
+    const allUnitIds = plannedScene?.sourceUnitIds.join(" ") || "";
     const media = scene.assetIds
       .filter((id) => approvedAssets.has(id))
       .map((id) => `<div data-media-slot="${escapeHtml(id)}"></div>`)
       .join("");
+    const motif = media ? "" : visualMotifMarkup(scene.visualMotif);
     const text = [
       scene.eyebrow ? `<p class="scene-eyebrow">${escapeHtml(scene.eyebrow)}</p>` : "",
       scene.headline ? `<h1 class="scene-headline">${escapeHtml(scene.headline)}</h1>` : "",
@@ -873,18 +989,24 @@ export function compileHtmlVideoComposition(
     const surfaceClass = `surface-${scene.surfaceStyle || "solid"}`;
     const backgroundClass = `background-${scene.backgroundStyle || "mesh"}`;
     const motionClass = `motion-${scene.motionPreset || "soft-reveal"}`;
-    const mediaClass = media ? "has-media" : "no-media";
+    const mediaClass = media ? "has-media" : motif ? "has-motif" : "no-media";
     const focus = backgroundFocusMap.get(index);
     const background = hasBackgroundMedia
       ? `<div class="scene-background-media">${backgroundSlots}</div>`
       : "";
     const focusOverlay = focus
-      ? `<div class="scene-focus"><span class="scene-speaker" aria-hidden="true">&#128266;</span><span class="scene-counter">${focus.order} / ${focus.total}</span></div>`
+      ? `<div class="scene-focus" data-unit-id="${escapeHtml(focus.unitId)}"><span class="scene-speaker" aria-hidden="true">&#128266;</span><span class="scene-counter">${focus.order} / ${focus.total}</span></div>`
+      : "";
+    const focusAsset = focus
+      ? backgroundAssets.find((asset) => asset.id === focus.assetId) || backgroundAssets[0]
+      : undefined;
+    const focusCard = focusAsset
+      ? `<div class="scene-focus-card" data-unit-id="${escapeHtml(focus!.unitId)}"><div data-media-slot="${escapeHtml(focusAsset.id)}"></div><span class="scene-focus-card-counter">${focus!.order} / ${focus!.total}</span></div>`
       : "";
     const backgroundStage = hasBackgroundMedia
-      ? `<div class="scene-background-stage">${background}${focusOverlay}</div>`
+      ? `<div class="scene-background-blur">${backgroundSlots}</div><div class="scene-background-stage">${background}${focusOverlay}</div>${focusCard}`
       : "";
-    return `<section class="scene scene-${index + 1} layout-${scene.layout} ${compositionClass} ${surfaceClass} ${backgroundClass} ${motionClass} ${emphasisClass} ${accentClass} ${mediaClass}">${backgroundStage}<div class="scene-pattern"></div><div class="scene-band"></div><div class="scene-orb scene-orb-a"></div><div class="scene-orb scene-orb-b"></div><span class="scene-number">${String(index + 1).padStart(2, "0")}</span><div class="scene-frame"><div class="scene-copy">${text}</div>${media ? `<div class="scene-media">${media}</div>` : ""}</div></section>`;
+    return `<section class="scene scene-${index + 1} layout-${scene.layout} ${compositionClass} ${surfaceClass} ${backgroundClass} ${motionClass} ${emphasisClass} ${accentClass} ${mediaClass}" data-scene-id="${escapeHtml(plannedScene?.id || scene.sceneId)}"${primaryUnitId ? ` data-unit-id="${escapeHtml(primaryUnitId)}" data-unit-ids="${escapeHtml(allUnitIds)}"` : ""}>${backgroundStage}<div class="scene-pattern"></div><div class="scene-band"></div><div class="scene-orb scene-orb-a"></div><div class="scene-orb scene-orb-b"></div><span class="scene-number">${String(index + 1).padStart(2, "0")}</span><div class="scene-frame"><div class="scene-copy">${text}</div>${media ? `<div class="scene-media">${media}</div>` : motif}</div></section>`;
   }).join("")}${hasBackgroundMedia ? '<div class="scene-progress"></div>' : ""}</main>`;
   const css = `
 .scene-deck{${themeCss[visual.theme] || themeCss.ocean};position:relative;width:100%;height:100%;overflow:hidden;background:linear-gradient(145deg,var(--bg1),var(--bg2));font-family:Inter,sans-serif;color:#fff}
@@ -897,6 +1019,15 @@ export function compileHtmlVideoComposition(
 .scene-cta{align-self:flex-start;margin:8px 0 0;padding:20px 36px;border-radius:999px;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 16px 45px var(--glow,color-mix(in srgb,var(--accent) 45%,transparent));color:#06111f;font-size:32px;font-weight:900;letter-spacing:.02em;animation:sceneCtaPulse 2.2s ease-in-out infinite}
 .scene-media{position:relative;z-index:2;display:flex;flex:0 1 42%;width:42%;height:58%;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.2);border-radius:36px;background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(255,255,255,.05));box-shadow:inset 0 1px rgba(255,255,255,.25),0 30px 80px rgba(0,0,0,.3);overflow:hidden;animation:sceneMediaZoom .9s cubic-bezier(.16,1,.3,1) both}
 .scene-media .html-video-media-slot{width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important}
+.scene-motif{position:relative;z-index:2;flex:0 1 38%;width:38%;height:52%;min-width:260px;overflow:hidden;border:2px solid color-mix(in srgb,var(--accent2) 42%,transparent);border-radius:40px;background:radial-gradient(circle at 50% 38%,color-mix(in srgb,var(--accent) 32%,transparent),rgba(255,255,255,.05));box-shadow:inset 0 1px rgba(255,255,255,.24),0 28px 70px rgba(0,0,0,.28);animation:sceneMediaZoom .9s cubic-bezier(.16,1,.3,1) both}
+.scene-motif i{position:absolute;display:block;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 0 30px var(--glow)}
+.motif-rings i{inset:50% auto auto 50%;width:18%;aspect-ratio:1;border:8px solid var(--accent2);border-radius:34%;background:transparent;transform:translate(-50%,-50%) rotate(45deg);animation:motifOrbit 4s ease-in-out infinite alternate}
+.motif-rings i:nth-child(2){width:34%;animation-delay:-.8s}.motif-rings i:nth-child(3){width:52%;animation-delay:-1.6s}.motif-rings i:nth-child(4){width:12%;border:0;background:var(--accent);animation:motifPulse 1.6s ease-in-out infinite}.motif-rings i:nth-child(5){display:none}
+.motif-bars{display:flex;align-items:flex-end;justify-content:center;gap:7%;padding:18% 12%}.motif-bars i{position:relative;width:11%;height:26%;border-radius:999px 999px 12px 12px;animation:motifBar 2.4s ease-in-out infinite alternate}.motif-bars i:nth-child(2){height:48%;animation-delay:-.35s}.motif-bars i:nth-child(3){height:72%;animation-delay:-.7s}.motif-bars i:nth-child(4){height:58%;animation-delay:-1.05s}.motif-bars i:nth-child(5){height:88%;animation-delay:-1.4s}
+.motif-device i:first-child{inset:13% 20%;border:5px solid var(--accent2);border-radius:30px;background:rgba(2,6,23,.36)}.motif-device i:nth-child(2){left:28%;right:28%;bottom:22%;height:8%;border-radius:999px;animation:motifSweep 2.2s ease-in-out infinite}.motif-device i:nth-child(3){left:28%;top:26%;width:18%;aspect-ratio:1;border-radius:50%;animation:motifPulse 1.8s ease-in-out infinite}.motif-device i:nth-child(4){left:50%;right:28%;top:28%;height:5%;border-radius:999px}.motif-device i:nth-child(5){left:50%;right:34%;top:40%;height:4%;border-radius:999px;opacity:.65}
+.motif-checklist{padding:18%}.motif-checklist i{left:18%;right:18%;height:9%;border-radius:999px;animation:motifSweep 2.4s ease-in-out infinite}.motif-checklist i:nth-child(1){top:20%}.motif-checklist i:nth-child(2){top:36%;animation-delay:-.3s}.motif-checklist i:nth-child(3){top:52%;animation-delay:-.6s}.motif-checklist i:nth-child(4){top:68%;animation-delay:-.9s}.motif-checklist i:nth-child(5){display:none}
+.motif-spark i{left:50%;top:50%;width:14%;aspect-ratio:1;border-radius:30% 70% 36% 64%;transform:translate(-50%,-50%) rotate(45deg);animation:motifSpark 2.8s ease-in-out infinite}.motif-spark i:nth-child(2){left:25%;top:30%;width:8%;animation-delay:-.5s}.motif-spark i:nth-child(3){left:74%;top:28%;width:10%;animation-delay:-1s}.motif-spark i:nth-child(4){left:26%;top:72%;width:11%;animation-delay:-1.5s}.motif-spark i:nth-child(5){left:76%;top:70%;width:7%;animation-delay:-2s}
+.scene.has-motif .scene-frame{justify-content:space-between;text-align:left}.scene.has-motif .scene-copy{align-items:flex-start}.layout-centered.has-motif .scene-frame{flex-direction:row}.layout-statement.has-motif .scene-motif,.layout-cta.has-motif .scene-motif{display:block}
 .scene.no-media .scene-frame{justify-content:center;text-align:center}
 .scene.no-media .scene-copy{flex:1 1 100%;width:100%;max-width:92%;align-items:center}
 .scene.no-media .scene-eyebrow,.scene.no-media .scene-cta{align-self:center}
@@ -946,17 +1077,23 @@ export function compileHtmlVideoComposition(
 .accent-minimal .scene-orb{opacity:.35}
 .scene-deck.has-background-media{background:#dff4ff;color:#082f49}
 .scene-deck.has-background-media .scene{padding:0;background:transparent}
+.scene-deck.has-background-media .scene-background-blur{position:absolute;inset:-5%;z-index:0;overflow:hidden;background:#082f49;opacity:.32;filter:blur(26px) saturate(.8);transform:scale(1.12)}
+.scene-deck.has-background-media .scene-background-blur .html-video-media-slot{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important}
+.scene-deck.has-background-media .scene-background-blur img{width:100%!important;height:100%!important;object-fit:cover!important;animation:none!important}
 .scene-deck.has-background-media .scene-background-stage{position:absolute;left:${backgroundFrame.left.toFixed(4)}%;top:${backgroundFrame.top.toFixed(4)}%;width:${backgroundFrame.width.toFixed(4)}%;height:${backgroundFrame.height.toFixed(4)}%;z-index:1;overflow:visible}
 .scene-deck.has-background-media .scene-background-media{position:absolute;inset:0;z-index:0;overflow:hidden;transform:scale(1)}
 .scene-deck.has-background-media .scene-background-media .html-video-media-slot{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;margin:0!important}
 .scene-deck.has-background-media .scene-background-media img{width:100%!important;height:100%!important;object-fit:contain!important;object-position:center!important;animation:none!important;filter:none!important}
 .scene-deck.has-background-media .scene-frame{z-index:3;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none;overflow:visible;animation:none}
 .scene-deck.has-background-media .scene-orb{display:none}
-.scene-deck.has-background-media .scene-copy{position:absolute;top:2.5%;left:50%;z-index:5;display:flex;flex:none;width:auto;min-width:260px;max-width:72%;padding:12px 30px;align-items:center;gap:8px;text-align:center;transform:translateX(-50%);border:2px solid rgba(255,255,255,.82);border-radius:999px;background:rgba(3,105,161,.88);box-shadow:0 14px 40px rgba(2,32,71,.24)}
+.scene-deck.has-background-media .scene-copy{position:absolute;top:${backgroundFocusMap.size > 0 ? sequenceCopyTop.toFixed(3) : "2.5"}%;left:50%;z-index:5;display:flex;flex:none;width:auto;min-width:260px;max-width:82%;padding:12px 30px;align-items:center;gap:8px;text-align:center;transform:translateX(-50%);border:2px solid rgba(255,255,255,.82);border-radius:999px;background:rgba(3,105,161,.92);box-shadow:0 14px 40px rgba(2,32,71,.24)}
 .scene-deck.has-background-media .scene-copy:empty{display:none}
 .scene-deck.has-background-media .scene-eyebrow,.scene-deck.has-background-media .scene-body,.scene-deck.has-background-media .scene-cta{align-self:center;margin:0;padding:0;border:0;background:none;box-shadow:none;color:#e0f2fe;font-size:24px;line-height:1.15}
 .scene-deck.has-background-media .scene-headline{margin:0;font-size:52px;line-height:1;letter-spacing:.02em;text-transform:uppercase;background:none;-webkit-background-clip:initial;-webkit-text-fill-color:#fff;filter:none}
-.scene-deck.has-background-media .scene-focus{position:absolute;z-index:2;display:none;border:6px solid #0ea5e9;border-radius:28px;box-shadow:0 0 0 2200px rgba(7,34,53,.2),0 0 34px rgba(14,165,233,.9);pointer-events:none}
+.scene-deck.has-background-media .scene-focus{position:absolute;z-index:2;display:none;overflow:visible;border:6px solid #0ea5e9;border-radius:28px;background:transparent;box-shadow:0 0 0 2200px rgba(7,34,53,.18),0 0 34px rgba(14,165,233,.9);pointer-events:none;animation:sceneFocusPulse 1.25s cubic-bezier(.16,1,.3,1) infinite alternate}
+.scene-deck.has-background-media .scene-focus-card{position:absolute;left:8%;top:6%;z-index:4;display:none;width:84%;height:${focusCardHeight.toFixed(3)}%;overflow:hidden;border:6px solid rgba(255,255,255,.9);border-radius:38px;background:#e0f2fe;box-shadow:0 28px 70px rgba(2,32,71,.38),0 0 0 3px #0ea5e9;animation:sceneMediaZoom .8s cubic-bezier(.16,1,.3,1) both}
+.scene-deck.has-background-media .scene-focus-card img{width:100%!important;height:100%!important;object-fit:contain!important;animation:none!important;filter:none!important}
+.scene-deck.has-background-media .scene-focus-card-counter{position:absolute;right:18px;top:18px;z-index:5;padding:8px 14px;border:3px solid #fff;border-radius:999px;background:#0284c7;color:#fff;font-size:24px;font-weight:900;line-height:1}
 .scene-deck.has-background-media .scene-speaker{position:absolute;top:-30px;left:-24px;display:flex;width:54px;height:54px;align-items:center;justify-content:center;border:3px solid #fff;border-radius:50%;background:#0284c7;box-shadow:0 8px 22px rgba(2,132,199,.35);font-size:28px}
 .scene-deck.has-background-media .scene-counter{position:absolute;top:-30px;right:-24px;padding:8px 14px;border:3px solid #fff;border-radius:999px;background:#0284c7;color:#fff;font-size:24px;font-weight:900;line-height:1}
 .scene-deck.has-background-media .scene-progress{position:absolute;left:0;bottom:0;z-index:10;width:0;height:10px;border-radius:0 999px 999px 0;background:linear-gradient(90deg,#0284c7,#38bdf8,#fbbf24);box-shadow:0 -2px 12px rgba(14,165,233,.45);animation:sceneProgressFill ${plan.videoBrief.videoSpec.durationSeconds}s linear both}
@@ -969,36 +1106,67 @@ ${focusCss}
 @keyframes sceneOrbFloatA{0%,100%{transform:translate(0,0) scale(1);opacity:.65}50%{transform:translate(45px,-35px) scale(1.3);opacity:.9}}
 @keyframes sceneOrbFloatB{0%,100%{transform:translate(0,0) scale(1);opacity:.6}50%{transform:translate(-40px,35px) scale(1.25);opacity:.85}}
 @keyframes sceneFrameGlow{0%,100%{scale:1;box-shadow:0 36px 100px rgba(0,0,0,.35),0 0 40px var(--glow,color-mix(in srgb,var(--accent) 20%,transparent))}50%{scale:1.008;box-shadow:0 40px 120px rgba(0,0,0,.45),0 0 70px var(--glow,color-mix(in srgb,var(--accent) 45%,transparent))}}
+@keyframes sceneFocusPulse{0%{border-color:#0ea5e9;box-shadow:0 0 0 2200px rgba(7,34,53,.18),0 0 20px rgba(14,165,233,.65);transform:scale(.985)}100%{border-color:#fbbf24;box-shadow:0 0 0 2200px rgba(7,34,53,.24),0 0 46px rgba(251,191,36,.95);transform:scale(1.025)}}
+@keyframes motifOrbit{0%{transform:translate(-50%,-50%) rotate(25deg) scale(.92)}100%{transform:translate(-50%,-50%) rotate(75deg) scale(1.08)}}
+@keyframes motifPulse{0%,100%{transform:translate(-50%,-50%) scale(.8);opacity:.62}50%{transform:translate(-50%,-50%) scale(1.2);opacity:1}}
+@keyframes motifBar{0%{transform:scaleY(.72);filter:saturate(.8)}100%{transform:scaleY(1.08);filter:saturate(1.3)}}
+@keyframes motifSweep{0%{transform:translateX(-10px);opacity:.62}100%{transform:translateX(14px);opacity:1}}
+@keyframes motifSpark{0%,100%{transform:translate(-50%,-50%) rotate(35deg) scale(.72);opacity:.55}50%{transform:translate(-50%,-50%) rotate(58deg) scale(1.2);opacity:1}}
 @keyframes sceneProgressFill{0%{width:0}100%{width:100%}}
 `.trim();
   return { html, css };
 }
 
-async function structuredCall(
+function canFallbackHtmlVideoPipelineModel(error: unknown) {
+  const status = typeof error === "object" && error !== null
+    ? Number((error as { status?: unknown }).status)
+    : 0;
+  const message = error instanceof Error ? error.message : String(error);
+  return status !== 401 && status !== 402 && !/OPENROUTER_API_KEY/i.test(message);
+}
+
+export async function structuredCall(
   chat: PipelineChat,
+  stage: HtmlVideoPipelineModelStage,
   system: string,
   user: string,
   responseSchema: object,
-  temperature: number
+  temperature: number,
+  environment: Record<string, string | undefined> = process.env
 ) {
-  try {
-    return await chat({
-      model: modelName(),
-      temperature,
-      jsonMode: true,
-      responseSchema,
-      maxRetries: maxRetries(),
-      maxTokens: 8_192,
-      reasoning: { maxTokens: 1_024, exclude: true },
-      timeoutMs: timeoutMs(),
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    });
-  } catch (error) {
-    throw new HtmlVideoPipelineProviderError(error);
+  const models = resolveHtmlVideoPipelineModels(stage, environment);
+  let lastError: unknown;
+  for (const [index, model] of models.entries()) {
+    try {
+      return await chat({
+        model,
+        temperature,
+        jsonMode: true,
+        responseSchema,
+        strictJsonSchema: environment.HTML_VIDEO_STRICT_JSON_SCHEMA !== "false",
+        maxRetries: maxRetries(),
+        maxTokens: Math.max(
+          2_048,
+          Math.min(32_768, Number(environment.HTML_VIDEO_DRAFT_MAX_TOKENS) || 8_192)
+        ),
+        reasoning: { maxTokens: 1_024, exclude: true },
+        timeoutMs: timeoutMs(),
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      });
+    } catch (error) {
+      lastError = error;
+      if (index === models.length - 1 || !canFallbackHtmlVideoPipelineModel(error)) break;
+      console.warn("[HTML Video] Pipeline provider fallback", {
+        stage,
+        failedModel: model,
+        fallbackModel: models[index + 1],
+      });
+    }
   }
+  throw new HtmlVideoPipelineProviderError(lastError);
 }
 
 function isLegacyDraftValue(value: unknown) {
@@ -1026,7 +1194,10 @@ export async function runHtmlVideoStructuredPipeline(input: {
   const checkpoint = { ...(input.checkpoint || {}) };
   const editSource = input.draftInput.editSource;
   const existingPipeline = editSource?.pipeline;
-  const revisionIntent = classifyHtmlVideoRevisionIntent(input.draftInput.prompt, existingPipeline);
+  const revisionIntent = classifyHtmlVideoRevisionIntent(
+    input.draftInput.promptProvenance?.rawUserPrompt || input.draftInput.prompt,
+    existingPipeline
+  );
   if (editSource && !existingPipeline && !revisionIntent.fullRedesign) {
     throw new Error("Existing video is missing its structured pipeline and cannot be revised safely in place.");
   }
@@ -1057,6 +1228,7 @@ export async function runHtmlVideoStructuredPipeline(input: {
     await input.onStage?.("planning");
     const plannerResponse = await structuredCall(
       input.chat,
+      "planner",
       plannerSystemPrompt(input.draftInput),
       plannerPrompt(input.generationPrompt, grounding.contentUnits, input.referenceAssets),
       {
@@ -1093,6 +1265,13 @@ export async function runHtmlVideoStructuredPipeline(input: {
   const planJson = JSON.stringify(plan);
   await input.onStage?.("composing");
   const voiceOnlyRevision = isVoiceOnlyRevision(revisionIntent);
+  const orderedBoardVisual = !editSource && usesDeterministicOrderedBoardTemplate(
+    plan,
+    grounding.sourceText,
+    input.referenceAssets
+  )
+    ? buildDeterministicOrderedBoardVisual(plan)
+    : null;
   const compositionPromise = editSource
     ? voiceOnlyRevision
       ? Promise.resolve({ html: editSource.html, css: editSource.css })
@@ -1100,6 +1279,7 @@ export async function runHtmlVideoStructuredPipeline(input: {
         ? Promise.resolve(checkpoint.revision)
         : structuredCall(
             input.chat,
+            "revision",
             revisionSystemPrompt(input.draftInput),
             revisionPrompt(input.draftInput, plan),
             {
@@ -1113,10 +1293,16 @@ export async function runHtmlVideoStructuredPipeline(input: {
             await input.onCheckpoint?.("revision", value);
             return value;
           })
-    : checkpoint.visual
+    : orderedBoardVisual
+      ? Promise.resolve(orderedBoardVisual).then(async (value) => {
+          await input.onCheckpoint?.("visual", value);
+          return value;
+        })
+      : checkpoint.visual
       ? Promise.resolve(checkpoint.visual)
       : structuredCall(
           input.chat,
+          "visual",
           visualSystemPrompt(),
           planJson,
           {
@@ -1157,7 +1343,7 @@ export async function runHtmlVideoStructuredPipeline(input: {
   const voiceInput = editSource
     ? JSON.stringify({
         approvedPlan: plan,
-        currentEditRequest: input.draftInput.prompt,
+        currentEditRequest: input.draftInput.promptProvenance?.rawUserPrompt || input.draftInput.prompt,
         existingVoiceScript: editSource.voiceScript || "",
       })
     : planJson;
@@ -1169,6 +1355,7 @@ export async function runHtmlVideoStructuredPipeline(input: {
         ? Promise.resolve(checkpoint.voice)
         : structuredCall(
           input.chat,
+          "voice",
           voiceSystemPrompt(input.draftInput, plan),
           voiceInput,
           { scenes: [{ sceneId: "string", text: "string" }], fullScript: "string" },
@@ -1180,18 +1367,34 @@ export async function runHtmlVideoStructuredPipeline(input: {
         }),
   ]);
   await input.onStage?.("validation");
+  const narrationAlignedScenePlan = plan.scenePlan.map((scene, index) => ({
+    ...scene,
+    narration: voice.scenes[index]?.text || scene.narration,
+  }));
+  const preserveExistingTimeline = Boolean(
+    editSource
+    && !revisionIntent.voice
+    && !revisionIntent.content
+    && !revisionIntent.timing
+    && !revisionIntent.spec
+    && !revisionIntent.fullRedesign
+  );
+  const timelineFit = preserveExistingTimeline
+    ? { scenes: narrationAlignedScenePlan, adjusted: false }
+    : fitHtmlVideoSceneTimeline(
+        narrationAlignedScenePlan,
+        input.draftInput.durationSeconds,
+        plan.videoBrief.videoSpec.language
+      );
+  const finalPlan: HtmlVideoPlan = { ...plan, scenePlan: timelineFit.scenes };
   const composition = input.draftInput.editSource
     ? compositionOrVisual as { html: string; css: string }
     : compileHtmlVideoComposition(
         compositionOrVisual as HtmlVideoVisualComposition,
-        plan,
+        finalPlan,
         input.referenceAssets,
         grounding.sourceText
       );
-  const alignedScenePlan = plan.scenePlan.map((scene, index) => ({
-    ...scene,
-    narration: voice.scenes[index]?.text || scene.narration,
-  }));
   return {
     kind: "structured",
     ...composition,
@@ -1203,13 +1406,23 @@ export async function runHtmlVideoStructuredPipeline(input: {
       sourceContextRefs: grounding.sourceContextRefs,
       videoBrief: plan.videoBrief,
       contentUnits: plan.contentUnits,
-      scenePlan: alignedScenePlan,
+      scenePlan: finalPlan.scenePlan,
       findings: [{
         stage: "validation",
         code: "PROMPT_COVERAGE_VERIFIED",
         severity: "info",
-        message: "All required content units are mapped exactly once to a contiguous scene timeline.",
-      }, ...(voice.adjustedSceneIds || []).map((sceneId) => ({
+        message: "All required content units are mapped to a contiguous scene timeline with validated provenance.",
+      }, ...(orderedBoardVisual ? [{
+        stage: "visual" as const,
+        code: "DETERMINISTIC_ORDERED_BOARD_TEMPLATE_APPLIED",
+        severity: "info" as const,
+        message: "The ordered image board uses a validated deterministic template instead of model-generated layout.",
+      }] : []), ...(timelineFit.adjusted ? [{
+        stage: "voice" as const,
+        code: "NARRATION_WEIGHTED_TIMELINE_APPLIED",
+        severity: "info" as const,
+        message: "Scene timing was recalculated from the final narration length and language cadence.",
+      }] : []), ...(voice.adjustedSceneIds || []).map((sceneId) => ({
         stage: "voice" as const,
         code: "VOICE_NARRATION_FITTED_TO_SCENE",
         severity: "warning" as const,

@@ -14,12 +14,18 @@ export interface MarketingDevelopPost {
 export type HtmlVideoMasterPromptOptimization = {
   masterPrompt: string;
   assumptions?: {
+    requestSpecVersion?: '1.0';
+    mode?: 'create' | 'revision';
     contentMode?: string;
     narrationLanguage?: string;
+    languageLock?: string;
+    durationPolicy?: 'explicit' | 'inferred' | 'preserve-existing';
     durationSeconds?: number;
     aspectRatio?: '9:16' | '1:1' | '16:9';
     imagePolicy?: 'none' | 'embed' | 'reference' | 'mixed';
     inputImageCount?: number;
+    sourceOrder?: 'preserve';
+    preserveUnrequestedProperties?: boolean;
   };
   isLocalFallback: boolean;
 };
