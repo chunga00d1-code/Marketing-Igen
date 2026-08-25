@@ -15,6 +15,10 @@ let redisAvailable: boolean | null = null;
 const fallbackPending = new Set<string>();
 const fallbackRetryBaseDelayMs = 15_000;
 
+export function buildHtmlVideoGenerationQueueJobId(generationId: string) {
+  return `html-video-generation-${generationId}`;
+}
+
 function requiresRedis() {
   const configured = String(process.env.HTML_VIDEO_REQUIRE_REDIS || "").trim().toLowerCase();
   return configured ? configured === "true" : process.env.NODE_ENV === "production";
@@ -108,7 +112,7 @@ export async function enqueueHtmlVideoGeneration(generationId: string) {
       "generate",
       { generationId },
       {
-        jobId: `html-video-generation:${generationId}`,
+        jobId: buildHtmlVideoGenerationQueueJobId(generationId),
         attempts: 3,
         backoff: { type: "exponential", delay: fallbackRetryBaseDelayMs },
         removeOnComplete: true,
