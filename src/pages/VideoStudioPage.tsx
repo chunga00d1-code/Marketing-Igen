@@ -5,6 +5,7 @@ import {
   Clapperboard,
   Film,
   LayoutTemplate,
+  Lock,
   MapPinned,
   Mic,
   Presentation,
@@ -84,12 +85,6 @@ const HtmlVideoWorkspace = lazy(() =>
   }))
 );
 
-const RealEstateMapVideoWorkspace = lazy(() =>
-  import("../components/video-studio/RealEstateMapVideoWorkspace").then((module) => ({
-    default: module.RealEstateMapVideoWorkspace,
-  }))
-);
-
 type ToolDefinition = {
   id: Exclude<VideoStudioTool, "home">;
   title: string;
@@ -99,6 +94,7 @@ type ToolDefinition = {
   icon: typeof Sparkles;
   tone: string;
   iconTone: string;
+  disabled?: boolean;
 };
 
 const VIDEO_TOOLS: ToolDefinition[] = [
@@ -111,6 +107,7 @@ const VIDEO_TOOLS: ToolDefinition[] = [
     icon: LayoutTemplate,
     tone: "from-blue-50 to-white hover:border-blue-300",
     iconTone: "bg-blue-600 text-white",
+    disabled: true,
   },
   {
     id: "html-video",
@@ -121,6 +118,7 @@ const VIDEO_TOOLS: ToolDefinition[] = [
     icon: Presentation,
     tone: "from-sky-50 to-white hover:border-sky-300",
     iconTone: "bg-sky-600 text-white",
+    disabled: true,
   },
   {
     id: "real-estate-map-video",
@@ -131,6 +129,7 @@ const VIDEO_TOOLS: ToolDefinition[] = [
     icon: MapPinned,
     tone: "from-teal-50 to-white hover:border-teal-300",
     iconTone: "bg-teal-600 text-white",
+    disabled: true,
   },
   {
     id: "ai-video",
@@ -364,30 +363,54 @@ function ToolGroup({
   tools: ToolDefinition[];
   onSelect: (tool: VideoStudioTool) => void;
 }) {
+  const orderedTools = [...tools].sort(
+    (first, second) => Number(Boolean(first.disabled)) - Number(Boolean(second.disabled))
+  );
   return (
     <section className="mt-8">
       <h3 className="text-base font-extrabold text-slate-900">{title}</h3>
       <div className="mt-4 grid gap-4 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {tools.map((tool) => {
+        {orderedTools.map((tool) => {
           const Icon = tool.icon;
           return (
             <button
               key={tool.id}
               type="button"
               onClick={() => onSelect(tool.id)}
-              className="group relative flex aspect-square flex-col items-center justify-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm transition-all hover:scale-[1.02] hover:border-indigo-200 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-indigo-100"
+              disabled={tool.disabled}
+              aria-label={tool.disabled ? `${tool.title} - \u0110ang ph\u00e1t tri\u1ec3n` : tool.title}
+              title={tool.disabled ? "\u0110ang ph\u00e1t tri\u1ec3n" : undefined}
+              className={`group relative flex aspect-square flex-col items-center justify-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm transition-all focus:outline-none focus:ring-4 focus:ring-indigo-100 ${
+                tool.disabled
+                  ? "cursor-not-allowed opacity-45 grayscale"
+                  : "hover:scale-[1.02] hover:border-indigo-200 hover:shadow-md"
+              }`}
             >
               <div
-                className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${tool.tone} opacity-0 transition-opacity group-hover:opacity-100`}
+                className={`absolute inset-0 rounded-2xl bg-gradient-to-br ${tool.tone} opacity-0 transition-opacity ${
+                  tool.disabled ? "" : "group-hover:opacity-100"
+                }`}
                 aria-hidden="true"
               />
+              {tool.disabled && (
+                <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-slate-800 px-2 py-1 text-[10px] font-bold text-white">
+                  <Lock className="h-3 w-3" />
+                  {"\u0110ang ph\u00e1t tri\u1ec3n"}
+                </span>
+              )}
               <span
-                className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm ${tool.iconTone} transition-transform group-hover:scale-110`}
+                className={`relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm ${tool.iconTone} transition-transform ${
+                  tool.disabled ? "" : "group-hover:scale-110"
+                }`}
               >
                 <Icon className="h-7 w-7" />
               </span>
               <span className="relative w-full px-2">
-                <span className="block text-sm font-bold text-slate-800 transition-colors group-hover:text-indigo-900">
+                <span
+                  className={`block text-sm font-bold text-slate-800 transition-colors ${
+                    tool.disabled ? "" : "group-hover:text-indigo-900"
+                  }`}
+                >
                   {tool.title}
                 </span>
               </span>
@@ -493,11 +516,7 @@ function VideoToolContent({
   }
 
   if (tool === "real-estate-map-video") {
-    return (
-      <Suspense fallback={<VideoToolLoader label="Đang mở công cụ video bản đồ..." />}>
-        <RealEstateMapVideoWorkspace onBack={() => onNavigateToTool("home")} />
-      </Suspense>
-    );
+    return <VideoToolLoader label={"C\u00f4ng c\u1ee5 n\u00e0y \u0111ang ph\u00e1t tri\u1ec3n."} />;
   }
 
   if (tool === "ai-video") {

@@ -5,15 +5,24 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { VideoStudioHome } from "../VideoStudioPage";
 
-test("renders Mẫu video as the first creation tool", () => {
+test("renders available creation tools before locked tools", () => {
   const markup = renderToStaticMarkup(
     React.createElement(VideoStudioHome, { onSelect: () => undefined })
   );
   const templateIndex = markup.indexOf("Mẫu video");
   const aiVideoIndex = markup.indexOf("Tạo video từ nội dung");
 
-  assert.ok(templateIndex >= 0);
-  assert.ok(aiVideoIndex > templateIndex);
+  assert.ok(aiVideoIndex >= 0);
+  assert.ok(templateIndex > aiVideoIndex);
+});
+
+test("locks unavailable Video Studio creation tools", () => {
+  const markup = renderToStaticMarkup(
+    React.createElement(VideoStudioHome, { onSelect: () => undefined })
+  );
+
+  assert.equal((markup.match(/disabled=""/g) || []).length, 3);
+  assert.equal((markup.match(/title="\u0110ang ph\u00e1t tri\u1ec3n"/g) || []).length, 3);
 });
 
 test("wires the templates tool to the existing library and editor", () => {
