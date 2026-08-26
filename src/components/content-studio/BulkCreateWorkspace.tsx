@@ -9,6 +9,7 @@ import {
   bulkCreateService,
   type BulkAsset,
   type BulkAiHistoryMessage,
+  type BulkAiScene,
   type BulkAiSceneResult,
   type BulkDataColumn,
   type BulkImportedRow,
@@ -74,6 +75,71 @@ const CAMPAIGN_BULK_WRITABLE_SLOT_STATUSES = new Set([
   'planned', 'queued', 'generating', 'researching', 'writing', 'scoring',
   'awaiting_assets', 'retrying', 'needs_attention', 'failed',
 ]);
+
+type PdfJsPage = {
+  getViewport: (options: { scale: number }) => { width: number; height: number };
+  render: (options: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }) => { promise: Promise<void> };
+};
+
+type PdfJs = {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (options: { data: Uint8Array }) => { promise: Promise<{ getPage: (pageNumber: number) => Promise<PdfJsPage> }> };
+};
+
+function loadPdfJs() {
+  const browserWindow = window as Window & typeof globalThis & { pdfjsLib?: PdfJs };
+  if (browserWindow.pdfjsLib) return Promise.resolve(browserWindow.pdfjsLib);
+
+  return new Promise<PdfJs>((resolve, reject) => {
+    const existing = document.getElementById('igen-pdfjs-script') as HTMLScriptElement | null;
+    const complete = () => {
+      if (browserWindow.pdfjsLib) resolve(browserWindow.pdfjsLib);
+      else reject(new Error('Không thể tải công cụ đọc PDF.'));
+    };
+    if (existing) {
+      existing.addEventListener('load', complete, { once: true });
+      existing.addEventListener('error', () => reject(new Error('Không thể tải công cụ đọc PDF.')), { once: true });
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'igen-pdfjs-script';
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js';
+    script.async = true;
+    script.onload = complete;
+    script.onerror = () => reject(new Error('Không thể tải công cụ đọc PDF.'));
+    document.head.appendChild(script);
+  });
+}
+
+async function rasterizeFirstPdfPage(file: File) {
+  const pdfjs = await loadPdfJs();
+  pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const page = await pdf.getPage(1);
+  const initialViewport = page.getViewport({ scale: 1 });
+  const scale = Math.min(2, 1_800 / Math.max(initialViewport.width, initialViewport.height));
+  const viewport = page.getViewport({ scale: Math.max(scale, 0.1) });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(viewport.width));
+  canvas.height = Math.max(1, Math.round(viewport.height));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Trình duyệt không thể tạo preview PDF.');
+  await page.render({ canvasContext: context, viewport }).promise;
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
+function imageDimensions(dataUrl: string) {
+  return new Promise<{ width: number; height: number }>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = () => reject(new Error('Không thể đọc kích thước ảnh mẫu.'));
+    image.src = dataUrl;
+  });
+}
+
+function importedTemplateName(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, '').trim() || 'Mẫu đã nhập';
+}
 
 export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWorkspaceProps = {}) {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -180,6 +246,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const copiedLayerRef = useRef<TemplateLayer | null>(null);
   const [uploadedImages, setUploadedImages] = useState<BulkAsset[]>([]);
   const [uploadingAsset, setUploadingAsset] = useState(false);
+  const [importingTemplate, setImportingTemplate] = useState(false);
   const [removingBackground, setRemovingBackground] = useState(false);
   const { user } = useAuth();
   const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
@@ -632,6 +699,116 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       toast.error(message);
     } finally {
       setUploadingAsset(false);
+    }
+  };
+
+  const importTemplateFile = async (file: File) => {
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    const isImage = file.type.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.name);
+    if (!isPdf && !isImage) {
+      toast.error('Mẫu cần là PNG, JPG, WEBP hoặc PDF.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('Mẫu nhập không được vượt quá 10 MB.');
+      return;
+    }
+
+    setImportingTemplate(true);
+    setErrorMessage('');
+    try {
+      const sourceDataUrl = isPdf ? await rasterizeFirstPdfPage(file) : await readFileAsDataUrl(file);
+      const dimensions = await imageDimensions(sourceDataUrl);
+      const safeCanvas = {
+        width: Math.min(4_096, Math.max(320, Math.round(dimensions.width))),
+        height: Math.min(4_096, Math.max(320, Math.round(dimensions.height))),
+      };
+      const asset = await bulkCreateService.uploadLibraryAsset(
+        sourceDataUrl,
+        isPdf ? `${importedTemplateName(file.name)}-trang-1.jpg` : file.name,
+      );
+      setUploadedImages((current) => [asset, ...current.filter((item) => item._id !== asset._id)]);
+
+      const fallbackLayer = createTemplateLayer({
+        type: 'text',
+        initialValue: 'Nội dung thay đổi',
+        overrides: {
+          fieldName: 'Nội dung thay đổi',
+          x: 8,
+          y: 76,
+          width: 84,
+          height: 12,
+          fontSize: Math.max(24, Math.round(safeCanvas.width * 0.045)),
+          color: '#111827',
+          fillColor: '#ffffff',
+          borderRadius: 12,
+          padding: 12,
+          textAlign: 'center',
+          maxLines: 2,
+        },
+        existingLayers: [],
+        canvas: safeCanvas,
+      });
+      const initialScene = {
+        sceneVersion: BULK_SCENE_VERSION,
+        canvas: safeCanvas,
+        background: { type: 'image' as const, imageUrl: asset.url },
+        layers: [fallbackLayer],
+      };
+      const initialValues = { [fallbackLayer.id]: fallbackLayer.defaultValue || '' };
+      let analyzedScene: BulkAiScene = initialScene;
+      let analyzedValues = initialValues;
+
+      try {
+        const analysis = await bulkCreateService.updateSceneWithAi({
+          prompt: 'Chuyển ảnh mẫu đính kèm thành template chỉnh sửa được để tạo hàng loạt. Giữ nguyên tối đa phần đồ họa tĩnh của mẫu. Tự nhận diện 1-6 vùng có khả năng thay đổi giữa các phiên bản như tiêu đề, giá, mô tả, CTA hoặc ảnh sản phẩm. Với mỗi vùng đã có chữ trong ảnh, thêm shape che kín chữ cũ cùng một layer text chỉnh sửa được ở đúng vị trí; đặt fieldName rõ ràng bằng tiếng Việt và defaultValue gần với nội dung nhìn thấy. Chỉ tạo layer ảnh biến đổi nếu ảnh mẫu thật sự có vùng ảnh sản phẩm. Không thiết kế lại theo phong cách khác, không thêm dữ liệu không có trong ảnh và luôn giữ ít nhất một field text có thể map Excel.',
+          scene: initialScene,
+          values: initialValues,
+          attachments: [{ type: 'image', name: file.name, url: asset.url }],
+        });
+        if (analysis.scene.layers.length > 0) {
+          analyzedScene = analysis.scene;
+          analyzedValues = analysis.values;
+        }
+      } catch (analysisError) {
+        console.warn('[BulkCreate] Template import analysis failed; using editable draft:', analysisError);
+        toast.warning('Đã tạo mẫu nháp. AI chưa phân tích được bố cục, bạn có thể chỉnh tiếp trong editor.');
+      }
+
+      const template = await bulkCreateService.createTemplate({
+        name: importedTemplateName(file.name),
+        canvas: analyzedScene.canvas,
+        background: analyzedScene.background,
+        layers: analyzedScene.layers,
+      });
+      setTemplates((current) => [template, ...current.filter((item) => item._id !== template._id)]);
+      setTemplatesTotal((current) => current + 1);
+      loadTemplate(template);
+      setRows([createRow(analyzedScene.layers, analyzedValues)]);
+      setActiveTool('data');
+      setAiHtmlMode(false);
+      setSidebarOpen(true);
+      toast.success(isPdf
+        ? 'Đã tạo template từ trang đầu của PDF. Hãy kiểm tra preview trước khi render.'
+        : 'Đã tạo template từ mẫu đã nhập. Hãy kiểm tra preview trước khi render.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể nhập mẫu thiết kế.';
+      setErrorMessage(message);
+      toast.error(message);
+    } finally {
+      setImportingTemplate(false);
+    }
+  };
+
+  const startCanvaConnection = async () => {
+    try {
+      const { url } = await bulkCreateService.startCanvaOAuth();
+      const popup = window.open(url, 'igen-canva-connect', 'popup,width=560,height=720');
+      if (!popup) window.location.assign(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể khởi tạo kết nối Canva.';
+      setErrorMessage(message);
+      toast.error(message);
     }
   };
 
@@ -1917,6 +2094,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           uploadedImages={uploadedImages}
           uploadingAsset={uploadingAsset}
           onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
+          importingTemplate={importingTemplate}
+          onImportTemplate={(file) => void importTemplateFile(file)}
+          onStartCanvaConnection={() => void startCanvaConnection()}
           />
           )}
         </div>

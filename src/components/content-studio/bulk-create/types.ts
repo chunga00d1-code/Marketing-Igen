@@ -1,6 +1,6 @@
 import type { BulkDataColumn, BulkLayer } from '../../../services/bulkCreateService';
 
-export type EditorTool = 'background' | 'text' | 'image' | 'data' | 'history';
+export type EditorTool = 'background' | 'canva' | 'text' | 'image' | 'data' | 'history';
 export type LayerType = 'text' | 'image';
 export type TemplateLayer = BulkLayer;
 

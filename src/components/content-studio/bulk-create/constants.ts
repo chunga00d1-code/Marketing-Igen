@@ -33,6 +33,7 @@ export const QUICK_CANVAS_PRESETS = [
 
 export const TOOLS: Array<{ id: EditorTool; label: string; icon: typeof Layers3 }> = [
   { id: 'background', label: 'Mẫu nền', icon: Layers3 },
+  { id: 'canva', label: 'Mẫu Canva', icon: Layers3 },
   { id: 'text', label: 'Văn bản', icon: Type },
   { id: 'image', label: 'Hình ảnh', icon: ImageIcon },
   { id: 'data', label: 'Dữ liệu', icon: FileSpreadsheet },

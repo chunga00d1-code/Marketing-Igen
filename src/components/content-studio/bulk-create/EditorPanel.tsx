@@ -114,6 +114,9 @@ export interface EditorPanelProps {
   uploadedImages: BulkAsset[];
   uploadingAsset: boolean;
   onDeleteUploadedImage: (assetId: string) => void;
+  importingTemplate: boolean;
+  onImportTemplate: (file: File) => void;
+  onStartCanvaConnection: () => void;
 }
 
 export function EditorPanel(props: EditorPanelProps) {
@@ -152,6 +155,24 @@ export function EditorPanel(props: EditorPanelProps) {
       </div>
 
       <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
+        {activeTool === 'canva' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-500 text-base font-black text-white">C</span>
+                <div>
+                  <p className="text-sm font-extrabold text-slate-900">Mẫu Canva</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">Chọn design Canva đã hoàn thiện, nhập vào editor rồi map dữ liệu để render hàng loạt.</p>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-extrabold text-amber-900">Chưa kết nối Canva</p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">Cần cấu hình Canva Developer Integration trước khi có thể kết nối và lấy mẫu trực tiếp.</p>
+              <button type="button" onClick={props.onStartCanvaConnection} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700"><Globe2 className="h-4 w-4" /> Kết nối Canva</button>
+            </div>
+          </div>
+        )}
         {activeTool === 'background' && (
           <div className="space-y-4">
             <div className="rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2.5">
@@ -180,6 +201,36 @@ export function EditorPanel(props: EditorPanelProps) {
                 ))}
               </div>
             </div>
+
+            <label
+              className={`flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-4 text-center transition ${
+                props.importingTemplate
+                  ? 'cursor-wait border-indigo-400 bg-indigo-50'
+                  : 'border-violet-300 bg-violet-50/60 hover:border-violet-500 hover:bg-violet-50'
+              }`}
+            >
+              <Upload className={`mb-2 h-6 w-6 ${props.importingTemplate ? 'animate-bounce text-indigo-600' : 'text-violet-600'}`} />
+              <span className="text-sm font-extrabold text-slate-800">
+                {props.importingTemplate ? 'Đang chuyển mẫu thành template...' : 'Nhập mẫu thành template'}
+              </span>
+              <span className="mt-1 max-w-[240px] text-xs leading-relaxed text-slate-500">
+                PNG, JPG, WEBP hoặc PDF. Hệ thống tự nhận diện vùng nội dung để mở ngay trong editor.
+              </span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf"
+                className="hidden"
+                disabled={props.importingTemplate}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) props.onImportTemplate(file);
+                  event.currentTarget.value = '';
+                }}
+              />
+            </label>
+            <p className="-mt-2 text-[10px] leading-relaxed text-slate-400">
+              AI tạo bản nháp có thể chỉnh sửa; hãy kiểm tra preview trước khi render hàng loạt.
+            </p>
 
             <div className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">

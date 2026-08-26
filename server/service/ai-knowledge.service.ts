@@ -1097,28 +1097,29 @@ export const aiKnowledgeService = {
   }) {
     const normalizedCompanyCode = normalizeCompanyCode(input.companyCode);
     const ragContext = input.ragContext || {};
+    const trainingKnowledge = String(input.trainingKnowledge || "").trim().slice(0, 20000);
+    const ragText = String(ragContext.contextText || "").trim();
 
-    if (ragContext.contextText) {
+    if (ragText || trainingKnowledge) {
+      const contextParts = [
+        ragText,
+        trainingKnowledge
+          ? `[Chỉ dẫn và kịch bản riêng của tài khoản mạng xã hội]\n${trainingKnowledge}`
+          : "",
+      ].filter(Boolean);
+
       return {
-        contextText: ragContext.contextText,
+        contextText: contextParts.join("\n\n"),
         matches: ragContext.matches || 0,
         bestScore: ragContext.bestScore || 0,
         productCandidateNames: ragContext.productCandidateNames || [],
         shouldAskProductConfirmation: !!ragContext.shouldAskProductConfirmation,
         companyCode: normalizedCompanyCode,
-        source: "rag",
-      };
-    }
-
-    if (input.trainingKnowledge) {
-      return {
-        contextText: String(input.trainingKnowledge).slice(0, 4500),
-        matches: 0,
-        bestScore: 0,
-        productCandidateNames: [],
-        shouldAskProductConfirmation: false,
-        companyCode: normalizedCompanyCode,
-        source: "training_knowledge",
+        source: ragText && trainingKnowledge
+          ? "rag_with_training_knowledge"
+          : ragText
+            ? "rag"
+            : "training_knowledge",
       };
     }
 
