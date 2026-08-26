@@ -31,6 +31,46 @@ function getOAuthStateSecret() {
   return String(process.env.JWT_ACCESS_SECRET || "your_jwt_access_secret_key");
 }
 
+function canUseLocalTikTokMock() {
+  return process.env.NODE_ENV !== "production" && process.env.DISABLE_LOCAL_MOCKS !== "true";
+}
+
+function getLocalMockCreatorInfo(username = "mock_local_tiktok") {
+  return {
+    status: "success",
+    message: "TikTok local mock creator",
+    data: {
+      creatorAvatarUrl: "",
+      creatorNickname: "TikTok local mock",
+      creatorUsername: username,
+      privacyLevelOptions: [
+        "PUBLIC_TO_EVERYONE",
+        "MUTUAL_FOLLOW_FRIENDS",
+        "FOLLOWER_OF_CREATOR",
+        "SELF_ONLY",
+      ],
+      commentDisabled: false,
+      duetDisabled: false,
+      stitchDisabled: false,
+      maxVideoPostDurationSec: 600,
+    },
+  };
+}
+
+async function findLocalMockTikTokIntegration(integrationId?: string, companyCode?: string) {
+  if (!canUseLocalTikTokMock() || !integrationId) return null;
+
+  return SocialIntegrationModel.findOne({
+    _id: integrationId,
+    ...(companyCode ? { companyCode } : {}),
+    platform: "TikTok",
+    isConnected: true,
+    isMock: true,
+  })
+    .select("username")
+    .lean();
+}
+
 function encodeHtml(value: string) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -954,6 +994,24 @@ export const tiktokService = {
       userId = card.authorUid;
     }
 
+    const localMockIntegration = await findLocalMockTikTokIntegration(integrationId, companyCode);
+    if (localMockIntegration) {
+      const mockId = `local-mock-${Date.now().toString(36)}`;
+      console.log(`[TikTok Service] Local mock published card ${cardId}.`);
+      return {
+        status: "success",
+        message: "TikTok local mock published",
+        provider: "tiktok_local_mock",
+        data: {
+          publishId: `local-mock-publish-${mockId}`,
+          postId: mockId,
+          shareUrl: `http://localhost:3000/mock-tiktok/${mockId}`,
+          publishStatus: "PUBLISH_COMPLETE",
+          success: true,
+        },
+      };
+    }
+
     const credentials = await resolveDirectCredentials(integrationId, companyCode, accessToken, username, userId);
     const creatorInfo = await this.getCreatorInfo(credentials.accessToken);
     const availablePrivacy = creatorInfo.data.privacyLevelOptions || [];
@@ -1555,6 +1613,11 @@ export const tiktokService = {
     companyCode?: string;
     userId?: string;
   }) {
+    const localMockIntegration = await findLocalMockTikTokIntegration(params.integrationId, params.companyCode);
+    if (localMockIntegration) {
+      return getLocalMockCreatorInfo(localMockIntegration.username || "mock_local_tiktok");
+    }
+
     const credentials = await resolveDirectCredentials(
       params.integrationId,
       params.companyCode,

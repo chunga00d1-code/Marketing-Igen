@@ -3,6 +3,7 @@ export interface CampaignDriveImportFile {
   name: string;
   directUrl: string;
   isVideo: boolean;
+  isTikTokVideo?: boolean;
   isMedia?: boolean;
 }
 

@@ -21,6 +21,13 @@ export type MarketingCampaignSlotStatus =
   | "skipped"
   | "cancelled";
 
+export type MarketingCampaignSlotMediaSource =
+  | "drive"
+  | "ai"
+  | "upload"
+  | "production_order"
+  | "none";
+
 export interface IMarketingCampaignSlot extends Document {
   companyCode: string;
   campaignId: Types.ObjectId;
@@ -49,6 +56,7 @@ export interface IMarketingCampaignSlot extends Document {
   topicBrief: string;
   funnelStage?: "TOFU" | "MOFU" | "BOFU";
   mediaType: "text" | "image" | "video" | "human-video";
+  mediaSource?: MarketingCampaignSlotMediaSource;
   status: MarketingCampaignSlotStatus;
   attemptCount: number;
   lockId?: string;

@@ -36,7 +36,9 @@ const BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 // while it is in the campaign pipeline; only terminal slots are immutable.
 // This must match the bulk-AI eligibility query below.
 const READ_ONLY_SLOT_STATUSES = new Set(["published", "cancelled"]);
-const EDITABLE_CANONICAL_FIELDS = new Set(["pillar", "objective", "topicBrief", "funnelStage", "mediaType"]);
+const CONFIGURABLE_SLOT_STATUSES = new Set(["planned", "queued", "awaiting_assets", "retrying", "needs_attention", "failed"]);
+const EDITABLE_CANONICAL_FIELDS = new Set(["scheduledAt", "pillar", "objective", "topicBrief", "funnelStage", "platform", "mediaType", "mediaSource"]);
+
 
 const DEFAULT_COLUMNS: ICampaignSheetColumn[] = [
   systemColumn("scheduledAt", "Ngày đăng", "datetime", 0, false, 170),
@@ -52,6 +54,7 @@ const DEFAULT_COLUMNS: ICampaignSheetColumn[] = [
   systemColumn("hashtags", "Hashtag", "short_text", 10, true, 180, "constraint"),
   systemColumn("mediaType", "Media", "select", 11, false, 110, "constraint", ["text", "image", "video", "human-video"]),
   systemColumn("status", "Trạng thái", "short_text", 12, false, 140),
+  systemColumn("mediaSource", "Ngu\u1ed3n media", "select", 12, false, 150, "constraint", ["drive", "ai", "upload", "production_order", "none"]),
 ];
 
 const ORDER_INPUT_COLUMNS: ICampaignSheetColumn[] = [
@@ -189,6 +192,19 @@ function normalizeValue(column: ICampaignSheetColumn, value: unknown) {
   }
 }
 
+function parseCampaignScheduleValue(value: unknown, timezone: string) {
+  const match = String(value || "").trim().match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/);
+  if (!match) {
+    throw httpError("Schedule must use the YYYY-MM-DDTHH:mm format.", 400, "INVALID_SCHEDULE");
+  }
+  const [, date, time] = match;
+  try {
+    return { date, time, scheduledAt: zonedLocalTimeToUtc(date, time, timezone) };
+  } catch (error) {
+    throw httpError(error instanceof Error ? error.message : "Invalid campaign schedule.", 400, "INVALID_SCHEDULE");
+  }
+}
+
 function projectSystemValues(slot: any, content: any) {
   return {
     scheduledAt: slot.scheduledAt,
@@ -199,6 +215,7 @@ function projectSystemValues(slot: any, content: any) {
     objective: slot.objective || "",
     topicBrief: slot.topicBrief || "",
     mediaType: slot.mediaType || "",
+    mediaSource: slot.mediaSource || "",
     status: slot.status,
     title: content?.title || "",
     bodyText: content?.bodyText || slot.customBodyText || "",
@@ -233,9 +250,9 @@ async function getOrCreateConfig(companyCode: string, campaignId: string) {
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
   );
   const currentKeys = new Set((config.columns || []).map((column) => column.key));
-  const missingOrderColumns = ORDER_INPUT_COLUMNS.filter((column) => !currentKeys.has(column.key));
-  if (missingOrderColumns.length) {
-    config.columns.push(...missingOrderColumns);
+  const missingSystemColumns = [...DEFAULT_COLUMNS, ...ORDER_INPUT_COLUMNS].filter((column) => !currentKeys.has(column.key));
+  if (missingSystemColumns.length) {
+    config.columns.push(...missingSystemColumns);
     config.revision += 1;
     await config.save();
   }
@@ -408,6 +425,7 @@ export const campaignContentSheetService = {
     topicBrief: string;
     funnelStage?: "TOFU" | "MOFU" | "BOFU";
     mediaType: "text" | "image" | "video" | "human-video";
+    mediaSource?: "drive" | "ai" | "upload" | "production_order" | "none";
   }) {
     const campaign = await assertCampaign(companyCode, campaignId);
     if (["completed", "cancelled"].includes(campaign.status)) {
@@ -426,6 +444,8 @@ export const campaignContentSheetService = {
       scheduledAt,
     });
     if (duplicate) throw httpError("Đã có bài viết cùng nền tảng tại thời điểm này.", 409);
+    const resolvedMediaType = input.platform === "TikTok" && input.mediaType === "text" ? "video" : input.mediaType;
+    const resolvedMediaSource = resolvedMediaType === "text" ? "none" : input.mediaSource || (campaign.imageMode === "ai" ? "ai" : "drive");
     const slotId = new mongoose.Types.ObjectId();
     const slot = await MarketingCampaignSlotModel.create({
       _id: slotId,
@@ -446,7 +466,8 @@ export const campaignContentSheetService = {
       objective: input.objective,
       topicBrief: input.topicBrief,
       funnelStage: input.funnelStage || "MOFU",
-      mediaType: input.platform === "TikTok" && input.mediaType === "text" ? "video" : input.mediaType,
+      mediaType: resolvedMediaType,
+      mediaSource: resolvedMediaSource,
       status: "planned",
       attemptCount: 0,
       publishIdempotencyKey: `${campaignId}:${slotId}:${input.platform}`,
@@ -568,6 +589,70 @@ export const campaignContentSheetService = {
         });
       } else {
         throw httpError(`Cột ${column.label} hiện chỉ được xem.`, 400, "FIELD_READ_ONLY");
+      }
+    }
+
+    const hasScheduleChange = "scheduledAt" in canonicalUpdates;
+    const hasConfigurationChange = ["scheduledAt", "platform", "mediaType", "mediaSource"].some((key) => key in canonicalUpdates);
+    if (hasConfigurationChange) {
+      if (!CONFIGURABLE_SLOT_STATUSES.has(slot.status)) {
+        throw httpError("Slot configuration is locked after approval or publishing begins.", 409, "SLOT_CONFIGURATION_LOCKED");
+      }
+      const nextPlatform = String(canonicalUpdates.platform || slot.platform);
+      const nextMediaType = String(canonicalUpdates.mediaType || slot.mediaType);
+      const nextMediaSource = String(canonicalUpdates.mediaSource || slot.mediaSource || "drive");
+      const schedule = hasScheduleChange
+        ? parseCampaignScheduleValue(canonicalUpdates.scheduledAt, campaign.timezone)
+        : null;
+      const nextScheduledAt = schedule?.scheduledAt || slot.scheduledAt;
+      if (schedule && (schedule.date < campaign.startDate || schedule.date > campaign.endDate)) {
+        throw httpError("Schedule must stay within the campaign date range.", 400, "SCHEDULE_OUTSIDE_CAMPAIGN_RANGE");
+      }
+      if (nextPlatform !== "Facebook" && nextPlatform !== "TikTok") {
+        throw httpError("Invalid platform.", 400, "INVALID_PLATFORM");
+      }
+      if (!campaign.platforms.includes(nextPlatform as "Facebook" | "TikTok")) {
+        throw httpError("Platform is not enabled for this campaign.", 400, "PLATFORM_NOT_ENABLED");
+      }
+      if (nextPlatform === "TikTok" && !["video", "human-video"].includes(nextMediaType)) {
+        throw httpError("TikTok accepts video or human-video only.", 400, "TIKTOK_VIDEO_ONLY");
+      }
+      if (nextMediaType === "text" && nextMediaSource !== "none") {
+        throw httpError("Text-only posts must use media source none.", 400, "INVALID_MEDIA_SOURCE");
+      }
+      if (nextMediaType !== "text" && nextMediaSource === "none") {
+        throw httpError("Posts with media must select a valid media source.", 400, "INVALID_MEDIA_SOURCE");
+      }
+      if (hasScheduleChange || nextPlatform !== slot.platform) {
+        const duplicate = await MarketingCampaignSlotModel.exists({
+          companyCode,
+          campaignId,
+          _id: { $ne: slot._id },
+          platform: nextPlatform,
+          scheduledAt: nextScheduledAt,
+        });
+        if (duplicate) {
+          throw httpError("Another post is already scheduled for this platform at that time.", 409, "DUPLICATE_SLOT_SCHEDULE");
+        }
+      }
+      if (schedule) {
+        canonicalUpdates.scheduledAt = schedule.scheduledAt;
+        canonicalUpdates.prepareAt = resolveMonthlyPrepareAt({
+          campaignStartDate: campaign.startDate,
+          slotDate: schedule.date,
+          timezone: campaign.timezone,
+          campaignCreatedAt: campaign.createdAt,
+          leadDays: campaign.monthlyPreparationLeadDays || 10,
+        });
+        canonicalUpdates.verifyAt = new Date(schedule.scheduledAt.getTime() - campaign.verificationLeadMinutes * 60_000);
+      }
+      if (nextPlatform !== slot.platform) {
+        if (slot.marketingContentId) throw httpError("Cannot change platform after final content exists.", 409, "PLATFORM_CHANGE_REQUIRES_RESET");
+        canonicalUpdates.integrationId = campaign.integrationIds?.[nextPlatform as "Facebook" | "TikTok"] || null;
+        canonicalUpdates.publishIdempotencyKey = `${campaignId}:${slot._id}:${nextPlatform}`;
+        canonicalUpdates.tiktokPublishOptions = null;
+        canonicalUpdates.approvedBy = null;
+        canonicalUpdates.approvedAt = null;
       }
     }
 

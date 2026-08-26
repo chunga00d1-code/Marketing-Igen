@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, FolderOpen, X, Loader2, RotateCcw } from 'lucide-react';
-import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
+import { CalendarClock, FolderOpen, X, Loader2, Play, RotateCcw } from 'lucide-react';
+import { CampaignStatus, MarketingCampaignSummary, MarketingCampaignRequestError, type CampaignActivationIssue } from '../../services/marketingCampaignService';
+import { toast } from '../../pages/Toast';
 import { CampaignSlotsTable } from './CampaignSlotsTable';
 import { CampaignSlotDetail } from './CampaignSlotDetail';
 import { socketService } from '../../services/socketService';
 import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
 import CampaignDriveImportPanel from './CampaignDriveImportPanel';
+import CampaignContentSheet from './CampaignContentSheet';
 import { openContentStudio } from '../../utils/contentStudioNavigation';
 
 const DETAIL_LIST_ITEMS_PER_PAGE = 8;
@@ -99,6 +101,7 @@ interface CampaignDetailModalProps {
   slotStatusLabel: Record<string, string>;
   onRetrySlot?: (campaignId: string, slotId: string) => Promise<void>;
   onRetryAll?: (campaignId: string) => Promise<void>;
+  onActivate?: (campaignId: string) => Promise<void>;
   onRefresh?: () => Promise<void>;
   onUpdateSlot?: (slotId: string, updatedFields: Partial<CampaignSlot>) => void;
 }
@@ -152,10 +155,13 @@ export default function CampaignDetailModal({
   slotStatusLabel,
   onRetrySlot,
   onRetryAll,
+  onActivate,
   onRefresh,
   onUpdateSlot,
 }: CampaignDetailModalProps) {
   const [retryingAll, setRetryingAll] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [activationIssues, setActivationIssues] = useState<CampaignActivationIssue[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<CampaignSlot | null>(null);
   const [isBatchPreparing, setIsBatchPreparing] = useState(false);
   const [campaignResearchTab, setCampaignResearchTab] = useState<'summary' | 'evidence'>('summary');
@@ -268,6 +274,7 @@ export default function CampaignDetailModal({
   // Reset active slot when campaign changes
   useEffect(() => {
     setSelectedSlot(null);
+    setActivationIssues([]);
     setPublishedPage(1);
     setResearchEvidencePage(1);
   }, [campaignDetail?.campaign?._id]);
@@ -309,6 +316,12 @@ export default function CampaignDetailModal({
 
   const totalSlots = sortedSlots.length;
   const publishedSlots = sortedSlots.filter((s) => s.status === 'published').length;
+  const operationalIssues = sortedSlots
+    .filter((slot) => ['failed', 'needs_attention'].includes(slot.status))
+    .map((slot) => ({
+      slot,
+      message: slot.lastError?.message || slot.errorMessage || 'Worker không thể hoàn tất bài này. Mở bài để xem và xử lý chi tiết.',
+    }));
 
   const inProgressSlots = sortedSlots.filter((s) =>
     ['queued', 'generating', 'researching', 'writing', 'scoring', 'awaiting_assets', 'generating_media', 'verifying', 'pending_approval', 'ready_to_publish', 'publishing', 'retrying'].includes(s.status)
@@ -424,6 +437,35 @@ export default function CampaignDetailModal({
             </div>
           ) : campaignDetail ? (
             <>
+              {activationIssues.length > 0 && (
+                <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">
+                  <p className="font-extrabold">Chưa thể khởi chạy chiến dịch. Hãy xử lý các mục sau:</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 leading-relaxed">
+                    {activationIssues.map((issue, index) => <li key={`${issue.code}-${issue.slotId || index}`}>{issue.message}</li>)}
+                  </ul>
+                </div>
+              )}
+              {operationalIssues.length > 0 && (
+                <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
+                  <p className="font-extrabold">Có {operationalIssues.length} bài cần xử lý trước khi có thể đăng:</p>
+                  <div className="mt-2 space-y-2">
+                    {operationalIssues.map(({ slot, message }) => (
+                      <button
+                        key={slot._id}
+                        type="button"
+                        onClick={() => {
+                          setActiveMainTab('content_calendar');
+                          setSelectedSlot(slot);
+                        }}
+                        className="block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-left hover:bg-amber-100"
+                      >
+                        <span className="font-bold">{slot.platform || 'Kênh đăng'} · {slot.topicBrief}</span>
+                        <span className="mt-1 block leading-relaxed text-amber-800">{message}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {/* TAB 1: LINK THEO DÕI BÀI ĐĂNG FB */}
               {activeMainTab === 'published_links' && (
                 <div className="space-y-4">
@@ -825,13 +867,28 @@ export default function CampaignDetailModal({
 
               {/* TAB 5: CONTENT CALENDAR (BẢNG LỊCH BÀI ĐĂNG + MODAL CHI TIẾT SỬA BÀI) */}
               {activeMainTab === 'content_calendar' && (
-                <div className="flex flex-col gap-6 lg:flex-row">
+                campaignDetail.campaign.status === 'draft' ? (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-xs font-extrabold text-amber-900">Bước duyệt cuối trước khi khởi chạy</p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
+                        Kiểm tra và chỉnh từng bài: thời gian đăng, nền tảng, tài khoản, chủ đề và loại media. Worker chưa chạy khi chiến dịch còn là bản nháp.
+                      </p>
+                    </div>
+                    <CampaignContentSheet campaignId={campaignDetail.campaign._id} />
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-6 lg:flex-row">
                     {/* Left Column: Slots Table */}
                     <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
                       <CampaignDriveImportPanel
                         campaignId={campaignDetail.campaign._id}
-                        mediaKind={campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
-                        allowBulkCreate={campaignDetail.campaign.status === 'active' && campaignDetail.campaign.platforms.includes('Facebook')}
+                        mediaKind={campaignDetail.campaign.platforms.length > 1
+                          ? 'mixed'
+                          : campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
+                        allowBulkCreate={campaignDetail.campaign.status === 'active'
+                          && campaignDetail.campaign.platforms.includes('Facebook')
+                          && !campaignDetail.campaign.platforms.includes('TikTok')}
                         awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
                         onCreateBulk={() => openContentStudio({
                           tab: 'template',
@@ -893,7 +950,8 @@ export default function CampaignDetailModal({
                         onCloseDetail={() => setSelectedSlot(null)}
                       />
                     )}
-                </div>
+                  </div>
+                )
               )}
 
               {activeMainTab === 'asset_orders' && (
@@ -911,6 +969,9 @@ export default function CampaignDetailModal({
         {/* Modal Footer */}
         <div className="border-t border-slate-150 px-6 py-4 flex items-center justify-between bg-slate-50/50">
           <div>
+            {campaignDetail?.campaign?.status === 'draft' && (
+              <span className="text-xs font-semibold text-amber-700">Chưa có worker hoặc lịch đăng nào được kích hoạt.</span>
+            )}
             {onRetryAll && campaignDetail?.campaign?.status === 'active' && sortedSlots.some(s => s.status === 'needs_attention' || s.status === 'failed') && (
               <button
                 type="button"
@@ -930,13 +991,41 @@ export default function CampaignDetailModal({
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition active:scale-98 cursor-pointer"
-          >
-            Đóng
-          </button>
+          <div className="flex items-center gap-2">
+            {onActivate && campaignDetail?.campaign?.status === 'draft' && (
+              <button
+                type="button"
+                disabled={activating || loadingDetail}
+                onClick={async () => {
+                  setActivating(true);
+                  try {
+                    await onActivate(campaignDetail.campaign._id);
+                    setActivationIssues([]);
+                  } catch (error: unknown) {
+                    const issues = error instanceof MarketingCampaignRequestError ? error.issues : [];
+                    setActivationIssues(issues.length > 0 ? issues : [{
+                      code: 'ACTIVATION_FAILED',
+                      message: error instanceof Error ? error.message : 'Không thể khởi chạy chiến dịch.',
+                    }]);
+                    toast.error('Chưa thể khởi chạy. Xem các lỗi cần xử lý trong chiến dịch.');
+                  } finally {
+                    setActivating(false);
+                  }
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-xs font-extrabold text-white shadow-xs transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {activating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                Xác nhận & khởi chạy
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition active:scale-98 cursor-pointer"
+            >
+              Đóng
+            </button>
+          </div>
         </div>
 
       </div>
