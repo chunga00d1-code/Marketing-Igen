@@ -9,6 +9,8 @@ import { walletService, API_COSTS } from "../service/wallet.service";
 import { AIMediaModel } from "../model/ai-media.model";
 import { broadcastEvent } from "../socket";
 import * as XLSX from "xlsx";
+import AdmZip from "adm-zip";
+import { PDFParse } from "pdf-parse";
 import { openrouterChat } from "../service/openrouter.service";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
@@ -330,8 +332,46 @@ async function fetchDirectDriveFile(fileId: string): Promise<{ buffer: Buffer; c
   return { buffer, contentType };
 }
 
+function extractDocxText(buffer: Buffer): string {
+  try {
+    const zip = new AdmZip(buffer);
+    const xmlEntry = zip.getEntry("word/document.xml");
+    if (!xmlEntry) return "";
+    const xmlContent = zip.readAsText(xmlEntry);
+    const text = xmlContent
+      .replace(/<w:p(?: [^>]*)?>/gi, "\n")
+      .replace(/<w:tab\/>/gi, "\t")
+      .replace(/<w:br\/>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return text;
+  } catch (err) {
+    console.warn("[geminiController.extractDocxText] Error parsing docx:", err);
+    return "";
+  }
+}
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  try {
+    const parser = new PDFParse(buffer as any);
+    const result = await parser.getText();
+    return String(result?.text || "").trim();
+  } catch (err) {
+    console.warn("[geminiController.extractPdfText] Error parsing pdf:", err);
+    return "";
+  }
+}
+
 async function parseUploadedDocument(base64Data: string, mimeType: string, fileName: string): Promise<string> {
   const normMime = mimeType.toLowerCase();
+  const buffer = Buffer.from(base64Data, "base64");
 
   // 1. Text files (.txt, .md, .csv)
   if (
@@ -354,20 +394,36 @@ async function parseUploadedDocument(base64Data: string, mimeType: string, fileN
     fileName.endsWith(".csv");
 
   if (isSpreadsheet) {
-    const buffer = Buffer.from(base64Data, "base64");
     const workbookText = extractWorkbookText(buffer);
     if (workbookText) {
       return workbookText;
     }
   }
 
-  // 3. PDFs, DOCX, PPTX using Gemini
-  const isPdf = normMime.includes("pdf") || fileName.endsWith(".pdf");
+  // 3. Word Documents (.docx, .doc)
   const isDocx =
     normMime.includes("wordprocessingml") ||
     normMime.includes("msword") ||
     fileName.endsWith(".docx") ||
     fileName.endsWith(".doc");
+
+  if (isDocx) {
+    const docxText = extractDocxText(buffer);
+    if (docxText && docxText.length > 0) {
+      return docxText;
+    }
+  }
+
+  // 4. PDFs (.pdf)
+  const isPdf = normMime.includes("pdf") || fileName.endsWith(".pdf");
+  if (isPdf) {
+    const pdfText = await extractPdfText(buffer);
+    if (pdfText && pdfText.length > 20) {
+      return pdfText;
+    }
+  }
+
+  // 5. Vision AI OCR for scanned PDFs, Images, or PPTX
   const isPptx =
     normMime.includes("presentationml") ||
     normMime.includes("powerpoint") ||
@@ -377,7 +433,7 @@ async function parseUploadedDocument(base64Data: string, mimeType: string, fileN
     normMime.startsWith("image/") ||
     /\.(png|jpe?g|webp)$/i.test(fileName);
 
-  if (isPdf || isDocx || isPptx || isImage) {
+  if (isPdf || isImage || isPptx) {
     if (!process.env.OPENROUTER_API_KEY) {
       throw new Error("OPENROUTER_API_KEY is not configured");
     }

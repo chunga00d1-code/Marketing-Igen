@@ -331,14 +331,6 @@ function tokenize(text: string) {
     .filter((token) => token.length >= 2);
 }
 
-function tokenizeRaw(text: string) {
-  return normalizeText(text)
-    .toLowerCase()
-    .replace(/[^a-z0-9\sàáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/gi, " ")
-    .split(/\s+/)
-    .filter((token) => token.length >= 2);
-}
-
 function normalizeForLookup(text: string) {
   return normalizeText(text)
     .toLowerCase()
@@ -428,6 +420,25 @@ function extractProductCandidateNames(queryTokens: string[], rankedItems: Array<
   });
 }
 
+function computeExactPhraseScore(query: string, title: string, text: string): number {
+  const normQ = normalizeForLookup(query);
+  if (!normQ || normQ.length < 3) return 0;
+  const haystack = `${normalizeForLookup(title)} ${normalizeForLookup(text)}`;
+  if (haystack.includes(normQ)) {
+    return 0.6;
+  }
+  const words = normQ.split(" ").filter((w) => !CANDIDATE_STOPWORDS.has(w));
+  if (words.length >= 2) {
+    for (let i = 0; i <= words.length - 2; i++) {
+      const phrase = words.slice(i, i + 2).join(" ");
+      if (phrase.length >= 5 && haystack.includes(phrase)) {
+        return 0.35;
+      }
+    }
+  }
+  return 0;
+}
+
 function buildRankedContextItems(params: {
   chunks: any[];
   documentMap: Map<string, any>;
@@ -435,8 +446,9 @@ function buildRankedContextItems(params: {
   queryVector: number[];
   queryTokens: string[];
   pageId?: string;
+  detectedDocumentTypes?: KnowledgeDocumentType[];
 }) {
-  const { chunks, documentMap, normalizedQuery, queryVector, queryTokens, pageId } = params;
+  const { chunks, documentMap, normalizedQuery, queryVector, queryTokens, pageId, detectedDocumentTypes } = params;
 
   return chunks.map((chunk) => {
     const doc = documentMap.get(String(chunk.documentId));
@@ -447,13 +459,18 @@ function buildRankedContextItems(params: {
     const lexicalScore = computeTokenOverlapScore(queryTokens, [...titleTokens, ...bodyTokens]);
     const titleBoost = computeTokenOverlapScore(queryTokens, titleTokens);
     const looseMatchScore = computeLooseSubstringScore(queryTokens, title, chunk.text);
+    const exactPhraseScore = computeExactPhraseScore(normalizedQuery, title, chunk.text);
+
+    const docType = (doc?.documentType as KnowledgeDocumentType) || "general";
+    const categoryBoost = detectedDocumentTypes?.includes(docType) ? 0.35 : 0;
+
     const productDocBoost =
-      isProductSearchQuery(normalizedQuery) && /san pham|danh sach|catalog|bang gia|bao gia|sku|model|gia/i.test(title)
+      isProductSearchQuery(normalizedQuery) && /san pham|danh sach|catalog|bang gia|bao gia|sku|model|gia|khoa hoc/i.test(title)
         ? 0.25
         : 0;
     const pricingBoost =
-      /\b(gia|bao nhieu|bang gia|bao gia)\b/.test(normalizeForLookup(normalizedQuery)) &&
-        /\b(gia|gia ban|don gia|bao gia|price|vnd|vnđ)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
+      /\b(gia|bao nhieu|bang gia|bao gia|phi|hoc phi|chi phi)\b/.test(normalizeForLookup(normalizedQuery)) &&
+        /\b(gia|gia ban|don gia|bao gia|price|vnd|vnđ|hoc phi|chi phi|phi)\b/.test(normalizeForLookup(`${title} ${chunk.text}`))
         ? 0.35
         : 0;
     const companyProfileBoost =
@@ -472,12 +489,13 @@ function buildRankedContextItems(params: {
         : 0;
     const score =
       semanticScore + lexicalScore * 0.9 + titleBoost * 0.6 + looseMatchScore * 0.7 +
+      exactPhraseScore + categoryBoost +
       productDocBoost + pricingBoost + companyProfileBoost + promotionBoost + pageBoost;
 
     return {
       chunkId: chunk._id,
       documentId: chunk.documentId,
-      documentType: (doc?.documentType as KnowledgeDocumentType) || "general",
+      documentType: docType,
       version: chunk.version,
       embedding: chunk.embedding,
       text: chunk.text,
@@ -865,7 +883,6 @@ export const aiKnowledgeService = {
     const queryVector = embedText(expandedQuery);
     const rawQueryTokens = tokenize(expandedQuery);
     const queryTokens = rawQueryTokens.filter((token) => !CANDIDATE_STOPWORDS.has(token));
-    const accentedTokens = tokenizeRaw(expandedQuery).filter((token) => !CANDIDATE_STOPWORDS.has(normalizeForLookup(token)));
     const channel = params.channel || "facebook";
     const purpose = params.purpose || "sales";
 
@@ -880,30 +897,20 @@ export const aiKnowledgeService = {
 
     let chunks: any[] = [];
 
-    // Luôn luôn tìm kiếm ngữ cảnh tài liệu RAG trong mọi trường hợp (kể cả câu hỏi về sản phẩm)
-    // INTENT ROUTER: Tự động phân tích câu hỏi để định tuyến nhóm tài liệu phù hợp nếu caller không chỉ định
-    let effectiveDocumentTypes = params.documentTypes;
-    if (!effectiveDocumentTypes?.length) {
-      const detectedTypes = detectRequiredDocumentTypes(params.query);
-      if (detectedTypes.length > 0) {
-        effectiveDocumentTypes = detectedTypes;
-      }
-    }
+    // INTENT ROUTER: Tự động phân tích câu hỏi để xác định danh mục ưu tiên (để boost điểm xếp hạng)
+    const detectedDocumentTypes = detectRequiredDocumentTypes(params.query);
 
     let permittedDocumentIds: mongoose.Types.ObjectId[] | undefined;
-    if (effectiveDocumentTypes?.length) {
+    if (params.documentTypes && params.documentTypes.length > 0) {
+      // Chỉ khi caller chỉ định rõ ràng documentTypes thì mới filter theo danh mục được chỉ định + general
+      const explicitTypes = Array.from(new Set([...params.documentTypes, "general"])) as KnowledgeDocumentType[];
       const permittedDocuments = await AIKnowledgeDocumentModel.find({
         companyCode,
-        documentType: { $in: effectiveDocumentTypes },
+        documentType: { $in: explicitTypes },
         status: "active",
       }).select("_id").lean();
-      permittedDocumentIds = permittedDocuments.map((document) => document._id);
-
-      // Safety net: Nếu doanh nghiệp chưa có tài liệu thuộc các tag được phát hiện,
-      // tự động bỏ filter để fallback tìm kiếm trên toàn bộ kho tri thức
-      if (permittedDocumentIds.length === 0) {
-        permittedDocumentIds = undefined;
-        effectiveDocumentTypes = undefined;
+      if (permittedDocuments.length > 0) {
+        permittedDocumentIds = permittedDocuments.map((document) => document._id);
       }
     }
 
@@ -936,59 +943,11 @@ export const aiKnowledgeService = {
       filter.documentId = { $in: permittedDocumentIds };
     }
 
-    // Xây dựng điều kiện Regex tìm kiếm linh hoạt hỗ trợ tiếng Việt có dấu và không dấu
-    const searchTerms = Array.from(new Set([...queryTokens, ...accentedTokens]));
-    if (searchTerms.length > 0) {
-      const regexConditions: any[] = [];
-      for (const term of searchTerms.slice(0, 10)) {
-        const pattern = buildDiacriticRegexPattern(term);
-        if (pattern) {
-          regexConditions.push({ text: { $regex: pattern, $options: "i" } });
-        }
-      }
-      if (regexConditions.length > 0) {
-        filter.$or = regexConditions;
-      }
-    }
-
+    // Lấy toàn bộ chunk của doanh nghiệp trong phạm vi kênh/mục đích để chạy thuật toán xếp hạng ngữ nghĩa lai
     chunks = await AIKnowledgeChunkModel.find(filter as any)
       .sort({ updatedAt: -1 })
       .limit(MAX_CHUNKS_TO_RANK)
       .lean();
-
-    if (chunks.length === 0 && searchTerms.length > 0) {
-      const fallbackFilter = {
-        companyCode,
-        channelScope: { $in: ["all", channel] },
-        $and: [
-          {
-            $or: [
-              { purposeScope: { $in: purposeFilterValues } },
-              { purposeScope: { $exists: false } },
-            ],
-          },
-          {
-            $or: params.pageId
-              ? [
-                  { pageScope: "selected", pageIds: params.pageId },
-                  { pageScope: "all" },
-                  { pageScope: { $exists: false } },
-                ]
-              : [
-                  { pageScope: "all" },
-                  { pageScope: { $exists: false } },
-                ],
-          },
-        ],
-      };
-      if (permittedDocumentIds) {
-        (fallbackFilter as any).documentId = { $in: permittedDocumentIds };
-      }
-      chunks = await AIKnowledgeChunkModel.find(fallbackFilter as any)
-        .sort({ updatedAt: -1 })
-        .limit(MAX_CHUNKS_TO_RANK)
-        .lean();
-    }
 
     const documentIds = Array.from(new Set(chunks.map((chunk) => String(chunk.documentId))));
     const documents = await AIKnowledgeDocumentModel.find({
@@ -1005,8 +964,9 @@ export const aiKnowledgeService = {
       queryVector,
       queryTokens,
       pageId: params.pageId,
+      detectedDocumentTypes,
     })
-      .filter((item) => item.score > 0.08)
+      .filter((item) => item.score > 0.05)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
 
@@ -1019,8 +979,9 @@ export const aiKnowledgeService = {
             queryVector,
             queryTokens,
             pageId: params.pageId,
+            detectedDocumentTypes,
           })
-            .filter((item) => item.score > 0.03)
+            .filter((item) => item.score > 0.02)
             .sort((a, b) => b.score - a.score)
             .slice(0, topK)
         : [];

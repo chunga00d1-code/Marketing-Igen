@@ -2,6 +2,22 @@ import { getAccessToken } from './authService';
 
 export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed' | 'cancelled' | 'failed';
 
+export type CampaignActivationIssue = {
+  code: string;
+  message: string;
+  slotId?: string;
+};
+
+export class MarketingCampaignRequestError extends Error {
+  readonly issues: CampaignActivationIssue[];
+
+  constructor(message: string, issues?: CampaignActivationIssue[]) {
+    super(message);
+    this.name = 'MarketingCampaignRequestError';
+    this.issues = issues || [];
+  }
+}
+
 export type TikTokCampaignPublishOptions = {
   caption: string;
   privacyLevel: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY';
@@ -522,7 +538,17 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw error;
   }
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.message || 'Không thể xử lý chiến dịch.');
+  if (!response.ok) {
+    const issues = Array.isArray(result.issues)
+      ? result.issues.filter((issue: unknown): issue is CampaignActivationIssue => (
+        Boolean(issue)
+        && typeof issue === 'object'
+        && typeof (issue as CampaignActivationIssue).code === 'string'
+        && typeof (issue as CampaignActivationIssue).message === 'string'
+      ))
+      : undefined;
+    throw new MarketingCampaignRequestError(result.message || 'Không thể xử lý chiến dịch.', issues);
+  }
   return result.data as T;
 }
 
@@ -575,6 +601,13 @@ export const marketingCampaignService = {
 
   detail(id: string) {
     return request<{ campaign: MarketingCampaignSummary; slots: unknown[] }>(`/api/v1/marketing-campaigns/${id}`);
+  },
+
+  activate(id: string) {
+    return request<{
+      campaign: MarketingCampaignSummary;
+      preparation: { enqueued: number; deferred: number };
+    }>(`/api/v1/marketing-campaigns/${id}/activate`, { method: 'POST' });
   },
 
   lifecycle(id: string, action: 'pause' | 'resume' | 'cancel') {
@@ -964,6 +997,7 @@ export const marketingCampaignService = {
     topicBrief: string;
     funnelStage?: 'TOFU' | 'MOFU' | 'BOFU';
     mediaType: 'text' | 'image' | 'video' | 'human-video';
+    mediaSource?: 'drive' | 'ai' | 'upload' | 'production_order' | 'none';
   }) {
     return request<CampaignSlot>(`/api/v1/marketing-campaigns/${campaignId}/sheet/rows`, {
       method: 'POST',

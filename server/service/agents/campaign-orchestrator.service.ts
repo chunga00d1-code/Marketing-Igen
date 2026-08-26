@@ -105,6 +105,14 @@ async function ingestRealMedia(
   return ingestedMedia.map((item) => item.url);
 }
 
+function resolveSlotMediaSource(
+  slot: InstanceType<typeof MarketingCampaignSlotModel>,
+  campaign: InstanceType<typeof MarketingCampaignModel>
+) {
+  if (slot.mediaSource) return slot.mediaSource;
+  return campaign.imageMode === "ai" ? "ai" : "drive";
+}
+
 async function billCampaignOperation(
   campaign: InstanceType<typeof MarketingCampaignModel>,
   slot: InstanceType<typeof MarketingCampaignSlotModel>,
@@ -479,9 +487,11 @@ export class CampaignOrchestratorService {
       }
 
       // Calculate next status
+      const mediaSource = resolveSlotMediaSource(slot, campaign);
+      const requiresManualApproval = slot.platform === "TikTok" || campaign.publishMode !== "auto";
       const nextStatus = slot.mediaType === "text"
-        ? (campaign.publishMode === "auto" ? "verifying" : "pending_approval")
-        : campaign.imageMode === "order" && !(slot.realImageDirectUrls || []).some(Boolean)
+        ? (requiresManualApproval ? "pending_approval" : "verifying")
+        : mediaSource !== "ai" && !(slot.realImageDirectUrls || []).some(Boolean)
           ? "awaiting_assets"
           : "generating_media";
 
@@ -598,9 +608,11 @@ export class CampaignOrchestratorService {
     heartbeat.unref?.();
 
     try {
-      const nextStatus = campaign.publishMode === "auto" ? "verifying" : "pending_approval";
+      const nextStatus = slot.platform === "TikTok" || campaign.publishMode !== "auto"
+        ? "pending_approval"
+        : "verifying";
 
-      if (campaign.imageMode === "real" || campaign.imageMode === "order") {
+      if (resolveSlotMediaSource(slot, campaign) !== "ai") {
         await ingestRealMedia(slot, campaign);
         const content = await MarketingContentModel.findOne({
           _id: slot.marketingContentId,

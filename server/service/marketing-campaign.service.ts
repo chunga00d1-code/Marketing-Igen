@@ -14,6 +14,7 @@ import { CampaignOrchestratorService } from "./agents/campaign-orchestrator.serv
 import { scanAndEnqueueDueSlots } from "./campaign-scheduler.service";
 import { API_COSTS } from "./wallet.service";
 import { listGoogleDriveFolderFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
+import { assertCampaignDraftCanActivate } from "./marketing-campaign-activation.service";
 
 interface CreateCampaignInput {
   sourceBrief: string;
@@ -157,9 +158,36 @@ async function ensureLocalMockFacebookPage(companyCode: string, createdBy: strin
   return String(integration._id);
 }
 
+async function ensureLocalMockTikTokAccount(companyCode: string, createdBy: string) {
+  const existing = await SocialIntegrationModel.findOne({
+    companyCode,
+    platform: "TikTok",
+    isConnected: true,
+    isMock: true,
+  })
+    .select("_id")
+    .lean();
+  if (existing) return String(existing._id);
+
+  const suffix = companyCode.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "local";
+  const integration = await SocialIntegrationModel.create({
+    companyCode,
+    platform: "TikTok",
+    displayName: "TikTok local mock",
+    username: `mock_local_tiktok_${suffix}`,
+    accessToken: `mock_local_tiktok_token_${randomUUID()}`,
+    isConnected: true,
+    isMock: true,
+    createdBy,
+  });
+  console.log(`[Marketing Campaign] Local TikTok mock created. company=${companyCode}`);
+  return String(integration._id);
+}
+
 export const marketingCampaignService = {
   async create(companyCode: string, createdBy: string, input: CreateCampaignInput) {
-    const requiresTikTokVideo = input.platforms.includes("TikTok");
+    const activateImmediately = input.campaignType === "single" && input.publishNow === true;
+    const requiresTikTokVideo = input.platforms.length === 1 && input.platforms[0] === "TikTok";
     const initialVideoUrl = input.initialVideoUrl?.trim() || "";
     if (requiresTikTokVideo && (
       input.mediaPolicy !== "video"
@@ -200,7 +228,7 @@ export const marketingCampaignService = {
     });
 
     const minLeadTimeMs = 15 * 60 * 1000;
-    if (!input.publishNow) {
+    if (!activateImmediately) {
       const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
       if (failingSlot) {
         const formatZonedTime = (date: Date) => {
@@ -231,6 +259,13 @@ export const marketingCampaignService = {
       && !integrationIds.Facebook
     ) {
       integrationIds.Facebook = await ensureLocalMockFacebookPage(companyCode, createdBy);
+    }
+    if (
+      canUseLocalMockFacebookPage()
+      && input.platforms.includes("TikTok")
+      && !integrationIds.TikTok
+    ) {
+      integrationIds.TikTok = await ensureLocalMockTikTokAccount(companyCode, createdBy);
     }
     await validateIntegrations(companyCode, input.platforms, integrationIds);
 
@@ -316,7 +351,7 @@ export const marketingCampaignService = {
       sourceBrief: input.sourceBrief,
       campaignType: input.campaignType || "campaign",
       researchReport,
-      status: "active",
+      status: activateImmediately ? "active" : "draft",
       timezone,
       startDate: input.startDate,
       endDate: input.endDate,
@@ -349,6 +384,7 @@ export const marketingCampaignService = {
       const slots = await MarketingCampaignSlotModel.insertMany(schedule.map((scheduledSlot, index) => {
         const brief = strategy.slots[index];
         const integrationId = integrationIds[scheduledSlot.platform];
+        const slotId = new mongoose.Types.ObjectId();
 
         // Map funnel stage according to schedule timeline progress ratio
         // Week 1 (0% - 25%): TOFU | Week 2-3 (25% - 75%): MOFU | Week 4 (75% - 100%): BOFU
@@ -363,11 +399,15 @@ export const marketingCampaignService = {
         // Try to assign matching angle if available
         const matchingAngle = allAngles.find((a) => a.funnel === funnelStage);
 
-        const isPastOrImmediate = input.publishNow || scheduledSlot.scheduledAt.getTime() <= Date.now();
+        const isPastOrImmediate = activateImmediately || scheduledSlot.scheduledAt.getTime() <= Date.now();
         const finalScheduledAt = isPastOrImmediate ? new Date() : scheduledSlot.scheduledAt;
         const finalPrepareAt = isPastOrImmediate ? new Date() : scheduledSlot.prepareAt;
+        const mediaType = scheduledSlot.platform === "TikTok" && !["video", "human-video"].includes(brief.mediaType)
+          ? "video" as const
+          : brief.mediaType;
 
         return {
+          _id: slotId,
           companyCode,
           campaignId: campaign._id,
           scheduledAt: finalScheduledAt,
@@ -379,27 +419,34 @@ export const marketingCampaignService = {
           objective: brief.objective,
           topicBrief: matchingAngle ? `${matchingAngle.title} — ${brief.topicBrief}` : brief.topicBrief,
           funnelStage,
-          mediaType: brief.mediaType,
+          mediaType,
+          mediaSource: initialVideoUrl && scheduledSlot.platform === "TikTok" ? "upload" : (imageMode === "ai" ? "ai" : "drive"),
           realImageDirectUrls: initialVideoUrl && scheduledSlot.platform === "TikTok" ? [initialVideoUrl] : [],
           status: "planned",
           attemptCount: 0,
-          publishIdempotencyKey: `${campaign._id}:${index}:${scheduledSlot.platform}`,
-          transitions: [{ to: "planned", reason: input.publishNow ? "Campaign activated (Publish Now mode)" : "Campaign activated", at: new Date() }],
+          publishIdempotencyKey: `${campaign._id}:${slotId}:${scheduledSlot.platform}`,
+          transitions: [{
+            to: "planned",
+            reason: activateImmediately ? "Campaign activated (Publish Now mode)" : "Campaign draft created for setup review",
+            at: new Date(),
+          }],
         };
       }));
 
       let preparation = { enqueued: 0, deferred: 0 };
-      try {
-        const initialBatch = await scanAndEnqueueDueSlots({
-          campaignId: String(campaign._id),
-          limit: Math.min(schedule.length, 100),
-        });
-        preparation = {
-          enqueued: initialBatch.enqueued,
-          deferred: initialBatch.deferred,
-        };
-      } catch (error) {
-        console.error("[Marketing Campaign] Unable to enqueue the initial monthly batch:", error);
+      if (activateImmediately) {
+        try {
+          const initialBatch = await scanAndEnqueueDueSlots({
+            campaignId: String(campaign._id),
+            limit: Math.min(schedule.length, 100),
+          });
+          preparation = {
+            enqueued: initialBatch.enqueued,
+            deferred: initialBatch.deferred,
+          };
+        } catch (error) {
+          console.error("[Marketing Campaign] Unable to enqueue the initial monthly batch:", error);
+        }
       }
 
       return { campaign, slots, preparation };
@@ -500,13 +547,13 @@ export const marketingCampaignService = {
       companyCode,
       _id: { $in: campaignIds },
     })
-      .select("title campaignType")
+      .select("title campaignType status")
       .lean();
     const campaignById = new Map(campaigns.map((campaign) => [String(campaign._id), campaign]));
 
     return {
       timezone,
-      slots: slots.map((slot) => {
+      slots: slots.filter((slot) => campaignById.get(String(slot.campaignId))?.status !== "draft").map((slot) => {
         const campaign = campaignById.get(String(slot.campaignId));
         return {
           _id: String(slot._id),
@@ -621,6 +668,67 @@ export const marketingCampaignService = {
       );
     }
     return campaign;
+  },
+
+  async activate(companyCode: string, campaignId: string) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) throw new Error("ID chiến dịch không hợp lệ.");
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode, status: "draft" });
+    if (!campaign) throw new Error("Chỉ bản nháp mới có thể được xác nhận khởi chạy.");
+
+    const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode })
+      .select("_id status scheduledAt platform mediaType")
+      .lean();
+    assertCampaignDraftCanActivate({
+      slots,
+      enabledPlatforms: campaign.platforms,
+      timezone: campaign.timezone,
+    });
+
+    await validateIntegrations(
+      companyCode,
+      campaign.platforms,
+      Object.fromEntries(
+        campaign.platforms.map((platform) => [platform, campaign.integrationIds?.[platform]?.toString() || ""])
+      )
+    );
+
+    const activatedAt = new Date();
+    const activatedCampaign = await MarketingCampaignModel.findOneAndUpdate(
+      { _id: campaignId, companyCode, status: "draft" },
+      { $set: { status: "active" } },
+      { new: true }
+    );
+    if (!activatedCampaign) throw new Error("Bản nháp đã được cập nhật ở nơi khác. Vui lòng tải lại.");
+
+    await MarketingCampaignSlotModel.updateMany(
+      { campaignId, companyCode, status: "planned" },
+      {
+        $push: {
+          transitions: {
+            from: "planned",
+            to: "planned",
+            reason: "Campaign activated after setup review",
+            at: activatedAt,
+          },
+        },
+      }
+    );
+
+    let preparation = { enqueued: 0, deferred: 0 };
+    try {
+      const initialBatch = await scanAndEnqueueDueSlots({
+        campaignId,
+        limit: Math.min(slots.length, 100),
+      });
+      preparation = {
+        enqueued: initialBatch.enqueued,
+        deferred: initialBatch.deferred,
+      };
+    } catch (error) {
+      console.error("[Marketing Campaign] Unable to enqueue campaign after setup approval:", error);
+    }
+
+    return { campaign: activatedCampaign, preparation };
   },
 
   async retrySlot(companyCode: string, campaignId: string, slotId: string) {

@@ -10,7 +10,7 @@ import { toast } from '../../pages/Toast';
 
 interface CampaignDriveImportPanelProps {
   campaignId: string;
-  mediaKind: 'image' | 'video';
+  mediaKind: 'image' | 'video' | 'mixed';
   allowBulkCreate?: boolean;
   awaitingAssetCount?: number;
   onCreateBulk?: () => void;
@@ -37,7 +37,8 @@ export default function CampaignDriveImportPanel({
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkApplying, setBulkApplying] = useState(false);
   const isVideo = mediaKind === 'video';
-  const bulkEnabled = allowBulkCreate ?? !isVideo;
+  const isMixed = mediaKind === 'mixed';
+  const bulkEnabled = allowBulkCreate ?? (!isVideo && !isMixed);
   const selectedBulkJob = bulkJobs.find((job) => job._id === selectedBulkJobId);
   const selectedBulkJobIsComplete = selectedBulkJob
     ? ['completed', 'partial'].includes(selectedBulkJob.status)

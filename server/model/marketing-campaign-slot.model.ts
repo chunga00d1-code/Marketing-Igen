@@ -32,6 +32,12 @@ const MarketingCampaignSlotSchema = new Schema<IMarketingCampaignSlot>(
     topicBrief: { type: String, required: true },
     funnelStage: { type: String, enum: ["TOFU", "MOFU", "BOFU"], default: "MOFU", index: true },
     mediaType: { type: String, enum: ["text", "image", "video", "human-video"], required: true },
+    mediaSource: {
+      type: String,
+      enum: ["drive", "ai", "upload", "production_order", "none"],
+      default: "drive",
+      index: true,
+    },
     status: {
       type: String,
       enum: ["planned", "queued", "generating", "researching", "writing", "scoring", "awaiting_assets", "generating_media", "verifying", "pending_approval", "ready_to_publish", "publishing", "published", "retrying", "needs_attention", "failed", "skipped", "cancelled"],
