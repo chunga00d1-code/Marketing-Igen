@@ -10,6 +10,10 @@ import { getAccessToken } from "../../services/authService";
 import { useAuth } from "../../context/AuthContext";
 import { AIChatConfig } from "../../types";
 import { KnowledgeCenterSummaryCard } from "../knowledge/KnowledgeCenterSummaryCard";
+import {
+  AUTO_REPLY_SCENARIOS,
+  buildAutoReplyScenarioTrainingKnowledge,
+} from "../../constants/autoReplyScenarioLibrary";
 
 interface AiCommentReplyManagerProps {
   facebookPages?: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }>;
@@ -425,6 +429,36 @@ export function AiCommentReplyManager({
     } finally {
       setSavingConfig(false);
     }
+  };
+
+  const handleLoadScenarioLibrary = (mode: "append" | "replace") => {
+    const scenarioLibrary = buildAutoReplyScenarioTrainingKnowledge();
+    const currentKnowledge = localConfig.trainingKnowledge.trim();
+
+    if (mode === "append" && currentKnowledge.includes("# BỘ 50 KỊCH BẢN PHẢN HỒI KHÁCH HÀNG")) {
+      toast.info("Bộ 50 kịch bản đã có trong phần tri thức hiện tại.");
+      return;
+    }
+
+    if (mode === "replace" && currentKnowledge) {
+      const confirmed = window.confirm(
+        "Thay thế sẽ xóa phần tri thức thủ công đang nhập để dùng bộ 50 kịch bản. Bạn có chắc không?"
+      );
+      if (!confirmed) return;
+    }
+
+    setLocalConfig((previous) => ({
+      ...previous,
+      trainingKnowledge: mode === "append" && currentKnowledge
+        ? `${currentKnowledge}\n\n${scenarioLibrary}`
+        : scenarioLibrary,
+    }));
+    setSectionsExpanded((previous) => ({ ...previous, manual: true }));
+    toast.success(
+      mode === "append"
+        ? "Đã nối bộ 50 kịch bản vào tri thức. Nhấn Lưu cấu hình auto-reply để áp dụng."
+        : "Đã nạp bộ 50 kịch bản. Nhấn Lưu cấu hình auto-reply để áp dụng."
+    );
   };
 
   const [copyingConfig, setCopyingConfig] = useState(false);
@@ -977,6 +1011,37 @@ export function AiCommentReplyManager({
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
                       Dữ liệu tri thức huấn luyện AI
                     </label>
+                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 space-y-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-indigo-800">
+                            Bộ {AUTO_REPLY_SCENARIOS.length} kịch bản phản hồi tự nhiên
+                          </p>
+                          <p className="mt-0.5 text-[9px] leading-relaxed text-indigo-700/80">
+                            Gồm các tình huống hỏi giá, sản phẩm, đơn hàng, giao hàng, thanh toán, khiếu nại, lịch hẹn và chăm sóc sau bán. AI dùng để hiểu ý định, không sao chép câu mẫu cứng.
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] font-bold text-indigo-700 ring-1 ring-indigo-100">
+                          10 nhóm tình huống
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleLoadScenarioLibrary("append")}
+                          className="rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[9px] font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                        >
+                          Nối vào tri thức hiện có
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLoadScenarioLibrary("replace")}
+                          className="rounded-lg bg-indigo-650 px-2.5 py-1.5 text-[9px] font-bold text-white transition-colors hover:bg-indigo-700"
+                        >
+                          Nạp 50 kịch bản mẫu
+                        </button>
+                      </div>
+                    </div>
                     <textarea
                       placeholder="Nhập thông tin sản phẩm, câu hỏi thường gặp FAQ, chính sách giao hàng..."
                       value={localConfig.trainingKnowledge}
@@ -984,7 +1049,7 @@ export function AiCommentReplyManager({
                       className="w-full h-36 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                     <p className="text-[8px] text-slate-400 leading-normal">
-                      Bạn có thể dán nội dung văn bản tự do hoặc các câu hỏi đáp FAQs tại đây. Nhấn "Lưu cấu hình auto-reply" để áp dụng cho AI.
+                      Bạn có thể dán nội dung văn bản tự do, câu hỏi đáp FAQs hoặc nạp bộ kịch bản mẫu. Nhấn "Lưu cấu hình auto-reply" để áp dụng cho AI của tài khoản đang chọn.
                     </p>
                   </div>
                 </div>

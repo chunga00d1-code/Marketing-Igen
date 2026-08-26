@@ -204,6 +204,17 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export const bulkCreateService = {
+  async startCanvaOAuth() {
+    const response = await fetch('/api/v1/canva/oauth/start', {
+      method: 'POST',
+      headers: headers(),
+    });
+    return (await parse<{ data: { url: string } }>(
+      response,
+      'Không thể khởi tạo kết nối Canva.'
+    )).data;
+  },
+
   async updateSceneWithAi(input: {
     prompt: string;
     scene: BulkAiScene;
