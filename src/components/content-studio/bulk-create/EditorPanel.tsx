@@ -29,6 +29,8 @@ import type {
   BulkRenderItem,
   BulkAsset,
   BulkDataColumn,
+  CanvaConnectionStatus,
+  CanvaDesign,
 } from '../../../services/bulkCreateService';
 import type { CampaignAssetOrderData, MarketingCampaignSummary } from '../../../services/marketingCampaignService';
 import { TOOLS } from './constants';
@@ -117,6 +119,11 @@ export interface EditorPanelProps {
   importingTemplate: boolean;
   onImportTemplate: (file: File) => void;
   onStartCanvaConnection: () => void;
+  canvaStatus: CanvaConnectionStatus;
+  canvaDesigns: CanvaDesign[];
+  loadingCanva: boolean;
+  canvaError: string;
+  onRefreshCanva: () => void;
 }
 
 export function EditorPanel(props: EditorPanelProps) {
@@ -156,21 +163,82 @@ export function EditorPanel(props: EditorPanelProps) {
 
       <div className="min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-contain p-4 [scrollbar-gutter:stable]">
         {activeTool === 'canva' && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4">
-              <div className="flex items-start gap-3">
+          <div className="min-w-0 space-y-4">
+            <div className="overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 via-white to-fuchsia-50 p-4">
+              <div className="flex min-w-0 items-start gap-3">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-500 text-base font-black text-white">C</span>
-                <div>
-                  <p className="text-sm font-extrabold text-slate-900">Mẫu Canva</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-600">Chọn design Canva đã hoàn thiện, nhập vào editor rồi map dữ liệu để render hàng loạt.</p>
+                <div className="min-w-0">
+                  <p className="text-sm font-extrabold text-slate-900">Thiết kế Canva</p>
+                  <p className="mt-1 break-words text-xs leading-relaxed text-slate-600">Xem các thiết kế gần đây của tài khoản đã kết nối và mở chúng trực tiếp trong Canva.</p>
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-extrabold text-amber-900">Chưa kết nối Canva</p>
-              <p className="mt-1 text-xs leading-relaxed text-amber-800">Cần cấu hình Canva Developer Integration trước khi có thể kết nối và lấy mẫu trực tiếp.</p>
-              <button type="button" onClick={props.onStartCanvaConnection} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700"><Globe2 className="h-4 w-4" /> Kết nối Canva</button>
-            </div>
+
+            {props.loadingCanva ? (
+              <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white p-6 text-sm font-bold text-slate-600">
+                <LoaderCircle className="h-4 w-4 animate-spin" /> Đang đồng bộ Canva...
+              </div>
+            ) : props.canvaStatus.connected ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-extrabold text-emerald-900">Đã kết nối Canva</p>
+                {props.canvaStatus.connectedAt && (
+                  <p className="mt-1 text-xs text-emerald-800">Kết nối lúc {new Date(props.canvaStatus.connectedAt).toLocaleString('vi-VN')}</p>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={props.onRefreshCanva} className="rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-extrabold text-emerald-800 transition hover:bg-emerald-100">Làm mới</button>
+                  <button type="button" onClick={props.onStartCanvaConnection} className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-extrabold text-white transition hover:bg-violet-700">Đổi tài khoản</button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-extrabold text-amber-900">Chưa kết nối Canva</p>
+                <p className="mt-1 break-words text-xs leading-relaxed text-amber-800">Kết nối tài khoản Canva để tải danh sách thiết kế của tài khoản đó.</p>
+                <button type="button" onClick={props.onStartCanvaConnection} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-3 text-sm font-extrabold text-white transition hover:bg-violet-700"><Globe2 className="h-4 w-4" /> Kết nối Canva</button>
+              </div>
+            )}
+
+            {props.canvaError && (
+              <div className="break-words rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold leading-relaxed text-rose-700">{props.canvaError}</div>
+            )}
+
+            {!props.loadingCanva && props.canvaStatus.connected && (
+              <div className="min-w-0 space-y-2">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-sm font-extrabold text-slate-800">Thiết kế gần đây</p>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">{props.canvaDesigns.length}</span>
+                </div>
+                {props.canvaDesigns.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs leading-relaxed text-slate-600">Chưa tìm thấy thiết kế nào trong tài khoản Canva này.</div>
+                ) : (
+                  <div className="min-w-0 space-y-2">
+                    {props.canvaDesigns.map((design) => {
+                      const designUrl = design.urls?.edit_url || design.urls?.view_url;
+                      return (
+                        <button
+                          key={design.id}
+                          type="button"
+                          disabled={!designUrl}
+                          onClick={() => designUrl && window.open(designUrl, '_blank', 'noopener,noreferrer')}
+                          className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-white p-2 text-left transition hover:border-violet-300 hover:shadow-sm disabled:cursor-default"
+                        >
+                          <span className="flex h-14 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                            {design.thumbnail?.url ? (
+                              <img src={design.thumbnail.url} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <ImageIcon className="h-5 w-5 text-slate-400" />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-extrabold text-slate-800">{design.title || 'Thiết kế chưa đặt tên'}</span>
+                            <span className="mt-1 block truncate text-[10px] font-semibold text-violet-600">{designUrl ? 'Mở trong Canva' : 'Không có liên kết mở'}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {activeTool === 'background' && (

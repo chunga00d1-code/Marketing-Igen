@@ -17,6 +17,8 @@ import {
   type BulkRenderJob,
   type BulkTemplate,
   type BulkTemplatePayload,
+  type CanvaConnectionStatus,
+  type CanvaDesign,
 } from '../../services/bulkCreateService';
 import { marketingCampaignService, type CampaignAssetOrderData, type MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { useAuth } from '../../context/AuthContext';
@@ -247,6 +249,10 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const [uploadedImages, setUploadedImages] = useState<BulkAsset[]>([]);
   const [uploadingAsset, setUploadingAsset] = useState(false);
   const [importingTemplate, setImportingTemplate] = useState(false);
+  const [canvaStatus, setCanvaStatus] = useState<CanvaConnectionStatus>({ connected: false });
+  const [canvaDesigns, setCanvaDesigns] = useState<CanvaDesign[]>([]);
+  const [loadingCanva, setLoadingCanva] = useState(true);
+  const [canvaError, setCanvaError] = useState('');
   const [removingBackground, setRemovingBackground] = useState(false);
   const { user } = useAuth();
   const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
@@ -800,18 +806,54 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     }
   };
 
+  const refreshCanva = useCallback(async (showConnectedToast = false) => {
+    setLoadingCanva(true);
+    setCanvaError('');
+    try {
+      const status = await bulkCreateService.getCanvaStatus();
+      setCanvaStatus(status);
+      if (!status.connected) {
+        setCanvaDesigns([]);
+        return;
+      }
+      const designs = await bulkCreateService.listCanvaDesigns();
+      setCanvaDesigns(designs);
+      if (showConnectedToast) toast.success('Đã kết nối và đồng bộ thiết kế Canva.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể đồng bộ tài khoản Canva.';
+      setCanvaError(message);
+    } finally {
+      setLoadingCanva(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCanva();
+  }, [refreshCanva]);
+
+  useEffect(() => {
+    const handleCanvaConnected = (event: MessageEvent) => {
+      const data = event.data as { type?: string } | null;
+      if (event.origin !== window.location.origin || data?.type !== 'igen-canva-connected') return;
+      void refreshCanva(true);
+    };
+    window.addEventListener('message', handleCanvaConnected);
+    return () => window.removeEventListener('message', handleCanvaConnected);
+  }, [refreshCanva]);
+
   const startCanvaConnection = async () => {
     try {
+      setCanvaError('');
       const { url } = await bulkCreateService.startCanvaOAuth();
       const popup = window.open(url, 'igen-canva-connect', 'popup,width=560,height=720');
       if (!popup) window.location.assign(url);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể khởi tạo kết nối Canva.';
+      setCanvaError(message);
       setErrorMessage(message);
       toast.error(message);
     }
   };
-
   const deleteUploadedImage = async (assetId: string) => {
     try {
       await bulkCreateService.archiveAsset(assetId);
@@ -2021,6 +2063,10 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           systemTemplates={BULK_MARKETING_PRESETS}
           templates={templates}
           loadingTemplates={loadingTemplates}
+          canvaStatus={canvaStatus}
+          canvaDesigns={canvaDesigns}
+          loadingCanva={loadingCanva}
+          canvaError={canvaError}
           templatesTotal={templatesTotal}
           templatePage={templatePage}
           onChangeTemplatePage={goToTemplatePage}
@@ -2097,6 +2143,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           importingTemplate={importingTemplate}
           onImportTemplate={(file) => void importTemplateFile(file)}
           onStartCanvaConnection={() => void startCanvaConnection()}
+          onRefreshCanva={() => void refreshCanva()}
           />
           )}
         </div>
