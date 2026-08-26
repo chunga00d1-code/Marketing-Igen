@@ -37,6 +37,7 @@ export interface IZaloIntegration {
   connectedAt?: Date;
   isMock?: boolean;
 }
+export interface ICanvaIntegration { connected:boolean; accessToken?:string; refreshToken?:string; tokenExpiresAt?:Date; connectedAt?:Date; oauthState?:string; oauthStateExpiresAt?:Date; oauthCodeVerifier?:string; }
 
 export interface IAiAutoReplyConfig {
   enabled: boolean;
@@ -75,6 +76,7 @@ export interface IUser extends Document {
   facebookIntegration?: IFacebookIntegration | null;
   tiktokIntegration?: ITikTokIntegration | null;
   zaloIntegration?: IZaloIntegration | null;
+  canvaIntegration?: ICanvaIntegration | null;
   aiAutoReplyConfig?: IAiAutoReplyConfig | null;
   heygenAccess?: IHeyGenAccessConfig | null;
   elevenlabsAccess?: IElevenLabsAccessConfig | null;

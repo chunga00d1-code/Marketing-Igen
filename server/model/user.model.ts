@@ -47,6 +47,7 @@ const ZaloIntegrationSchema = new Schema(
   },
   { _id: false }
 );
+const CanvaIntegrationSchema = new Schema({ connected:{type:Boolean,default:false},accessToken:String,refreshToken:String,tokenExpiresAt:Date,connectedAt:Date,oauthState:String,oauthStateExpiresAt:Date,oauthCodeVerifier:String },{_id:false});
 
 export const AiAutoReplyConfigSchema = new Schema(
   {
@@ -94,6 +95,7 @@ const UserSchema = new Schema<IUser>({
   facebookIntegration: { type: FacebookIntegrationSchema, default: null },
   tiktokIntegration: { type: TikTokIntegrationSchema, default: null },
   zaloIntegration: { type: ZaloIntegrationSchema, default: null },
+  canvaIntegration: { type: CanvaIntegrationSchema, default: null },
   aiAutoReplyConfig: { type: AiAutoReplyConfigSchema, default: () => ({}) },
   heygenAccess: { type: HeyGenAccessSchema, default: () => ({}) },
   elevenlabsAccess: { type: ElevenLabsAccessSchema, default: () => ({}) },

@@ -195,9 +195,9 @@ export default function DashboardTab() {
   ];
 
   return (
-    <div className="h-full overflow-y-auto rounded-[32px] bg-[radial-gradient(circle_at_top_left,_rgba(244,114,182,0.12),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.16),_transparent_30%),linear-gradient(180deg,_#f8fafc_0%,_#eef4ff_100%)] p-6 text-slate-900">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="h-full min-w-0 overflow-x-hidden overflow-y-auto rounded-2xl bg-[radial-gradient(circle_at_top_left,_rgba(244,114,182,0.12),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(56,189,248,0.16),_transparent_30%),linear-gradient(180deg,_#f8fafc_0%,_#eef4ff_100%)] p-3 text-slate-900 sm:p-4 xl:rounded-[32px] xl:p-6">
+      <div className="mx-auto w-full min-w-0 max-w-7xl space-y-6">
+        <section className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]">
           <MetricCard
             title="Tổng bài marketing"
             value={formatNumber(marketingStats.total)}
@@ -236,24 +236,24 @@ export default function DashboardTab() {
           />
         </section>
 
-        <section className="grid gap-6 2xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-xs backdrop-blur">
-            <div className="flex items-center justify-between gap-3">
-              <div>
+        <section className="grid min-w-0 gap-6 2xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+          <div className="min-w-0 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-xs backdrop-blur sm:p-5">
+            <div className="flex flex-col items-start gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sales CRM</div>
                 <h3 className="mt-1 text-lg font-black text-slate-900">Phân bổ pipeline hiện tại</h3>
               </div>
               <button
                 type="button"
                 onClick={() => navigateTo("/sales-crm?sub=pipeline")}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
               >
                 Mở pipeline
                 <ArrowRight className="h-3.5 w-3.5" />
               </button>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="mt-5 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
               <PipelineStep label="Cold" value={crmStats.cold} stage="cold" />
               <PipelineStep label="Warm" value={crmStats.warm} stage="warm" />
               <PipelineStep label="Hot" value={crmStats.hot} stage="hot" />
@@ -287,22 +287,22 @@ export default function DashboardTab() {
                   return (
                     <div 
                       key={lead.id} 
-                      className="group flex items-center justify-between rounded-2xl border border-slate-100 bg-white/60 backdrop-blur-xs px-4 py-3 hover:bg-white hover:shadow-md hover:border-slate-200/50 transition-all duration-300"
+                      className="group flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white/60 px-4 py-3 backdrop-blur-xs transition-all duration-300 hover:border-slate-200/50 hover:bg-white hover:shadow-md"
                     >
-                      <div className="min-w-0 flex items-center gap-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
                         <div className={`h-8 w-8 rounded-full ${badgeBg} flex items-center justify-center text-xs font-black shrink-0`}>
                           {lead.customerName ? lead.customerName.charAt(0).toUpperCase() : "L"}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="truncate text-sm font-bold text-slate-800 group-hover:text-indigo-900 transition-colors">{lead.customerName}</div>
-                          <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-450 font-semibold">
-                            <span className="text-slate-500 font-bold">{lead.company || "Cá nhân"}</span>
-                            <span>•</span>
-                            <span>{lead.lastInteraction || "Chưa tương tác"}</span>
+                          <div className="mt-1 flex min-w-0 items-center gap-2 text-[10px] font-semibold text-slate-450">
+                            <span className="max-w-32 truncate font-bold text-slate-500">{lead.company || "Cá nhân"}</span>
+                            <span className="shrink-0">•</span>
+                            <span className="truncate">{lead.lastInteraction || "Chưa tương tác"}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="shrink-0 text-right">
                         <div className="text-sm font-black text-slate-700">{formatCurrency(Number(lead.value || 0))}</div>
                         <span className={`inline-block mt-1 px-2 py-0.5 text-[9px] font-black rounded-md uppercase tracking-wider ${badgeBg}`}>
                           {lead.status}
@@ -315,17 +315,17 @@ export default function DashboardTab() {
             </div>
           </div>
 
-          <div className="space-y-6">
-            <div className="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-xs backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
+          <div className="min-w-0 space-y-6">
+            <div className="min-w-0 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-xs backdrop-blur sm:p-5">
+              <div className="flex flex-col items-start gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
                   <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marketing</div>
                   <h3 className="mt-1 text-lg font-black text-slate-900">Nhịp độ content và publishing</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => navigateTo("/marketing?sub=lich-dang")}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
                 >
                   Xem lịch
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -344,15 +344,22 @@ export default function DashboardTab() {
                   <EmptyState label="Chưa có bài marketing nào để hiển thị trong dashboard." />
                 ) : (
                   recentMarketing.map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-bold text-slate-800">{item.title}</div>
+                    <div key={item.id} className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div
+                            title={item.title}
+                            className="truncate text-sm font-bold text-slate-800"
+                          >
+                            {item.title.length > 96
+                              ? item.title.slice(0, 96).trimEnd() + '…'
+                              : item.title}
+                          </div>
                           <div className="mt-1 text-[10px] text-slate-400 font-semibold">
                             {item.channel} • {item.contentType || "Marketing content"}
                           </div>
                         </div>
-                        <span className="rounded-full bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
+                        <span className="shrink-0 rounded-full bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white">
                           {item.status}
                         </span>
                       </div>
@@ -365,7 +372,7 @@ export default function DashboardTab() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-100 bg-white/90 p-5 shadow-xs backdrop-blur">
+            <div className="min-w-0 rounded-3xl border border-slate-100 bg-white/90 p-4 shadow-xs backdrop-blur sm:p-5">
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Channels</div>
               <h3 className="mt-1 text-lg font-black text-slate-900">Trạng thái kết nối bán hàng</h3>
               <div className="mt-5 space-y-3">
@@ -373,17 +380,17 @@ export default function DashboardTab() {
                   <EmptyState label="Chưa có kênh nào được kết nối. Vào Cài đặt để cấu hình Facebook, TikTok hoặc Zalo." />
                 ) : (
                   connectedChannels.map((channel) => (
-                    <div key={`${channel.platform}_${channel.username || channel.displayName}`} className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
+                    <div key={`${channel.platform}_${channel.username || channel.displayName}`} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                      <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
                           <Radio className="h-4.5 w-4.5" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-900">{channel.platform}</div>
-                          <div className="text-[10px] text-slate-400 font-semibold">{channel.displayName || channel.username || "Connected channel"}</div>
+                          <div className="truncate text-[10px] font-semibold text-slate-400">{channel.displayName || channel.username || "Connected channel"}</div>
                         </div>
                       </div>
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
                         Active
                       </span>
                     </div>
@@ -394,15 +401,15 @@ export default function DashboardTab() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white/85 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur">
-          <div className="flex items-center justify-between gap-3">
+        <section className="min-w-0 rounded-3xl border border-slate-200 bg-white/85 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur sm:p-5">
+          <div className="flex flex-col items-start gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Quick actions</div>
               <h3 className="mt-1 text-lg font-black text-slate-900">Di chuyển vào các khu vực vận hành</h3>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-5 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-[repeat(auto-fit,minmax(13rem,1fr))]">
             {quickLinks.map((item) => {
               const Icon = item.icon;
               // Extract glow color
@@ -417,7 +424,7 @@ export default function DashboardTab() {
                   key={item.title}
                   type="button"
                   onClick={() => navigateTo(item.href)}
-                  className="group relative overflow-hidden rounded-3xl border border-slate-100 bg-white/70 backdrop-blur-md text-left shadow-[0_8px_30px_rgba(0,0,0,0.015)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)] hover:border-slate-200/50"
+                  className="group relative min-w-0 overflow-hidden rounded-3xl border border-slate-100 bg-white/70 text-left shadow-[0_8px_30px_rgba(0,0,0,0.015)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-slate-200/50 hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)]"
                 >
                   <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${item.tone}`} />
                   <div 
@@ -497,22 +504,22 @@ function MetricCard({
   }
 
   return (
-    <div className="group relative bg-white/70 backdrop-blur-md border border-slate-100/80 rounded-3xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.015)] hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)] hover:-translate-y-1 hover:border-slate-200/50 transition-all duration-300 overflow-hidden flex flex-col justify-between min-h-[145px]">
+    <div className="group relative flex min-h-[145px] min-w-0 flex-col justify-between overflow-hidden rounded-3xl border border-slate-100/80 bg-white/70 p-5 shadow-[0_8px_30px_rgba(0,0,0,0.015)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-slate-200/50 hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)]">
       <div 
         className="absolute -bottom-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-15 pointer-events-none transition-all duration-500 group-hover:scale-125" 
         style={{ backgroundColor: glowColor }} 
       />
       <div className={`absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r ${tone}`} />
       
-      <div className="flex justify-between items-start">
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{title}</span>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <span className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</span>
         <span className={`p-2.5 rounded-2xl ${iconBg} flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 shadow-xs`}>
           <Icon className="h-4.5 w-4.5" />
         </span>
       </div>
       
       <div className="mt-2.5">
-        <h4 className="text-3.5xl font-black text-slate-800 tracking-tight leading-none transition-colors group-hover:text-slate-900">{value}</h4>
+        <h4 className="break-words text-3.5xl font-black leading-none tracking-tight text-slate-800 transition-colors group-hover:text-slate-900">{value}</h4>
         
         {progress !== undefined && (
           <div className="mt-3.5 space-y-1.5">
@@ -522,9 +529,9 @@ function MetricCard({
                 style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
               />
             </div>
-            <div className="flex justify-between text-[10px] text-slate-400 font-bold">
-              <span>{description}</span>
-              <span>{Math.round(progress)}%</span>
+            <div className="flex min-w-0 justify-between gap-2 text-[10px] font-bold text-slate-400">
+              <span className="min-w-0">{description}</span>
+              <span className="shrink-0">{Math.round(progress)}%</span>
             </div>
           </div>
         )}
@@ -583,9 +590,9 @@ function PipelineStep({
   const IconComponent = icon;
 
   return (
-    <div className="flex items-center w-full">
+    <div className="flex min-w-0 items-center">
       <div 
-        className={`relative flex-1 rounded-2xl border px-4 py-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_var(--glow)] ${bgClass}`}
+        className={`relative min-w-0 flex-1 rounded-2xl border px-4 py-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_var(--glow)] ${bgClass}`}
         style={{ "--glow": activeGlow } as React.CSSProperties}
       >
         <div className="flex items-center justify-between">
@@ -601,7 +608,7 @@ function PipelineStep({
       </div>
       
       {!isLast && (
-        <div className="hidden xl:flex items-center justify-center px-1 text-slate-300/80">
+        <div className="hidden items-center justify-center px-1 text-slate-300/80 xl:flex 2xl:hidden">
           <ArrowRight className="h-4 w-4" />
         </div>
       )}
@@ -611,7 +618,7 @@ function PipelineStep({
 
 function MiniStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="group rounded-2xl border border-slate-100/70 bg-white/50 backdrop-blur-xs p-4 transition-all duration-300 hover:bg-white hover:shadow-xs hover:border-indigo-500/10 hover:-translate-y-0.5">
+    <div className="group min-w-0 rounded-2xl border border-slate-100/70 bg-white/50 p-4 backdrop-blur-xs transition-all duration-300 hover:-translate-y-0.5 hover:border-indigo-500/10 hover:bg-white hover:shadow-xs">
       <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 group-hover:text-slate-500 transition-colors">{label}</div>
       <div className="mt-1.5 text-2.5xl font-black text-slate-800 tracking-tight transition-colors group-hover:text-slate-900">{formatNumber(value)}</div>
     </div>

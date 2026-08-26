@@ -30,6 +30,7 @@ import { companyKnowledgeRouter } from "./company-knowledge.router";
 import { creativeImageRouter } from "./creative-image.router";
 import { htmlVideoRenderRouter } from "./html-video-render.router";
 import { realEstateMapVideoRouter } from "./real-estate-map-video.router";
+import { canvaRouter } from "./canva.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -75,6 +76,7 @@ apiRouter.use("/marketing-campaigns", marketingCampaignRouter);
 apiRouter.use(videoTemplateRouter);
 apiRouter.use(videoProjectRouter);
 apiRouter.use("/bulk-create", bulkCreateRouter);
+apiRouter.use("/canva", canvaRouter);
 apiRouter.use("/video-caption-projects", videoCaptionRouter);
 apiRouter.use("/company-knowledge", companyKnowledgeRouter);
 apiRouter.use("/creative-image", creativeImageRouter);

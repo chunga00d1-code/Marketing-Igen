@@ -21,16 +21,49 @@ interface CampaignPlannerTabProps {
   } | null;
 }
 
-const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
+const CAMPAIGN_TIMEZONE = 'Asia/Bangkok';
+
+function getDateKeyInTimezone(date: Date, timezone = CAMPAIGN_TIMEZONE) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function parseDateKey(dateKey: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return date.getUTCFullYear() === Number(match[1])
+    && date.getUTCMonth() === Number(match[2]) - 1
+    && date.getUTCDate() === Number(match[3])
+    ? date
+    : null;
+}
+
+function formatDateKey(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const date = parseDateKey(dateKey);
+  if (!date) return dateKey;
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDateKey(date);
+}
+
+const toDateInput = (date: Date) => getDateKeyInTimezone(date);
 const CAMPAIGNS_PER_PAGE = 8;
 
 export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabProps) {
   const today = useMemo(() => toDateInput(new Date()), []);
   const nextWeek = useMemo(() => {
-    const date = new Date();
-    date.setDate(date.getDate() + 6);
-    return toDateInput(date);
-  }, []);
+    return addDaysToDateKey(today, 6);
+  }, [today]);
   const [prompt, setPrompt] = useState('');
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(nextWeek);
@@ -80,20 +113,19 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
   // Cleanup customSchedule when date range changes
   useEffect(() => {
-    const start = new Date(`${startDate}T00:00:00`);
-    const end = new Date(`${endDate}T00:00:00`);
+    const start = parseDateKey(startDate);
+    const end = parseDateKey(endDate);
 
     setCustomSchedule((prev) => {
       if (Object.keys(prev).length === 0) return prev;
-      if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) {
+      if (!start || !end || end < start) {
         return {};
       }
 
       const updated = { ...prev };
       let changed = false;
       for (const date of Object.keys(updated)) {
-        const d = new Date(`${date}T00:00:00`);
-        if (d < start || d > end) {
+        if (!parseDateKey(date) || date < startDate || date > endDate) {
           delete updated[date];
           changed = true;
         }
@@ -478,15 +510,15 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   }, [selectedCampaignId]);
 
   const allDatesInRange = useMemo(() => {
-    const start = new Date(`${startDate}T00:00:00`);
-    const end = new Date(`${endDate}T00:00:00`);
-    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) return [];
+    const start = parseDateKey(startDate);
+    const end = parseDateKey(endDate);
+    if (!start || !end || end < start) return [];
 
     const dates: string[] = [];
     const temp = new Date(start);
     while (temp <= end) {
-      dates.push(temp.toISOString().slice(0, 10));
-      temp.setDate(temp.getDate() + 1);
+      dates.push(formatDateKey(temp));
+      temp.setUTCDate(temp.getUTCDate() + 1);
     }
     return dates;
   }, [startDate, endDate]);
@@ -1180,11 +1212,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                               const times = customSchedule[date] || postingTimes;
 
                               const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+                                timeZone: CAMPAIGN_TIMEZONE,
                                 weekday: 'long',
                                 day: '2-digit',
                                 month: '2-digit',
                                 year: 'numeric'
-                              }).format(new Date(date));
+                              }).format(parseDateKey(date) || new Date());
 
                               return (
                                 <div key={date} className="flex flex-col gap-3 rounded-lg border border-slate-150 bg-white p-3.5 shadow-2xs">
