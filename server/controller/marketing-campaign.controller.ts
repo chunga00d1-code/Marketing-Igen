@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { marketingCampaignService } from "../service/marketing-campaign.service";
+import { CampaignActivationValidationError } from "../service/marketing-campaign-activation.service";
 import { walletService, API_COSTS } from "../service/wallet.service";
 import { marketingCampaignWorkerService } from "../service/marketing-campaign-worker.service";
 import { marketingCampaignFacebookWorkerService } from "../service/marketing-campaign-facebook-worker.service";
@@ -643,6 +644,21 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data: campaign });
     } catch (error: unknown) {
       return res.status(409).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật chiến dịch." });
+    }
+  },
+
+  async activate(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { companyCode } = getIdentity(req);
+      const result = await marketingCampaignService.activate(companyCode, req.params.id);
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      const issues = error instanceof CampaignActivationValidationError ? error.issues : undefined;
+      return res.status(409).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể khởi chạy chiến dịch.",
+        ...(issues ? { issues } : {}),
+      });
     }
   },
 

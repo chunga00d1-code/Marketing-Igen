@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, Pause, Play, XCircle } from 'lucide-react';
+import { ChevronRight, Pause, Play, Settings2, XCircle } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 
 interface CampaignItemProps {
@@ -37,6 +37,7 @@ export default function CampaignItem({
             : `${campaign.startDate} → ${campaign.endDate} · ${campaign.statistics.totalSlots} slot · ${campaign.candidateCount} phương án/slot`}</p>
         </div>
         <div className="flex gap-2">
+          {campaign.status === 'draft' && <button type="button" onClick={() => onOpenDetail(campaign._id)} className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[10px] font-bold text-indigo-700 transition hover:bg-indigo-100 active:scale-98"><Settings2 size={12} /> Thiết lập & chạy</button>}
           {campaign.status === 'active' && <button type="button" onClick={() => onLifecycle(campaign, 'pause')} className="flex items-center gap-1 rounded-lg border border-amber-255 hover:bg-amber-50/50 px-2.5 py-1.5 text-[10px] font-bold text-amber-700 transition active:scale-98"><Pause size={12} /> Tạm dừng</button>}
           {campaign.status === 'paused' && <button type="button" onClick={() => onLifecycle(campaign, 'resume')} className="flex items-center gap-1 rounded-lg border border-green-255 hover:bg-green-50/50 px-2.5 py-1.5 text-[10px] font-bold text-green-700 transition active:scale-98"><Play size={12} /> Tiếp tục</button>}
           {['active', 'paused', 'failed', 'draft'].includes(campaign.status) && <button type="button" onClick={() => onLifecycle(campaign, 'cancel')} className="flex items-center gap-1 rounded-lg border border-red-255 hover:bg-red-50/50 px-2.5 py-1.5 text-[10px] font-bold text-red-600 transition active:scale-98"><XCircle size={12} /> Hủy</button>}

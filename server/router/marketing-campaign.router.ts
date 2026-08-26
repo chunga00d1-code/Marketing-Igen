@@ -397,6 +397,7 @@ marketingCampaignRouter.post("/:id/sheet/rows", validateRequest({
     topicBrief: Joi.string().trim().min(1).max(5000).required(),
     funnelStage: Joi.string().valid("TOFU", "MOFU", "BOFU").default("MOFU"),
     mediaType: Joi.string().valid("text", "image", "video", "human-video").required(),
+    mediaSource: Joi.string().valid("drive", "ai", "upload", "production_order", "none").optional(),
   }),
 }), marketingCampaignController.addSheetRow as never);
 marketingCampaignRouter.patch("/:id/sheet/columns/:columnId", validateRequest(updateSheetColumnSchema), marketingCampaignController.updateSheetColumn as never);
@@ -437,6 +438,7 @@ marketingCampaignRouter.get("/:id/monthly/:startDate/:endDate/share-link", marke
 marketingCampaignRouter.post("/:id/batch-prepare", marketingCampaignController.batchPrepare as never);
 marketingCampaignRouter.patch("/:id/slots/:slotId/content", validateRequest(updateContentSchema), marketingCampaignController.updateSlotContent as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/replace-image", validateRequest(replaceImageSchema), marketingCampaignController.replaceSlotImage as never);
+marketingCampaignRouter.post("/:id/activate", marketingCampaignController.activate as never);
 marketingCampaignRouter.post("/:id/:action", (req, res, next) => {
   if (!["pause", "resume", "cancel"].includes(req.params.action)) {
     return res.status(404).json({ status: "error", message: "Thao tác chiến dịch không hợp lệ." });

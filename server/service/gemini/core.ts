@@ -229,7 +229,6 @@ export function formatHumanLikeChatReply(rawText: string): string {
     .replace(/\r/g, "")
     .replace(/```[\s\S]*?```/g, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/^\s*[*-]\s+/gm, "")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -238,43 +237,23 @@ export function formatHumanLikeChatReply(rawText: string): string {
     return "Dạ, em kiểm tra lại rồi phản hồi mình ngay nhé ạ.";
   }
 
-  const normalized = cleaned
+  const rawLines = cleaned
     .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .join("\n");
-
-  const shortLineCandidates = normalized
-    .split("\n")
-    .flatMap((line) => line.split(/(?<=[.!?])\s+/))
     .map((line) => line.trim())
     .filter(Boolean);
 
-  const compactLines: string[] = [];
-  let currentLine = "";
-
-  for (const piece of shortLineCandidates) {
-    const next = currentLine ? `${currentLine} ${piece}` : piece;
-    if (next.length <= 160) {
-      currentLine = next;
-    } else {
-      if (currentLine) compactLines.push(currentLine);
-      currentLine = piece;
-    }
+  // Xử lý loại bỏ dòng chào hỏi thuần túy đứng độc lập ở đầu (nếu có các dòng nội dung phía sau)
+  let processedLines = rawLines;
+  if (
+    processedLines.length > 1 &&
+    /^Dạ,?\s*(?:em\s+chào|[\p{L}\p{N}\s]+ xin chào)\s+anh\/chị(?:\s+(?:ạ|nha|nhé|nhe))?\s*[!.,~]*$/iu.test(processedLines[0])
+  ) {
+    // Chỉ bỏ dòng chào nếu nó hoàn toàn đứng riêng một mình
+    processedLines = processedLines.slice(1);
   }
 
-  if (currentLine) compactLines.push(currentLine);
-
-  const finalLines = compactLines
-    .slice(0, 8)
-    .map((line) => line.trim())
-    .filter((line, index) => {
-      if (index !== 0) return true;
-      return !/^Dạ,?\s*(?:em\s+chào|[\p{L}\p{N}\s]+ xin chào)\s+anh\/chị[^\n]*$/iu.test(line);
-    });
-
-  const finalResult = finalLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  return finalResult || normalized;
+  const finalResult = processedLines.slice(0, 20).join("\n").trim();
+  return finalResult || cleaned;
 }
 
 export function buildFaithfulVisualGuardrail(input: FaithFulVisualGuardrailInput): string {

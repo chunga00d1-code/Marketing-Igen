@@ -32,8 +32,12 @@ interface CampaignContentSheetProps {
   campaignId: string;
 }
 
-const READ_ONLY_KEYS = new Set(['scheduledAt', 'platform', 'page', 'status']);
+const READ_ONLY_KEYS = new Set(['page', 'status']);
 const ORDER_COLUMN_KEYS = [
+  'scheduledAt',
+  'platform',
+  'mediaType',
+  'mediaSource',
   'pillar',
   'topicBrief',
   'productionBrief',
@@ -89,6 +93,24 @@ function displayValue(value: unknown, column: CampaignSheetColumn, timezone: str
   return String(value);
 }
 
+function datetimeLocalValue(value: unknown, timezone: string) {
+  const text = String(value || '');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || '';
+  return `${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}`;
+}
+
 function displayColumnLabel(column: CampaignSheetColumn) {
   return ORDER_COLUMN_LABELS[column.key] || column.label;
 }
@@ -136,6 +158,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     topicBrief: '',
     funnelStage: 'MOFU' as 'TOFU' | 'MOFU' | 'BOFU',
     mediaType: 'image' as 'text' | 'image' | 'video' | 'human-video',
+    mediaSource: 'drive' as 'drive' | 'ai' | 'upload' | 'production_order' | 'none',
   });
 
   const loadSheet = useCallback(async () => {
@@ -251,7 +274,10 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
   async function saveCell(row: CampaignSheetRow, column: CampaignSheetColumn, value: unknown, locked?: boolean) {
     const key = draftKey(row.slotId, column.key);
     const previous = fieldValue(row, column);
-    if (value === previous && locked === undefined) {
+    const hasSameValue = column.dataType === 'datetime'
+      ? datetimeLocalValue(previous, data?.campaign.timezone || 'Asia/Bangkok') === value
+      : value === previous;
+    if (hasSameValue && locked === undefined) {
       setDrafts((current) => {
         const next = { ...current };
         delete next[key];
@@ -275,6 +301,44 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể lưu ô dữ liệu.';
       if (/tải lại|cập nhật ở nơi khác/i.test(message)) setConflictMessage(message);
+      toast.error(message);
+    } finally {
+      setSavingCell('');
+    }
+  }
+
+  async function savePlatform(row: CampaignSheetRow, platform: string) {
+    const platformKey = draftKey(row.slotId, 'platform');
+    const currentPlatform = String(row.fields.platform?.value ?? row.system.platform ?? '');
+    if (platform === currentPlatform) return;
+
+    const currentMediaType = String(row.fields.mediaType?.value ?? row.system.mediaType ?? 'image');
+    const currentMediaSource = String(row.fields.mediaSource?.value ?? row.system.mediaSource ?? 'drive');
+    const requiresVideo = platform === 'TikTok' && !['video', 'human-video'].includes(currentMediaType);
+    const requiresMediaSource = platform === 'TikTok' && currentMediaSource === 'none';
+    const changes: Array<{ key: string; value: unknown }> = [{ key: 'platform', value: platform }];
+    if (requiresVideo) changes.push({ key: 'mediaType', value: 'video' });
+    if (requiresMediaSource) changes.push({ key: 'mediaSource', value: 'drive' });
+
+    setSavingCell(platformKey);
+    try {
+      const result = await marketingCampaignService.updateSheetRow(campaignId, row.slotId, {
+        expectedRevision: row.revision,
+        changes,
+      });
+      patchLocalRow(row.slotId, result);
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[platformKey];
+        delete next[draftKey(row.slotId, 'mediaType')];
+        delete next[draftKey(row.slotId, 'mediaSource')];
+        return next;
+      });
+      setConflictMessage('');
+      if (requiresVideo) toast.success('TikTok uses video media for this post.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update the post platform.';
+      if (/reload|updated elsewhere/i.test(message)) setConflictMessage(message);
       toast.error(message);
     } finally {
       setSavingCell('');
@@ -318,6 +382,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
       date: data?.campaign.startDate || new Date().toISOString().slice(0, 10),
       platform,
       mediaType: platform === 'TikTok' ? 'video' : 'image',
+      mediaSource: 'drive',
       topicBrief: '',
     }));
     setShowAddRow(true);
@@ -819,6 +884,10 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                     const value = currentValue(row, column);
                     const stored = row.fields[column.key];
                     const editable = !row.readOnly && !READ_ONLY_KEYS.has(column.key);
+                    const selectOptions = column.key === 'platform'
+                      ? data.campaign.platforms
+                      : column.options || [];
+                    const usesSelect = column.dataType === 'select' || column.key === 'platform';
                     return (
                       <td
                         key={column.id}
@@ -836,18 +905,19 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                                 rows={2}
                                 className="w-full resize-none rounded-md border border-transparent bg-transparent px-2 py-1.5 text-xs text-slate-700 outline-none hover:border-slate-200 focus:border-teal-400 focus:bg-white"
                               />
-                            ) : column.dataType === 'select' ? (
+                            ) : usesSelect ? (
                               <div className="relative">
                                 <select
                                   value={String(value ?? '')}
                                   onChange={(event) => {
-                                    setDrafts((current) => ({ ...current, [key]: event.target.value }));
-                                    void saveCell(row, column, event.target.value);
+                                    if (column.key === 'platform') void savePlatform(row, event.target.value);
+                                    else void saveCell(row, column, event.target.value);
                                   }}
+                                  title={column.key === 'platform' ? 'Changing to TikTok automatically selects video media.' : undefined}
                                   className="w-full appearance-none rounded-md border border-transparent bg-transparent px-2 py-1.5 pr-6 text-xs outline-none hover:border-slate-200 focus:border-teal-400 focus:bg-white"
                                 >
                                   <option value="">—</option>
-                                  {(column.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+                                  {selectOptions.map((option) => <option key={option} value={option}>{option}</option>)}
                                 </select>
                                 <ChevronDown className="pointer-events-none absolute right-1.5 top-2 h-3 w-3 text-slate-400" />
                               </div>
@@ -862,8 +932,12 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                               </label>
                             ) : (
                               <input
-                                type={column.dataType === 'number' || column.dataType === 'currency' ? 'number' : column.dataType === 'date' ? 'date' : 'text'}
-                                value={String(value ?? '')}
+                                type={column.dataType === 'number' || column.dataType === 'currency' ? 'number' : column.dataType === 'date' ? 'date' : column.dataType === 'datetime' ? 'datetime-local' : 'text'}
+                                min={column.dataType === 'datetime' ? data.campaign.startDate : undefined}
+                                max={column.dataType === 'datetime' ? data.campaign.endDate : undefined}
+                                value={column.dataType === 'datetime'
+                                  ? datetimeLocalValue(value, data.campaign.timezone)
+                                  : String(value ?? '')}
                                 onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
                                 onPaste={(event) => void pasteCells(event, row, column)}
                                 onBlur={() => void saveCell(row, column, value)}
@@ -1040,7 +1114,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                   value={rowForm.platform}
                   onChange={(event) => {
                     const platform = event.target.value as 'Facebook' | 'TikTok';
-                    setRowForm((current) => ({ ...current, platform, mediaType: platform === 'TikTok' ? 'video' : current.mediaType }));
+                    setRowForm((current) => ({ ...current, platform, mediaType: platform === 'TikTok' ? 'video' : current.mediaType, mediaSource: platform === 'TikTok' && current.mediaSource === 'none' ? 'drive' : current.mediaSource }));
                   }}
                   className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal"
                 >
@@ -1051,7 +1125,7 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                 Loại media
                 <select
                   value={rowForm.mediaType}
-                  onChange={(event) => setRowForm((current) => ({ ...current, mediaType: event.target.value as typeof current.mediaType }))}
+                  onChange={(event) => setRowForm((current) => ({ ...current, mediaType: event.target.value as typeof current.mediaType, mediaSource: event.target.value === 'text' ? 'none' : current.mediaSource === 'none' ? 'drive' : current.mediaSource }))}
                   className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal"
                 >
                   {rowForm.platform === 'Facebook' && <option value="text">Chỉ văn bản</option>}
@@ -1060,6 +1134,26 @@ export default function CampaignContentSheet({ campaignId }: CampaignContentShee
                   <option value="human-video">Video người nói</option>
                 </select>
               </label>
+              <label className="text-xs font-bold text-slate-700">
+                Media source
+                <select
+                  value={rowForm.mediaSource}
+                  onChange={(event) => setRowForm((current) => ({ ...current, mediaSource: event.target.value as typeof current.mediaSource }))}
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-normal"
+                >
+                  {rowForm.mediaType === 'text' ? (
+                    <option value="none">No media</option>
+                  ) : (
+                    <>
+                      <option value="drive">Google Drive</option>
+                      <option value="ai">AI generate</option>
+                      <option value="upload">Upload</option>
+                      <option value="production_order">Production order</option>
+                    </>
+                  )}
+                </select>
+              </label>
+
               <label className="text-xs font-bold text-slate-700">
                 Funnel
                 <select

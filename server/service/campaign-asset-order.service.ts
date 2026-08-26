@@ -476,7 +476,7 @@ async function getDriveImportContext(companyCode: string, campaignId: string, go
     });
 
   const driveFiles = await resolveDriveMediaMimeTypes(await listGoogleDriveFolderFiles(folderUrl));
-  const isTikTokCampaign = campaign.platforms.includes("TikTok");
+  const isTikTokCampaign = false; // Validation is performed below for each mapped TikTok slot.
   const supportedMediaFiles = driveFiles.filter((file) => getDriveMediaType(file));
   if (isTikTokCampaign && supportedMediaFiles.some((file) => !isSupportedTikTokDriveVideo(file))) {
     throw httpError(
@@ -494,6 +494,7 @@ async function getDriveImportContext(companyCode: string, campaignId: string, go
       id: file.id,
       name: file.name,
       isVideo,
+      isTikTokVideo: isVideo && isSupportedTikTokDriveVideo(file),
       isMedia: true,
       directUrl: getGoogleDriveDirectLink(file.id, isVideo ? "video" : "image"),
     };
@@ -508,13 +509,25 @@ async function getDriveImportContext(companyCode: string, campaignId: string, go
     };
   });
 
+  const preview = buildCampaignDriveImportPreview(importOrders, files);
+  for (const mapping of preview.mappings) {
+    const slot = slotMap.get(mapping.slotId);
+    if (slot?.platform === "TikTok" && mapping.files.some((file) => !file.isTikTokVideo)) {
+      throw httpError(
+        `Drive files for TikTok post #${mapping.position} must be MP4, MOV, or WebM video.`,
+        400,
+        "TIKTOK_SLOT_VIDEO_ONLY"
+      );
+    }
+  }
+
   return {
     campaign,
     folderUrl,
     slots,
     slotMap,
     orders,
-    preview: buildCampaignDriveImportPreview(importOrders, files),
+    preview,
   };
 }
 
@@ -1160,7 +1173,8 @@ export const campaignAssetOrderService = {
           $set: {
             realImageDriveUrls: driveUrls,
             realImageDirectUrls: directUrls,
-            mediaType: hasVideo ? "video" : "image",
+            mediaType: slot.platform === "TikTok" ? "video" : hasVideo ? "video" : "image",
+            mediaSource: "drive",
             ...(canStartMedia ? { status: "generating_media" } : {}),
           },
           $unset: {
