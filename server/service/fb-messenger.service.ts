@@ -663,13 +663,16 @@ export const fbMessengerService = {
    * Gọi Graph API lấy Profile từ PSID bằng Token động
    */
   async getSenderProfile(psid: string, token: string): Promise<any> {
-    const url = `https://graph.facebook.com/${psid}?fields=first_name,last_name,profile_pic&access_token=${token}`;
-    console.log(`[FB Service GraphAPI] Gọi request tới URL: https://graph.facebook.com/${psid}?fields=first_name,last_name...`);
+    const url = `https://graph.facebook.com/v25.0/${encodeURIComponent(psid)}?fields=first_name,last_name,profile_pic&access_token=${encodeURIComponent(token)}`;
     try {
       const response = await (globalThis as any).fetch(url);
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[FB Service GraphAPI] Lỗi phản hồi từ Graph API: ${response.status} - ${errText}`);
+        if (errText.includes('"error_subcode":33') || errText.includes('"code":100')) {
+          console.warn(`[FB Service GraphAPI] Không có quyền lấy profile chi tiết cho PSID ${psid} (Facebook App hạn chế quyền User Profile hoặc tài khoản khách hàng bật bảo mật). Sẽ sử dụng thông tin mặc định.`);
+        } else {
+          console.error(`[FB Service GraphAPI] Lỗi phản hồi từ Graph API: ${response.status} - ${errText}`);
+        }
         return null;
       }
       return await response.json();

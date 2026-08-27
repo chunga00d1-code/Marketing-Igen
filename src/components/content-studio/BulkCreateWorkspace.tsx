@@ -755,20 +755,21 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         existingLayers: [],
         canvas: safeCanvas,
       });
-      const initialScene = {
+      const reconstructionScene: BulkAiScene = {
         sceneVersion: BULK_SCENE_VERSION,
         canvas: safeCanvas,
-        background: { type: 'image' as const, imageUrl: asset.url },
+        background: { type: 'color', color: '#ffffff' },
         layers: [fallbackLayer],
       };
       const initialValues = { [fallbackLayer.id]: fallbackLayer.defaultValue || '' };
-      let analyzedScene: BulkAiScene = initialScene;
+      let analyzedScene: BulkAiScene = reconstructionScene;
       let analyzedValues = initialValues;
 
       try {
         const analysis = await bulkCreateService.updateSceneWithAi({
-          prompt: 'Chuyển ảnh mẫu đính kèm thành template chỉnh sửa được để tạo hàng loạt. Giữ nguyên tối đa phần đồ họa tĩnh của mẫu. Tự nhận diện 1-6 vùng có khả năng thay đổi giữa các phiên bản như tiêu đề, giá, mô tả, CTA hoặc ảnh sản phẩm. Với mỗi vùng đã có chữ trong ảnh, thêm shape che kín chữ cũ cùng một layer text chỉnh sửa được ở đúng vị trí; đặt fieldName rõ ràng bằng tiếng Việt và defaultValue gần với nội dung nhìn thấy. Chỉ tạo layer ảnh biến đổi nếu ảnh mẫu thật sự có vùng ảnh sản phẩm. Không thiết kế lại theo phong cách khác, không thêm dữ liệu không có trong ảnh và luôn giữ ít nhất một field text có thể map Excel.',
-          scene: initialScene,
+          mode: 'reconstruct',
+          prompt: 'Reconstruct the attached reference as an editable Bulk Create template. Match the composition with CSS background, gradients, shapes and editable OCR text. Never put the full reference poster in the final template as a background or full-size image. For every person, product, photograph or illustration, use the attached image URL with a tight sourceCrop around that single visual and fit it into the correct destination rectangle; do not use blank image placeholders. The crop must not include most of the poster, multiple subjects, or text blocks. Use clear Vietnamese field names so each crop can later be replaced from a spreadsheet. Do not invent copy or visual assets.',
+          scene: reconstructionScene,
           values: initialValues,
           attachments: [{ type: 'image', name: file.name, url: asset.url }],
         });
@@ -777,8 +778,8 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           analyzedValues = analysis.values;
         }
       } catch (analysisError) {
-        console.warn('[BulkCreate] Template import analysis failed; using editable draft:', analysisError);
-        toast.warning('Đã tạo mẫu nháp. AI chưa phân tích được bố cục, bạn có thể chỉnh tiếp trong editor.');
+        console.warn('[BulkCreate] Template import analysis failed:', analysisError);
+        throw analysisError;
       }
 
       const template = await bulkCreateService.createTemplate({

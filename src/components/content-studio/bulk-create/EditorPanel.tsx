@@ -270,36 +270,6 @@ export function EditorPanel(props: EditorPanelProps) {
               </div>
             </div>
 
-            <label
-              className={`flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-4 text-center transition ${
-                props.importingTemplate
-                  ? 'cursor-wait border-indigo-400 bg-indigo-50'
-                  : 'border-violet-300 bg-violet-50/60 hover:border-violet-500 hover:bg-violet-50'
-              }`}
-            >
-              <Upload className={`mb-2 h-6 w-6 ${props.importingTemplate ? 'animate-bounce text-indigo-600' : 'text-violet-600'}`} />
-              <span className="text-sm font-extrabold text-slate-800">
-                {props.importingTemplate ? 'Đang chuyển mẫu thành template...' : 'Nhập mẫu thành template'}
-              </span>
-              <span className="mt-1 max-w-[240px] text-xs leading-relaxed text-slate-500">
-                PNG, JPG, WEBP hoặc PDF. Hệ thống tự nhận diện vùng nội dung để mở ngay trong editor.
-              </span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,application/pdf,.png,.jpg,.jpeg,.webp,.pdf"
-                className="hidden"
-                disabled={props.importingTemplate}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) props.onImportTemplate(file);
-                  event.currentTarget.value = '';
-                }}
-              />
-            </label>
-            <p className="-mt-2 text-[10px] leading-relaxed text-slate-400">
-              AI tạo bản nháp có thể chỉnh sửa; hãy kiểm tra preview trước khi render hàng loạt.
-            </p>
-
             <div className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex items-center justify-between">
                 <div>

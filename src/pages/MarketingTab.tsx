@@ -6,7 +6,9 @@ import {
   Calendar,
   RefreshCw,
   Facebook,
-  ChevronDown
+  ChevronDown,
+  Sparkles,
+  BarChart3,
 } from "lucide-react";
 import { MarketingSubTabType, ContentApprovalCard } from "../types";
 import { buildFacebookPostUrl, buildFaithfulMediaPrompt, marketingService, extractDraftContent, sanitizeHumanVideoVoiceScript, stripHumanVideoOutlineSections } from "../services/marketingService";
@@ -724,20 +726,24 @@ export default function MarketingTab() {
       <h1 className="sr-only">Chiến dịch Marketing - {subTab}</h1>
 
       {/* Sub Tabs control header switcher */}
-      <div className="border-b border-gray-200 bg-gray-50/50 p-2 text-xs flex justify-between shrink-0" id="marketing_sub_tabs_switch">
-        <div className="flex gap-2">
+      <div className="border-b border-slate-100 bg-white px-4 py-2.5 text-xs flex justify-between items-center shrink-0" id="marketing_sub_tabs_switch">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
           {MARKETING_SUB_TAB_ROUTES.map((tabRoute) => {
             const tab = tabRoute.value;
+            const isActive = subTab === tab;
+            const Icon = tab === "TẠO CHIẾN DỊCH" ? Sparkles : tab === "LỊCH ĐĂNG CONTENT" ? Calendar : BarChart3;
             return (
               <button
                 key={tab}
                 onClick={() => setSubTab(tab)}
-                className={`px-4 py-2 rounded-lg border font-bold uppercase transition-all tracking-wide ${subTab === tab
-                  ? "bg-slate-800 text-white border-slate-800 shadow-xs"
-                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-100"
-                  }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none ${
+                  isActive
+                    ? "bg-[#0284c7] text-white shadow-xs"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
               >
-                {tab}
+                <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-slate-500"}`} />
+                <span>{tab}</span>
               </button>
             );
           })}

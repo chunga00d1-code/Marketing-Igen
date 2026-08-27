@@ -1,23 +1,21 @@
 import React, { useState } from "react";
 import {
-  ChevronRight,
   LayoutDashboard,
   Megaphone,
   Palette,
   MessageSquareShare,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings,
-  Shield,
+  ShieldCheck,
   Wallet,
   BookOpen,
   LibraryBig,
   Clapperboard,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   BRAND_LOGO_PATH,
   BRAND_NAME,
-  BRAND_TAGLINE,
   PRIVACY_POLICY_URL,
   TERMS_OF_SERVICE_URL,
   USER_DATA_DELETION_URL,
@@ -31,234 +29,270 @@ interface SidebarProps {
   setActiveTab: (tab: TabType) => void;
 }
 
-type MenuTone = "slate" | "purple" | "rose" | "blue" | "indigo";
-
-interface MenuItem {
+interface NavItemConfig {
   label: TabType;
   title: string;
-  desc: string;
   icon: React.ElementType;
-  tone: MenuTone;
+  isSuperAdminOnly?: boolean;
+  requiresAuth?: boolean;
 }
 
-const toneClasses: Record<MenuTone, { active: string; icon: string; hoverIcon: string }> = {
-  slate: {
-    active: "bg-slate-100 text-slate-900 border-slate-200",
-    icon: "bg-slate-900 text-white",
-    hoverIcon: "group-hover:bg-slate-100 group-hover:text-slate-700",
-  },
-  purple: {
-    active: "bg-purple-50 text-purple-800 border-purple-100",
-    icon: "bg-purple-50 text-purple-600",
-    hoverIcon: "group-hover:bg-purple-50 group-hover:text-purple-600",
-  },
-  rose: {
-    active: "bg-red-50 text-red-800 border-red-100",
-    icon: "bg-red-50 text-red-600",
-    hoverIcon: "group-hover:bg-red-50 group-hover:text-red-600",
-  },
-  blue: {
-    active: "bg-blue-50 text-blue-800 border-blue-100",
-    icon: "bg-blue-50 text-blue-600",
-    hoverIcon: "group-hover:bg-blue-50 group-hover:text-blue-600",
-  },
-  indigo: {
-    active: "bg-indigo-50 text-indigo-800 border-indigo-100",
-    icon: "bg-indigo-50 text-indigo-600",
-    hoverIcon: "group-hover:bg-indigo-50 group-hover:text-indigo-600",
-  },
-};
+interface NavGroupConfig {
+  title: string;
+  items: NavItemConfig[];
+}
 
-const baseMenuItems: MenuItem[] = [
+const navGroups: NavGroupConfig[] = [
   {
-    label: "TONG QUAN",
-    title: "Dashboard điều hành",
-    desc: "Tổng quan sales và marketing",
-    icon: LayoutDashboard,
-    tone: "slate",
+    title: "TỔNG QUAN",
+    items: [
+      {
+        label: "TONG QUAN",
+        title: "Tổng quan",
+        icon: LayoutDashboard,
+      },
+    ],
   },
   {
-    label: "MARKETING",
-    title: "AI Marketing Hub",
-    desc: "Sáng tạo nội dung và đăng lịch",
-    icon: Megaphone,
-    tone: "purple",
+    title: "VẬN HÀNH",
+    items: [
+      {
+        label: "MARKETING",
+        title: "Marketing Hub",
+        icon: Megaphone,
+      },
+      {
+        label: "SALES CRM",
+        title: "Sales CRM",
+        icon: MessageSquareShare,
+      },
+    ],
   },
   {
-    label: "SALES CRM",
-    title: "Sales CRM Omni-Inbox",
-    desc: "Chăm sóc và phễu khách hàng",
-    icon: MessageSquareShare,
-    tone: "rose",
+    title: "CÔNG CỤ",
+    items: [
+      {
+        label: "XUONG NOI DUNG",
+        title: "Xưởng nội dung",
+        icon: Palette,
+      },
+      {
+        label: "VIDEO STUDIO",
+        title: "Video Studio",
+        icon: Clapperboard,
+      },
+      {
+        label: "KHO TRI THUC",
+        title: "Kho tri thức",
+        icon: LibraryBig,
+      },
+    ],
   },
   {
-    label: "XUONG NOI DUNG",
-    title: "Xưởng nội dung",
-    desc: "Tạo ảnh và thiết kế hàng loạt",
-    icon: Palette,
-    tone: "blue",
+    title: "HỆ THỐNG",
+    items: [
+      {
+        label: "QUAN TRI USER",
+        title: "Quản lý người dùng",
+        icon: ShieldCheck,
+        isSuperAdminOnly: true,
+      },
+      {
+        label: "VI & NAP TIEN",
+        title: "Ví & Nạp tiền",
+        icon: Wallet,
+        requiresAuth: true,
+      },
+      {
+        label: "CAI DAT",
+        title: "Cài đặt hệ thống",
+        icon: Settings,
+      },
+      {
+        label: "HUONG DAN SU DUNG",
+        title: "Hướng dẫn sử dụng",
+        icon: BookOpen,
+      },
+    ],
   },
-  {
-    label: "VIDEO STUDIO",
-    title: "Video Studio",
-    desc: "Tạo video, giọng đọc và phụ đề",
-    icon: Clapperboard,
-    tone: "indigo",
-  },
-  {
-    label: "KHO TRI THUC",
-    title: "Kho tri thức",
-    desc: "Tài liệu dùng chung toàn doanh nghiệp",
-    icon: LibraryBig,
-    tone: "indigo",
-  },
-
 ];
 
 export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   const { userProfile } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const menuItems = [...baseMenuItems];
 
-  if (userProfile?.role === "superadmin" || userProfile?.role === "admin") {
-    menuItems.push({
-      label: "QUAN TRI USER",
-      title: "Quản trị user",
-      desc: "Cấp quyền và phân vai trò",
-      icon: Shield,
-      tone: "indigo",
-    });
-  }
+  const isAdminOrSuperAdmin =
+    userProfile?.role === "superadmin" || userProfile?.role === "admin";
 
-  if (userProfile) {
-    menuItems.push({
-      label: "VI & NAP TIEN",
-      title: "Ví & Nạp tiền",
-      desc: "Số dư ví ",
-      icon: Wallet,
-      tone: "blue",
-    });
-  }
-
-  menuItems.push({
-    label: "CAI DAT",
-    title: "Cài đặt hệ thống",
-    desc: "Thông tin cá nhân và cấu hình",
-    icon: Settings,
-    tone: "slate",
-  });
-
-  menuItems.push({
-    label: "HUONG DAN SU DUNG",
-    title: "Hướng dẫn sử dụng",
-    desc: "Cẩm nang quy trình & tra cứu",
-    icon: BookOpen,
-    tone: "purple",
-  });
+  const filteredGroups = navGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => {
+      if (item.isSuperAdminOnly && !isAdminOrSuperAdmin) return false;
+      if (item.requiresAuth && !userProfile) return false;
+      return true;
+    }),
+  }));
 
   return (
     <aside
-      className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-gray-100 bg-white text-gray-800 shadow-[18px_0_45px_rgba(15,23,42,0.04)] transition-all duration-300 ${
-        isCollapsed ? "w-24" : "w-72"
+      className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-100 bg-white text-slate-800 shadow-[18px_0_45px_rgba(15,23,42,0.03)] transition-all duration-300 ${
+        isCollapsed ? "w-20" : "w-68"
       }`}
       id="sidebar_container"
     >
-      <div className={`flex items-center border-b border-gray-100 ${isCollapsed ? "justify-center px-3 py-5" : "p-6"}`} id="sidebar_brand_header">
-        <div className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
-          <img
-            src={BRAND_LOGO_PATH}
-            alt={BRAND_NAME}
-            onClick={() => setActiveTab("TONG QUAN")}
-            title="Về dashboard"
-            className="h-11 w-11 shrink-0 rounded-2xl border border-blue-100 object-cover shadow-lg shadow-blue-500/15 cursor-pointer transition-transform hover:scale-110 active:scale-95"
-          />
+      {/* Brand Header */}
+      <div
+        className={`flex items-center border-b border-slate-100 ${
+          isCollapsed ? "justify-center px-3 py-5" : "px-5 py-5"
+        }`}
+        id="sidebar_brand_header"
+      >
+        <div
+          onClick={() => setActiveTab("TONG QUAN")}
+          className={`flex min-w-0 items-center cursor-pointer select-none group ${
+            isCollapsed ? "justify-center" : "gap-3.5"
+          }`}
+          title="Về dashboard"
+        >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-sky-200 bg-gradient-to-b from-white to-sky-50/50 p-1 shadow-xs transition-transform group-hover:scale-105 group-active:scale-95">
+            <img
+              src={BRAND_LOGO_PATH}
+              alt={BRAND_NAME}
+              className="h-8 w-8 object-contain rounded-lg"
+            />
+          </div>
           {!isCollapsed ? (
             <div className="min-w-0">
-              <h2 className="truncate font-sans text-lg font-bold tracking-tight text-blue-700">{BRAND_NAME}</h2>
-              <p className="truncate font-mono text-[10px] uppercase tracking-widest text-gray-500">{BRAND_TAGLINE}</p>
+              <h2 className="truncate text-base font-bold tracking-tight text-[#0284c7]">
+                iGen <span className="text-slate-800 font-bold">ERP</span>
+              </h2>
+              <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                ENTERPRISE HUB
+              </p>
             </div>
           ) : null}
         </div>
       </div>
 
-      <nav className={`flex-1 select-none space-y-2 overflow-y-auto ${isCollapsed ? "px-3 py-5" : "px-4 py-6"}`} id="sidebar_nav">
-        {!isCollapsed ? (
-          <p className="mb-3 px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-gray-400">Marketing workspace</p>
-        ) : null}
-
-        {menuItems.map((item) => {
-          const isActive = activeTab === item.label;
-          const Icon = item.icon;
-          const tone = toneClasses[item.tone];
+      {/* Nav Menu */}
+      <nav
+        className={`flex-1 select-none space-y-4 overflow-y-auto ${
+          isCollapsed ? "px-2 py-4" : "px-3.5 py-4"
+        }`}
+        id="sidebar_nav"
+      >
+        {filteredGroups.map((group, gIdx) => {
+          if (group.items.length === 0) return null;
 
           return (
-            <button
-              key={item.label}
-              onClick={() => {
-                if (item.label === "VIDEO STUDIO") {
-                  openVideoStudio();
-                  return;
-                }
-                setActiveTab(item.label);
-              }}
-              className={`group flex w-full items-center justify-between rounded-2xl border px-3.5 py-3.5 text-left font-sans transition-all active:scale-[0.98] ${
-                isActive ? `${tone.active} shadow-xs` : "border-transparent text-gray-600 hover:border-gray-100 hover:bg-gray-50 hover:text-gray-900"
-              }`}
-              id={`sidebar_menu_${item.label.replace(/\s+/g, "_")}`}
-              data-navigation={item.label === "VI & NAP TIEN" ? "wallet" : undefined}
-              title={isCollapsed ? item.title : undefined}
-            >
-              <div className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3.5"}`}>
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                  isActive ? tone.icon : `bg-gray-50 text-gray-500 ${tone.hoverIcon}`
-                }`}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                {!isCollapsed ? (
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-gray-900">{item.title}</p>
-                    <p className={`mt-0.5 truncate text-[10px] leading-normal ${isActive ? "text-gray-600" : "text-gray-400"}`}>
-                      {item.desc}
-                    </p>
-                  </div>
-                ) : null}
+            <div key={group.title} className="space-y-1">
+              {!isCollapsed ? (
+                <p className="px-3 pb-1.5 pt-1 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+                  {group.title}
+                </p>
+              ) : (
+                gIdx > 0 && <div className="mx-2 my-2 border-t border-slate-100" />
+              )}
+
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const isActive = activeTab === item.label;
+                  const Icon = item.icon;
+
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        if (item.label === "VIDEO STUDIO") {
+                          openVideoStudio();
+                          return;
+                        }
+                        setActiveTab(item.label);
+                      }}
+                      className={`group flex w-full items-center rounded-xl font-sans transition-all duration-150 active:scale-[0.98] ${
+                        isCollapsed
+                          ? "justify-center p-2.5"
+                          : "justify-between px-3.5 py-2.5 text-left"
+                      } ${
+                        isActive
+                          ? "bg-[#f0f7ff] text-[#0284c7] font-semibold"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 font-medium"
+                      }`}
+                      id={`sidebar_menu_${item.label.replace(/\s+/g, "_")}`}
+                      data-navigation={item.label === "VI & NAP TIEN" ? "wallet" : undefined}
+                      title={isCollapsed ? item.title : undefined}
+                    >
+                      <div className={`flex min-w-0 items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
+                        <Icon
+                          className={`h-5 w-5 shrink-0 transition-colors ${
+                            isActive
+                              ? "text-[#0284c7]"
+                              : "text-slate-400 group-hover:text-slate-600"
+                          }`}
+                        />
+                        {!isCollapsed ? (
+                          <span className="truncate text-sm">
+                            {item.title}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {!isCollapsed && isActive ? (
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-[#0284c7]" />
+                      ) : null}
+                    </button>
+                  );
+                })}
               </div>
-              <ChevronRight
-                className={`h-4 w-4 shrink-0 transition-transform ${
-                  isActive ? "translate-x-0.5 text-gray-500" : "text-gray-300 group-hover:text-gray-500"
-                }`}
-              />
-            </button>
+            </div>
           );
         })}
       </nav>
 
-      <div className={`border-t border-gray-100 ${isCollapsed ? "px-3 py-4" : "px-4 py-4"}`}>
+      {/* Collapse Toggle & Footer */}
+      <div className="border-t border-slate-100 px-4 py-3 flex flex-col items-center">
         <button
           type="button"
           onClick={() => setIsCollapsed((current) => !current)}
-          className={`flex items-center rounded-2xl border border-gray-200 bg-white text-gray-500 transition hover:bg-gray-50 hover:text-gray-900 ${
-            isCollapsed ? "mx-auto h-11 w-11 justify-center" : "w-full justify-between px-4 py-3"
-          }`}
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 shadow-2xs transition-all hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 active:scale-95 cursor-pointer"
           title={isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
           aria-label={isCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
         >
-          <span className={`flex items-center ${isCollapsed ? "justify-center" : "gap-3"}`}>
-            {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            {!isCollapsed ? <span className="text-sm font-semibold">Thu gọn danh sách</span> : null}
-          </span>
-          {!isCollapsed ? <ChevronRight className="h-4 w-4" /> : null}
+          {isCollapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
         </button>
+
         {!isCollapsed ? (
-          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 px-1 text-[11px] text-gray-500">
-            <a href={PRIVACY_POLICY_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2 hover:text-blue-700">
-              Privacy
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-[11px] text-slate-400">
+            <a
+              href={PRIVACY_POLICY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-600 hover:underline transition-colors"
+            >
+              Bảo mật
             </a>
-            <a href={TERMS_OF_SERVICE_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2 hover:text-blue-700">
-              Terms
+            <span className="text-slate-300 select-none">•</span>
+            <a
+              href={TERMS_OF_SERVICE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-600 hover:underline transition-colors"
+            >
+              Điều khoản
             </a>
-            <a href={USER_DATA_DELETION_URL} target="_blank" rel="noopener noreferrer" className="font-medium underline underline-offset-2 hover:text-blue-700">
-              Deletion
+            <span className="text-slate-300 select-none">•</span>
+            <a
+              href={USER_DATA_DELETION_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-slate-600 hover:underline transition-colors"
+            >
+              Xóa dữ liệu
             </a>
           </div>
         ) : null}

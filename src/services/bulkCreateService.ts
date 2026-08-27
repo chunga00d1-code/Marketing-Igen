@@ -18,6 +18,12 @@ export interface BulkLayer {
   zIndex: number;
   locked?: boolean;
   fit?: 'cover' | 'contain';
+  sourceCrop?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: number;
@@ -256,6 +262,7 @@ export const bulkCreateService = {
   },
   async updateSceneWithAi(input: {
     prompt: string;
+    mode?: 'edit' | 'reconstruct';
     scene: BulkAiScene;
     values: Record<string, string>;
     attachments?: BulkAiAttachment[];
