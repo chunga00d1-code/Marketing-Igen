@@ -305,7 +305,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ docLink: driveLink })
+        body: JSON.stringify({ docLink: driveLink, clearExisting: true })
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {

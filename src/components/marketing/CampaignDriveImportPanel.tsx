@@ -55,7 +55,7 @@ export default function CampaignDriveImportPanel({
           : jobs[0]?._id || ''
       ));
     } catch (error) {
-      if (!silent) toast.error(error instanceof Error ? error.message : 'Không thể tải lịch sử Bulk Create.');
+      if (!silent) toast.error(error instanceof Error ? error.message : 'Không thể tải lịch sử tạo hàng loạt.');
     } finally {
       setBulkLoading(false);
     }
@@ -89,7 +89,7 @@ export default function CampaignDriveImportPanel({
       .catch((error) => {
         if (active) {
           setBulkPreview(null);
-          toast.error(error instanceof Error ? error.message : 'Không thể xem trước kết quả Bulk Create.');
+          toast.error(error instanceof Error ? error.message : 'Không thể xem trước kết quả tạo hàng loạt.');
         }
       })
       .finally(() => {
@@ -104,7 +104,7 @@ export default function CampaignDriveImportPanel({
     if (!selectedBulkJobId || !bulkPreview) return;
     const actionLabel = bulkImportMode === 'append' ? 'bổ sung vào album' : 'thay thế ảnh hiện tại';
     if (!window.confirm(
-      `Xác nhận ${actionLabel} cho ${bulkPreview.applicableOrders} bài bằng ${bulkPreview.linkedOutputCount} ảnh Bulk Create?`,
+      `Xác nhận ${actionLabel} cho ${bulkPreview.applicableOrders} bài bằng ${bulkPreview.linkedOutputCount} ảnh tạo hàng loạt?`,
     )) return;
     setBulkApplying(true);
     try {
@@ -115,7 +115,7 @@ export default function CampaignDriveImportPanel({
       );
       if (!result.attachedSlots) {
         toast.warning(
-          'Job này không có Order thuộc chiến dịch hiện tại. Hãy tạo Bulk Create từ Order của chiến dịch rồi thử lại.',
+          'Job này không có Order thuộc chiến dịch hiện tại. Hãy tạo ảnh tạo hàng loạt từ Order của chiến dịch rồi thử lại.',
         );
         return;
       }
@@ -124,7 +124,7 @@ export default function CampaignDriveImportPanel({
         `Đã ${bulkImportMode === 'append' ? 'bổ sung' : 'thay thế'} ảnh cho ${result.attachedSlots} bài; ${result.queuedSlots} bài đã được đưa vào xử lý media.${result.truncatedImages ? ` Đã bỏ qua ${result.truncatedImages} ảnh vượt giới hạn album.` : ''}`,
       );
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể gắn Bulk Create vào chiến dịch.');
+      toast.error(error instanceof Error ? error.message : 'Không thể gắn ảnh tạo hàng loạt vào chiến dịch.');
     } finally {
       setBulkApplying(false);
     }
@@ -233,7 +233,7 @@ export default function CampaignDriveImportPanel({
               if (bulkEnabled) setSourceMode('bulk');
             }}
             disabled={!bulkEnabled}
-            title={!bulkEnabled ? 'Chiến dịch này không có bài Facebook để nhận ảnh Bulk Create.' : undefined}
+            title={!bulkEnabled ? 'Chiến dịch này không có bài Facebook để nhận ảnh tạo hàng loạt.' : undefined}
             className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-xs font-extrabold transition disabled:cursor-not-allowed disabled:opacity-40 ${
               sourceMode === 'bulk'
                 ? 'bg-blue-600 text-white shadow-sm'
@@ -241,7 +241,7 @@ export default function CampaignDriveImportPanel({
             }`}
           >
             <Images className="h-4 w-4" />
-            Bulk Create
+            Tạo hàng loạt
           </button>
         </div>
 
@@ -252,7 +252,7 @@ export default function CampaignDriveImportPanel({
             className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-4 text-xs font-extrabold text-violet-700 transition hover:bg-violet-100"
           >
             <Images className="h-4 w-4" />
-            Tạo mới trong Bulk Create
+            Tạo mới trong Tạo hàng loạt
           </button>
         )}
 
@@ -338,7 +338,7 @@ export default function CampaignDriveImportPanel({
                 disabled={bulkLoading || bulkApplying}
                 className="h-11 min-w-72 flex-1 rounded-xl border-2 border-blue-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500"
               >
-                <option value="">Chọn Bulk Create của chiến dịch</option>
+                <option value="">Chọn đợt tạo hàng loạt của chiến dịch</option>
                 {bulkJobs.map((job) => (
                   <option key={job._id} value={job._id}>
                     {job.templateName} · {job.status === 'completed' ? 'Hoàn tất' : job.status === 'partial' ? 'Hoàn tất một phần' : job.status === 'processing' ? 'Đang tạo' : job.status === 'queued' ? 'Đang chờ' : job.status === 'failed' ? 'Lỗi' : 'Đã hủy'} · {job.linkedOutputCount}/{job.linkedItemCount} ảnh · {new Date(job.createdAt).toLocaleString('vi-VN')}
@@ -360,7 +360,7 @@ export default function CampaignDriveImportPanel({
 
             {selectedBulkJob && !selectedBulkJobIsComplete && (
               <p className="mt-3 text-xs font-semibold text-amber-700">
-                Bulk Create đang ở trạng thái {selectedBulkJob.status === 'processing' ? 'đang tạo ảnh' : selectedBulkJob.status === 'queued' ? 'đang chờ xử lý' : selectedBulkJob.status === 'failed' ? 'lỗi' : 'đã hủy'}. Khi hoàn tất, bấm Làm mới để gắn ảnh vào chiến dịch.
+                Tạo hàng loạt đang ở trạng thái {selectedBulkJob.status === 'processing' ? 'đang tạo ảnh' : selectedBulkJob.status === 'queued' ? 'đang chờ xử lý' : selectedBulkJob.status === 'failed' ? 'lỗi' : 'đã hủy'}. Khi hoàn tất, bấm Làm mới để gắn ảnh vào chiến dịch.
               </p>
             )}
 
@@ -372,7 +372,7 @@ export default function CampaignDriveImportPanel({
                       {bulkPreview.linkedOutputCount} ảnh · {bulkPreview.applicableOrders} bài có thể nhận
                     </p>
                     <p className="mt-1 text-[11px] leading-5 text-blue-700">
-                      Mỗi bài nhận tối đa {bulkPreview.maxImagesPerOrder} ảnh, đúng theo Order ID và thứ tự trang Bulk Create.
+                      Mỗi bài nhận tối đa {bulkPreview.maxImagesPerOrder} ảnh, đúng theo Order ID và thứ tự trang tạo hàng loạt.
                     </p>
                   </div>
                 </div>
@@ -450,7 +450,7 @@ export default function CampaignDriveImportPanel({
 
             {!bulkLoading && bulkJobs.length === 0 && (
               <p className="mt-3 text-xs text-slate-500">
-                Chưa có Bulk Create nào được tạo từ Order của chiến dịch này. Hãy nhập Order chiến dịch sang Bulk Create rồi tạo ảnh.
+                Chưa có ảnh tạo hàng loạt nào được tạo từ Order của chiến dịch này. Hãy nhập Order chiến dịch sang Tạo hàng loạt rồi tạo ảnh.
               </p>
             )}
           </div>

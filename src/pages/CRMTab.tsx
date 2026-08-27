@@ -302,9 +302,12 @@ export default function CRMTab() {
     autoCloseDeal: true,
     autoFeedback: true,
     replyDelay: 15,
-    advancedInstructions: "Luôn ưu tiên xưng hô lịch thiệp. Hỏi thăm nhu cầu chăm sóc sức khỏe của doanh nghiệp.",
+    advancedInstructions: "Luôn ưu tiên xưng hô lịch thiệp, tự nhiên và thân thiện. Lắng nghe và giải đáp đúng trọng tâm nhu cầu của khách hàng.",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
+    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+    autoFollowUpEnabled: false,
+    followUpDelayHours: 2,
+    followUpPrompt: ""
   });
 
   // Synchronize AI Config based on selected page/channel or fallback to userProfile
@@ -337,7 +340,10 @@ export default function CRMTab() {
         replyDelay: config.replyDelay ?? 15,
         advancedInstructions: config.advancedInstructions ?? "",
         trainingKnowledge: config.trainingKnowledge ?? "",
-        model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
+        model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+        autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
+        followUpDelayHours: config.followUpDelayHours ?? 2,
+        followUpPrompt: config.followUpPrompt ?? ""
       });
       return;
     }
@@ -353,7 +359,10 @@ export default function CRMTab() {
         replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
         advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
         trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
+        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+        autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
+        followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
+        followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? ""
       });
     }
   }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer]);

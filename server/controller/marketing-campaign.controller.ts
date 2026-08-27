@@ -305,7 +305,7 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data });
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
-      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể nhập Order vào Bulk Create." });
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể nhập Order vào tạo hàng loạt." });
     }
   },
 
@@ -321,7 +321,7 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data });
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
-      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đồng bộ ảnh Bulk Create về Order." });
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể đồng bộ ảnh tạo hàng loạt về Order." });
     }
   },
 
@@ -332,7 +332,7 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data });
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
-      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải Bulk Create của chiến dịch." });
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể tải ảnh tạo hàng loạt của chiến dịch." });
     }
   },
 
@@ -343,7 +343,7 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data });
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
-      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể xem trước kết quả Bulk Create." });
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể xem trước kết quả tạo hàng loạt." });
     }
   },
 
@@ -400,7 +400,7 @@ export const marketingCampaignController = {
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
       const code = (error as { code?: string })?.code;
-      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể kiểm tra map Bulk Create." });
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể kiểm tra map tạo hàng loạt." });
     }
   },
 
@@ -413,7 +413,7 @@ export const marketingCampaignController = {
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
       const code = (error as { code?: string })?.code;
-      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể tạo Bulk Create job." });
+      return res.status(statusCode).json({ status: "error", code, message: error instanceof Error ? error.message : "Không thể tạo job tạo hàng loạt." });
     }
   },
 
@@ -424,7 +424,7 @@ export const marketingCampaignController = {
       return res.status(200).json({ status: "success", data });
     } catch (error: unknown) {
       const statusCode = Number((error as { statusCode?: number })?.statusCode || 400);
-      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật kết quả Bulk Create." });
+      return res.status(statusCode).json({ status: "error", message: error instanceof Error ? error.message : "Không thể cập nhật kết quả tạo hàng loạt." });
     }
   },
 
@@ -738,7 +738,7 @@ export const marketingCampaignController = {
       }
       const folder = "igen_erp/marketing/campaign_manual";
       const secureUrl = await cloudinaryService.uploadMedia(image, folder);
-      
+
       const content = await marketingCampaignService.replaceSlotImage(companyCode, req.params.id, req.params.slotId, secureUrl);
       return res.status(200).json({ status: "success", data: content });
     } catch (error: unknown) {

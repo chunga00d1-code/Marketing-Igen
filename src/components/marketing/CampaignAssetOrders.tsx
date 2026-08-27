@@ -182,8 +182,8 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
 
   useEffect(() => {
     void loadOrders(false);
-  // Only reload when the selected campaign changes. Selection changes are handled locally.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only reload when the selected campaign changes. Selection changes are handled locally.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   useEffect(() => {
@@ -191,7 +191,7 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
     setLoadingTemplates(true);
     void bulkCreateService.listTemplates()
       .then((items) => { if (active) setTemplates(items); })
-      .catch((error) => { if (active) toast.error(error instanceof Error ? error.message : 'Không thể tải template Bulk Create.'); })
+      .catch((error) => { if (active) toast.error(error instanceof Error ? error.message : 'Không thể tải template tạo hàng loạt.'); })
       .finally(() => { if (active) setLoadingTemplates(false); });
     return () => { active = false; };
   }, []);
@@ -472,7 +472,7 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
 
   const previewBulk = async () => {
     if (!draft?.templateId) {
-      toast.warning('Hãy chọn template Bulk Create trước.');
+      toast.warning('Hãy chọn template tạo hàng loạt trước.');
       return;
     }
     if (dirtyRef.current && !await saveDraft()) return;
@@ -482,7 +482,7 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
       const preview = await marketingCampaignService.previewAssetOrderBulk(campaignId, current._id, current.templateId);
       setBulkPreview(preview);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể kiểm tra map Bulk Create.');
+      toast.error(error instanceof Error ? error.message : 'Không thể kiểm tra map tạo hàng loạt.');
     }
   };
 
@@ -499,9 +499,9 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
       setCurrentDraft(cloneOrder(result.order));
       setDirtyState(false);
       setBulkPreview(null);
-      toast.success('Đã đưa Order vào hàng đợi Bulk Create.');
+      toast.success('Đã đưa Order vào hàng đợi tạo hàng loạt.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể tạo Bulk Create job.');
+      toast.error(error instanceof Error ? error.message : 'Không thể tạo job tạo hàng loạt.');
     } finally {
       setCreatingBulk(false);
     }
@@ -515,7 +515,7 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
       setData((value) => value ? { ...value, orders: value.orders.map((order) => order._id === synced._id ? { ...order, ...synced } : order) } : value);
       setCurrentDraft(cloneOrder(synced));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Không thể cập nhật Bulk Create.');
+      toast.error(error instanceof Error ? error.message : 'Không thể cập nhật tạo hàng loạt.');
     }
   }, [campaignId, setCurrentDraft]);
 
@@ -534,7 +534,7 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <div>
           <h3 className="text-sm font-extrabold text-slate-800">Order ảnh, video</h3>
-          <p className="mt-1 text-xs text-slate-500">Order tách riêng với bài đăng; chỉ khi bạn đưa sang Bulk Create mới tạo đầu ra.</p>
+          <p className="mt-1 text-xs text-slate-500">Order tách riêng với bài đăng; chỉ khi bạn đưa sang Tạo hàng loạt mới tạo đầu ra.</p>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={() => void loadOrders()} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" title="Tải lại">
@@ -623,8 +623,8 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
             </div>
 
             <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-blue-900">Đưa sang Bulk Create</p><p className="mt-1 text-xs text-blue-700">Hệ thống map chữ và từng ảnh vào layer của template trước khi tạo job.</p></div>{draft.status === 'bulk_queued' && <button type="button" onClick={() => void syncBulk()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700"><RefreshCw className="h-3.5 w-3.5" /> Cập nhật kết quả</button>}</div>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row"><select value={draft.templateId || ''} onChange={(event) => { updateDraft('templateId', event.target.value || undefined); setBulkPreview(null); }} className="h-10 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 text-sm outline-none focus:border-blue-500"><option value="">{loadingTemplates ? 'Đang tải template…' : 'Chọn template Bulk Create'}</option>{templates.map((template) => <option key={template._id} value={template._id}>{template.name} · {template.canvas.width}×{template.canvas.height}</option>)}</select><button type="button" disabled={!draft.templateId || creatingBulk} onClick={() => void previewBulk()} className="h-10 rounded-lg border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 disabled:opacity-50">Kiểm tra map</button></div>
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-blue-900">Đưa sang Tạo hàng loạt</p><p className="mt-1 text-xs text-blue-700">Hệ thống map chữ và từng ảnh vào layer của template trước khi tạo job.</p></div>{draft.status === 'bulk_queued' && <button type="button" onClick={() => void syncBulk()} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700"><RefreshCw className="h-3.5 w-3.5" /> Cập nhật kết quả</button>}</div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row"><select value={draft.templateId || ''} onChange={(event) => { updateDraft('templateId', event.target.value || undefined); setBulkPreview(null); }} className="h-10 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-3 text-sm outline-none focus:border-blue-500"><option value="">{loadingTemplates ? 'Đang tải template…' : 'Chọn template Tạo hàng loạt'}</option>{templates.map((template) => <option key={template._id} value={template._id}>{template.name} · {template.canvas.width}×{template.canvas.height}</option>)}</select><button type="button" disabled={!draft.templateId || creatingBulk} onClick={() => void previewBulk()} className="h-10 rounded-lg border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 disabled:opacity-50">Kiểm tra map</button></div>
               {bulkPreview && <div className="mt-3 rounded-lg border border-blue-100 bg-white p-3"><p className="text-xs font-bold text-slate-700">{bulkPreview.template.name} · {bulkPreview.ready ? 'Đã đủ dữ liệu' : `Thiếu ${bulkPreview.missing.length} layer`}</p><div className="mt-2 max-h-32 space-y-1 overflow-y-auto text-[11px]">{bulkPreview.mapping.map((item) => <p key={item.layerId} className={item.value ? 'text-slate-600' : 'text-rose-600'}><span className="font-bold">{item.fieldName}:</span> {item.source || 'Chưa map'}</p>)}</div>{bulkPreview.missing.length > 0 && <p className="mt-2 text-[11px] text-rose-600">Cần bổ sung: {bulkPreview.missing.map((item) => item.fieldName).join(', ')}</p>}<div className="mt-3 flex justify-end"><button type="button" disabled={!bulkPreview.ready || creatingBulk} onClick={() => void createBulk()} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{creatingBulk && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Tạo ảnh</button></div></div>}
               {draft.outputUrls.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{draft.outputUrls.map((url, index) => <a key={url} href={`/api/v1/media/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(`${draft.title || 'order'}-${index + 1}.png`)}`} className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-700">Tải ảnh {index + 1}</a>)}</div>}
             </div>
