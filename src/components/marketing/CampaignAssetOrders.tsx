@@ -577,7 +577,7 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
 
       <div className="grid min-h-[520px] gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
         <aside className="rounded-xl border border-slate-200 bg-white p-2">
-          <p className="px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">{data?.orders.length || 0} Order</p>
+          <p className="px-2 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">{data?.orders.length || 0} Yêu cầu sản xuất</p>
           <div className="space-y-1 overflow-y-auto lg:max-h-[620px]">
             {data?.orders.map((order) => (
               <button key={order._id} type="button" onClick={() => void selectOrder(order)} className={`w-full rounded-lg p-3 text-left transition ${selectedId === order._id ? 'bg-teal-50 ring-1 ring-teal-300' : 'hover:bg-slate-50'}`}>
@@ -586,14 +586,14 @@ export default function CampaignAssetOrders({ campaignId }: CampaignAssetOrdersP
                 <span className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_CLASS[order.status]}`}>{STATUS_LABEL[order.status]}</span>
               </button>
             ))}
-            {!data?.orders.length && <p className="px-3 py-8 text-center text-xs leading-relaxed text-slate-500">Chưa có Order. Hãy tạo yêu cầu sản xuất đầu tiên.</p>}
+            {!data?.orders.length && <p className="px-3 py-8 text-center text-xs leading-relaxed text-slate-500">Chưa có yêu cầu sản xuất. Hãy tạo yêu cầu đầu tiên.</p>}
           </div>
         </aside>
 
         {!draft ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
             <ImagePlus className="h-8 w-8 text-slate-300" />
-            <p className="mt-3 text-sm font-bold text-slate-700">Chọn hoặc tạo một Order để bắt đầu</p>
+            <p className="mt-3 text-sm font-bold text-slate-700">Chọn hoặc tạo một yêu cầu sản xuất để bắt đầu</p>
           </div>
         ) : (
           <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">

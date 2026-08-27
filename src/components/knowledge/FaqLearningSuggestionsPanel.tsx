@@ -131,34 +131,32 @@ export function FaqLearningSuggestionsPanel({
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 p-6 text-white shadow-xl">
-        <div className="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-xl space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-200 backdrop-blur-md">
-              <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-              <span>AI Tự học từ Hành vi Hội thoại</span>
-            </div>
-            <h2 className="text-xl font-bold tracking-tight text-white sm:text-2xl">
-              Đề xuất Câu hỏi Thường gặp (FAQs)
+      {/* Compact Header Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-3.5 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-650">
+            <Sparkles className="h-4 w-4 text-indigo-600" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              Đề xuất Câu hỏi Thường gặp (FAQ)
+              <span className="rounded-md bg-indigo-50 border border-indigo-100 text-[10px] font-bold text-indigo-700 px-1.5 py-0.5">AI Learning</span>
             </h2>
-            <p className="text-xs leading-relaxed text-indigo-200/90">
-              AI tự động phân tích tin nhắn thực tế từ khách hàng và câu trả lời chuẩn của nhân viên tư vấn. Bạn có thể kiểm tra, chỉnh sửa và bấm <b>1-Click Duyệt</b> để đưa ngay vào Kho tri thức của doanh nghiệp.
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tự động học từ tin nhắn khách hàng & câu trả lời tư vấn để bổ sung vào kho tri thức.
             </p>
           </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-xs font-extrabold text-white shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] hover:brightness-110 active:scale-95 disabled:opacity-60 cursor-pointer"
-            >
-              <RefreshCw className={`h-4 w-4 ${analyzing ? "animate-spin" : ""}`} />
-              <span>{analyzing ? "Đang quét & phân tích..." : "Quét & Khai phá Tin nhắn Mới"}</span>
-            </button>
-          </div>
         </div>
+
+        <button
+          type="button"
+          onClick={handleAnalyze}
+          disabled={analyzing}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition-all active:scale-95 disabled:opacity-60 cursor-pointer"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${analyzing ? "animate-spin" : ""}`} />
+          <span>{analyzing ? "Đang quét..." : "Quét tin nhắn mới"}</span>
+        </button>
       </div>
 
       {/* Filter Tabs & Stats */}

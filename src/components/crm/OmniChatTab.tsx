@@ -758,7 +758,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                                 linkedLead.status === 'cold' ? 'Khách Lạnh' :
                                   linkedLead.status === 'warm' ? 'Khách Ấm' :
                                     linkedLead.status === 'hot' ? 'Khách Nóng' :
-                                      linkedLead.status === 'won' ? 'Đã Chốt Đơn' : 'Up-sell'
+                                      linkedLead.status === 'won' ? 'Đã Chốt Đơn' : 'Bán thêm (Up-sell)'
                               }
                             </span>
 

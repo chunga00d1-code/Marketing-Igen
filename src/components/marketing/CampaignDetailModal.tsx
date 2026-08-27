@@ -170,6 +170,14 @@ export default function CampaignDetailModal({
   const [publishedPage, setPublishedPage] = useState(1);
   const [researchEvidencePage, setResearchEvidencePage] = useState(1);
 
+  // Check if all slots in the campaign are 100% completed/published
+  const isCampaignAllCompleted = React.useMemo(() => {
+    if (!campaignDetail?.slots || campaignDetail.slots.length === 0) return false;
+    const totalSlots = campaignDetail.slots.length;
+    const publishedSlotsCount = campaignDetail.slots.filter((s) => s.status === 'published').length;
+    return (totalSlots > 0 && publishedSlotsCount === totalSlots) || campaignDetail.campaign.status === 'completed';
+  }, [campaignDetail?.slots, campaignDetail?.campaign.status]);
+
   // Filter slots that have published URLs
   const publishedSlotsList = React.useMemo(() => {
     if (!campaignDetail?.slots) return [];
@@ -882,24 +890,26 @@ export default function CampaignDetailModal({
                   <div className="flex flex-col gap-6 lg:flex-row">
                     {/* Left Column: Slots Table */}
                     <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
-                      <CampaignDriveImportPanel
-                        campaignId={campaignDetail.campaign._id}
-                        mediaKind={campaignDetail.campaign.platforms.length > 1
-                          ? 'mixed'
-                          : campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
-                        allowBulkCreate={campaignDetail.campaign.status === 'active'
-                          && campaignDetail.campaign.platforms.includes('Facebook')
-                          && !campaignDetail.campaign.platforms.includes('TikTok')}
-                        awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
-                        onCreateBulk={() => openContentStudio({
-                          tab: 'template',
-                          campaignId: campaignDetail.campaign._id,
-                        })}
-                        onApplied={onRefresh}
-                      />
+                      {!isCampaignAllCompleted && (
+                        <CampaignDriveImportPanel
+                          campaignId={campaignDetail.campaign._id}
+                          mediaKind={campaignDetail.campaign.platforms.length > 1
+                            ? 'mixed'
+                            : campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
+                          allowBulkCreate={campaignDetail.campaign.status === 'active'
+                            && campaignDetail.campaign.platforms.includes('Facebook')
+                            && !campaignDetail.campaign.platforms.includes('TikTok')}
+                          awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
+                          onCreateBulk={() => openContentStudio({
+                            tab: 'template',
+                            campaignId: campaignDetail.campaign._id,
+                          })}
+                          onApplied={onRefresh}
+                        />
+                      )}
 
                       {/* Real-time Activity Banner */}
-                      {campaignDetail.campaign.status === 'active' && (
+                      {campaignDetail.campaign.status === 'active' && !isCampaignAllCompleted && (
                         <div className="rounded-xl border border-indigo-100 bg-indigo-50/25 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 select-none">
                           <div className="flex items-center gap-3">
                             <div className="relative flex h-3 w-3 shrink-0">

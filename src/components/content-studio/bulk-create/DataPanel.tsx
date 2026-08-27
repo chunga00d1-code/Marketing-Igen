@@ -202,8 +202,8 @@ export function DataPanel(props: DataPanelProps) {
                 <Database className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-slate-900">Order ảnh từ chiến dịch</p>
-                <p className="mt-0.5 break-words text-[11px] leading-relaxed text-slate-500">Nhập các Order dạng Ảnh vào tạo hàng loạt; Order Video được giữ ở luồng kịch bản.</p>
+                <p className="truncate text-sm font-extrabold text-slate-900">Yêu cầu ảnh từ chiến dịch</p>
+                <p className="mt-0.5 break-words text-[11px] leading-relaxed text-slate-500">Nhập các yêu cầu ảnh từ chiến dịch vào Tạo hàng loạt; yêu cầu video được giữ ở luồng kịch bản.</p>
               </div>
             </div>
             <div className="mt-3">
@@ -211,7 +211,7 @@ export function DataPanel(props: DataPanelProps) {
                 campaigns={props.campaigns}
                 selectedCampaignId={props.selectedCampaignId}
                 loading={props.loadingCampaigns || props.loadingCampaignOrders}
-                emptyLabel="Chọn Campaign có Order"
+                emptyLabel="Chọn chiến dịch có yêu cầu ảnh"
                 onLoad={props.onLoadCampaigns}
                 onSelect={props.onSelectCampaign}
               />
@@ -223,8 +223,8 @@ export function DataPanel(props: DataPanelProps) {
               className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-indigo-600 px-2 text-sm font-extrabold text-white hover:bg-indigo-700 disabled:bg-slate-300"
             >
               {props.loadingCampaignOrders
-                ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang nhập Order...</span></>
-                : <><FileSpreadsheet className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">Nhập Order vào tạo hàng loạt</span></>}
+                ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang nhập dữ liệu...</span></>
+                : <><FileSpreadsheet className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">Nhập yêu cầu vào Tạo hàng loạt</span></>}
             </button>
           </div>
 
