@@ -9,6 +9,7 @@ import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
 import CampaignDriveImportPanel from './CampaignDriveImportPanel';
 import CampaignContentSheet from './CampaignContentSheet';
 import { openContentStudio } from '../../utils/contentStudioNavigation';
+import { CleanMarkdownView } from '../common/CleanMarkdownView';
 
 const DETAIL_LIST_ITEMS_PER_PAGE = 8;
 
@@ -556,9 +557,9 @@ export default function CampaignDetailModal({
                       <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider block font-mono">
                         📊 Báo cáo nghiên cứu & Phân tích xu hướng (AI Research Agent)
                       </span>
-                      <pre className="text-xs text-slate-750 whitespace-pre-wrap font-sans leading-relaxed p-4 border border-indigo-100 bg-white rounded-xl max-h-80 overflow-y-auto">
-                        {campaignDetail.campaign.researchReport}
-                      </pre>
+                      <div className="border border-indigo-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
+                        <CleanMarkdownView content={campaignDetail.campaign.researchReport} />
+                      </div>
                     </div>
                   )}
 
@@ -609,7 +610,7 @@ export default function CampaignDetailModal({
                           {parsedEvidenceSummary?.summary && (
                             <div className="bg-white border border-teal-100 rounded-xl p-4 leading-relaxed text-slate-750">
                               <span className="block text-xs font-bold text-teal-700 uppercase tracking-wide mb-2 font-mono">Bối cảnh tổng hợp từ MXH:</span>
-                              <p className="whitespace-pre-wrap font-sans text-slate-700 leading-relaxed">{parsedEvidenceSummary.summary}</p>
+                              <CleanMarkdownView content={parsedEvidenceSummary.summary} />
                             </div>
                           )}
 
@@ -737,9 +738,9 @@ export default function CampaignDetailModal({
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block font-mono">
                       📋 Định hướng chiến dịch
                     </span>
-                    <pre className="text-xs text-slate-750 whitespace-pre-wrap font-sans leading-relaxed p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
-                      {campaignDetail.campaign.sourceBrief}
-                    </pre>
+                    <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
+                      <CleanMarkdownView content={campaignDetail.campaign.sourceBrief} />
+                    </div>
                   </div>
                 </div>
               )}

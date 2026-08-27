@@ -70,6 +70,11 @@ export const fbMessengerService = {
       throw new Error(`Không tìm thấy Access Token cấu hình cho Page ID: ${pageId}`);
     }
 
+    // Tự động đảm bảo Webhook Subscription của Page này luôn được kích hoạt trên Meta Graph API
+    void this.subscribePageWebhooks(pageId, token).catch((err) => {
+      console.warn(`[FB Service syncConversations] Không thể tự động subscribe webhook cho Page ${pageId}:`, err.message || err);
+    });
+
     const fields = [
       "id",
       "updated_time",
@@ -244,6 +249,27 @@ export const fbMessengerService = {
         });
       }
       emitToPage(pageId, "conversation_updated", refreshedConversation);
+
+      // Kích hoạt AI Auto-Reply nếu phát hiện tin nhắn đến mới từ khách hàng qua đồng bộ
+      const latestInboundMsg = [...newMessagesToEmit]
+        .reverse()
+        .find((m) => m.direction === "inbound" && m.text);
+      if (
+        latestInboundMsg &&
+        isFacebookReplyWindowOpen(latestInboundMsg.timestamp)
+      ) {
+        console.log(
+          `[FB Service syncMessages] 🚀 TRIGGER AI từ Sync: Phát hiện tin nhắn inbound mới ` +
+          `cho conversationId=${refreshedConversation._id.toString()}, pageId=${pageId}, textLength=${latestInboundMsg.text.length}`
+        );
+        aiAutoReplyService.triggerAutoReply(
+          "facebook",
+          pageId,
+          refreshedConversation._id.toString(),
+          latestInboundMsg.text,
+          latestInboundMsg.messageId
+        );
+      }
     }
 
     return FBMessageModel.find({ conversationId: refreshedConversation._id }).sort({ timestamp: 1 });

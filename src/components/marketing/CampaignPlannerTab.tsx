@@ -890,8 +890,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                       <FolderOpen size={16} />
                     </div>
                     <div>
-                      <span className="block text-xs font-bold text-slate-800">{isTikTokCampaign ? 'Nhập video sau content' : 'Order ảnh sau content'}</span>
-                      <span className="mt-0.5 block text-[10px] text-slate-500">{isTikTokCampaign ? 'Nhập video từ Google Drive trong chi tiết chiến dịch' : 'Nhập Drive trong chi tiết chiến dịch'}</span>
+                      <span className="block text-xs font-bold text-slate-800">{isTikTokCampaign ? 'Nhập video từ Drive' : 'Nhập ảnh, video từ Drive'}</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">{isTikTokCampaign ? 'Nhập video từ Google Drive trong chi tiết chiến dịch' : 'Nhập media từ Google Drive hoặc tải lên trong chi tiết chiến dịch'}</span>
                     </div>
                   </button>
 
