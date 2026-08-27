@@ -1745,19 +1745,19 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     try {
       const preview = await marketingCampaignService.exportAssetOrdersForBulk(selectedCampaignId);
       if (!preview.rows.length) {
-        toast.warning('Chiến dịch chưa có Order ảnh có thể nhập vào tạo hàng loạt.');
+        toast.warning('Chiến dịch chưa có yêu cầu ảnh có thể nhập vào tạo hàng loạt.');
         return;
       }
       applyImportedData(preview.columns, preview.rows, preview.sourceName, selectedCampaignId, 'campaign_orders');
       const notices = [
-        preview.skipped.length ? `${preview.skipped.length} Order video giữ lại ở luồng video` : '',
+        preview.skipped.length ? `${preview.skipped.length} yêu cầu video được giữ lại ở luồng video` : '',
         preview.missingPrimaryAssetCount ? `${preview.missingPrimaryAssetCount} dòng chưa có ảnh chính` : '',
-        preview.rows.length > preview.maxBulkRows ? `Bulk Create hiện tạo tối đa ${preview.maxBulkRows} ảnh mỗi job` : '',
+        preview.rows.length > preview.maxBulkRows ? `Tạo hàng loạt hiện hỗ trợ tối đa ${preview.maxBulkRows} ảnh mỗi đợt` : '',
       ].filter(Boolean);
-      toast.success(`Đã nhập ${preview.rows.length} Order ảnh từ chiến dịch.`);
+      toast.success(`Đã nhập ${preview.rows.length} yêu cầu ảnh từ chiến dịch.`);
       if (notices.length) toast.warning(notices.join(' · '));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể nhập Order chiến dịch.';
+      const message = error instanceof Error ? error.message : 'Không thể nhập yêu cầu từ chiến dịch.';
       setErrorMessage(message);
       toast.error(message);
     } finally {

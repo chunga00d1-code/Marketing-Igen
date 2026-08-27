@@ -38,7 +38,7 @@ const searchIndex: SearchItem[] = [
   { label: "Kho tri thức doanh nghiệp", tab: "KHO TRI THUC" as TabType, keywords: "rag tai lieu doanh nghiep sale reply ai caption marketing drive" },
   { label: "Lịch đăng Content", tab: "MARKETING" as TabType, subTab: "LỊCH ĐĂNG CONTENT", keywords: "lich dang content calendar publish" },
   { label: "Phễu khách hàng", tab: "SALES CRM" as TabType, subTab: "PHỄU KHÁCH HÀNG", keywords: "crm phieu khach hang lead cold warm hot" },
-  { label: "Omni-Inbox Chat", tab: "SALES CRM" as TabType, subTab: "OMNI-INBOX CHAT", keywords: "chat vip mailbox tro ly ai" },
+  { label: "Hộp thư hội thoại ", tab: "SALES CRM" as TabType, subTab: "OMNI-INBOX CHAT", keywords: "chat vip mailbox tro ly ai omni inbox hop thu" },
   { label: "Quản trị user", tab: "QUAN TRI USER" as TabType, keywords: "user admin role permission cong ty wallet balance" },
   { label: "Ví & Nạp tiền", tab: "VI & NAP TIEN" as TabType, keywords: "vi nap tien so du payos vietqr nap bank" },
   { label: "Cài đặt hệ thống", tab: "CAI DAT" as TabType, keywords: "cai dat profile integration cong ty" },
@@ -215,8 +215,8 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                         {userProfile.email}
                       </span>
                       <span className={`mt-1 max-w-fit px-2 py-0.5 rounded-full font-mono font-bold text-[8px] uppercase tracking-wider border ${userProfile.role === "superadmin" || userProfile.role === "admin"
-                          ? "bg-rose-50 border-rose-200 text-rose-600"
-                          : "bg-slate-50 border-slate-200 text-slate-600"
+                        ? "bg-rose-50 border-rose-200 text-rose-600"
+                        : "bg-slate-50 border-slate-200 text-slate-600"
                         }`}>
                         {userProfile.role}
                       </span>
@@ -268,7 +268,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
           <div className="fixed inset-0" onClick={() => setShowIntegrationsModal(false)} />
           <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-slate-50 rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-scale-up">
-            
+
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-200/80 bg-white px-6 py-4">
               <div className="text-left">

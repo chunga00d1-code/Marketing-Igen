@@ -442,73 +442,89 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
   const now = new Date();
   const hasShareableReviewSlots = slots.some((slot) => slot.platform !== 'TikTok');
 
+  const isCampaignAllCompleted = React.useMemo(() => {
+    if (!slots || slots.length === 0) return false;
+    const total = slots.length;
+    const publishedCount = slots.filter((s) => s.status === 'published').length;
+    return (total > 0 && publishedCount === total) || campaign.status === 'completed';
+  }, [slots, campaign.status]);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 select-none">
         <div>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Lịch trình đăng bài chi tiết (Campaign Slots)</span>
-          {activeSlot && <span className="text-[10px] text-indigo-650 font-bold bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded mt-1 inline-block">Bấm chọn slot để xem/sửa chi tiết</span>}
+          {isCampaignAllCompleted ? (
+            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded mt-1 inline-flex items-center gap-1">
+              <Check size={11} className="text-emerald-600" />
+              Toàn bộ {slots.length} bài viết đã hoàn tất và xuất bản thành công 100%
+            </span>
+          ) : activeSlot ? (
+            <span className="text-[10px] text-indigo-650 font-bold bg-indigo-50 border border-indigo-100/50 px-2 py-0.5 rounded mt-1 inline-block">Bấm chọn slot để xem/sửa chi tiết</span>
+          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {hasShareableReviewSlots && (
-            <>
-          <button
-            type="button"
-            onClick={() => {
-              const todayStr = new Intl.DateTimeFormat('en-CA', {
-                timeZone: campaign.timezone || 'Asia/Bangkok',
-                year: 'numeric', month: '2-digit', day: '2-digit'
-              }).format(new Date());
-              handleShareDailyReviewLink(todayStr);
-            }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[10.5px] font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-655 transition cursor-pointer shadow-3xs"
-            title="Lấy link để gửi người ngoài duyệt toàn bộ bài đăng của ngày hôm nay"
-          >
-            <Share2 size={11} className="text-slate-400" />
-            Chia sẻ duyệt bài hôm nay
-          </button>
+        {!isCampaignAllCompleted && (
+          <div className="flex flex-wrap items-center gap-2">
+            {hasShareableReviewSlots && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const todayStr = new Intl.DateTimeFormat('en-CA', {
+                      timeZone: campaign.timezone || 'Asia/Bangkok',
+                      year: 'numeric', month: '2-digit', day: '2-digit'
+                    }).format(new Date());
+                    handleShareDailyReviewLink(todayStr);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[10.5px] font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-655 transition cursor-pointer shadow-3xs"
+                  title="Lấy link để gửi người ngoài duyệt toàn bộ bài đăng của ngày hôm nay"
+                >
+                  <Share2 size={11} className="text-slate-400" />
+                  Chia sẻ duyệt bài hôm nay
+                </button>
 
-          <button
-            type="button"
-            onClick={handleShareMonthlyReviewLink}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[10.5px] font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-655 transition cursor-pointer shadow-3xs"
-            title="Lấy link để gửi người ngoài duyệt toàn bộ bài đăng của tháng này"
-          >
-            <Share2 size={11} className="text-slate-400" />
-            Chia sẻ duyệt tháng này
-          </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            onClick={handleBatchPrepareMonth}
-            disabled={isBatchPreparing}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-100 bg-indigo-50/50 text-[10.5px] font-bold text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900 transition cursor-pointer shadow-3xs disabled:opacity-50"
-            title="Chuẩn bị hàng loạt nội dung AI cho tháng này"
-          >
-            {isBatchPreparing ? (
-              <Loader2 size={11} className="animate-spin text-indigo-500" />
-            ) : (
-              <CalendarClock size={11} className="text-indigo-500" />
+                <button
+                  type="button"
+                  onClick={handleShareMonthlyReviewLink}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[10.5px] font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-655 transition cursor-pointer shadow-3xs"
+                  title="Lấy link để gửi người ngoài duyệt toàn bộ bài đăng của tháng này"
+                >
+                  <Share2 size={11} className="text-slate-400" />
+                  Chia sẻ duyệt tháng này
+                </button>
+              </>
             )}
-            Chuẩn bị nội dung tháng này
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setShowCustomPrepare(!showCustomPrepare)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10.5px] font-bold transition cursor-pointer shadow-3xs ${
-              showCustomPrepare
-                ? 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-650/15'
-                : 'border-indigo-150 bg-indigo-50/50 text-indigo-755 hover:bg-indigo-50 hover:text-indigo-900'
-            }`}
-            title="Chuẩn bị hàng loạt nội dung AI cho bài đăng theo khoảng ngày tự chọn"
-          >
-            <CalendarClock size={11} className={showCustomPrepare ? 'text-white' : 'text-indigo-500'} />
-            Tạo nội dung theo khoảng ngày
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={handleBatchPrepareMonth}
+              disabled={isBatchPreparing}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-indigo-100 bg-indigo-50/50 text-[10.5px] font-bold text-indigo-700 hover:bg-indigo-50 hover:text-indigo-900 transition cursor-pointer shadow-3xs disabled:opacity-50"
+              title="Chuẩn bị hàng loạt nội dung AI cho tháng này"
+            >
+              {isBatchPreparing ? (
+                <Loader2 size={11} className="animate-spin text-indigo-500" />
+              ) : (
+                <CalendarClock size={11} className="text-indigo-500" />
+              )}
+              Chuẩn bị nội dung tháng này
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowCustomPrepare(!showCustomPrepare)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10.5px] font-bold transition cursor-pointer shadow-3xs ${
+                showCustomPrepare
+                  ? 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700 shadow-md shadow-indigo-650/15'
+                  : 'border-indigo-150 bg-indigo-50/50 text-indigo-755 hover:bg-indigo-50 hover:text-indigo-900'
+              }`}
+              title="Chuẩn bị hàng loạt nội dung AI cho bài đăng theo khoảng ngày tự chọn"
+            >
+              <CalendarClock size={11} className={showCustomPrepare ? 'text-white' : 'text-indigo-500'} />
+              Tạo nội dung theo khoảng ngày
+            </button>
+          </div>
+        )}
       </div>
 
       {showCustomPrepare && (
@@ -654,7 +670,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                 <th className="px-4 py-3">Slot #</th>
                 <th className="px-4 py-3">Thời gian đăng (Zoned)</th>
                 <th className="px-4 py-3">Nền tảng</th>
-                <th className="px-4 py-3">Pillar & Brief</th>
+                <th className="px-4 py-3">Nội dung</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3 text-right">Hành động</th>
               </tr>

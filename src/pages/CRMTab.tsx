@@ -1088,13 +1088,13 @@ export default function CRMTab() {
           return cust;
         }
 
-        const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Đã Chốt Đơn", "Khách Up-sell", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
+        const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Đã Chốt Đơn", "Khách Up-sell", "Khách bán thêm", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
         const newTempTag =
           status === "cold" ? "Khách Lạnh" :
             status === "warm" ? "Khách Ấm" :
               status === "hot" ? "Khách Nóng" :
                 status === "won" ? "Đã Chốt Đơn" :
-                  "KhÃ¡ch Up-sell";
+                  "Khách bán thêm (Up-sell)";
         const newTags = [...cleanTags, newTempTag];
         if (touchpoint) {
           newTags.push(touchpoint);
@@ -1228,14 +1228,14 @@ export default function CRMTab() {
       return;
     }
 
-    toast.success(`Đã kích hoạt chiến dịch Up-sell! Gửi tự động SMS & Voucher giảm giá 10% cho ${coldLeads.length} Khách Lạnh.`);
+    toast.success(`Đã kích hoạt chiến dịch Bán thêm (Up-sell)! Gửi tự động SMS & Voucher giảm giá 10% cho ${coldLeads.length} Khách Lạnh.`);
 
     try {
       await crmService.bulkUpdateLeads(
         coldLeads.map((lead) => ({
           id: lead.id,
           lead: {
-            lastInteraction: "Gửi Campaign Up-sell",
+            lastInteraction: "Gửi ưu đãi bán thêm (Up-sell)",
             lastInteractionTime: "Vừa xong"
           }
         }))
@@ -1250,7 +1250,7 @@ export default function CRMTab() {
           }
 
           const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
-          const nextTags = [...cleanTags, "Khách Lạnh", "Gửi Campaign Up-sell"];
+          const nextTags = [...cleanTags, "Khách Lạnh", "Gửi ưu đãi bán thêm (Up-sell)"];
 
           if (nextTags.length === cust.tags.length && nextTags.every((tag, index) => tag === cust.tags[index])) {
             return cust;
@@ -1447,19 +1447,22 @@ export default function CRMTab() {
       {/* Sub tabs selector bar */}
       <div className="border-b border-slate-100 bg-white px-4 py-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
         <div className="flex items-center gap-1.5 overflow-x-auto">
-          {["PHỄU KHÁCH HÀNG", "OMNI-INBOX CHAT", "AI COMMENT AUTO-REPLY"].map((tab) => {
-            const isActive = subTab === tab;
+          {[
+            { key: "PHỄU KHÁCH HÀNG" as CRMSubTabType, label: "Phễu khách hàng" },
+            { key: "OMNI-INBOX CHAT" as CRMSubTabType, label: "Hộp thư hội thoại " },
+            { key: "AI COMMENT AUTO-REPLY" as CRMSubTabType, label: "AI phản hồi bình luận" },
+          ].map(({ key, label }) => {
+            const isActive = subTab === key;
             return (
               <button
-                key={tab}
-                onClick={() => setSubTab(tab as CRMSubTabType)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none ${
-                  isActive
+                key={key}
+                onClick={() => setSubTab(key)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none ${isActive
                     ? "bg-[#0284c7] text-white shadow-xs"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
+                  }`}
               >
-                {tab}
+                {label}
               </button>
             );
           })}
@@ -1831,7 +1834,7 @@ export default function CRMTab() {
             </div>
 
             <p className="text-[10px] text-slate-400 leading-relaxed">
-              ✓ Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Omni-Inbox chat cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
+              ✓ Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Hộp thư hội thoại (Omni-Inbox) cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
             </p>
 
             <div className="flex gap-2.5 mt-2">

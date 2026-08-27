@@ -115,7 +115,7 @@ export default function CampaignDriveImportPanel({
       );
       if (!result.attachedSlots) {
         toast.warning(
-          'Job này không có Order thuộc chiến dịch hiện tại. Hãy tạo ảnh tạo hàng loạt từ Order của chiến dịch rồi thử lại.',
+          'Tác vụ này không có yêu cầu ảnh thuộc chiến dịch hiện tại. Hãy tạo ảnh hàng loạt từ yêu cầu của chiến dịch rồi thử lại.',
         );
         return;
       }
