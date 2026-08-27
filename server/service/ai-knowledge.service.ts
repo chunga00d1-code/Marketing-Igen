@@ -3,6 +3,7 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../model/ai-knowledge.model";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
+import { AIFaqCandidateModel } from "../model/ai-faq-candidate.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { geminiService } from "./gemini.service";
 
@@ -952,6 +953,7 @@ export const aiKnowledgeService = {
     const documentIds = Array.from(new Set(chunks.map((chunk) => String(chunk.documentId))));
     const documents = await AIKnowledgeDocumentModel.find({
       _id: { $in: documentIds },
+      companyCode,
     })
       .select("_id sourceTitle sourceUrl pageScope pageIds documentType")
       .lean();
@@ -1348,6 +1350,20 @@ export const aiKnowledgeService = {
 
   async getKnowledgeHealth(companyCode?: string) {
     const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode) {
+      return {
+        companyCode: "",
+        mode: "default" as const,
+        documentsCount: 0,
+        chunksCount: 0,
+        detectedTopics: [],
+        warnings: ["Chưa cấu hình mã doanh nghiệp."],
+        conflicts: [],
+        latestSyncAt: null,
+        latestReplyAt: null,
+        documents: [],
+      };
+    }
     const [documents, chunksCount, latestLog, conflicts] = await Promise.all([
       AIKnowledgeDocumentModel.find({ companyCode: normalizedCompanyCode }).sort({ updatedAt: -1 }).lean(),
       AIKnowledgeChunkModel.countDocuments({ companyCode: normalizedCompanyCode }),
@@ -1536,12 +1552,36 @@ export const aiKnowledgeService = {
     return { id: String(document._id), title: document.sourceTitle };
   },
 
+  async deleteKnowledgeDocumentByUrl(companyCode: string | undefined, sourceUrl: string) {
+    const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode || !sourceUrl) return null;
+    const document = await AIKnowledgeDocumentModel.findOne({
+      sourceUrl,
+      companyCode: normalizedCompanyCode,
+    })
+      .select("_id sourceTitle")
+      .lean();
+    if (!document) return null;
+    await Promise.all([
+      AIKnowledgeChunkModel.deleteMany({
+        documentId: document._id,
+        companyCode: normalizedCompanyCode,
+      }),
+      AIKnowledgeDocumentModel.deleteOne({
+        _id: document._id,
+        companyCode: normalizedCompanyCode,
+      }),
+    ]);
+    return { id: String(document._id), title: document.sourceTitle };
+  },
+
   async clearKnowledge(companyCode?: string) {
     const normalizedCompanyCode = normalizeCompanyCode(companyCode);
     if (!normalizedCompanyCode) return;
     await Promise.all([
       AIKnowledgeDocumentModel.deleteMany({ companyCode: normalizedCompanyCode }),
       AIKnowledgeChunkModel.deleteMany({ companyCode: normalizedCompanyCode }),
+      AIFaqCandidateModel.deleteMany({ companyCode: normalizedCompanyCode }),
     ]);
   },
 

@@ -164,6 +164,13 @@ export const companyKnowledgeService = {
     );
   },
 
+  clearAll() {
+    return requestJson<{ status: "success"; message: string }>(
+      "/api/v1/company-knowledge/clear-all",
+      { method: "POST" }
+    );
+  },
+
   getConflicts() {
     return requestJson<{ status: "success"; conflicts: KnowledgeConflict[] }>(
       "/api/v1/company-knowledge/conflicts"
@@ -176,7 +183,93 @@ export const companyKnowledgeService = {
       body: JSON.stringify({ query, ...options }),
     });
   },
+
+  listFaqCandidates(status?: string) {
+    const query = status && status !== "all" ? `?status=${status}` : "";
+    return requestJson<FaqCandidatesResponse>(`/api/v1/company-knowledge/faq-candidates${query}`);
+  },
+
+  analyzeFaqs() {
+    return requestJson<{
+      status: "success";
+      extractedCount: number;
+      message: string;
+      candidates: FaqCandidate[];
+    }>("/api/v1/company-knowledge/faq-candidates/analyze", {
+      method: "POST",
+    });
+  },
+
+  approveFaqCandidate(id: string, customAnswer?: string) {
+    return requestJson<{
+      status: "success";
+      message: string;
+      candidate: FaqCandidate;
+    }>(`/api/v1/company-knowledge/faq-candidates/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ customAnswer }),
+    });
+  },
+
+  rejectFaqCandidate(id: string) {
+    return requestJson<{
+      status: "success";
+      message: string;
+      candidate: FaqCandidate;
+    }>(`/api/v1/company-knowledge/faq-candidates/${id}/reject`, {
+      method: "POST",
+    });
+  },
+
+  deleteFaqCandidate(id: string) {
+    return requestJson<{
+      status: "success";
+      message: string;
+    }>(`/api/v1/company-knowledge/faq-candidates/${id}`, {
+      method: "DELETE",
+    });
+  },
 };
+
+export type FaqCandidateStatus = "pending" | "approved" | "rejected";
+export type FaqCandidateCategory =
+  | "pricing"
+  | "shipping"
+  | "product"
+  | "warranty"
+  | "payment"
+  | "service"
+  | "policy"
+  | "general";
+
+export interface FaqCandidate {
+  _id: string;
+  companyCode: string;
+  question: string;
+  suggestedAnswer: string;
+  sampleCustomerMessages: string[];
+  frequency: number;
+  category: FaqCandidateCategory;
+  source: "customer_chat" | "agent_response" | "negative_feedback" | "comment";
+  confidenceScore: number;
+  status: FaqCandidateStatus;
+  lastAskedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FaqCandidatesResponse {
+  status: "success";
+  candidates: FaqCandidate[];
+  total: number;
+  stats: {
+    pending: number;
+    approved: number;
+    rejected: number;
+  };
+}
 
 export interface TestSearchResult {
   status: "success" | "error";
