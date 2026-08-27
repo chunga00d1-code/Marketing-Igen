@@ -126,3 +126,39 @@ companyKnowledgeRouter.delete(
   validateRequest(idSchema),
   companyKnowledgeController.deleteDocument as never
 );
+
+// AI Learning & FAQ Discovery routes
+companyKnowledgeRouter.get(
+  "/faq-candidates",
+  companyKnowledgeController.listFaqCandidates as never
+);
+companyKnowledgeRouter.post(
+  "/faq-candidates/analyze",
+  managerOnly as never,
+  companyKnowledgeController.analyzeFaqs as never
+);
+companyKnowledgeRouter.post(
+  "/faq-candidates/:id/approve",
+  managerOnly as never,
+  validateRequest(idSchema),
+  companyKnowledgeController.approveFaqCandidate as never
+);
+companyKnowledgeRouter.post(
+  "/faq-candidates/:id/reject",
+  managerOnly as never,
+  validateRequest(idSchema),
+  companyKnowledgeController.rejectFaqCandidate as never
+);
+companyKnowledgeRouter.delete(
+  "/faq-candidates/:id",
+  managerOnly as never,
+  validateRequest(idSchema),
+  companyKnowledgeController.deleteFaqCandidate as never
+);
+
+companyKnowledgeRouter.post(
+  "/clear-all",
+  managerOnly as never,
+  companyKnowledgeController.clearAllKnowledge as never
+);
+

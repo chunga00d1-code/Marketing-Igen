@@ -20,9 +20,11 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { FaqLearningSuggestionsPanel } from "../components/knowledge/FaqLearningSuggestionsPanel";
 import {
   CompanyKnowledgeDocument,
   CompanyKnowledgeHealth,
+  FaqCandidatesResponse,
   KnowledgeChannelScope,
   KnowledgeDocumentType,
   KnowledgePageScope,
@@ -237,6 +239,9 @@ export default function CompanyKnowledgePage() {
   const [editPageIds, setEditPageIds] = useState<string[]>([]);
   const [editDocumentType, setEditDocumentType] = useState<KnowledgeDocumentType>("general");
 
+  const [activeSection, setActiveSection] = useState<"documents" | "faq_learning" | "test_search">("documents");
+  const [pendingFaqCount, setPendingFaqCount] = useState(0);
+
   // State cho RAG Search Simulator
   const [testQuery, setTestQuery] = useState("");
   const [testingSearch, setTestingSearch] = useState(false);
@@ -265,14 +270,16 @@ export default function CompanyKnowledgePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextHealth, nextDocuments, integrations] = await Promise.all([
+      const [nextHealth, nextDocuments, integrations, faqRes] = await Promise.all([
         companyKnowledgeService.health(),
         companyKnowledgeService.listDocuments(),
         socialIntegrationService.getIntegrations("Facebook").catch(() => []),
+        companyKnowledgeService.listFaqCandidates("pending").catch(() => ({ stats: { pending: 0 } })),
       ]);
       setHealth(nextHealth);
       setDocuments(nextDocuments);
       setFacebookPages(integrations.filter((item) => item.isConnected && item.username));
+      setPendingFaqCount((faqRes as FaqCandidatesResponse)?.stats?.pending || 0);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -395,6 +402,26 @@ export default function CompanyKnowledgePage() {
     }
   }
 
+  async function handleClearAll() {
+    const confirmed = window.confirm(
+      "⚠️ CẢNH BÁO NGUY HIỂM:\n\nBạn có chắc chắn muốn XÓA TOÀN BỘ KHO TRI THỨC của doanh nghiệp này?\n\nToàn bộ tài liệu, bảng giá, chính sách và dữ liệu AI tự học sẽ bị xóa vĩnh viễn và không thể khôi phục."
+    );
+    if (!confirmed) return;
+
+    setBusy(true);
+    try {
+      const res = await companyKnowledgeService.clearAll();
+      toast.success(res.message || "Đã xóa toàn bộ kho tri thức thành công.");
+      await loadData();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Không thể xóa kho tri thức."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="h-full overflow-y-auto pb-8 pr-2">
       <div className="mx-auto w-full max-w-5xl">
@@ -420,11 +447,23 @@ export default function CompanyKnowledgePage() {
               </strong>{" "}
               tài liệu
             </span>
+            {canManage && (health?.documentsCount || 0) > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleClearAll()}
+                disabled={busy || loading}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/80 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 hover:border-rose-300 disabled:opacity-50 cursor-pointer transition-colors"
+                title="Xóa toàn bộ kho tri thức của doanh nghiệp"
+              >
+                <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                <span>Xóa toàn bộ tri thức</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void loadData()}
               disabled={loading}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50 hover:text-blue-650 disabled:opacity-50"
+              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50 hover:text-blue-650 disabled:opacity-50 cursor-pointer"
               title="Làm mới"
             >
               <RefreshCw
@@ -434,13 +473,230 @@ export default function CompanyKnowledgePage() {
           </div>
         </header>
 
-        {!canManage && (
-          <div className="mt-5 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
-            <ShieldCheck className="h-4 w-4 text-blue-650" />
-            Bạn đang ở chế độ xem. Manager hoặc Admin có thể nhập và quản lý
-            tài liệu.
+        {/* Sub-Navigation Tabs */}
+        <div className="mt-5 flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+          <button
+            type="button"
+            onClick={() => setActiveSection("documents")}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+              activeSection === "documents"
+                ? "bg-indigo-650 text-white shadow-md shadow-indigo-650/20"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <BookOpenCheck className="h-4 w-4" />
+            <span>Tài liệu & Tệp Kho Tri Thức</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                activeSection === "documents"
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {health?.documentsCount || 0}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("faq_learning")}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+              activeSection === "faq_learning"
+                ? "bg-indigo-650 text-white shadow-md shadow-indigo-650/20"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <Sparkles
+              className={`h-4 w-4 ${
+                activeSection === "faq_learning"
+                  ? "text-amber-300"
+                  : "text-amber-500"
+              }`}
+            />
+            <span>Đề xuất FAQ từ Hội thoại</span>
+            {pendingFaqCount > 0 ? (
+              <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-extrabold text-slate-900 animate-pulse">
+                {pendingFaqCount} mới
+              </span>
+            ) : (
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  activeSection === "faq_learning"
+                    ? "bg-white/20 text-white"
+                    : "bg-amber-100 text-amber-800"
+                }`}
+              >
+                AI Learning
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection("test_search")}
+            className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer ${
+              activeSection === "test_search"
+                ? "bg-indigo-650 text-white shadow-md shadow-indigo-650/20"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <Search className="h-4 w-4" />
+            <span>Thử nghiệm Tìm kiếm (RAG)</span>
+          </button>
+        </div>
+
+        {activeSection === "faq_learning" && (
+          <div className="mt-5">
+            <FaqLearningSuggestionsPanel onKnowledgeUpdated={() => void loadData()} />
           </div>
         )}
+
+        {activeSection === "test_search" && (
+          <div className="mt-5 space-y-5">
+            {/* RAG Search Simulator Component */}
+            <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/40 p-5 shadow-xs">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                    <Sparkles className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Thử nghiệm tìm kiếm tri thức (RAG Search Simulator)
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Gõ thử câu hỏi của khách hàng để kiểm tra AI có tìm đúng tài liệu và trả lời chuẩn không
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <div className="relative flex-1">
+                  <MessageSquare className="absolute left-3 top-2.5 h-4 w-4 text-indigo-400" />
+                  <input
+                    type="text"
+                    value={testQuery}
+                    onChange={(e) => setTestQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !testingSearch) {
+                        void handleTestSearch();
+                      }
+                    }}
+                    placeholder="Ví dụ: Áo polo giá bao nhiêu, ship về Hà Nội mất mấy ngày, có bảo hành ko?..."
+                    className="w-full rounded-xl border border-indigo-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleTestSearch()}
+                  disabled={testingSearch || !testQuery.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+                >
+                  {testingSearch ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  Kiểm tra
+                </button>
+              </div>
+
+              {testResult && (
+                <div className="mt-4 space-y-3 rounded-xl border border-indigo-100 bg-white p-4 text-xs shadow-xs">
+                  {/* Intent & Match Stats */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-bold text-slate-700">Intent nhận diện:</span>
+                      {testResult.detectedDocumentTypes?.length > 0 ? (
+                        testResult.detectedDocumentTypes.map((type) => (
+                          <span
+                            key={type}
+                            className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200"
+                          >
+                            {DOCUMENT_TYPES.find((t) => t.id === type)?.label || type}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                          Toàn bộ kho tri thức
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-500 text-[11px]">
+                      <span>
+                        Khớp: <strong className="text-indigo-600 font-bold">{testResult.matches} khối</strong>
+                      </span>
+                      <span>
+                        Điểm cao nhất: <strong className="text-emerald-600 font-bold">{(testResult.bestScore || 0).toFixed(2)}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Simulated Answer */}
+                  <div>
+                    <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-1.5">
+                      <Bot className="h-3.5 w-3.5 text-indigo-600" />
+                      Câu trả lời mẫu AI sẽ gửi cho khách:
+                    </div>
+                    <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-xs leading-relaxed text-slate-800 whitespace-pre-line">
+                      {testResult.simulatedAnswer || "(Chưa có câu trả lời)"}
+                    </div>
+                  </div>
+
+                  {/* Matched Chunks Breakdown */}
+                  {testResult.items?.length > 0 && (
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowMatchedChunks(!showMatchedChunks)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                      >
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 transition-transform ${showMatchedChunks ? "rotate-180" : ""}`}
+                        />
+                        {showMatchedChunks ? "Ẩn các đoạn tri thức đã trích xuất" : `Xem ${testResult.items.length} đoạn tri thức đã trích xuất`}
+                      </button>
+
+                      {showMatchedChunks && (
+                        <div className="mt-2 space-y-2">
+                          {testResult.items.map((item, idx) => (
+                            <div
+                              key={idx}
+                              className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 text-[11px] leading-relaxed"
+                            >
+                              <div className="flex items-center justify-between gap-2 font-semibold text-slate-700 mb-1">
+                                <span className="truncate">
+                                  #{idx + 1} · {item.title} ({item.documentType})
+                                </span>
+                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  Score: {item.score.toFixed(2)}
+                                </span>
+                              </div>
+                              <p className="text-slate-600 whitespace-pre-line font-mono text-[10px]">
+                                {item.text}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {activeSection === "documents" && (
+          <>
+            {!canManage && (
+              <div className="mt-5 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+                <ShieldCheck className="h-4 w-4 text-blue-650" />
+                Bạn đang ở chế độ xem. Manager hoặc Admin có thể nhập và quản lý
+                tài liệu.
+              </div>
+            )}
 
         {canManage && (
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
@@ -645,139 +901,6 @@ export default function CompanyKnowledgePage() {
           </div>
         )}
 
-        {/* RAG Search Simulator Component */}
-        <section className="mt-5 rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 via-white to-blue-50/40 p-5 shadow-xs">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
-                <Sparkles className="h-4 w-4" />
-              </span>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">
-                  Thử nghiệm tìm kiếm tri thức (RAG Search Simulator)
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Gõ thử câu hỏi của khách hàng để kiểm tra AI có tìm đúng tài liệu và trả lời chuẩn không
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 flex gap-2">
-            <div className="relative flex-1">
-              <MessageSquare className="absolute left-3 top-2.5 h-4 w-4 text-indigo-400" />
-              <input
-                type="text"
-                value={testQuery}
-                onChange={(e) => setTestQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !testingSearch) {
-                    void handleTestSearch();
-                  }
-                }}
-                placeholder="Ví dụ: Áo polo giá bao nhiêu, ship về Hà Nội mất mấy ngày, có bảo hành ko?..."
-                className="w-full rounded-xl border border-indigo-200 bg-white py-2 pl-9 pr-3 text-xs outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleTestSearch()}
-              disabled={testingSearch || !testQuery.trim()}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {testingSearch ? (
-                <LoaderCircle className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-              Kiểm tra
-            </button>
-          </div>
-
-          {testResult && (
-            <div className="mt-4 space-y-3 rounded-xl border border-indigo-100 bg-white p-4 text-xs shadow-xs">
-              {/* Intent & Match Stats */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-bold text-slate-700">Intent nhận diện:</span>
-                  {testResult.detectedDocumentTypes?.length > 0 ? (
-                    testResult.detectedDocumentTypes.map((type) => (
-                      <span
-                        key={type}
-                        className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 border border-indigo-200"
-                      >
-                        {DOCUMENT_TYPES.find((t) => t.id === type)?.label || type}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
-                      Toàn bộ kho tri thức
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 text-slate-500 text-[11px]">
-                  <span>
-                    Khớp: <strong className="text-indigo-600 font-bold">{testResult.matches} khối</strong>
-                  </span>
-                  <span>
-                    Điểm cao nhất: <strong className="text-emerald-600 font-bold">{(testResult.bestScore || 0).toFixed(2)}</strong>
-                  </span>
-                </div>
-              </div>
-
-              {/* Simulated Answer */}
-              <div>
-                <div className="flex items-center gap-1.5 font-bold text-slate-800 mb-1.5">
-                  <Bot className="h-3.5 w-3.5 text-indigo-600" />
-                  Câu trả lời mẫu AI sẽ gửi cho khách:
-                </div>
-                <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 text-xs leading-relaxed text-slate-800 whitespace-pre-line">
-                  {testResult.simulatedAnswer || "(Chưa có câu trả lời)"}
-                </div>
-              </div>
-
-              {/* Matched Chunks Breakdown */}
-              {testResult.items?.length > 0 && (
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowMatchedChunks(!showMatchedChunks)}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
-                  >
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform ${showMatchedChunks ? "rotate-180" : ""}`}
-                    />
-                    {showMatchedChunks ? "Ẩn các đoạn tri thức đã trích xuất" : `Xem ${testResult.items.length} đoạn tri thức đã trích xuất`}
-                  </button>
-
-                  {showMatchedChunks && (
-                    <div className="mt-2 space-y-2">
-                      {testResult.items.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-[11px]"
-                        >
-                          <div className="flex items-center justify-between gap-2 font-bold text-slate-700 mb-1">
-                            <span className="truncate text-indigo-700">
-                              #{idx + 1} · {item.title}
-                            </span>
-                            <span className="shrink-0 text-emerald-600 font-mono">
-                              Score: {item.score.toFixed(2)}
-                            </span>
-                          </div>
-                          <p className="text-slate-600 line-clamp-3 leading-relaxed">
-                            {item.text}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </section>
-
         <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div>
@@ -948,6 +1071,8 @@ export default function CompanyKnowledgePage() {
             )}
           </div>
         </section>
+          </>
+        )}
       </div>
     </div>
   );
