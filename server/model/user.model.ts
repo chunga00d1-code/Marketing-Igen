@@ -51,15 +51,15 @@ const CanvaIntegrationSchema = new Schema({ connected:{type:Boolean,default:fals
 
 export const AiAutoReplyConfigSchema = new Schema(
   {
-    enabled: { type: Boolean, default: false },
-    commentReplyEnabled: { type: Boolean, default: false },
+    enabled: { type: Boolean, default: true },
+    commentReplyEnabled: { type: Boolean, default: true },
     autoClassify: { type: Boolean, default: true },
     autoCloseDeal: { type: Boolean, default: false },
     autoFeedback: { type: Boolean, default: false },
     replyDelay: { type: Number, default: 15 },
     advancedInstructions: { type: String, default: "" },
     trainingKnowledge: { type: String, default: "" },
-    model: { type: String, default: "gemini-3.5-flash" },
+    model: { type: String, default: "deepseek-v4-flash-0731" },
     autoFollowUpEnabled: { type: Boolean, default: false },
     followUpDelayHours: { type: Number, default: 2 },
     followUpPrompt: { type: String, default: "" },

@@ -375,9 +375,9 @@ export const telegramService = {
         chatId,
         [
           `📢 <b>Bước 3/6: Chọn nền tảng đăng bài</b>`,
-          `Nguồn media: <b>📋 Order ảnh sau khi content hoàn tất</b>`,
+          `Nguồn media: <b>📁 Nhập ảnh, video từ Google Drive</b>`,
           ``,
-          `Sau khi đội thiết kế hoàn tất, nhập thư mục Drive tại tab <b>Order ảnh, video</b> trong chi tiết chiến dịch.`,
+          `Sau khi tạo chiến dịch, bạn có thể nhập thư mục Google Drive tại tab <b>Order ảnh, video</b> trong chi tiết chiến dịch.`,
         ].join("\n"),
         [
           [
@@ -595,7 +595,7 @@ export const telegramService = {
         `=============================`,
         `• <b>Định hướng chiến dịch:</b>`,
         `  <i>"${wizard.brief}"</i>`,
-        `• <b>Nguồn ảnh/media:</b> <b>${wizard.imageMode === "ai" ? "Ảnh sinh bằng AI (Gemini)" : "Order ảnh sau content"}</b>`,
+        `• <b>Nguồn ảnh/media:</b> <b>${wizard.imageMode === "ai" ? "Ảnh sinh bằng AI (Gemini)" : "Nhập ảnh, video từ Drive"}</b>`,
         `• <b>Nền tảng đăng:</b> <b>${wizard.platforms.join(", ")}</b>`,
         `• <b>Khoảng thời gian:</b> Từ <code>${wizard.startDate}</code> đến <code>${wizard.endDate}</code> (${wizard.days} ngày)`,
         `• <b>Tần suất:</b> ${wizard.postsPerDay} bài/ngày`,
@@ -3510,7 +3510,7 @@ Trả về duy nhất JSON object theo cấu trúc:
           `📢 <b>Nền tảng:</b> <b>${parsedParams.platforms.join(", ")}</b>`,
           `📅 <b>Thời gian:</b> Từ <code>${startDate}</code> đến <code>${endDate}</code> (${parsedParams.days} ngày)`,
           `⏰ <b>Giờ đăng bài:</b> <code>${parsedParams.postingTimes.join(", ")}</code> (${parsedParams.postsPerDay} bài/ngày)`,
-          `🖼️ <b>Nguồn media:</b> <b>${parsedParams.imageMode === "order" ? "Order ảnh sau content" : "Ảnh sinh tự động AI"}</b>`,
+          `🖼️ <b>Nguồn media:</b> <b>${parsedParams.imageMode === "order" ? "Nhập ảnh, video từ Drive" : "Ảnh sinh tự động AI"}</b>`,
           `📊 <b>Số bài viết (Slots):</b> <b>${slots.length} bài</b>`,
           "=============================",
           `🔗 <a href="${campaignWebUrl}"><b>Nhấn vào đây để xem chi tiết chiến dịch trên Web ERP</b></a>`

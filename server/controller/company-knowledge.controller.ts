@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { aiKnowledgeService } from "../service/ai-knowledge.service";
+import { aiKnowledgeLearningService } from "../service/ai-knowledge-learning.service";
 
 function getTargetCompanyCode(req: AuthenticatedRequest) {
   if (req.user?.role === "superadmin" && (req.query?.companyCode || req.headers["x-company-code"] || req.body?.companyCode)) {
@@ -115,6 +116,114 @@ export const companyKnowledgeController = {
       return res.status(500).json({
         status: "error",
         message: "Không thể thử nghiệm tìm kiếm tri thức.",
+      });
+    }
+  },
+
+  async listFaqCandidates(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const status = typeof req.query.status === "string" ? req.query.status : undefined;
+      const result = await aiKnowledgeLearningService.listFaqCandidates(companyCode, status);
+      return res.status(200).json({ status: "success", ...result });
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] listFaqCandidates error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Không thể tải danh sách câu hỏi đề xuất.",
+      });
+    }
+  },
+
+  async analyzeFaqs(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const result = await aiKnowledgeLearningService.analyzeConversationsAndExtractFaqs(companyCode);
+      return res.status(200).json({ status: "success", ...result });
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] analyzeFaqs error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Lỗi khi quét và phân tích hội thoại.",
+      });
+    }
+  },
+
+  async approveFaqCandidate(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const candidateId = req.params.id;
+      const customAnswer = req.body?.customAnswer;
+      const result = await aiKnowledgeLearningService.approveFaqCandidate({
+        candidateId,
+        customAnswer,
+        companyCode,
+        userId: req.user?.id,
+      });
+      return res.status(200).json(result);
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] approveFaqCandidate error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể duyệt câu hỏi đề xuất.",
+      });
+    }
+  },
+
+  async rejectFaqCandidate(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const candidateId = req.params.id;
+      const result = await aiKnowledgeLearningService.rejectFaqCandidate({
+        candidateId,
+        companyCode,
+        userId: req.user?.id,
+      });
+      return res.status(200).json(result);
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] rejectFaqCandidate error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể bỏ qua câu hỏi đề xuất.",
+      });
+    }
+  },
+
+  async deleteFaqCandidate(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      const candidateId = req.params.id;
+      const result = await aiKnowledgeLearningService.deleteFaqCandidate({
+        candidateId,
+        companyCode,
+        userId: req.user?.id,
+      });
+      return res.status(200).json(result);
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] deleteFaqCandidate error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể xóa đề xuất câu hỏi.",
+      });
+    }
+  },
+
+  async clearAllKnowledge(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = getTargetCompanyCode(req);
+      if (!companyCode) {
+        return res.status(400).json({ status: "error", message: "Thiếu mã doanh nghiệp." });
+      }
+      await aiKnowledgeService.clearKnowledge(companyCode);
+      return res.status(200).json({
+        status: "success",
+        message: `Đã xóa sạch toàn bộ kho tri thức của doanh nghiệp ${companyCode}.`,
+      });
+    } catch (error: unknown) {
+      console.error("[CompanyKnowledge] clearAllKnowledge error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: error instanceof Error ? error.message : "Không thể xóa kho tri thức.",
       });
     }
   },

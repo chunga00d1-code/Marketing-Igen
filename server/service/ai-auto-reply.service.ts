@@ -190,7 +190,7 @@ async function collectCandidateUsers(
   console.log(`[AI AutoReply] Dang tim tich hop ca nhan cho ${channel} bang query:`, JSON.stringify(userLevelQuery));
   const userLevelOwners = await UserModel.find(userLevelQuery);
   if (userLevelOwners.length > 0) {
-    console.log(`[AI AutoReply] Tim thay ${userLevelOwners.length} users lien ket ca nhan:`, userLevelOwners.map((u) => u.email));
+    console.log(`[AI AutoReply] Tim thay ${userLevelOwners.length} users lien ket ca nhan:`, userLevelOwners.map((u) => u?.email || "unknown"));
     candidateUsers.push(...userLevelOwners);
   }
 
@@ -208,13 +208,15 @@ async function collectCandidateUsers(
 
   const uniqueCandidatesMap = new Map<string, any>();
   for (const candidate of candidateUsers) {
-    uniqueCandidatesMap.set(candidate._id.toString(), candidate);
+    if (candidate?._id) {
+      uniqueCandidatesMap.set(candidate._id.toString(), candidate);
+    }
   }
 
   const uniqueCandidates = Array.from(uniqueCandidatesMap.values());
   console.log(
     `[AI AutoReply] Danh sach ung vien duy nhat:`,
-    uniqueCandidates.map((u) => `${u.email} (company: ${u.companyCode}, AIEnabled: ${!!u.aiAutoReplyConfig?.enabled})`)
+    uniqueCandidates.map((u) => `${u?.email || "no-email"} (company: ${u?.companyCode || "none"}, AIEnabled: ${!!u?.aiAutoReplyConfig?.enabled})`)
   );
 
   return {
@@ -478,7 +480,7 @@ export const aiAutoReplyService = {
       console.log(`[AI AutoReply] Xác định targetCompanyCode cho hội thoại: ${targetCompanyCode}`);
       console.log(`[AI AutoReply] Ket qua resolve owner: source=${ownerResolutionSource}, selectedUser=${selectedUser?.email || "none"}`);
 
-      if (selectedUser) {
+      if (selectedUser?.email) {
         console.log(`[AI AutoReply] Owner resolve ok: ${selectedUser.email}`);
         console.log(`[AI AutoReply] Chọn được user thuộc công ty ${targetCompanyCode} đang BẬT AI: ${selectedUser.email}`);
       }
@@ -580,7 +582,7 @@ export const aiAutoReplyService = {
           customerMessage: "[EMPTY_MESSAGE]",
           reason: "Inbound message has no text content",
           details: {
-            selectedUserEmail: user.email,
+            selectedUserEmail: user?.email || null,
             platformId: resolvedPlatformId,
             messageId: incomingMessageId || null,
           },
@@ -613,9 +615,9 @@ export const aiAutoReplyService = {
       console.log(
         `[AI AutoReply] Schedule reply: channel=${channel}, conversationId=${conversationId}, ` +
         `groupingDelayMs=${groupingDelayMs}, userDelayMs=${userDelayMs}, totalDelayMs=${delayMs}, ` +
-        `model=${aiConfig.model || "n/a"}, user=${user.email}`
+        `model=${aiConfig.model || "n/a"}, user=${user?.email || targetCompanyCode || "company_integration"}`
       );
-      console.log(`[AI AutoReply] 🕒 LÊN LỊCH: Đang gom tin ${groupingDelayMs / 1000}s rồi chờ thêm ${aiConfig.replyDelay}s cấu hình trước khi phản hồi hội thoại: ${conversationId} (User: ${user.email})`);
+      console.log(`[AI AutoReply] 🕒 LÊN LỊCH: Đang gom tin ${groupingDelayMs / 1000}s rồi chờ thêm ${aiConfig.replyDelay}s cấu hình trước khi phản hồi hội thoại: ${conversationId} (User: ${user?.email || targetCompanyCode || "company_integration"})`);
 
       const timeoutId = setTimeout(async () => {
         try {
@@ -1013,7 +1015,7 @@ export const aiAutoReplyService = {
           console.error(`[AI AutoReply Timeout Execution] ❌ LỖI NGHIÊM TRỌNG khi thực hiện gửi phản hồi tự động:`, err.message || err);
           try {
             await aiKnowledgeService.createReplyLog({
-              companyCode: user?.companyCode || "SYSTEM",
+              companyCode: user?.companyCode || targetCompanyCode || "SYSTEM",
               channel,
               conversationId,
               customerMessage: normalizedIncomingText,

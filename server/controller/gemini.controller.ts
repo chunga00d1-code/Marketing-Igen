@@ -1508,6 +1508,12 @@ export const geminiController = {
             : (validFiles.length === 1 ? validFiles[0].title : `Bo tai lieu Google Drive (${validFiles.length} files)`);
           console.log(`[AI AutoReply] Đồng bộ thành công từ các links thật! Độ dài ký tự: ${extractedText.length}`);
 
+          // Tự động làm mới: Xóa toàn bộ tri thức cũ của doanh nghiệp trước khi nạp tài liệu mới
+          if (req.body.clearExisting !== false) {
+            console.log(`[AI AutoReply] Tự động làm mới: Xóa toàn bộ tri thức cũ của công ty ${companyCode} trước khi nạp tài liệu mới từ Drive...`);
+            await aiKnowledgeService.clearKnowledge(companyCode);
+          }
+
           for (const file of validFiles) {
             const syncResult = await aiKnowledgeService.upsertKnowledgeFromText({
               companyCode,

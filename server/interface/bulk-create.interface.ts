@@ -3,6 +3,13 @@ import { Document, Types } from "mongoose";
 export type BulkLayerType = "text" | "image";
 export type BulkLayerKind = "text" | "shape" | "badge" | "cta" | "icon";
 export type BulkImageFit = "cover" | "contain";
+export interface IBulkImageSourceCrop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const BULK_FONT_FAMILIES = [
   "DejaVu Sans",
   "Noto Sans",
@@ -64,6 +71,7 @@ export interface IBulkLayer {
   zIndex: number;
   locked?: boolean;
   fit?: BulkImageFit;
+  sourceCrop?: IBulkImageSourceCrop;
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: number;

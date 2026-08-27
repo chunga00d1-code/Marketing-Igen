@@ -116,7 +116,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
             <div>
               <h5 className="font-extrabold text-indigo-600 font-sans tracking-tight text-xs flex items-center gap-1">
                 <Clock3 className="h-3.5 w-3.5 text-indigo-600" />
-                Tự động Follow-up khách chưa chốt
+                Tự động chăm sóc lại khách chưa chốt (Follow-up)
               </h5>
               <p className="text-[9.5px] text-slate-400 mt-0.5 leading-normal">
                 Tự động gửi tin nhắn chăm sóc lại khi khách hỏi giá/sản phẩm nhưng im lặng.

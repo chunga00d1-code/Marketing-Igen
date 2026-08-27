@@ -153,6 +153,18 @@ export function SceneLayerContent({
 }) {
   if (layer.type === 'image') {
     if (value) {
+      const crop = layer.sourceCrop;
+      const cropStyle: React.CSSProperties | undefined = crop
+        ? {
+            position: 'absolute',
+            left: `${-(crop.x / crop.width) * 100}%`,
+            top: `${-(crop.y / crop.height) * 100}%`,
+            width: `${10000 / crop.width}%`,
+            height: `${10000 / crop.height}%`,
+            maxWidth: 'none',
+            objectFit: 'fill',
+          }
+        : undefined;
       return (
         <img
           src={value}
@@ -163,6 +175,7 @@ export function SceneLayerContent({
             width: '100%',
             height: '100%',
             objectFit: layer.fit || 'contain',
+            ...cropStyle,
           }}
         />
       );

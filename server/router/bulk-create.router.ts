@@ -22,6 +22,12 @@ const layerSchema = Joi.object({
   rotation: Joi.number().min(-360).max(360).default(0),
   zIndex: Joi.number().integer().min(0).max(1000).required(),
   locked: Joi.boolean().optional(),
+  sourceCrop: Joi.object({
+    x: Joi.number().min(0).max(100).required(),
+    y: Joi.number().min(0).max(100).required(),
+    width: Joi.number().greater(0).max(100).required(),
+    height: Joi.number().greater(0).max(100).required(),
+  }).optional().allow(null),
   fit: Joi.string().valid("cover", "contain").optional(),
   fontSize: Joi.number().min(8).max(300).optional(),
   fontFamily: Joi.string().valid(...BULK_FONT_FAMILIES).optional(),
@@ -58,7 +64,7 @@ const templateFields = {
     colors: Joi.array().items(colorSchema).max(5).optional(),
     imageUrl: Joi.string().max(14_000_000).optional(),
   }).required(),
-  layers: Joi.array().items(layerSchema).min(1).max(20).required(),
+  layers: Joi.array().items(layerSchema).min(1).max(40).required(),
   thumbnailUrl: Joi.string().uri().optional().allow(""),
 };
 const templateSchema = { body: Joi.object(templateFields) };
@@ -99,11 +105,12 @@ const workbookPreviewSchema = {
 const aiSceneSchema = {
   body: Joi.object({
     prompt: Joi.string().trim().min(2).max(4_000).required(),
+    mode: Joi.string().valid('edit', 'reconstruct').default('edit'),
     scene: Joi.object({
       sceneVersion: Joi.number().integer().min(1).max(10).optional(),
       canvas: templateFields.canvas,
       background: templateFields.background,
-      layers: Joi.array().items(layerSchema).min(0).max(20).required(),
+      layers: Joi.array().items(layerSchema).min(0).max(40).required(),
     }).required(),
     values: Joi.object()
       .pattern(Joi.string().max(100), Joi.string().max(14_000_000))

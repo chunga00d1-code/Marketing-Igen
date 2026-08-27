@@ -17,6 +17,8 @@ import {
   type BulkRenderJob,
   type BulkTemplate,
   type BulkTemplatePayload,
+  type CanvaConnectionStatus,
+  type CanvaDesign,
 } from '../../services/bulkCreateService';
 import { marketingCampaignService, type CampaignAssetOrderData, type MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { useAuth } from '../../context/AuthContext';
@@ -247,6 +249,10 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
   const [uploadedImages, setUploadedImages] = useState<BulkAsset[]>([]);
   const [uploadingAsset, setUploadingAsset] = useState(false);
   const [importingTemplate, setImportingTemplate] = useState(false);
+  const [canvaStatus, setCanvaStatus] = useState<CanvaConnectionStatus>({ connected: false });
+  const [canvaDesigns, setCanvaDesigns] = useState<CanvaDesign[]>([]);
+  const [loadingCanva, setLoadingCanva] = useState(true);
+  const [canvaError, setCanvaError] = useState('');
   const [removingBackground, setRemovingBackground] = useState(false);
   const { user } = useAuth();
   const [companyMembers, setCompanyMembers] = useState<UserProfile[]>([]);
@@ -302,9 +308,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       : backgroundId === 'blank'
         ? { type: 'color', color: backgroundColor }
         : {
-            type: 'gradient',
-            colors: selectedBackground?.colors || ['#ffffff', '#ffffff'],
-          },
+          type: 'gradient',
+          colors: selectedBackground?.colors || ['#ffffff', '#ffffff'],
+        },
     layers,
   }), [
     backgroundColor,
@@ -443,14 +449,14 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           if (job.status === 'completed') {
             toast.success(`Đã tạo xong ${job.completedItems} ảnh.`);
             if (campaignOrderImportId) {
-              toast.info('Mở Campaign, chọn Bulk Create để xem trước và gắn ảnh vào bài viết.');
+              toast.info('Mở Campaign, chọn Tạo hàng loạt để xem trước và gắn ảnh vào bài viết.');
             }
           } else if (job.status === 'partial') {
             toast.error(
               `Đã tạo ${job.completedItems} ảnh, ${job.failedItems} ảnh bị lỗi.`
             );
             if (campaignOrderImportId) {
-              toast.info('Mở Campaign, chọn Bulk Create để xem trước các ảnh đã tạo và gắn vào bài viết.');
+              toast.info('Mở Campaign, chọn Tạo hàng loạt để xem trước các ảnh đã tạo và gắn vào bài viết.');
             }
           } else if (job.status === 'failed') {
             toast.error(job.errorMessage || 'Không thể tạo ảnh.');
@@ -541,12 +547,12 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     toast.success('Đã tối ưu bố cục để nội dung dễ đọc hơn.');
   };
   const createEditorSnapshot = useCallback((): EditorSnapshot => ({
-      layers: layers.map((layer) => ({ ...layer })),
-      rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
-      canvasSize: { ...canvasSize },
-      backgroundId,
-      backgroundImage,
-      backgroundColor,
+    layers: layers.map((layer) => ({ ...layer })),
+    rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
+    canvasSize: { ...canvasSize },
+    backgroundId,
+    backgroundImage,
+    backgroundColor,
   }), [backgroundColor, backgroundId, backgroundImage, canvasSize, layers, rows]);
 
   const restoreEditorSnapshot = useCallback((snapshot: EditorSnapshot) => {
@@ -577,9 +583,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           return [
             layer.id,
             generatedValue
-              ?? row.values[layer.id]
-              ?? layer.defaultValue
-              ?? (layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''),
+            ?? row.values[layer.id]
+            ?? layer.defaultValue
+            ?? (layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''),
           ];
         })),
       }));
@@ -749,20 +755,21 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         existingLayers: [],
         canvas: safeCanvas,
       });
-      const initialScene = {
+      const reconstructionScene: BulkAiScene = {
         sceneVersion: BULK_SCENE_VERSION,
         canvas: safeCanvas,
-        background: { type: 'image' as const, imageUrl: asset.url },
+        background: { type: 'color', color: '#ffffff' },
         layers: [fallbackLayer],
       };
       const initialValues = { [fallbackLayer.id]: fallbackLayer.defaultValue || '' };
-      let analyzedScene: BulkAiScene = initialScene;
+      let analyzedScene: BulkAiScene = reconstructionScene;
       let analyzedValues = initialValues;
 
       try {
         const analysis = await bulkCreateService.updateSceneWithAi({
-          prompt: 'Chuyển ảnh mẫu đính kèm thành template chỉnh sửa được để tạo hàng loạt. Giữ nguyên tối đa phần đồ họa tĩnh của mẫu. Tự nhận diện 1-6 vùng có khả năng thay đổi giữa các phiên bản như tiêu đề, giá, mô tả, CTA hoặc ảnh sản phẩm. Với mỗi vùng đã có chữ trong ảnh, thêm shape che kín chữ cũ cùng một layer text chỉnh sửa được ở đúng vị trí; đặt fieldName rõ ràng bằng tiếng Việt và defaultValue gần với nội dung nhìn thấy. Chỉ tạo layer ảnh biến đổi nếu ảnh mẫu thật sự có vùng ảnh sản phẩm. Không thiết kế lại theo phong cách khác, không thêm dữ liệu không có trong ảnh và luôn giữ ít nhất một field text có thể map Excel.',
-          scene: initialScene,
+          mode: 'reconstruct',
+          prompt: 'Reconstruct the attached reference as an editable Bulk Create template. Match the composition with CSS background, gradients, shapes and editable OCR text. Never put the full reference poster in the final template as a background or full-size image. For every person, product, photograph or illustration, use the attached image URL with a tight sourceCrop around that single visual and fit it into the correct destination rectangle; do not use blank image placeholders. The crop must not include most of the poster, multiple subjects, or text blocks. Use clear Vietnamese field names so each crop can later be replaced from a spreadsheet. Do not invent copy or visual assets.',
+          scene: reconstructionScene,
           values: initialValues,
           attachments: [{ type: 'image', name: file.name, url: asset.url }],
         });
@@ -771,8 +778,8 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           analyzedValues = analysis.values;
         }
       } catch (analysisError) {
-        console.warn('[BulkCreate] Template import analysis failed; using editable draft:', analysisError);
-        toast.warning('Đã tạo mẫu nháp. AI chưa phân tích được bố cục, bạn có thể chỉnh tiếp trong editor.');
+        console.warn('[BulkCreate] Template import analysis failed:', analysisError);
+        throw analysisError;
       }
 
       const template = await bulkCreateService.createTemplate({
@@ -800,18 +807,54 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     }
   };
 
+  const refreshCanva = useCallback(async (showConnectedToast = false) => {
+    setLoadingCanva(true);
+    setCanvaError('');
+    try {
+      const status = await bulkCreateService.getCanvaStatus();
+      setCanvaStatus(status);
+      if (!status.connected) {
+        setCanvaDesigns([]);
+        return;
+      }
+      const designs = await bulkCreateService.listCanvaDesigns();
+      setCanvaDesigns(designs);
+      if (showConnectedToast) toast.success('Đã kết nối và đồng bộ thiết kế Canva.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể đồng bộ tài khoản Canva.';
+      setCanvaError(message);
+    } finally {
+      setLoadingCanva(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCanva();
+  }, [refreshCanva]);
+
+  useEffect(() => {
+    const handleCanvaConnected = (event: MessageEvent) => {
+      const data = event.data as { type?: string } | null;
+      if (event.origin !== window.location.origin || data?.type !== 'igen-canva-connected') return;
+      void refreshCanva(true);
+    };
+    window.addEventListener('message', handleCanvaConnected);
+    return () => window.removeEventListener('message', handleCanvaConnected);
+  }, [refreshCanva]);
+
   const startCanvaConnection = async () => {
     try {
+      setCanvaError('');
       const { url } = await bulkCreateService.startCanvaOAuth();
       const popup = window.open(url, 'igen-canva-connect', 'popup,width=560,height=720');
       if (!popup) window.location.assign(url);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Không thể khởi tạo kết nối Canva.';
+      setCanvaError(message);
       setErrorMessage(message);
       toast.error(message);
     }
   };
-
   const deleteUploadedImage = async (assetId: string) => {
     try {
       await bulkCreateService.archiveAsset(assetId);
@@ -1487,20 +1530,20 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         uploadedImageUrls.set(source, uploadedUrls[index]);
       });
     }
-      const uploaded = readyRows.map((row) => ({
-        ...row.values,
-        ...Object.fromEntries(layers.map((layer) => {
-          if (layer.type === 'image') {
-            const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
-            return [layer.id, uploadedImageUrls.get(source) || source];
-          }
-          const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.layerKind === 'shape' ? '' : (layer.defaultValue || layer.fieldName));
-          return [layer.id, val];
-        })),
-        ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
-        ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
-        __source_row_id: row.id,
-      }));
+    const uploaded = readyRows.map((row) => ({
+      ...row.values,
+      ...Object.fromEntries(layers.map((layer) => {
+        if (layer.type === 'image') {
+          const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
+          return [layer.id, uploadedImageUrls.get(source) || source];
+        }
+        const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.layerKind === 'shape' ? '' : (layer.defaultValue || layer.fieldName));
+        return [layer.id, val];
+      })),
+      ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
+      ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
+      __source_row_id: row.id,
+    }));
     setRows((current) => current.map((row) => {
       const index = readyRows.findIndex((ready) => ready.id === row.id);
       return index >= 0 ? { ...row, values: uploaded[index] } : row;
@@ -1702,19 +1745,19 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     try {
       const preview = await marketingCampaignService.exportAssetOrdersForBulk(selectedCampaignId);
       if (!preview.rows.length) {
-        toast.warning('Chiến dịch chưa có Order ảnh có thể nhập vào Bulk Create.');
+        toast.warning('Chiến dịch chưa có yêu cầu ảnh có thể nhập vào tạo hàng loạt.');
         return;
       }
       applyImportedData(preview.columns, preview.rows, preview.sourceName, selectedCampaignId, 'campaign_orders');
       const notices = [
-        preview.skipped.length ? `${preview.skipped.length} Order video giữ lại ở luồng video` : '',
+        preview.skipped.length ? `${preview.skipped.length} yêu cầu video được giữ lại ở luồng video` : '',
         preview.missingPrimaryAssetCount ? `${preview.missingPrimaryAssetCount} dòng chưa có ảnh chính` : '',
-        preview.rows.length > preview.maxBulkRows ? `Bulk Create hiện tạo tối đa ${preview.maxBulkRows} ảnh mỗi job` : '',
+        preview.rows.length > preview.maxBulkRows ? `Tạo hàng loạt hiện hỗ trợ tối đa ${preview.maxBulkRows} ảnh mỗi đợt` : '',
       ].filter(Boolean);
-      toast.success(`Đã nhập ${preview.rows.length} Order ảnh từ chiến dịch.`);
+      toast.success(`Đã nhập ${preview.rows.length} yêu cầu ảnh từ chiến dịch.`);
       if (notices.length) toast.warning(notices.join(' · '));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Không thể nhập Order chiến dịch.';
+      const message = error instanceof Error ? error.message : 'Không thể nhập yêu cầu từ chiến dịch.';
       setErrorMessage(message);
       toast.error(message);
     } finally {
@@ -1998,106 +2041,111 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
             />
           ) : (
             <EditorPanel
-          activeTool={activeTool}
-          backgroundImage={backgroundImage}
-          backgroundColor={backgroundColor}
-          layers={layers}
-          rows={rows}
-          dataColumns={dataColumns}
-          dataStep={dataStep}
-          dataSourceName={dataSourceName}
-          activeRowId={activeRowId}
-          sheetInput={sheetInput}
-          googleSheetUrl={googleSheetUrl}
-          loadingSheet={loadingSheet}
-          campaigns={campaigns}
-          selectedCampaignId={selectedCampaignId}
-          bulkTarget={bulkTarget}
-          campaignContext={campaignContext}
-          loadingCampaigns={loadingCampaigns}
-          loadingCampaignOrders={loadingCampaignOrders}
-          readyCount={readyCount}
-          canvasSize={canvasSize}
-          systemTemplates={BULK_MARKETING_PRESETS}
-          templates={templates}
-          loadingTemplates={loadingTemplates}
-          templatesTotal={templatesTotal}
-          templatePage={templatePage}
-          onChangeTemplatePage={goToTemplatePage}
-          communityTemplates={communityTemplates}
-          jobs={jobs}
-          activeJob={activeJob}
-          jobItems={jobItems}
-          onBackgroundUpload={(value) => {
-            recordLayerHistory();
-            setBackgroundImage(value);
-            setBackgroundId('');
-            setBackgroundSelected(true);
-            clearLayerSelection();
-          }}
-          onUploadAsset={(file, target) => void uploadLibraryAsset(file, target)}
-          onBackgroundColor={(value) => { recordLayerHistory(); setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
-          onRemoveBackground={() => { recordLayerHistory(); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
-          onAddLayer={addLayer}
-          onSelectLayer={(id) => { selectLayer(id); setBackgroundSelected(false); }}
-          onSheetInput={setSheetInput}
-          onImportSheet={importSheet}
-          onDataStep={setDataStep}
-          onGoogleSheetUrl={setGoogleSheetUrl}
-          onImportGoogleSheet={() => void importGoogleSheet()}
-          onLoadCampaigns={() => void loadCampaignsForImport()}
-          onSelectCampaign={(campaignId) => {
-            setSelectedCampaignId(campaignId);
-            setCampaignContext(null);
-            setCampaignOrderImportId('');
-            if (campaignId) void loadCampaignContext(campaignId);
-          }}
-          onBulkTarget={(target) => {
-            setBulkTarget(target);
-            if (target === 'campaign' && campaigns.length === 0) void loadCampaignsForImport();
-            if (target === 'standalone') {
-              setCampaignOrderImportId('');
-              setCampaignDataSource('manual');
-            }
-          }}
-          onImportCampaignOrders={() => void importCampaignOrders()}
-          onConnectLayer={connectLayerData}
-          onAutoMatch={autoMatchData}
-          onToggleRow={toggleImportedRow}
-          onSelectAllRows={selectAllImportedRows}
-          onCreatePages={createPages}
-          onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
-          onCanvasSize={(size) => handleResize(size.width, size.height)}
-          onApplySystemTemplate={applySystemTemplate}
-          onAddRow={addRow}
-          onSelectRow={setActiveRowId}
-          onAssignCampaignSlot={(rowId, slotId) => {
-            const orderId = campaignContext?.orders.find((order) => String(order.slotId || '') === slotId)?._id;
-            setRows((current) => current.map((row) => row.id === rowId
-              ? { ...row, campaignSlotId: slotId || undefined, campaignAssetOrderId: orderId }
-              : row));
-          }}
-          onUpdateCell={updateCell}
-          onDuplicateRow={duplicateRow}
-          onRemoveRow={removeRow}
-          onLoadTemplate={loadTemplate}
-          onLoadMoreTemplates={loadMoreTemplates}
-          onArchiveTemplate={(templateId) => void archiveTemplate(templateId)}
-          onPublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'public')}
-          onUnpublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'private')}
-          onUseCommunityTemplate={(templateId) => void applyCommunityTemplate(templateId)}
-          onOpenJob={(job) => void openJob(job)}
-          onRetryJob={(jobId) => void retryJob(jobId)}
-          onCancelJob={(jobId) => void cancelJob(jobId)}
-          onDownloadJob={(job) => void downloadJob(job)}
-          onClose={() => setSidebarOpen(false)}
-          uploadedImages={uploadedImages}
-          uploadingAsset={uploadingAsset}
-          onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
-          importingTemplate={importingTemplate}
-          onImportTemplate={(file) => void importTemplateFile(file)}
-          onStartCanvaConnection={() => void startCanvaConnection()}
-          />
+              activeTool={activeTool}
+              backgroundImage={backgroundImage}
+              backgroundColor={backgroundColor}
+              layers={layers}
+              rows={rows}
+              dataColumns={dataColumns}
+              dataStep={dataStep}
+              dataSourceName={dataSourceName}
+              activeRowId={activeRowId}
+              sheetInput={sheetInput}
+              googleSheetUrl={googleSheetUrl}
+              loadingSheet={loadingSheet}
+              campaigns={campaigns}
+              selectedCampaignId={selectedCampaignId}
+              bulkTarget={bulkTarget}
+              campaignContext={campaignContext}
+              loadingCampaigns={loadingCampaigns}
+              loadingCampaignOrders={loadingCampaignOrders}
+              readyCount={readyCount}
+              canvasSize={canvasSize}
+              systemTemplates={BULK_MARKETING_PRESETS}
+              templates={templates}
+              loadingTemplates={loadingTemplates}
+              canvaStatus={canvaStatus}
+              canvaDesigns={canvaDesigns}
+              loadingCanva={loadingCanva}
+              canvaError={canvaError}
+              templatesTotal={templatesTotal}
+              templatePage={templatePage}
+              onChangeTemplatePage={goToTemplatePage}
+              communityTemplates={communityTemplates}
+              jobs={jobs}
+              activeJob={activeJob}
+              jobItems={jobItems}
+              onBackgroundUpload={(value) => {
+                recordLayerHistory();
+                setBackgroundImage(value);
+                setBackgroundId('');
+                setBackgroundSelected(true);
+                clearLayerSelection();
+              }}
+              onUploadAsset={(file, target) => void uploadLibraryAsset(file, target)}
+              onBackgroundColor={(value) => { recordLayerHistory(); setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+              onRemoveBackground={() => { recordLayerHistory(); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+              onAddLayer={addLayer}
+              onSelectLayer={(id) => { selectLayer(id); setBackgroundSelected(false); }}
+              onSheetInput={setSheetInput}
+              onImportSheet={importSheet}
+              onDataStep={setDataStep}
+              onGoogleSheetUrl={setGoogleSheetUrl}
+              onImportGoogleSheet={() => void importGoogleSheet()}
+              onLoadCampaigns={() => void loadCampaignsForImport()}
+              onSelectCampaign={(campaignId) => {
+                setSelectedCampaignId(campaignId);
+                setCampaignContext(null);
+                setCampaignOrderImportId('');
+                if (campaignId) void loadCampaignContext(campaignId);
+              }}
+              onBulkTarget={(target) => {
+                setBulkTarget(target);
+                if (target === 'campaign' && campaigns.length === 0) void loadCampaignsForImport();
+                if (target === 'standalone') {
+                  setCampaignOrderImportId('');
+                  setCampaignDataSource('manual');
+                }
+              }}
+              onImportCampaignOrders={() => void importCampaignOrders()}
+              onConnectLayer={connectLayerData}
+              onAutoMatch={autoMatchData}
+              onToggleRow={toggleImportedRow}
+              onSelectAllRows={selectAllImportedRows}
+              onCreatePages={createPages}
+              onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
+              onCanvasSize={(size) => handleResize(size.width, size.height)}
+              onApplySystemTemplate={applySystemTemplate}
+              onAddRow={addRow}
+              onSelectRow={setActiveRowId}
+              onAssignCampaignSlot={(rowId, slotId) => {
+                const orderId = campaignContext?.orders.find((order) => String(order.slotId || '') === slotId)?._id;
+                setRows((current) => current.map((row) => row.id === rowId
+                  ? { ...row, campaignSlotId: slotId || undefined, campaignAssetOrderId: orderId }
+                  : row));
+              }}
+              onUpdateCell={updateCell}
+              onDuplicateRow={duplicateRow}
+              onRemoveRow={removeRow}
+              onLoadTemplate={loadTemplate}
+              onLoadMoreTemplates={loadMoreTemplates}
+              onArchiveTemplate={(templateId) => void archiveTemplate(templateId)}
+              onPublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'public')}
+              onUnpublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'private')}
+              onUseCommunityTemplate={(templateId) => void applyCommunityTemplate(templateId)}
+              onOpenJob={(job) => void openJob(job)}
+              onRetryJob={(jobId) => void retryJob(jobId)}
+              onCancelJob={(jobId) => void cancelJob(jobId)}
+              onDownloadJob={(job) => void downloadJob(job)}
+              onClose={() => setSidebarOpen(false)}
+              uploadedImages={uploadedImages}
+              uploadingAsset={uploadingAsset}
+              onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
+              importingTemplate={importingTemplate}
+              onImportTemplate={(file) => void importTemplateFile(file)}
+              onStartCanvaConnection={() => void startCanvaConnection()}
+              onRefreshCanva={() => void refreshCanva()}
+            />
           )}
         </div>
       </aside>

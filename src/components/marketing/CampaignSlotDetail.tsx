@@ -5,6 +5,7 @@ import { MarketingCampaignSummary, marketingCampaignService, type TikTokCampaign
 import { toast } from '../../pages/Toast';
 import TikTokPublishModal from './TikTokPublishModal';
 import type { ContentApprovalCard } from '../../types/marketing';
+import { CleanMarkdownView } from '../common/CleanMarkdownView';
 
 const DEFAULT_SLOT_STATUS_COLORS: Record<string, string> = {
   planned: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -835,7 +836,9 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
                   <div className="rounded-xl border border-teal-150 bg-white p-3.5 text-xs text-slate-700 leading-relaxed shadow-3xs space-y-3">
                     <div>
                       <span className="block text-[10px] font-bold text-teal-600 uppercase tracking-wide mb-1.5 font-mono">Bối cảnh tổng hợp từ web:</span>
-                      <p className="whitespace-pre-wrap font-sans text-slate-700 bg-teal-50/30 p-2.5 rounded-lg border border-teal-50">{parsedEvidence.summary || parsedEvidence.contextSummary}</p>
+                      <div className="bg-teal-50/30 p-2.5 rounded-lg border border-teal-50">
+                        <CleanMarkdownView content={parsedEvidence.summary || parsedEvidence.contextSummary} />
+                      </div>
                     </div>
                     {(parsedEvidence.topKeywords || parsedEvidence.keywords) && (
                       <div>

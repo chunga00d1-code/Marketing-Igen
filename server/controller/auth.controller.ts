@@ -12,6 +12,13 @@ function sanitizeUserForClient(user: any) {
     delete userObject.tiktokIntegration.refreshToken;
     delete userObject.tiktokIntegration.clientSecret;
   }
+  if (userObject.canvaIntegration) {
+    delete userObject.canvaIntegration.accessToken;
+    delete userObject.canvaIntegration.refreshToken;
+    delete userObject.canvaIntegration.oauthState;
+    delete userObject.canvaIntegration.oauthStateExpiresAt;
+    delete userObject.canvaIntegration.oauthCodeVerifier;
+  }
   return userObject;
 }
 

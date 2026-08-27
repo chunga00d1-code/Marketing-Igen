@@ -208,6 +208,12 @@ function validateTemplateInput(input: Pick<TemplateInput, "canvas" | "background
     if (fieldNames.has(normalizedName)) throw new Error(`Trùng tên trường '${layer.fieldName}'.`);
     ids.add(layer.id);
     fieldNames.add(normalizedName);
+    if (layer.sourceCrop) {
+      const { x, y, width, height } = layer.sourceCrop;
+      if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > 100 || y + height > 100) {
+        throw new Error(`Vùng crop của layer '${layer.fieldName}' không hợp lệ.`);
+      }
+    }
   }
   if (input.background.type === "image" && !input.background.imageUrl) throw new Error("Template ảnh nền đang thiếu đường dẫn ảnh.");
 }

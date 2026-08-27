@@ -70,6 +70,11 @@ export const fbMessengerService = {
       throw new Error(`Không tìm thấy Access Token cấu hình cho Page ID: ${pageId}`);
     }
 
+    // Tự động đảm bảo Webhook Subscription của Page này luôn được kích hoạt trên Meta Graph API
+    void this.subscribePageWebhooks(pageId, token).catch((err) => {
+      console.warn(`[FB Service syncConversations] Không thể tự động subscribe webhook cho Page ${pageId}:`, err.message || err);
+    });
+
     const fields = [
       "id",
       "updated_time",
@@ -244,6 +249,27 @@ export const fbMessengerService = {
         });
       }
       emitToPage(pageId, "conversation_updated", refreshedConversation);
+
+      // Kích hoạt AI Auto-Reply nếu phát hiện tin nhắn đến mới từ khách hàng qua đồng bộ
+      const latestInboundMsg = [...newMessagesToEmit]
+        .reverse()
+        .find((m) => m.direction === "inbound" && m.text);
+      if (
+        latestInboundMsg &&
+        isFacebookReplyWindowOpen(latestInboundMsg.timestamp)
+      ) {
+        console.log(
+          `[FB Service syncMessages] 🚀 TRIGGER AI từ Sync: Phát hiện tin nhắn inbound mới ` +
+          `cho conversationId=${refreshedConversation._id.toString()}, pageId=${pageId}, textLength=${latestInboundMsg.text.length}`
+        );
+        aiAutoReplyService.triggerAutoReply(
+          "facebook",
+          pageId,
+          refreshedConversation._id.toString(),
+          latestInboundMsg.text,
+          latestInboundMsg.messageId
+        );
+      }
     }
 
     return FBMessageModel.find({ conversationId: refreshedConversation._id }).sort({ timestamp: 1 });
@@ -663,13 +689,16 @@ export const fbMessengerService = {
    * Gọi Graph API lấy Profile từ PSID bằng Token động
    */
   async getSenderProfile(psid: string, token: string): Promise<any> {
-    const url = `https://graph.facebook.com/${psid}?fields=first_name,last_name,profile_pic&access_token=${token}`;
-    console.log(`[FB Service GraphAPI] Gọi request tới URL: https://graph.facebook.com/${psid}?fields=first_name,last_name...`);
+    const url = `https://graph.facebook.com/v25.0/${encodeURIComponent(psid)}?fields=first_name,last_name,profile_pic&access_token=${encodeURIComponent(token)}`;
     try {
       const response = await (globalThis as any).fetch(url);
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[FB Service GraphAPI] Lỗi phản hồi từ Graph API: ${response.status} - ${errText}`);
+        if (errText.includes('"error_subcode":33') || errText.includes('"code":100')) {
+          console.warn(`[FB Service GraphAPI] Không có quyền lấy profile chi tiết cho PSID ${psid} (Facebook App hạn chế quyền User Profile hoặc tài khoản khách hàng bật bảo mật). Sẽ sử dụng thông tin mặc định.`);
+        } else {
+          console.error(`[FB Service GraphAPI] Lỗi phản hồi từ Graph API: ${response.status} - ${errText}`);
+        }
         return null;
       }
       return await response.json();

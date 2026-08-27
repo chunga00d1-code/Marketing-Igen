@@ -18,6 +18,12 @@ export interface BulkLayer {
   zIndex: number;
   locked?: boolean;
   fit?: 'cover' | 'contain';
+  sourceCrop?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
   fontSize?: number;
   fontFamily?: string;
   fontWeight?: number;
@@ -98,6 +104,26 @@ export interface BulkTemplate extends BulkTemplatePayload {
   updatedAt: string;
 }
 
+export interface CanvaConnectionStatus {
+  connected: boolean;
+  connectedAt?: string;
+}
+
+export interface CanvaDesign {
+  id: string;
+  title?: string;
+  thumbnail?: {
+    url?: string;
+    width?: number;
+    height?: number;
+  };
+  urls?: {
+    edit_url?: string;
+    view_url?: string;
+  };
+  created_at?: string;
+  updated_at?: string;
+}
 export interface BulkTemplatePage {
   items: BulkTemplate[];
   page: number;
@@ -215,8 +241,28 @@ export const bulkCreateService = {
     )).data;
   },
 
+  async getCanvaStatus() {
+    const response = await fetch('/api/v1/canva/status', {
+      headers: headers(),
+    });
+    return (await parse<{ data: CanvaConnectionStatus }>(
+      response,
+      'Không thể kiểm tra trạng thái kết nối Canva.'
+    )).data;
+  },
+
+  async listCanvaDesigns() {
+    const response = await fetch('/api/v1/canva/designs', {
+      headers: headers(),
+    });
+    return (await parse<{ data: CanvaDesign[] }>(
+      response,
+      'Không thể tải danh sách thiết kế Canva.'
+    )).data;
+  },
   async updateSceneWithAi(input: {
     prompt: string;
+    mode?: 'edit' | 'reconstruct';
     scene: BulkAiScene;
     values: Record<string, string>;
     attachments?: BulkAiAttachment[];

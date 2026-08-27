@@ -305,7 +305,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ docLink: driveLink })
+        body: JSON.stringify({ docLink: driveLink, clearExisting: true })
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
@@ -758,7 +758,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                                 linkedLead.status === 'cold' ? 'Khách Lạnh' :
                                   linkedLead.status === 'warm' ? 'Khách Ấm' :
                                     linkedLead.status === 'hot' ? 'Khách Nóng' :
-                                      linkedLead.status === 'won' ? 'Đã Chốt Đơn' : 'Up-sell'
+                                      linkedLead.status === 'won' ? 'Đã Chốt Đơn' : 'Bán thêm (Up-sell)'
                               }
                             </span>
 

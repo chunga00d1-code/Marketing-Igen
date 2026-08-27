@@ -9,6 +9,7 @@ import CampaignAssetOrderSheet from './CampaignAssetOrderSheet';
 import CampaignDriveImportPanel from './CampaignDriveImportPanel';
 import CampaignContentSheet from './CampaignContentSheet';
 import { openContentStudio } from '../../utils/contentStudioNavigation';
+import { CleanMarkdownView } from '../common/CleanMarkdownView';
 
 const DETAIL_LIST_ITEMS_PER_PAGE = 8;
 
@@ -168,6 +169,14 @@ export default function CampaignDetailModal({
   const [activeMainTab, setActiveMainTab] = useState<'published_links' | 'research' | 'overall_strategy' | 'content_pillar' | 'content_calendar' | 'asset_orders'>('content_calendar');
   const [publishedPage, setPublishedPage] = useState(1);
   const [researchEvidencePage, setResearchEvidencePage] = useState(1);
+
+  // Check if all slots in the campaign are 100% completed/published
+  const isCampaignAllCompleted = React.useMemo(() => {
+    if (!campaignDetail?.slots || campaignDetail.slots.length === 0) return false;
+    const totalSlots = campaignDetail.slots.length;
+    const publishedSlotsCount = campaignDetail.slots.filter((s) => s.status === 'published').length;
+    return (totalSlots > 0 && publishedSlotsCount === totalSlots) || campaignDetail.campaign.status === 'completed';
+  }, [campaignDetail?.slots, campaignDetail?.campaign.status]);
 
   // Filter slots that have published URLs
   const publishedSlotsList = React.useMemo(() => {
@@ -556,9 +565,9 @@ export default function CampaignDetailModal({
                       <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider block font-mono">
                         📊 Báo cáo nghiên cứu & Phân tích xu hướng (AI Research Agent)
                       </span>
-                      <pre className="text-xs text-slate-750 whitespace-pre-wrap font-sans leading-relaxed p-4 border border-indigo-100 bg-white rounded-xl max-h-80 overflow-y-auto">
-                        {campaignDetail.campaign.researchReport}
-                      </pre>
+                      <div className="border border-indigo-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
+                        <CleanMarkdownView content={campaignDetail.campaign.researchReport} />
+                      </div>
                     </div>
                   )}
 
@@ -609,7 +618,7 @@ export default function CampaignDetailModal({
                           {parsedEvidenceSummary?.summary && (
                             <div className="bg-white border border-teal-100 rounded-xl p-4 leading-relaxed text-slate-750">
                               <span className="block text-xs font-bold text-teal-700 uppercase tracking-wide mb-2 font-mono">Bối cảnh tổng hợp từ MXH:</span>
-                              <p className="whitespace-pre-wrap font-sans text-slate-700 leading-relaxed">{parsedEvidenceSummary.summary}</p>
+                              <CleanMarkdownView content={parsedEvidenceSummary.summary} />
                             </div>
                           )}
 
@@ -737,9 +746,9 @@ export default function CampaignDetailModal({
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block font-mono">
                       📋 Định hướng chiến dịch
                     </span>
-                    <pre className="text-xs text-slate-750 whitespace-pre-wrap font-sans leading-relaxed p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
-                      {campaignDetail.campaign.sourceBrief}
-                    </pre>
+                    <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
+                      <CleanMarkdownView content={campaignDetail.campaign.sourceBrief} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -881,24 +890,26 @@ export default function CampaignDetailModal({
                   <div className="flex flex-col gap-6 lg:flex-row">
                     {/* Left Column: Slots Table */}
                     <div className="space-y-6 flex-1 min-w-0 transition-all duration-300">
-                      <CampaignDriveImportPanel
-                        campaignId={campaignDetail.campaign._id}
-                        mediaKind={campaignDetail.campaign.platforms.length > 1
-                          ? 'mixed'
-                          : campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
-                        allowBulkCreate={campaignDetail.campaign.status === 'active'
-                          && campaignDetail.campaign.platforms.includes('Facebook')
-                          && !campaignDetail.campaign.platforms.includes('TikTok')}
-                        awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
-                        onCreateBulk={() => openContentStudio({
-                          tab: 'template',
-                          campaignId: campaignDetail.campaign._id,
-                        })}
-                        onApplied={onRefresh}
-                      />
+                      {!isCampaignAllCompleted && (
+                        <CampaignDriveImportPanel
+                          campaignId={campaignDetail.campaign._id}
+                          mediaKind={campaignDetail.campaign.platforms.length > 1
+                            ? 'mixed'
+                            : campaignDetail.campaign.platforms.includes('TikTok') ? 'video' : 'image'}
+                          allowBulkCreate={campaignDetail.campaign.status === 'active'
+                            && campaignDetail.campaign.platforms.includes('Facebook')
+                            && !campaignDetail.campaign.platforms.includes('TikTok')}
+                          awaitingAssetCount={campaignDetail.slots.filter((slot) => slot.status === 'awaiting_assets').length}
+                          onCreateBulk={() => openContentStudio({
+                            tab: 'template',
+                            campaignId: campaignDetail.campaign._id,
+                          })}
+                          onApplied={onRefresh}
+                        />
+                      )}
 
                       {/* Real-time Activity Banner */}
-                      {campaignDetail.campaign.status === 'active' && (
+                      {campaignDetail.campaign.status === 'active' && !isCampaignAllCompleted && (
                         <div className="rounded-xl border border-indigo-100 bg-indigo-50/25 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 select-none">
                           <div className="flex items-center gap-3">
                             <div className="relative flex h-3 w-3 shrink-0">

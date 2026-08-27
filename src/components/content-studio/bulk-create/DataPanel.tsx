@@ -98,17 +98,15 @@ export function DataPanel(props: DataPanelProps) {
                   props.onDataStep(step.id);
                 }
               }}
-              className={`min-w-0 overflow-hidden rounded-lg px-1 py-2 text-center text-[11px] font-extrabold transition ${
-                active
+              className={`min-w-0 overflow-hidden rounded-lg px-1 py-2 text-center text-[11px] font-extrabold transition ${active
                   ? 'bg-white text-indigo-700 shadow-sm'
                   : completed
                     ? 'text-emerald-700'
                     : 'text-slate-400'
-              }`}
+                }`}
             >
-              <span className={`mx-auto mb-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
-                active ? 'bg-indigo-600 text-white' : completed ? 'bg-emerald-100' : 'bg-slate-200'
-              }`}>
+              <span className={`mx-auto mb-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${active ? 'bg-indigo-600 text-white' : completed ? 'bg-emerald-100' : 'bg-slate-200'
+                }`}>
                 {completed ? <Check className="h-3 w-3" /> : step.id}
               </span>
               <span className="block min-w-0 break-words leading-tight">{step.label}</span>
@@ -125,22 +123,20 @@ export function DataPanel(props: DataPanelProps) {
               <button
                 type="button"
                 onClick={() => props.onBulkTarget('standalone')}
-                className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${
-                  props.bulkTarget === 'standalone'
+                className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${props.bulkTarget === 'standalone'
                     ? 'border-slate-800 bg-slate-800 text-white'
                     : 'border-slate-200 bg-white text-slate-600'
-                }`}
+                  }`}
               >
                 Thiết kế tự do
               </button>
               <button
                 type="button"
                 onClick={() => props.onBulkTarget('campaign')}
-                className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${
-                  props.bulkTarget === 'campaign'
+                className={`rounded-xl border px-3 py-2 text-xs font-extrabold ${props.bulkTarget === 'campaign'
                     ? 'border-indigo-600 bg-indigo-600 text-white'
                     : 'border-indigo-200 bg-white text-indigo-700'
-                }`}
+                  }`}
               >
                 Cho Campaign
               </button>
@@ -206,8 +202,8 @@ export function DataPanel(props: DataPanelProps) {
                 <Database className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-slate-900">Order ảnh từ chiến dịch</p>
-                <p className="mt-0.5 break-words text-[11px] leading-relaxed text-slate-500">Nhập các Order dạng Ảnh vào Bulk Create; Order Video được giữ ở luồng kịch bản.</p>
+                <p className="truncate text-sm font-extrabold text-slate-900">Yêu cầu ảnh từ chiến dịch</p>
+                <p className="mt-0.5 break-words text-[11px] leading-relaxed text-slate-500">Nhập các yêu cầu ảnh từ chiến dịch vào Tạo hàng loạt; yêu cầu video được giữ ở luồng kịch bản.</p>
               </div>
             </div>
             <div className="mt-3">
@@ -215,7 +211,7 @@ export function DataPanel(props: DataPanelProps) {
                 campaigns={props.campaigns}
                 selectedCampaignId={props.selectedCampaignId}
                 loading={props.loadingCampaigns || props.loadingCampaignOrders}
-                emptyLabel="Chọn Campaign có Order"
+                emptyLabel="Chọn chiến dịch có yêu cầu ảnh"
                 onLoad={props.onLoadCampaigns}
                 onSelect={props.onSelectCampaign}
               />
@@ -227,8 +223,8 @@ export function DataPanel(props: DataPanelProps) {
               className="mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-xl bg-indigo-600 px-2 text-sm font-extrabold text-white hover:bg-indigo-700 disabled:bg-slate-300"
             >
               {props.loadingCampaignOrders
-                ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang nhập Order...</span></>
-                : <><FileSpreadsheet className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">Nhập Order vào Bulk Create</span></>}
+                ? <><LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /><span className="min-w-0 truncate">Đang nhập dữ liệu...</span></>
+                : <><FileSpreadsheet className="h-4 w-4 shrink-0" /><span className="min-w-0 truncate">Nhập yêu cầu vào Tạo hàng loạt</span></>}
             </button>
           </div>
 
@@ -237,9 +233,8 @@ export function DataPanel(props: DataPanelProps) {
               Cách nhập khác
             </summary>
             <div className="space-y-3 border-t border-slate-100 p-4">
-              <label className={`flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-700 ${
-                props.loadingSheet || (props.bulkTarget === 'campaign' && !props.selectedCampaignId) ? 'cursor-wait bg-slate-50 opacity-60' : 'cursor-pointer hover:bg-slate-50'
-              }`}>
+              <label className={`flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 text-sm font-bold text-slate-700 ${props.loadingSheet || (props.bulkTarget === 'campaign' && !props.selectedCampaignId) ? 'cursor-wait bg-slate-50 opacity-60' : 'cursor-pointer hover:bg-slate-50'
+                }`}>
                 {props.loadingSheet ? (
                   <><LoaderCircle className="h-4 w-4 animate-spin" /> Đang đọc bảng tính...</>
                 ) : (
@@ -420,11 +415,10 @@ export function DataPanel(props: DataPanelProps) {
               return (
                 <div
                   key={row.id}
-                  className={`flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border p-3 ${
-                    props.activeRowId === row.id
+                  className={`flex min-w-0 items-center gap-3 overflow-hidden rounded-xl border p-3 ${props.activeRowId === row.id
                       ? 'border-indigo-500 bg-indigo-50'
                       : 'border-slate-200 bg-white'
-                  }`}
+                    }`}
                 >
                   <input
                     type="checkbox"

@@ -186,8 +186,8 @@ export default function DashboardTab() {
       tone: "from-emerald-500 via-teal-500 to-cyan-500",
     },
     {
-      title: "Omni-inbox",
-      description: "Chuyển tiếp vào khu vực chat đã kênh để xử lý hội thoại.",
+      title: "Hộp thư hội thoại ",
+      description: "Xử lý tin nhắn đa kênh tập trung từ Facebook, Zalo, TikTok.",
       href: "/sales-crm?sub=omni-chat",
       icon: MessageSquareShare,
       tone: "from-sky-500 via-blue-500 to-indigo-500",
@@ -283,10 +283,10 @@ export default function DashboardTab() {
                 focusLeads.map((lead) => {
                   const isHot = lead.status?.toLowerCase().includes("hot");
                   const badgeBg = isHot ? "bg-rose-500/10 text-rose-650" : "bg-amber-500/10 text-amber-600";
-                  
+
                   return (
-                    <div 
-                      key={lead.id} 
+                    <div
+                      key={lead.id}
                       className="group flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white/60 px-4 py-3 backdrop-blur-xs transition-all duration-300 hover:border-slate-200/50 hover:bg-white hover:shadow-md"
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -427,9 +427,9 @@ export default function DashboardTab() {
                   className="group relative min-w-0 overflow-hidden rounded-3xl border border-slate-100 bg-white/70 text-left shadow-[0_8px_30px_rgba(0,0,0,0.015)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-slate-200/50 hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)]"
                 >
                   <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${item.tone}`} />
-                  <div 
-                    className="absolute -bottom-8 -right-8 w-20 h-20 rounded-full blur-xl pointer-events-none transition-all duration-500 group-hover:scale-125" 
-                    style={{ backgroundColor: glowColor }} 
+                  <div
+                    className="absolute -bottom-8 -right-8 w-20 h-20 rounded-full blur-xl pointer-events-none transition-all duration-500 group-hover:scale-125"
+                    style={{ backgroundColor: glowColor }}
                   />
                   <div className="space-y-4 p-5 flex flex-col justify-between h-[190px]">
                     <div>
@@ -480,7 +480,7 @@ function MetricCard({
   let glowColor = "rgba(148, 163, 184, 0.1)";
   let progressBg = "bg-slate-100";
   let progressBar = "bg-slate-400";
-  
+
   if (isPink) {
     iconBg = "bg-pink-500/10 text-pink-600";
     glowColor = "rgba(244, 63, 94, 0.12)";
@@ -505,26 +505,26 @@ function MetricCard({
 
   return (
     <div className="group relative flex min-h-[145px] min-w-0 flex-col justify-between overflow-hidden rounded-3xl border border-slate-100/80 bg-white/70 p-5 shadow-[0_8px_30px_rgba(0,0,0,0.015)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-slate-200/50 hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)]">
-      <div 
-        className="absolute -bottom-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-15 pointer-events-none transition-all duration-500 group-hover:scale-125" 
-        style={{ backgroundColor: glowColor }} 
+      <div
+        className="absolute -bottom-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-15 pointer-events-none transition-all duration-500 group-hover:scale-125"
+        style={{ backgroundColor: glowColor }}
       />
       <div className={`absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r ${tone}`} />
-      
+
       <div className="flex min-w-0 items-start justify-between gap-3">
         <span className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-400">{title}</span>
         <span className={`p-2.5 rounded-2xl ${iconBg} flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 shadow-xs`}>
           <Icon className="h-4.5 w-4.5" />
         </span>
       </div>
-      
+
       <div className="mt-2.5">
         <h4 className="break-words text-3.5xl font-black leading-none tracking-tight text-slate-800 transition-colors group-hover:text-slate-900">{value}</h4>
-        
+
         {progress !== undefined && (
           <div className="mt-3.5 space-y-1.5">
             <div className={`w-full h-1 rounded-full ${progressBg} overflow-hidden`}>
-              <div 
+              <div
                 className={`h-full rounded-full transition-all duration-500 ${progressBar}`}
                 style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
               />
@@ -535,7 +535,7 @@ function MetricCard({
             </div>
           </div>
         )}
-        
+
         {progress === undefined && (
           <p className="text-xs text-slate-400 mt-2 font-semibold">{description}</p>
         )}
@@ -591,7 +591,7 @@ function PipelineStep({
 
   return (
     <div className="flex min-w-0 items-center">
-      <div 
+      <div
         className={`relative min-w-0 flex-1 rounded-2xl border px-4 py-3.5 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_var(--glow)] ${bgClass}`}
         style={{ "--glow": activeGlow } as React.CSSProperties}
       >
@@ -606,7 +606,7 @@ function PipelineStep({
           <span className="text-[9px] font-bold text-slate-455 uppercase tracking-wider">leads</span>
         </div>
       </div>
-      
+
       {!isLast && (
         <div className="hidden items-center justify-center px-1 text-slate-300/80 xl:flex 2xl:hidden">
           <ArrowRight className="h-4 w-4" />

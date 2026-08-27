@@ -302,9 +302,12 @@ export default function CRMTab() {
     autoCloseDeal: true,
     autoFeedback: true,
     replyDelay: 15,
-    advancedInstructions: "Luôn ưu tiên xưng hô lịch thiệp. Hỏi thăm nhu cầu chăm sóc sức khỏe của doanh nghiệp.",
+    advancedInstructions: "Luôn ưu tiên xưng hô lịch thiệp, tự nhiên và thân thiện. Lắng nghe và giải đáp đúng trọng tâm nhu cầu của khách hàng.",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
+    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+    autoFollowUpEnabled: false,
+    followUpDelayHours: 2,
+    followUpPrompt: ""
   });
 
   // Synchronize AI Config based on selected page/channel or fallback to userProfile
@@ -337,7 +340,10 @@ export default function CRMTab() {
         replyDelay: config.replyDelay ?? 15,
         advancedInstructions: config.advancedInstructions ?? "",
         trainingKnowledge: config.trainingKnowledge ?? "",
-        model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
+        model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+        autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
+        followUpDelayHours: config.followUpDelayHours ?? 2,
+        followUpPrompt: config.followUpPrompt ?? ""
       });
       return;
     }
@@ -353,13 +359,16 @@ export default function CRMTab() {
         replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
         advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
         trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731"
+        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+        autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
+        followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
+        followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? ""
       });
     }
   }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer]);
 
   const handleUpdateAIConfig = async (newConfig: AIChatConfig) => {
-    const configWithTimestamp = {
+    const configWithTimestamp: AIChatConfig = {
       ...newConfig,
       autoClassify: true,
       autoCloseDeal: true,
@@ -371,15 +380,21 @@ export default function CRMTab() {
     try {
       let targetIntegrationId: string | null = null;
 
-      if (activeCustomer?.channel === "zalo") {
-        const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && item.isConnected);
-        if (zaloIntegration) {
+      if (activeCustomer?.channel === "zalo" || (!activeCustomer && activeChannel === "zalo")) {
+        const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && (item.username === selectedZaloAccountId || item.isConnected));
+        if (zaloIntegration?._id && !zaloIntegration._id.startsWith("company_")) {
           targetIntegrationId = zaloIntegration._id;
         }
+      } else if (activeCustomer?.channel === "tiktok" || (!activeCustomer && activeChannel === "tiktok")) {
+        const tiktokIntegration = companySocialIntegrations.find(item => item.platform === "TikTok" && (item.username === selectedTiktokAccountId || item.isConnected));
+        if (tiktokIntegration?._id && !tiktokIntegration._id.startsWith("company_")) {
+          targetIntegrationId = tiktokIntegration._id;
+        }
       } else {
-        const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-        if (selectedPage && selectedPage._id !== "personal") {
-          targetIntegrationId = selectedPage._id;
+        const pageId = activeCustomer?.pageId || selectedFacebookPageId;
+        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && (item.username === pageId || item.isConnected));
+        if (fbIntegration?._id && !fbIntegration._id.startsWith("company_")) {
+          targetIntegrationId = fbIntegration._id;
         }
       }
 
@@ -400,13 +415,15 @@ export default function CRMTab() {
         setCompanySocialIntegrations(prev =>
           prev.map(item => item._id === targetIntegrationId ? { ...item, aiAutoReplyConfig: configWithTimestamp as unknown as Record<string, unknown> } : item)
         );
-      } else {
-        await updateAiAutoReplyConfig(configWithTimestamp);
       }
+
+      // Always also save to userProfile as fallback
+      await updateAiAutoReplyConfig(configWithTimestamp);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Lỗi lưu cấu hình AI";
       console.error("[CRMTab] Lỗi lưu cấu hình AI:", err);
       toast.error(msg);
+      throw err;
     }
   };
 
@@ -1071,13 +1088,13 @@ export default function CRMTab() {
           return cust;
         }
 
-        const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Đã Chốt Đơn", "Khách Up-sell", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
+        const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Đã Chốt Đơn", "Khách Up-sell", "Khách bán thêm", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
         const newTempTag =
           status === "cold" ? "Khách Lạnh" :
             status === "warm" ? "Khách Ấm" :
               status === "hot" ? "Khách Nóng" :
                 status === "won" ? "Đã Chốt Đơn" :
-                  "KhÃ¡ch Up-sell";
+                  "Khách bán thêm (Up-sell)";
         const newTags = [...cleanTags, newTempTag];
         if (touchpoint) {
           newTags.push(touchpoint);
@@ -1211,14 +1228,14 @@ export default function CRMTab() {
       return;
     }
 
-    toast.success(`Đã kích hoạt chiến dịch Up-sell! Gửi tự động SMS & Voucher giảm giá 10% cho ${coldLeads.length} Khách Lạnh.`);
+    toast.success(`Đã kích hoạt chiến dịch Bán thêm (Up-sell)! Gửi tự động SMS & Voucher giảm giá 10% cho ${coldLeads.length} Khách Lạnh.`);
 
     try {
       await crmService.bulkUpdateLeads(
         coldLeads.map((lead) => ({
           id: lead.id,
           lead: {
-            lastInteraction: "Gửi Campaign Up-sell",
+            lastInteraction: "Gửi ưu đãi bán thêm (Up-sell)",
             lastInteractionTime: "Vừa xong"
           }
         }))
@@ -1233,7 +1250,7 @@ export default function CRMTab() {
           }
 
           const cleanTags = cust.tags.filter(t => !["Khách Lạnh", "Khách Ấm", "Khách Nóng", "Sắp chốt HD", "Đã gửi báo giá", "Mới tiếp cận"].includes(t));
-          const nextTags = [...cleanTags, "Khách Lạnh", "Gửi Campaign Up-sell"];
+          const nextTags = [...cleanTags, "Khách Lạnh", "Gửi ưu đãi bán thêm (Up-sell)"];
 
           if (nextTags.length === cust.tags.length && nextTags.every((tag, index) => tag === cust.tags[index])) {
             return cust;
@@ -1428,20 +1445,27 @@ export default function CRMTab() {
       <h1 className="sr-only">Hệ thống Sales CRM - {subTab}</h1>
 
       {/* Sub tabs selector bar */}
-      <div className="border-b border-slate-100 bg-[#f8fafc] p-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
-        <div className="flex gap-2">
-          {["PHỄU KHÁCH HÀNG", "OMNI-INBOX CHAT", "AI COMMENT AUTO-REPLY"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setSubTab(tab as CRMSubTabType)}
-              className={`px-3.5 py-2 rounded-xl border font-bold uppercase transition-all tracking-wide text-[10px] cursor-pointer ${subTab === tab
-                ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
-                }`}
-            >
-              {tab}
-            </button>
-          ))}
+      <div className="border-b border-slate-100 bg-white px-4 py-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {[
+            { key: "PHỄU KHÁCH HÀNG" as CRMSubTabType, label: "Phễu khách hàng" },
+            { key: "OMNI-INBOX CHAT" as CRMSubTabType, label: "Hộp thư hội thoại " },
+            { key: "AI COMMENT AUTO-REPLY" as CRMSubTabType, label: "AI phản hồi bình luận" },
+          ].map(({ key, label }) => {
+            const isActive = subTab === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setSubTab(key)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none ${isActive
+                    ? "bg-[#0284c7] text-white shadow-xs"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Global Social Media Channel Filters */}
@@ -1810,7 +1834,7 @@ export default function CRMTab() {
             </div>
 
             <p className="text-[10px] text-slate-400 leading-relaxed">
-              ✓ Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Omni-Inbox chat cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
+              ✓ Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Hộp thư hội thoại (Omni-Inbox) cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
             </p>
 
             <div className="flex gap-2.5 mt-2">
