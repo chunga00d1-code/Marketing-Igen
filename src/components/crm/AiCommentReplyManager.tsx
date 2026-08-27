@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect } from "react";
 import {
   MessageSquare, Zap, RefreshCw, Terminal, CheckCircle,
@@ -46,7 +46,10 @@ export function AiCommentReplyManager({
     replyDelay: 15,
     advancedInstructions: "",
     trainingKnowledge: "",
-    model: "gemini-3.5-flash"
+    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+    autoFollowUpEnabled: false,
+    followUpDelayHours: 2,
+    followUpPrompt: ""
   });
 
   const [savingConfig, setSavingConfig] = useState(false);
@@ -125,7 +128,10 @@ export function AiCommentReplyManager({
               replyDelay: config.replyDelay ?? 15,
               advancedInstructions: config.advancedInstructions ?? "",
               trainingKnowledge: config.trainingKnowledge ?? "",
-              model: config.model || "gemini-3.5-flash"
+              model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+              autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
+              followUpDelayHours: config.followUpDelayHours ?? 2,
+              followUpPrompt: config.followUpPrompt ?? "",
             });
             return;
           }
@@ -145,7 +151,10 @@ export function AiCommentReplyManager({
           replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
           advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
           trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-          model: userProfile.aiAutoReplyConfig.model || "gemini-3.5-flash"
+          model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+          autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
+          followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
+          followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? "",
         });
       }
     };
@@ -530,7 +539,7 @@ export function AiCommentReplyManager({
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ docLink: driveLink })
+        body: JSON.stringify({ docLink: driveLink, clearExisting: true })
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {

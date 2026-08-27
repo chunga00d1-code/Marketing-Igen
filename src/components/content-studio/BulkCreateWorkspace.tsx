@@ -308,9 +308,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       : backgroundId === 'blank'
         ? { type: 'color', color: backgroundColor }
         : {
-            type: 'gradient',
-            colors: selectedBackground?.colors || ['#ffffff', '#ffffff'],
-          },
+          type: 'gradient',
+          colors: selectedBackground?.colors || ['#ffffff', '#ffffff'],
+        },
     layers,
   }), [
     backgroundColor,
@@ -449,14 +449,14 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           if (job.status === 'completed') {
             toast.success(`Đã tạo xong ${job.completedItems} ảnh.`);
             if (campaignOrderImportId) {
-              toast.info('Mở Campaign, chọn Bulk Create để xem trước và gắn ảnh vào bài viết.');
+              toast.info('Mở Campaign, chọn Tạo hàng loạt để xem trước và gắn ảnh vào bài viết.');
             }
           } else if (job.status === 'partial') {
             toast.error(
               `Đã tạo ${job.completedItems} ảnh, ${job.failedItems} ảnh bị lỗi.`
             );
             if (campaignOrderImportId) {
-              toast.info('Mở Campaign, chọn Bulk Create để xem trước các ảnh đã tạo và gắn vào bài viết.');
+              toast.info('Mở Campaign, chọn Tạo hàng loạt để xem trước các ảnh đã tạo và gắn vào bài viết.');
             }
           } else if (job.status === 'failed') {
             toast.error(job.errorMessage || 'Không thể tạo ảnh.');
@@ -547,12 +547,12 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     toast.success('Đã tối ưu bố cục để nội dung dễ đọc hơn.');
   };
   const createEditorSnapshot = useCallback((): EditorSnapshot => ({
-      layers: layers.map((layer) => ({ ...layer })),
-      rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
-      canvasSize: { ...canvasSize },
-      backgroundId,
-      backgroundImage,
-      backgroundColor,
+    layers: layers.map((layer) => ({ ...layer })),
+    rows: rows.map((row) => ({ ...row, values: { ...row.values } })),
+    canvasSize: { ...canvasSize },
+    backgroundId,
+    backgroundImage,
+    backgroundColor,
   }), [backgroundColor, backgroundId, backgroundImage, canvasSize, layers, rows]);
 
   const restoreEditorSnapshot = useCallback((snapshot: EditorSnapshot) => {
@@ -583,9 +583,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           return [
             layer.id,
             generatedValue
-              ?? row.values[layer.id]
-              ?? layer.defaultValue
-              ?? (layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''),
+            ?? row.values[layer.id]
+            ?? layer.defaultValue
+            ?? (layer.type === 'text' && layer.layerKind !== 'shape' ? layer.fieldName : ''),
           ];
         })),
       }));
@@ -1530,20 +1530,20 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         uploadedImageUrls.set(source, uploadedUrls[index]);
       });
     }
-      const uploaded = readyRows.map((row) => ({
-        ...row.values,
-        ...Object.fromEntries(layers.map((layer) => {
-          if (layer.type === 'image') {
-            const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
-            return [layer.id, uploadedImageUrls.get(source) || source];
-          }
-          const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.layerKind === 'shape' ? '' : (layer.defaultValue || layer.fieldName));
-          return [layer.id, val];
-        })),
-        ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
-        ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
-        __source_row_id: row.id,
-      }));
+    const uploaded = readyRows.map((row) => ({
+      ...row.values,
+      ...Object.fromEntries(layers.map((layer) => {
+        if (layer.type === 'image') {
+          const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
+          return [layer.id, uploadedImageUrls.get(source) || source];
+        }
+        const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.layerKind === 'shape' ? '' : (layer.defaultValue || layer.fieldName));
+        return [layer.id, val];
+      })),
+      ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),
+      ...(row.campaignSlotId ? { __campaign_slot_id: row.campaignSlotId } : {}),
+      __source_row_id: row.id,
+    }));
     setRows((current) => current.map((row) => {
       const index = readyRows.findIndex((ready) => ready.id === row.id);
       return index >= 0 ? { ...row, values: uploaded[index] } : row;
@@ -1745,7 +1745,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     try {
       const preview = await marketingCampaignService.exportAssetOrdersForBulk(selectedCampaignId);
       if (!preview.rows.length) {
-        toast.warning('Chiến dịch chưa có Order ảnh có thể nhập vào Bulk Create.');
+        toast.warning('Chiến dịch chưa có Order ảnh có thể nhập vào tạo hàng loạt.');
         return;
       }
       applyImportedData(preview.columns, preview.rows, preview.sourceName, selectedCampaignId, 'campaign_orders');
@@ -2041,111 +2041,111 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
             />
           ) : (
             <EditorPanel
-          activeTool={activeTool}
-          backgroundImage={backgroundImage}
-          backgroundColor={backgroundColor}
-          layers={layers}
-          rows={rows}
-          dataColumns={dataColumns}
-          dataStep={dataStep}
-          dataSourceName={dataSourceName}
-          activeRowId={activeRowId}
-          sheetInput={sheetInput}
-          googleSheetUrl={googleSheetUrl}
-          loadingSheet={loadingSheet}
-          campaigns={campaigns}
-          selectedCampaignId={selectedCampaignId}
-          bulkTarget={bulkTarget}
-          campaignContext={campaignContext}
-          loadingCampaigns={loadingCampaigns}
-          loadingCampaignOrders={loadingCampaignOrders}
-          readyCount={readyCount}
-          canvasSize={canvasSize}
-          systemTemplates={BULK_MARKETING_PRESETS}
-          templates={templates}
-          loadingTemplates={loadingTemplates}
-          canvaStatus={canvaStatus}
-          canvaDesigns={canvaDesigns}
-          loadingCanva={loadingCanva}
-          canvaError={canvaError}
-          templatesTotal={templatesTotal}
-          templatePage={templatePage}
-          onChangeTemplatePage={goToTemplatePage}
-          communityTemplates={communityTemplates}
-          jobs={jobs}
-          activeJob={activeJob}
-          jobItems={jobItems}
-          onBackgroundUpload={(value) => {
-            recordLayerHistory();
-            setBackgroundImage(value);
-            setBackgroundId('');
-            setBackgroundSelected(true);
-            clearLayerSelection();
-          }}
-          onUploadAsset={(file, target) => void uploadLibraryAsset(file, target)}
-          onBackgroundColor={(value) => { recordLayerHistory(); setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
-          onRemoveBackground={() => { recordLayerHistory(); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
-          onAddLayer={addLayer}
-          onSelectLayer={(id) => { selectLayer(id); setBackgroundSelected(false); }}
-          onSheetInput={setSheetInput}
-          onImportSheet={importSheet}
-          onDataStep={setDataStep}
-          onGoogleSheetUrl={setGoogleSheetUrl}
-          onImportGoogleSheet={() => void importGoogleSheet()}
-          onLoadCampaigns={() => void loadCampaignsForImport()}
-          onSelectCampaign={(campaignId) => {
-            setSelectedCampaignId(campaignId);
-            setCampaignContext(null);
-            setCampaignOrderImportId('');
-            if (campaignId) void loadCampaignContext(campaignId);
-          }}
-          onBulkTarget={(target) => {
-            setBulkTarget(target);
-            if (target === 'campaign' && campaigns.length === 0) void loadCampaignsForImport();
-            if (target === 'standalone') {
-              setCampaignOrderImportId('');
-              setCampaignDataSource('manual');
-            }
-          }}
-          onImportCampaignOrders={() => void importCampaignOrders()}
-          onConnectLayer={connectLayerData}
-          onAutoMatch={autoMatchData}
-          onToggleRow={toggleImportedRow}
-          onSelectAllRows={selectAllImportedRows}
-          onCreatePages={createPages}
-          onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
-          onCanvasSize={(size) => handleResize(size.width, size.height)}
-          onApplySystemTemplate={applySystemTemplate}
-          onAddRow={addRow}
-          onSelectRow={setActiveRowId}
-          onAssignCampaignSlot={(rowId, slotId) => {
-            const orderId = campaignContext?.orders.find((order) => String(order.slotId || '') === slotId)?._id;
-            setRows((current) => current.map((row) => row.id === rowId
-              ? { ...row, campaignSlotId: slotId || undefined, campaignAssetOrderId: orderId }
-              : row));
-          }}
-          onUpdateCell={updateCell}
-          onDuplicateRow={duplicateRow}
-          onRemoveRow={removeRow}
-          onLoadTemplate={loadTemplate}
-          onLoadMoreTemplates={loadMoreTemplates}
-          onArchiveTemplate={(templateId) => void archiveTemplate(templateId)}
-          onPublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'public')}
-          onUnpublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'private')}
-          onUseCommunityTemplate={(templateId) => void applyCommunityTemplate(templateId)}
-          onOpenJob={(job) => void openJob(job)}
-          onRetryJob={(jobId) => void retryJob(jobId)}
-          onCancelJob={(jobId) => void cancelJob(jobId)}
-          onDownloadJob={(job) => void downloadJob(job)}
-          onClose={() => setSidebarOpen(false)}
-          uploadedImages={uploadedImages}
-          uploadingAsset={uploadingAsset}
-          onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
-          importingTemplate={importingTemplate}
-          onImportTemplate={(file) => void importTemplateFile(file)}
-          onStartCanvaConnection={() => void startCanvaConnection()}
-          onRefreshCanva={() => void refreshCanva()}
-          />
+              activeTool={activeTool}
+              backgroundImage={backgroundImage}
+              backgroundColor={backgroundColor}
+              layers={layers}
+              rows={rows}
+              dataColumns={dataColumns}
+              dataStep={dataStep}
+              dataSourceName={dataSourceName}
+              activeRowId={activeRowId}
+              sheetInput={sheetInput}
+              googleSheetUrl={googleSheetUrl}
+              loadingSheet={loadingSheet}
+              campaigns={campaigns}
+              selectedCampaignId={selectedCampaignId}
+              bulkTarget={bulkTarget}
+              campaignContext={campaignContext}
+              loadingCampaigns={loadingCampaigns}
+              loadingCampaignOrders={loadingCampaignOrders}
+              readyCount={readyCount}
+              canvasSize={canvasSize}
+              systemTemplates={BULK_MARKETING_PRESETS}
+              templates={templates}
+              loadingTemplates={loadingTemplates}
+              canvaStatus={canvaStatus}
+              canvaDesigns={canvaDesigns}
+              loadingCanva={loadingCanva}
+              canvaError={canvaError}
+              templatesTotal={templatesTotal}
+              templatePage={templatePage}
+              onChangeTemplatePage={goToTemplatePage}
+              communityTemplates={communityTemplates}
+              jobs={jobs}
+              activeJob={activeJob}
+              jobItems={jobItems}
+              onBackgroundUpload={(value) => {
+                recordLayerHistory();
+                setBackgroundImage(value);
+                setBackgroundId('');
+                setBackgroundSelected(true);
+                clearLayerSelection();
+              }}
+              onUploadAsset={(file, target) => void uploadLibraryAsset(file, target)}
+              onBackgroundColor={(value) => { recordLayerHistory(); setBackgroundColor(value); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+              onRemoveBackground={() => { recordLayerHistory(); setBackgroundImage(''); setBackgroundId('blank'); setBackgroundSelected(true); clearLayerSelection(); }}
+              onAddLayer={addLayer}
+              onSelectLayer={(id) => { selectLayer(id); setBackgroundSelected(false); }}
+              onSheetInput={setSheetInput}
+              onImportSheet={importSheet}
+              onDataStep={setDataStep}
+              onGoogleSheetUrl={setGoogleSheetUrl}
+              onImportGoogleSheet={() => void importGoogleSheet()}
+              onLoadCampaigns={() => void loadCampaignsForImport()}
+              onSelectCampaign={(campaignId) => {
+                setSelectedCampaignId(campaignId);
+                setCampaignContext(null);
+                setCampaignOrderImportId('');
+                if (campaignId) void loadCampaignContext(campaignId);
+              }}
+              onBulkTarget={(target) => {
+                setBulkTarget(target);
+                if (target === 'campaign' && campaigns.length === 0) void loadCampaignsForImport();
+                if (target === 'standalone') {
+                  setCampaignOrderImportId('');
+                  setCampaignDataSource('manual');
+                }
+              }}
+              onImportCampaignOrders={() => void importCampaignOrders()}
+              onConnectLayer={connectLayerData}
+              onAutoMatch={autoMatchData}
+              onToggleRow={toggleImportedRow}
+              onSelectAllRows={selectAllImportedRows}
+              onCreatePages={createPages}
+              onImportExcel={(file) => void importExcel(file).catch((error) => setErrorMessage(error instanceof Error ? error.message : String(error)))}
+              onCanvasSize={(size) => handleResize(size.width, size.height)}
+              onApplySystemTemplate={applySystemTemplate}
+              onAddRow={addRow}
+              onSelectRow={setActiveRowId}
+              onAssignCampaignSlot={(rowId, slotId) => {
+                const orderId = campaignContext?.orders.find((order) => String(order.slotId || '') === slotId)?._id;
+                setRows((current) => current.map((row) => row.id === rowId
+                  ? { ...row, campaignSlotId: slotId || undefined, campaignAssetOrderId: orderId }
+                  : row));
+              }}
+              onUpdateCell={updateCell}
+              onDuplicateRow={duplicateRow}
+              onRemoveRow={removeRow}
+              onLoadTemplate={loadTemplate}
+              onLoadMoreTemplates={loadMoreTemplates}
+              onArchiveTemplate={(templateId) => void archiveTemplate(templateId)}
+              onPublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'public')}
+              onUnpublishTemplate={(templateId) => void setTemplateVisibility(templateId, 'private')}
+              onUseCommunityTemplate={(templateId) => void applyCommunityTemplate(templateId)}
+              onOpenJob={(job) => void openJob(job)}
+              onRetryJob={(jobId) => void retryJob(jobId)}
+              onCancelJob={(jobId) => void cancelJob(jobId)}
+              onDownloadJob={(job) => void downloadJob(job)}
+              onClose={() => setSidebarOpen(false)}
+              uploadedImages={uploadedImages}
+              uploadingAsset={uploadingAsset}
+              onDeleteUploadedImage={(assetId) => void deleteUploadedImage(assetId)}
+              importingTemplate={importingTemplate}
+              onImportTemplate={(file) => void importTemplateFile(file)}
+              onStartCanvaConnection={() => void startCanvaConnection()}
+              onRefreshCanva={() => void refreshCanva()}
+            />
           )}
         </div>
       </aside>
