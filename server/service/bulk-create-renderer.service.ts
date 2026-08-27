@@ -148,6 +148,18 @@ function normalizeColor(color: string | undefined, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(String(color || "")) ? String(color) : fallback;
 }
 
+export function resolveBulkSourceCropPixels(
+  crop: NonNullable<IBulkLayer['sourceCrop']>,
+  sourceWidth: number,
+  sourceHeight: number
+) {
+  const left = Math.min(sourceWidth - 1, Math.max(0, Math.floor(sourceWidth * crop.x / 100)));
+  const top = Math.min(sourceHeight - 1, Math.max(0, Math.floor(sourceHeight * crop.y / 100)));
+  const right = Math.min(sourceWidth, Math.max(left + 1, Math.ceil(sourceWidth * (crop.x + crop.width) / 100)));
+  const bottom = Math.min(sourceHeight, Math.max(top + 1, Math.ceil(sourceHeight * (crop.y + crop.height) / 100)));
+  return { left, top, width: right - left, height: bottom - top };
+}
+
 function wrapText(text: string, maxCharacters: number) {
   const paragraphs = text.replace(/\r/g, "").split("\n");
   const lines: string[] = [];
@@ -274,7 +286,18 @@ export async function renderBulkImage(
     if (layer.layerKind === "shape") {
       input = renderShapeLayer(layer, targetWidth, targetHeight);
     } else if (layer.type === "image") {
-      input = await sharp(await loadImage(value))
+      const source = await loadImage(value);
+      let image = sharp(source);
+      if (layer.sourceCrop) {
+        const metadata = await image.metadata();
+        if (!metadata.width || !metadata.height) throw new Error('Không thể đọc kích thước ảnh nguồn để crop.');
+        image = sharp(source).extract(resolveBulkSourceCropPixels(
+          layer.sourceCrop,
+          metadata.width,
+          metadata.height
+        ));
+      }
+      input = await image
         .resize(targetWidth, targetHeight, { fit: layer.fit || "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
         .png()
         .toBuffer();

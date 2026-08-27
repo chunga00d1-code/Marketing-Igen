@@ -19,6 +19,18 @@ const BulkLayerSchema = new Schema(
     rotation: { type: Number, default: 0, min: -360, max: 360 },
     zIndex: { type: Number, default: 0 },
     locked: { type: Boolean, default: false },
+    sourceCrop: {
+      type: new Schema(
+        {
+          x: { type: Number, required: true, min: 0, max: 100 },
+          y: { type: Number, required: true, min: 0, max: 100 },
+          width: { type: Number, required: true, min: 0.1, max: 100 },
+          height: { type: Number, required: true, min: 0.1, max: 100 },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     fit: { type: String, enum: ["cover", "contain"], default: "contain" },
     fontSize: { type: Number, min: 8, max: 300 },
     fontFamily: { type: String, default: "Arial" },

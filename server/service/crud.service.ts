@@ -1,4 +1,4 @@
-﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
 import { ProductModel } from "../model/product.model";
 import { CategoryModel } from "../model/category.model";
 import { CRMTicketModel } from "../model/crm-ticket.model";
@@ -327,10 +327,18 @@ export const crudService = {
       if (!existingItem) {
         throw new Error("Khong tim thay tai nguyen hoac ban khong co quyen chinh sua.");
       }
-      await validateSocialIntegrationPayload({
-        ...existingItem,
-        ...updatePayload,
-      });
+      const isUpdatingCredentials =
+        updatePayload.accessToken !== undefined ||
+        updatePayload.username !== undefined ||
+        updatePayload.platform !== undefined ||
+        updatePayload.isConnected !== undefined;
+
+      if (isUpdatingCredentials) {
+        await validateSocialIntegrationPayload({
+          ...existingItem,
+          ...updatePayload,
+        });
+      }
     }
 
     let oldStatus = "";

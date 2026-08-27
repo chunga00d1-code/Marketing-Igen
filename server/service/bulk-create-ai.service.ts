@@ -31,6 +31,7 @@ type BulkAiHistoryMessage = {
 
 type BulkAiSceneInput = {
   prompt: string;
+  mode?: 'edit' | 'reconstruct';
   scene: {
     sceneVersion?: number;
     canvas: IBulkCanvas;
@@ -74,6 +75,7 @@ const ALLOWED_GRADIENTS = [
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const FONT_SET = new Set<string>(BULK_FONT_FAMILIES);
+const MAX_AI_LAYERS = 40;
 
 function clamp(value: unknown, minimum: number, maximum: number, fallback: number) {
   const number = Number(value);
@@ -94,6 +96,32 @@ function optionalColorValue(value: unknown, fallback?: string) {
   const candidate = stringValue(value);
   if (HEX_COLOR.test(candidate)) return candidate.toLowerCase();
   return fallback && HEX_COLOR.test(fallback) ? fallback.toLowerCase() : undefined;
+}
+
+function normalizeSourceCrop(value: unknown, fallback?: IBulkLayer['sourceCrop']) {
+  if (!value || typeof value !== 'object') return fallback;
+  const candidate = value as Record<string, unknown>;
+  const x = clamp(candidate.x, 0, 99.9, fallback?.x || 0);
+  const y = clamp(candidate.y, 0, 99.9, fallback?.y || 0);
+  const width = clamp(candidate.width, 0.1, 100 - x, fallback?.width || 100 - x);
+  const height = clamp(candidate.height, 0.1, 100 - y, fallback?.height || 100 - y);
+  return { x, y, width, height };
+}
+
+function ensureUniqueFieldNames(layers: IBulkLayer[]) {
+  const used = new Set<string>();
+  return layers.map((layer) => {
+    const base = layer.fieldName.trim().slice(0, 100) || (layer.type === 'image' ? 'Hình ảnh' : 'Nội dung');
+    let fieldName = base;
+    let suffix = 2;
+    while (used.has(fieldName.toLocaleLowerCase('vi-VN'))) {
+      const marker = ` ${suffix}`;
+      fieldName = `${base.slice(0, 100 - marker.length)}${marker}`;
+      suffix += 1;
+    }
+    used.add(fieldName.toLocaleLowerCase('vi-VN'));
+    return fieldName === layer.fieldName ? layer : { ...layer, fieldName };
+  });
 }
 
 function parseJsonObject(text: string) {
@@ -145,6 +173,8 @@ function normalizeBackground(
     const colors = Array.isArray(candidate.colors)
       ? candidate.colors.map((color) => stringValue(color).toLowerCase())
       : [];
+    const validColors = colors.filter((color) => HEX_COLOR.test(color)).slice(0, 5);
+    if (validColors.length >= 2) return { type: 'gradient', colors: validColors };
     const allowed = ALLOWED_GRADIENTS.find(
       (palette) => palette[0] === colors[0] && palette[1] === colors[1]
     );
@@ -208,6 +238,9 @@ function normalizeLayer(
     y: clamp(candidate.y, 0, 100 - height, Math.min(current?.y || 0, 100 - height)),
     width,
     height,
+    sourceCrop: type === 'image'
+      ? normalizeSourceCrop(candidate.sourceCrop, current?.sourceCrop)
+      : undefined,
     rotation: clamp(candidate.rotation, -360, 360, current?.rotation || 0),
     zIndex: Math.round(clamp(candidate.zIndex, 0, 1000, current?.zIndex ?? index)),
     locked: typeof candidate.locked === "boolean" ? candidate.locked : current?.locked || false,
@@ -363,7 +396,7 @@ function normalizeOperationResult(
     }
 
     if (op === "add") {
-      if (layers.length >= 20) return;
+      if (layers.length >= MAX_AI_LAYERS) return;
       const rawLayer = operation.layer && typeof operation.layer === "object"
         ? operation.layer as Record<string, unknown>
         : operation.value && typeof operation.value === "object"
@@ -447,9 +480,9 @@ function normalizeOperationResult(
     }
   });
 
-  layers = layers.slice(0, 20)
+  layers = ensureUniqueFieldNames(layers.slice(0, MAX_AI_LAYERS)
     .sort((left, right) => left.zIndex - right.zIndex)
-    .map((layer, index) => ({ ...layer, zIndex: index }));
+    .map((layer, index) => ({ ...layer, zIndex: index })));
   const normalizedValues = Object.fromEntries(layers.map((layer) => [
     layer.id,
     values[layer.id] || layer.defaultValue || "",
@@ -493,7 +526,7 @@ function normalizeResult(
   const returnedIds = new Set<string>();
   const rawLayers = Array.isArray(rawScene.layers) ? rawScene.layers : [];
 
-  rawLayers.slice(0, 20).forEach((rawLayer, index) => {
+  rawLayers.slice(0, MAX_AI_LAYERS).forEach((rawLayer, index) => {
     const rawCandidate = rawLayer && typeof rawLayer === "object"
       ? rawLayer as Record<string, unknown>
       : {};
@@ -516,8 +549,10 @@ function normalizeResult(
   const preserved = input.scene.layers.filter(
     (layer) => !returnedIds.has(layer.id) && !deletedLayerIds.has(layer.id)
   );
-  const layers = [...normalizedReturned, ...preserved].slice(0, 20)
-    .map((layer, index) => ({ ...layer, zIndex: index }));
+  const layers = ensureUniqueFieldNames(
+    [...normalizedReturned, ...preserved].slice(0, MAX_AI_LAYERS)
+      .map((layer, index) => ({ ...layer, zIndex: index }))
+  );
 
   const rawValues = raw.values && typeof raw.values === "object"
     ? raw.values as Record<string, unknown>
@@ -550,6 +585,7 @@ function buildVisionMessage(input: BulkAiSceneInput, allowedImages: Set<string>)
     type: "text",
     text: [
       `Yêu cầu mới nhất: ${input.prompt}`,
+      `Processing mode: ${input.mode || 'edit'}`,
       "Scene/form hiện tại (đây là nguồn dữ liệu bắt buộc phải dựa vào):",
       JSON.stringify({
         scene: input.scene,
@@ -584,6 +620,75 @@ function buildVisionMessage(input: BulkAiSceneInput, allowedImages: Set<string>)
   return parts;
 }
 
+function seedMissingReconstructionImageCrops(
+  input: BulkAiSceneInput,
+  result: BulkAiSceneResult,
+  allowedImages: Set<string>
+) {
+  if (input.mode !== 'reconstruct') return;
+  const source = input.attachments?.find((item) => item.type === 'image' && item.url)?.url
+    || [...allowedImages][0];
+  if (!source) return;
+
+  result.scene.layers = result.scene.layers.map((layer) => {
+    if (layer.type !== 'image') return layer;
+    const currentValue = result.values[layer.id] || layer.defaultValue || '';
+    const needsCrop = !currentValue || (
+      allowedImages.has(currentValue)
+      && (!layer.sourceCrop || (layer.sourceCrop.width * layer.sourceCrop.height) >= 8_500)
+    );
+    if (!needsCrop) return layer;
+
+    const cropWidth = Math.min(layer.width, 80);
+    const cropHeight = Math.min(layer.height, 100);
+    const sourceCrop = {
+      x: clamp(layer.x + ((layer.width - cropWidth) / 2), 0, 100 - cropWidth, 0),
+      y: clamp(layer.y + ((layer.height - cropHeight) / 2), 0, 100 - cropHeight, 0),
+      width: cropWidth,
+      height: cropHeight,
+    };
+    const layerSource = allowedImages.has(currentValue) ? currentValue : source;
+    result.values[layer.id] = layerSource;
+    return { ...layer, defaultValue: layerSource, sourceCrop, fit: 'cover' };
+  });
+}
+
+function assertReconstructionQuality(
+  input: BulkAiSceneInput,
+  result: BulkAiSceneResult,
+  allowedImages: Set<string>
+) {
+  if (input.mode !== 'reconstruct') return;
+  if (result.operations.length === 0) {
+    throw new Error('AI chưa phân rã được bố cục ảnh mẫu. Vui lòng thử lại.');
+  }
+  if (
+    result.scene.background.type === 'image'
+    && result.scene.background.imageUrl
+    && allowedImages.has(result.scene.background.imageUrl)
+  ) {
+    throw new Error('AI vẫn giữ ảnh mẫu phẳng làm nền thay vì dựng template chỉnh sửa được. Vui lòng thử lại.');
+  }
+  for (const layer of result.scene.layers) {
+    if (layer.type !== 'image') continue;
+    const source = result.values[layer.id] || layer.defaultValue || '';
+    if (allowedImages.has(source) && (!layer.sourceCrop || (layer.sourceCrop.width * layer.sourceCrop.height) >= 8_500)) {
+      throw new Error(`AI đã dùng lại ảnh mẫu trong layer '${layer.fieldName}' thay vì tạo vùng ảnh thay thế. Vui lòng thử lại.`);
+    }
+    if (!source) {
+      throw new Error(`AI đã để trống layer ảnh '${layer.fieldName}'. Ảnh mẫu cần có crop hình ảnh để template xem được ngay.`);
+    }
+  }
+  const hasEditableText = result.scene.layers.some((layer) => (
+    layer.type === 'text'
+    && layer.layerKind !== 'shape'
+    && Boolean((result.values[layer.id] || layer.defaultValue || '').trim())
+  ));
+  if (!hasEditableText) {
+    throw new Error('AI chưa OCR được khối chữ chỉnh sửa từ ảnh mẫu. Vui lòng thử lại.');
+  }
+}
+
 export const bulkCreateAiService = {
   async updateScene(actor: BulkAiActor, input: BulkAiSceneInput): Promise<BulkAiSceneResult> {
     const allowedImages = collectAllowedImages(input);
@@ -594,12 +699,12 @@ export const bulkCreateAiService = {
       content: message.content.slice(0, 4_000),
     })) as OpenRouterMessage[];
     const response = await openrouterChat({
-      model: process.env.AI_HTML_MODEL || "google/gemini-2.5-flash",
+      model: process.env.BULK_CREATE_AI_MODEL || "z-ai/glm-5.3-flash",
       temperature: 0.25,
       jsonMode: true,
       maxRetries: 2,
-      maxTokens: 10_000,
-      timeoutMs: 45_000,
+      maxTokens: input.mode === 'reconstruct' ? 16_000 : 10_000,
+      timeoutMs: input.mode === 'reconstruct' ? 150_000 : 75_000,
       responseSchema: {
         reply: "string",
         operations: [{
@@ -637,6 +742,19 @@ QUY TẮC BỐ CỤC:
 - Khi có ảnh đầu vào, phải quan sát nội dung ảnh để quyết định cover/contain và bố cục chữ phù hợp.
 - Nếu yêu cầu chỉ đổi một phần (ví dụ nền, headline, màu chữ), tuyệt đối không thiết kế lại các phần khác.`,
         },
+        ...(input.mode === 'reconstruct' ? [{
+          role: 'system' as const,
+          content: `REFERENCE RECONSTRUCTION MODE. These rules override the earlier instruction to make only minimal edits or to avoid rebuilding the whole scene.
+
+- Reconstruct the entire attached reference as an editable scene. Return the complete operation list, including removing the placeholder layer and replacing the initial flattened-image background.
+- Do not keep the complete reference image as the canvas background and do not add it as a full-canvas image layer. Rebuild the base with the closest sampled solid color or a 2-5 color gradient, then use editable shape layers for panels, bands, borders, pills, circles, and decorative blocks.
+- OCR every meaningful visible text block exactly as shown. Create one editable text, badge, or CTA layer per semantic block, preserving reading order, relative position, alignment, casing, color, weight, and hierarchy. Never invent or paraphrase text.
+- Never reuse the attached reference poster as the canvas background or as a full-canvas image layer. The complete poster must never sit underneath the editable scene.
+- For every person, product, photograph, illustration, or logo, create a visible image layer using the attached image URL plus a tight sourceCrop around that single visual asset. Use the crop coordinates as percentages of the original reference. The crop must not include multiple subjects, major text blocks, or most of the poster; it must be framed to the destination rectangle with fit: cover. Give it a clear Vietnamese fieldName so a spreadsheet can replace it later.
+- Do not create blank image placeholders. The imported template must be immediately recognizable before the user maps any spreadsheet data. Rebuild only the static backdrop with CSS-compatible background colors, gradients and shape layers; use crop layers only for visual assets that cannot be faithfully rebuilt with CSS.
+- Use up to ${MAX_AI_LAYERS} layers when the reference needs them. Prefer fidelity and editability over adding new creative ideas. Keep all layers inside the canvas and preserve safe readable text sizes.
+- Ensure at least one text layer remains suitable for spreadsheet mapping. The final scene must be visually complete without relying on the flattened reference underneath it.`,
+        }] : []),
         ...history,
         {
           role: "user",
@@ -648,6 +766,8 @@ QUY TẮC BỐ CỤC:
     const parsed = parseJsonObject(response.text);
     const result = normalizeOperationResult(parsed, input, allowedImages)
       || normalizeResult(parsed, input, allowedImages);
+    seedMissingReconstructionImageCrops(input, result, allowedImages);
+    assertReconstructionQuality(input, result, allowedImages);
     await walletService.deductBalance(
       actor.id,
       API_COSTS.AI_HTML_CHAT,

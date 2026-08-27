@@ -359,7 +359,7 @@ export default function CRMTab() {
   }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer]);
 
   const handleUpdateAIConfig = async (newConfig: AIChatConfig) => {
-    const configWithTimestamp = {
+    const configWithTimestamp: AIChatConfig = {
       ...newConfig,
       autoClassify: true,
       autoCloseDeal: true,
@@ -371,15 +371,21 @@ export default function CRMTab() {
     try {
       let targetIntegrationId: string | null = null;
 
-      if (activeCustomer?.channel === "zalo") {
-        const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && item.isConnected);
-        if (zaloIntegration) {
+      if (activeCustomer?.channel === "zalo" || (!activeCustomer && activeChannel === "zalo")) {
+        const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && (item.username === selectedZaloAccountId || item.isConnected));
+        if (zaloIntegration?._id && !zaloIntegration._id.startsWith("company_")) {
           targetIntegrationId = zaloIntegration._id;
         }
+      } else if (activeCustomer?.channel === "tiktok" || (!activeCustomer && activeChannel === "tiktok")) {
+        const tiktokIntegration = companySocialIntegrations.find(item => item.platform === "TikTok" && (item.username === selectedTiktokAccountId || item.isConnected));
+        if (tiktokIntegration?._id && !tiktokIntegration._id.startsWith("company_")) {
+          targetIntegrationId = tiktokIntegration._id;
+        }
       } else {
-        const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-        if (selectedPage && selectedPage._id !== "personal") {
-          targetIntegrationId = selectedPage._id;
+        const pageId = activeCustomer?.pageId || selectedFacebookPageId;
+        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && (item.username === pageId || item.isConnected));
+        if (fbIntegration?._id && !fbIntegration._id.startsWith("company_")) {
+          targetIntegrationId = fbIntegration._id;
         }
       }
 
@@ -400,13 +406,15 @@ export default function CRMTab() {
         setCompanySocialIntegrations(prev =>
           prev.map(item => item._id === targetIntegrationId ? { ...item, aiAutoReplyConfig: configWithTimestamp as unknown as Record<string, unknown> } : item)
         );
-      } else {
-        await updateAiAutoReplyConfig(configWithTimestamp);
       }
+
+      // Always also save to userProfile as fallback
+      await updateAiAutoReplyConfig(configWithTimestamp);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Lỗi lưu cấu hình AI";
       console.error("[CRMTab] Lỗi lưu cấu hình AI:", err);
       toast.error(msg);
+      throw err;
     }
   };
 
@@ -1428,20 +1436,24 @@ export default function CRMTab() {
       <h1 className="sr-only">Hệ thống Sales CRM - {subTab}</h1>
 
       {/* Sub tabs selector bar */}
-      <div className="border-b border-slate-100 bg-[#f8fafc] p-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
-        <div className="flex gap-2">
-          {["PHỄU KHÁCH HÀNG", "OMNI-INBOX CHAT", "AI COMMENT AUTO-REPLY"].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setSubTab(tab as CRMSubTabType)}
-              className={`px-3.5 py-2 rounded-xl border font-bold uppercase transition-all tracking-wide text-[10px] cursor-pointer ${subTab === tab
-                ? "bg-slate-900 text-white border-slate-900 shadow-sm"
-                : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50"
+      <div className="border-b border-slate-100 bg-white px-4 py-2.5 text-xs flex justify-between items-center shrink-0" id="crm_sub_tabs_switch">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {["PHỄU KHÁCH HÀNG", "OMNI-INBOX CHAT", "AI COMMENT AUTO-REPLY"].map((tab) => {
+            const isActive = subTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setSubTab(tab as CRMSubTabType)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none ${
+                  isActive
+                    ? "bg-[#0284c7] text-white shadow-xs"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 }`}
-            >
-              {tab}
-            </button>
-          ))}
+              >
+                {tab}
+              </button>
+            );
+          })}
         </div>
 
         {/* Global Social Media Channel Filters */}
