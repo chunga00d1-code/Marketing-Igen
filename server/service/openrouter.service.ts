@@ -142,7 +142,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
           "HTTP-Referer": process.env.APP_URL || "https://igen-erp.app",
-          "X-Title": "Igen ERP",
+          "X-Title": "iGen Marketing",
         },
         body: JSON.stringify(body),
       });
@@ -341,8 +341,12 @@ function resolveReferenceImages(images: string[] | undefined): string[] {
   });
 }
 
-function shouldSanitizePrompt(error: any): boolean {
-  const detail = String(error?.message || error).toUpperCase();
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function shouldSanitizePrompt(error: unknown): boolean {
+  const detail = getErrorMessage(error).toUpperCase();
   return detail.includes("CONTENT_FILTER") || detail.includes("PROHIBITED_CONTENT") || detail.includes("SAFETY");
 }
 
@@ -412,7 +416,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
         "HTTP-Referer": process.env.APP_URL || "https://igen-erp.app",
-        "X-Title": "Igen ERP",
+        "X-Title": "iGen Marketing",
       },
       body: JSON.stringify({
         model: "black-forest-labs/flux-schnell",
@@ -436,7 +440,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
       "HTTP-Referer": process.env.APP_URL || "https://igen-erp.app",
-      "X-Title": "Igen ERP",
+      "X-Title": "iGen Marketing",
     };
 
     console.log(`[OpenRouter Image] chat+modalities | model=${model} | promptLen=${prompt.length} | aspectRatio=${ratioKey} | dimensions=${dimensions.width}x${dimensions.height}`);
@@ -509,7 +513,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
   try {
     return await tryGemini(primaryModel, finalPrompt);
   } catch (error) {
-    console.warn(`[OpenRouter Image] Primary Gemini generation failed: ${error?.message || error}. Trying fallback...`);
+    console.warn(`[OpenRouter Image] Primary Gemini generation failed: ${getErrorMessage(error)}. Trying fallback...`);
 
     if (referenceImages.length > 0) {
       const retryPrompt = shouldSanitizePrompt(error)
@@ -519,7 +523,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
       try {
         return await tryGemini(primaryModel, retryPrompt);
       } catch (retryError) {
-        console.error(`[OpenRouter Image] Reference composition retry failed: ${retryError?.message || retryError}`);
+        console.error(`[OpenRouter Image] Reference composition retry failed: ${getErrorMessage(retryError)}`);
         throw error;
       }
     }
@@ -528,7 +532,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
     try {
       return await tryFluxSchnell(finalPrompt);
     } catch (fluxError) {
-      console.warn(`[OpenRouter Image] Flux Schnell fallback failed: ${fluxError?.message || fluxError}. Retrying Gemini with sanitized prompt...`);
+      console.warn(`[OpenRouter Image] Flux Schnell fallback failed: ${getErrorMessage(fluxError)}. Retrying Gemini with sanitized prompt...`);
 
       // Attempt Gemini again with sanitized prompt
       const sanitized = sanitizePrompt(finalPrompt);
@@ -536,7 +540,7 @@ export async function openrouterGenerateImage(params: OpenRouterImageParams): Pr
       try {
         return await tryGemini(primaryModel, sanitized);
       } catch (retryError) {
-        console.error(`[OpenRouter Image] All image generation options failed. Final error: ${retryError?.message || retryError}`);
+        console.error(`[OpenRouter Image] All image generation options failed. Final error: ${getErrorMessage(retryError)}`);
         throw error;
       }
     }

@@ -128,7 +128,7 @@ mediaRouter.get(
 
     try {
       const upstreamHeaders: Record<string, string> = {
-        "User-Agent": "Mozilla/5.0 (compatible; IgenERP/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; iGenMarketing/1.0)",
       };
 
       // Chuyển tiếp Range header nếu có (để hỗ trợ seek/streaming)
@@ -204,7 +204,7 @@ mediaRouter.get(
 
     try {
       const upstreamHeaders: Record<string, string> = {
-        "User-Agent": "Mozilla/5.0 (compatible; IgenERP/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; iGenMarketing/1.0)",
       };
 
       // Chuyển tiếp Range header nếu có (để hỗ trợ seek/streaming)

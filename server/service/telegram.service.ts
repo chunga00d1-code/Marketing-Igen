@@ -254,7 +254,7 @@ function formatScheduledTime(time?: Date | string): string {
 
 function buildGuestHelpMessage(): string {
   return [
-    "🤖 <b>Chào mừng bạn đến với iGEN ERP Bot!</b>",
+    "🤖 <b>Chào mừng bạn đến với iGen Marketing Bot!</b>",
     "Để sử dụng bot, bạn hãy liên kết Telegram từ web ERP.",
     "",
     "📌 <b>Cách dùng nhanh:</b>",
@@ -1554,7 +1554,7 @@ export const telegramService = {
             logTelegramDebug("link:alreadyLinkedNotice", { chatId });
             await this.sendMessage(
               chatId,
-              `ℹ️ <b>Tài khoản Telegram của sếp đã được liên kết với hệ thống iGEN ERP rồi!</b>\nEmail: <code>${existingSession.email || "Đã xác thực"}</code>\nMã công ty: <code>${existingSession.companyCode || "-"}</code>\n\nSếp có thể gõ <code>/help</code> hoặc ra lệnh trực tiếp cho Hermes Agent ngay bây giờ.`
+              `ℹ️ <b>Tài khoản Telegram của sếp đã được liên kết với hệ thống iGen Marketing rồi!</b>\nEmail: <code>${existingSession.email || "Đã xác thực"}</code>\nMã công ty: <code>${existingSession.companyCode || "-"}</code>\n\nSếp có thể gõ <code>/help</code> hoặc ra lệnh trực tiếp cho Hermes Agent ngay bây giờ.`
             );
             return;
           }
@@ -2740,7 +2740,7 @@ export const telegramService = {
 
     await this.sendMessage(
       chatId,
-      "⚠️ <b>Tính năng hoặc câu lệnh này chưa được cài đặt / chưa được cấu hình trên hệ thống iGEN ERP.</b>\n👉 Vui lòng bấm <code>/help</code> hoặc <code>/menu</code> để xem danh sách tính năng đang hoạt động."
+      "⚠️ <b>Tính năng hoặc câu lệnh này chưa được cài đặt / chưa được cấu hình trên hệ thống iGen Marketing.</b>\n👉 Vui lòng bấm <code>/help</code> hoặc <code>/menu</code> để xem danh sách tính năng đang hoạt động."
     );
   },
 
@@ -3078,7 +3078,7 @@ export const telegramService = {
     try {
       const { openrouterChat } = await import("./openrouter.service");
 
-      const systemPrompt = `Bạn là Hermes Agent - Trợ lý AI Marketing & Quản trị ERP thông minh của iGEN ERP.
+      const systemPrompt = `Bạn là Hermes Agent - Trợ lý AI Marketing & Quản trị ERP thông minh của iGen Marketing.
 Người dùng đang trò chuyện bằng ngôn ngữ đời thường qua Telegram.
 Nhiệm vụ của bạn: Phân tích ý định (intent) của câu thoại và chọn một hành động hệ thống hoặc trả lời tự nhiên.
 
@@ -3091,7 +3091,7 @@ Hệ thống hỗ trợ các lệnh:
 - IMAGE: Tạo ảnh AI ("tạo ảnh chú mèo...", "vẽ cho anh hình...") -> intent: "image", imagePrompt: (mô tả ảnh)
 - VIDEO: Tạo video AI ("quay clip thiên nhiên...", "tạo video...") -> intent: "video", videoPrompt: (mô tả video)
 - HELP: Trợ giúp/Menu ("hướng dẫn", "trợ giúp") -> intent: "help"
-- UNSUPPORTED: Khi người dùng hỏi hoặc yêu cầu một tính năng/thao tác nằm ngoài danh sách hỗ trợ hoặc chưa có trong hệ thống ERP -> intent: "unsupported", replyText: "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem danh sách các chức năng đang khả dụng ạ!"
+- UNSUPPORTED: Khi người dùng hỏi hoặc yêu cầu một tính năng/thao tác nằm ngoài danh sách hỗ trợ hoặc chưa có trong hệ thống ERP -> intent: "unsupported", replyText: "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGen Marketing. Sếp có thể bấm /help để xem danh sách các chức năng đang khả dụng ạ!"
 - CHAT: Hỏi đáp kiến thức ERP/Marketing có trong hệ thống hoặc trò chuyện chào hỏi ngắn gọn -> intent: "chat", replyText: (câu trả lời tự nhiên bằng tiếng Việt)
 
 Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài JSON):
@@ -3117,7 +3117,7 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
       try {
         parsed = JSON.parse(aiRes.text);
       } catch {
-        parsed = { intent: "unsupported", replyText: "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem các chức năng khả dụng ạ!" };
+        parsed = { intent: "unsupported", replyText: "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGen Marketing. Sếp có thể bấm /help để xem các chức năng khả dụng ạ!" };
       }
 
       if (parsed.intent === "pending") {
@@ -3139,17 +3139,17 @@ Trả về ĐÚNG 1 JSON object (không thêm markdown hay giải thích ngoài 
       } else if (parsed.intent === "help") {
         await this.handleCommand(chatId, chatType, telegramUserId, "/help", photo, document, replyToMessage, messageId);
       } else if (parsed.intent === "unsupported") {
-        const reply = parsed.replyText || "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem danh sách các chức năng đang khả dụng ạ!";
+        const reply = parsed.replyText || "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGen Marketing. Sếp có thể bấm /help để xem danh sách các chức năng đang khả dụng ạ!";
         await this.sendMessage(chatId, `🤖 <b>Hermes Agent:</b>\n${reply}`);
       } else {
-        const reply = parsed.replyText || "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help để xem các chức năng khả dụng ạ!";
+        const reply = parsed.replyText || "⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGen Marketing. Sếp có thể bấm /help để xem các chức năng khả dụng ạ!";
         await this.sendMessage(chatId, `🤖 <b>Hermes Agent:</b>\n${reply}`);
       }
     } catch (err: any) {
       console.error("[Telegram Hermes Agent] Lỗi xử lý ngôn ngữ tự nhiên:", err);
       await this.sendMessage(
         chatId,
-        "🤖 <b>Hermes Agent:</b> ⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGEN ERP. Sếp có thể bấm /help hoặc /menu để xem danh sách chức năng khả dụng ạ!"
+        "🤖 <b>Hermes Agent:</b> ⚠️ Tính năng này chưa được cài đặt hoặc chưa được cấu hình trên hệ thống iGen Marketing. Sếp có thể bấm /help hoặc /menu để xem danh sách chức năng khả dụng ạ!"
       );
     }
   },

@@ -11,6 +11,7 @@ import {
   AlignCenter,
   AlignRight,
   ChevronDown,
+  Check,
   Copy,
   Eraser,
   LoaderCircle,
@@ -34,6 +35,13 @@ const COLOR_SWATCHES = [
   '#ddd6fe', '#fce7f3', '#7c2d12', '#a16207', '#166534', '#0f766e',
   '#1d4ed8', '#3730a3', '#6b21a8', '#9d174d',
 ];
+
+const FONT_GROUPS = [
+  { label: 'Sans-serif', fonts: ['DejaVu Sans', 'Noto Sans', 'Inter', 'Montserrat', 'Poppins', 'Raleway', 'Roboto', 'Oswald', 'Bebas Neue', 'Fredoka', 'Righteous', 'Space Grotesk', 'Be Vietnam Pro', 'Nunito', 'Quicksand', 'Anton', 'Sora', 'Manrope', 'Arial'] },
+  { label: 'Serif', fonts: ['Noto Serif', 'Playfair Display', 'Lora', 'Merriweather', 'Abril Fatface', 'Georgia', 'Times New Roman'] },
+  { label: 'Viết tay & Trang trí', fonts: ['Lobster', 'Pacifico', 'Dancing Script', 'Caveat', 'Permanent Marker'] },
+  { label: 'Monospace', fonts: ['JetBrains Mono'] },
+] as const;
 
 function VerticalTextAlignIcon({
   position,
@@ -97,12 +105,35 @@ export function PropertiesToolbar({
   const [customColor, setCustomColor] = useState('#ffffff');
   const [styleMenuOpen, setStyleMenuOpen] = useState(false);
   const [styleMenuPosition, setStyleMenuPosition] = useState({ left: 0, top: 0 });
+  const [fontMenuOpen, setFontMenuOpen] = useState(false);
+  const [fontMenuPosition, setFontMenuPosition] = useState({ left: 0, top: 0 });
+  const selectedFont = selectedLayer?.fontFamily || 'DejaVu Sans';
 
   useEffect(() => {
     setAlignmentMenu(null);
     setColorMenu(null);
     setStyleMenuOpen(false);
+    setFontMenuOpen(false);
   }, [selectedLayer?.id, selectedLayer?.type]);
+
+  useEffect(() => {
+    if (!fontMenuOpen) return;
+    const closeFontMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-font-menu]')) return;
+      setFontMenuOpen(false);
+    };
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFontMenuOpen(false);
+    };
+    document.addEventListener('mousedown', closeFontMenu);
+    document.addEventListener('keydown', closeWithEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeFontMenu);
+      document.removeEventListener('keydown', closeWithEscape);
+    };
+  }, [fontMenuOpen]);
+
   const alignmentActions = alignmentMenu === 'horizontal'
     ? [
       ['left', 'Căn trái', AlignLeft],
@@ -146,6 +177,17 @@ export function PropertiesToolbar({
     setColorMenu(null);
   };
 
+  const openFontMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setFontMenuPosition({
+      left: Math.max(12, Math.min(rect.left, window.innerWidth - 304)),
+      top: Math.max(12, Math.min(rect.bottom + 6, window.innerHeight - 440)),
+    });
+    setFontMenuOpen((current) => !current);
+    setAlignmentMenu(null);
+    setColorMenu(null);
+    setStyleMenuOpen(false);
+  };
   const applyColor = (color: string) => {
     if (!selectedLayer || !colorMenu) return;
     recordLayerHistory();
@@ -228,53 +270,23 @@ export function PropertiesToolbar({
             />
             {selectedLayer.type === 'text' && selectedLayer.layerKind !== 'shape' && (
               <>
-                <select
-                  value={selectedLayer.fontFamily || 'DejaVu Sans'}
-                  onChange={(event) => changeLayer(selectedLayer.id, { fontFamily: event.target.value })}
-                  className="h-10 w-28 shrink-0 rounded-lg border border-slate-200 bg-white px-1.5 text-sm font-bold"
-                  title="Phông chữ"
+                <button
+                  type="button"
+                  data-font-menu
+                  onClick={openFontMenu}
+                  className={[
+                    'flex h-10 w-36 shrink-0 items-center justify-between gap-2 rounded-lg border bg-white px-2.5 text-left transition hover:border-indigo-300 hover:bg-indigo-50',
+                    fontMenuOpen ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-slate-200',
+                  ].join(' ')}
+                  title="Chọn phông chữ"
+                  aria-haspopup="listbox"
+                  aria-expanded={fontMenuOpen}
                 >
-                  <optgroup label="Sans-serif">
-                    <option value="DejaVu Sans">DejaVu Sans</option>
-                    <option value="Noto Sans">Noto Sans</option>
-                    <option value="Inter">Inter</option>
-                    <option value="Montserrat">Montserrat</option>
-                    <option value="Poppins">Poppins</option>
-                    <option value="Raleway">Raleway</option>
-                    <option value="Roboto">Roboto</option>
-                    <option value="Oswald">Oswald</option>
-                    <option value="Bebas Neue">Bebas Neue</option>
-                    <option value="Fredoka">Fredoka</option>
-                    <option value="Righteous">Righteous</option>
-                    <option value="Space Grotesk">Space Grotesk</option>
-                    <option value="Be Vietnam Pro">Be Vietnam Pro</option>
-                    <option value="Nunito">Nunito</option>
-                    <option value="Quicksand">Quicksand</option>
-                    <option value="Anton">Anton</option>
-                    <option value="Sora">Sora</option>
-                    <option value="Manrope">Manrope</option>
-                    <option value="Arial">Arial</option>
-                  </optgroup>
-                  <optgroup label="Serif">
-                    <option value="Noto Serif">Noto Serif</option>
-                    <option value="Playfair Display">Playfair Display</option>
-                    <option value="Lora">Lora</option>
-                    <option value="Merriweather">Merriweather</option>
-                    <option value="Abril Fatface">Abril Fatface</option>
-                    <option value="Georgia">Georgia</option>
-                    <option value="Times New Roman">Times New Roman</option>
-                  </optgroup>
-                  <optgroup label="Viết tay & Trang trí">
-                    <option value="Lobster">Lobster</option>
-                    <option value="Pacifico">Pacifico</option>
-                    <option value="Dancing Script">Dancing Script</option>
-                    <option value="Caveat">Caveat</option>
-                    <option value="Permanent Marker">Permanent Marker</option>
-                  </optgroup>
-                  <optgroup label="Monospace">
-                    <option value="JetBrains Mono">JetBrains Mono</option>
-                  </optgroup>
-                </select>
+                  <span className="min-w-0 truncate text-base font-semibold leading-none text-slate-800" style={{ fontFamily: selectedFont }}>
+                    {selectedFont}
+                  </span>
+                  <ChevronDown className={['h-4 w-4 shrink-0 text-slate-500 transition-transform', fontMenuOpen ? 'rotate-180' : ''].join(' ')} />
+                </button>
 
                 <div className="grid h-10 w-[104px] shrink-0 grid-cols-3 items-center overflow-hidden rounded-lg border border-slate-200 bg-white">
                   <button
@@ -415,6 +427,20 @@ export function PropertiesToolbar({
               </>
             )}
             {selectedLayer.type === 'image' && (
+              <button
+                type="button"
+                onClick={openStyleMenu}
+                className={[
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-white transition hover:bg-indigo-50 hover:text-indigo-700',
+                  styleMenuOpen ? 'border-indigo-400 text-indigo-700 ring-2 ring-indigo-100' : 'border-slate-200 text-slate-700',
+                ].join(' ')}
+                title="Tùy chỉnh viền, bo góc, đệm và độ mờ ảnh"
+                aria-label="Mở tùy chỉnh ảnh"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </button>
+            )}
+            {(selectedLayer.type === 'image' || selectedLayer.layerKind === 'shape') && (
               <>
                 {onReplaceImage && (
                   <label
@@ -440,7 +466,7 @@ export function PropertiesToolbar({
                   </label>
                 )}
                 <select
-                  value={selectedLayer.fit || 'contain'}
+                  value={selectedLayer.fit || (selectedLayer.layerKind === 'shape' ? 'cover' : 'contain')}
                   onChange={(event) =>
                     changeLayer(selectedLayer.id, { fit: event.target.value as 'cover' | 'contain' })
                   }
@@ -583,9 +609,61 @@ export function PropertiesToolbar({
         </div>,
         document.body
       )}
+
+      {fontMenuOpen && selectedLayer && createPortal(
+        <div
+          data-font-menu
+          className="fixed z-[10000] w-[292px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.18)]"
+          style={{ left: fontMenuPosition.left, top: fontMenuPosition.top }}
+          role="listbox"
+          aria-label="Danh sách phông chữ"
+        >
+          <div className="border-b border-slate-100 bg-slate-50 px-3 py-2.5">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Phông chữ đang chọn</p>
+            <p className="mt-1 truncate text-xl font-semibold leading-tight text-slate-900" style={{ fontFamily: selectedFont }}>
+              Tiêu đề mẫu
+            </p>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto p-2 [scrollbar-width:thin]">
+            {FONT_GROUPS.map((group) => (
+              <section key={group.label} className="pb-2 last:pb-0">
+                <p className="px-1.5 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">{group.label}</p>
+                <div className="grid grid-cols-2 gap-1">
+                  {group.fonts.map((fontFamily) => {
+                    const isSelected = selectedFont === fontFamily;
+                    return (
+                      <button
+                        key={fontFamily}
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          changeLayer(selectedLayer.id, { fontFamily });
+                          setFontMenuOpen(false);
+                        }}
+                        className={[
+                          'flex h-10 min-w-0 items-center gap-2 rounded-md px-2 text-left transition',
+                          isSelected ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100',
+                        ].join(' ')}
+                        title={fontFamily}
+                      >
+                        <span className="w-7 shrink-0 text-lg leading-none" style={{ fontFamily }}>Aa</span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold">{fontFamily}</span>
+                        {isSelected && <Check className="h-3.5 w-3.5 shrink-0" strokeWidth={2.5} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {styleMenuOpen && selectedLayer && createPortal(
         <div
-          className="fixed z-[10000] w-[276px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.18)]"
+          className="fixed z-[10000] max-h-[calc(100vh-32px)] w-[276px] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-[0_10px_28px_rgba(15,23,42,0.18)]"
           style={{ left: styleMenuPosition.left, top: styleMenuPosition.top }}
           role="dialog"
           aria-label="Tùy chỉnh thành phần"
@@ -712,6 +790,63 @@ export function PropertiesToolbar({
                     className="w-full accent-indigo-600"
                   />
                 </label>
+                <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+                  <label className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    Màu viền chữ
+                    <input
+                      type="color"
+                      value={selectedLayer.textStrokeColor || selectedLayer.color || '#000000'}
+                      onFocus={recordLayerHistory}
+                      onChange={(event) => updateLayer(selectedLayer.id, { textStrokeColor: event.target.value })}
+                      className="h-7 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                      aria-label="Màu viền chữ"
+                    />
+                  </label>
+                  <label className="flex items-center justify-between text-xs font-bold text-slate-600">
+                    Màu glow
+                    <input
+                      type="color"
+                      value={selectedLayer.textShadowColor || selectedLayer.color || '#000000'}
+                      onFocus={recordLayerHistory}
+                      onChange={(event) => updateLayer(selectedLayer.id, { textShadowColor: event.target.value })}
+                      className="h-7 w-9 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
+                      aria-label="Màu glow chữ"
+                    />
+                  </label>
+                </div>
+                <label className="block text-xs font-bold text-slate-600">
+                  <span className="mb-1.5 flex justify-between"><span>Độ dày viền chữ</span><span>{selectedLayer.textStrokeWidth || 0}</span></span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="12"
+                    value={selectedLayer.textStrokeWidth || 0}
+                    onPointerDown={recordLayerHistory}
+                    onChange={(event) => changeLayer(selectedLayer.id, { textStrokeWidth: clamp(Number(event.target.value), 0, 12) })}
+                    className="w-full accent-indigo-600"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-600">
+                  <span className="mb-1.5 flex justify-between"><span>Bán kính glow</span><span>{selectedLayer.textShadowBlur || 0}</span></span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="40"
+                    value={selectedLayer.textShadowBlur || 0}
+                    onPointerDown={recordLayerHistory}
+                    onChange={(event) => changeLayer(selectedLayer.id, { textShadowBlur: clamp(Number(event.target.value), 0, 40) })}
+                    className="w-full accent-indigo-600"
+                  />
+                </label>
+                {((selectedLayer.textStrokeWidth || 0) > 0 || (selectedLayer.textShadowBlur || 0) > 0) && (
+                  <button
+                    type="button"
+                    onClick={() => changeLayer(selectedLayer.id, { textStrokeWidth: 0, textShadowBlur: 0 })}
+                    className="w-full text-left text-xs font-bold text-slate-500 hover:text-rose-600"
+                  >
+                    Tắt viền và glow
+                  </button>
+                )}
                 <label className="flex items-center justify-between text-xs font-bold text-slate-600">
                   Tự co chữ
                   <input

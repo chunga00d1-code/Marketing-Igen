@@ -8,6 +8,7 @@ import {
   Trash2,
   Move,
   RotateCw,
+  CornerUpLeft,
 } from 'lucide-react';
 import type {
   TemplateLayer,
@@ -17,7 +18,7 @@ import type {
   ResizeCorner,
   SelectionBox,
 } from './types';
-import { clamp, getLayerFrameStyle, resolveTextFontSize } from './utils';
+import { getLayerFrameStyle, resolveTextFontSize } from './utils';
 import { SceneLayerContent } from './SceneCanvas';
 
 interface EditorCanvasProps {
@@ -66,6 +67,9 @@ interface EditorCanvasProps {
   handleRotateStart: (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer) => void;
   handleRotateMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
   handleRotateEnd: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  handleCornerRadiusStart: (event: React.PointerEvent<HTMLButtonElement>, layer: TemplateLayer) => void;
+  handleCornerRadiusMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  handleCornerRadiusEnd: (event: React.PointerEvent<HTMLButtonElement>) => void;
   updateCell: (rowId: string, layerId: string, value: string) => void;
   recordLayerHistory: () => void;
   onOpenContextMenu: (clientX: number, clientY: number, targetLayerId: string) => void;
@@ -114,6 +118,9 @@ export function EditorCanvas({
   handleRotateStart,
   handleRotateMove,
   handleRotateEnd,
+  handleCornerRadiusStart,
+  handleCornerRadiusMove,
+  handleCornerRadiusEnd,
   updateCell,
   recordLayerHistory,
   onOpenContextMenu,
@@ -139,6 +146,24 @@ export function EditorCanvas({
       height: Math.max(bounds.top + bounds.height, bottom) - top,
     };
   }, null);
+  const baseWorkspaceMargin = Math.max(48, Math.round(Math.max(canvasDisplayWidth, canvasDisplayHeight) * 0.5));
+  const layerBounds = layers.reduce(
+    (bounds, layer) => ({
+      left: Math.min(bounds.left, layer.x),
+      top: Math.min(bounds.top, layer.y),
+      right: Math.max(bounds.right, layer.x + layer.width),
+      bottom: Math.max(bounds.bottom, layer.y + layer.height),
+    }),
+    { left: 0, top: 0, right: 100, bottom: 100 },
+  );
+  const workspaceInsets = {
+    left: Math.max(baseWorkspaceMargin, ((Math.max(0, -layerBounds.left) + 12) / 100) * canvasDisplayWidth),
+    top: Math.max(baseWorkspaceMargin, ((Math.max(0, -layerBounds.top) + 16) / 100) * canvasDisplayHeight),
+    right: Math.max(baseWorkspaceMargin, ((Math.max(0, layerBounds.right - 100) + 12) / 100) * canvasDisplayWidth),
+    bottom: Math.max(baseWorkspaceMargin, ((Math.max(0, layerBounds.bottom - 100) + 16) / 100) * canvasDisplayHeight),
+  };
+  const workspaceWidth = canvasDisplayWidth + workspaceInsets.left + workspaceInsets.right;
+  const workspaceHeight = canvasDisplayHeight + workspaceInsets.top + workspaceInsets.bottom;
 
   return (
     <div
@@ -155,8 +180,8 @@ export function EditorCanvas({
       <div
         className="flex items-center justify-center p-12"
         style={{
-          minWidth: `${canvasDisplayWidth + 96}px`,
-          minHeight: `${canvasDisplayHeight + 96}px`,
+          minWidth: String(workspaceWidth + 96) + 'px',
+          minHeight: String(workspaceHeight + 96) + 'px',
         }}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) {
@@ -166,11 +191,17 @@ export function EditorCanvas({
           }
         }}
       >
-        <div
-          className={`relative shrink-0 transition-shadow ${
+        <div className="relative shrink-0" style={{ width: String(workspaceWidth) + 'px', height: String(workspaceHeight) + 'px' }}>
+          <div
+          className={`absolute shrink-0 transition-shadow ${
             backgroundSelected ? 'ring-2 ring-violet-600 ring-offset-2' : ''
           }`}
-          style={{ width: `${canvasDisplayWidth}px`, height: `${canvasDisplayHeight}px` }}
+          style={{
+            left: String(workspaceInsets.left) + 'px',
+            top: String(workspaceInsets.top) + 'px',
+            width: String(canvasDisplayWidth) + 'px',
+            height: String(canvasDisplayHeight) + 'px',
+          }}
         >
           <div
             ref={canvasRef}
@@ -247,6 +278,8 @@ export function EditorCanvas({
               const selected = selectedLayerId === layer.id || selectedLayerIds.includes(layer.id);
               const singleSelected = selected && !multiSelected;
               const editing = editingLayerId === layer.id;
+              const canAdjustImageCorners = layer.type === 'image' || layer.layerKind === 'shape';
+              const shouldClipImageFrame = canAdjustImageCorners && (layer.borderRadius || 0) > 0;
 
               return (
                 <div
@@ -331,19 +364,45 @@ export function EditorCanvas({
                               * canvasDisplayWidth) / canvasSize.width
                           }px`,
                           textAlign: layer.textAlign,
+                          WebkitTextStroke: (layer.textStrokeWidth || 0) > 0
+                            ? `${((layer.textStrokeWidth || 0) * canvasDisplayWidth) / canvasSize.width}px ${layer.textStrokeColor || layer.color || '#000000'}`
+                            : undefined,
+                          paintOrder: 'stroke fill',
+                          textShadow: (layer.textShadowBlur || 0) > 0
+                            ? `0 0 ${((layer.textShadowBlur || 0) * canvasDisplayWidth) / canvasSize.width}px ${layer.textShadowColor || layer.color || '#000000'}`
+                            : '0 2px 7px rgba(15,23,42,0.5)',
                         }}
                       />
                   ) : (
-                    <SceneLayerContent
-                      layer={layer}
-                      value={value}
-                      scale={canvasDisplayWidth / canvasSize.width}
-                      showPlaceholder
-                      canvas={canvasSize}
-                    />
+                    <div
+                      className={shouldClipImageFrame ? 'h-full w-full overflow-hidden' : undefined}
+                      style={shouldClipImageFrame ? { borderRadius: 'inherit' } : undefined}
+                    >
+                      <SceneLayerContent
+                        layer={layer}
+                        value={value}
+                        scale={canvasDisplayWidth / canvasSize.width}
+                        showPlaceholder
+                        canvas={canvasSize}
+                      />
+                    </div>
                   )}
                   {singleSelected && !layer.locked && (
                     <>
+                      {canAdjustImageCorners && (
+                        <button
+                          type="button"
+                          aria-label="Kéo để bo góc ảnh"
+                          title="Kéo ngang để bo góc ảnh"
+                          onPointerDown={(event) => handleCornerRadiusStart(event, layer)}
+                          onPointerMove={handleCornerRadiusMove}
+                          onPointerUp={handleCornerRadiusEnd}
+                          onPointerCancel={handleCornerRadiusEnd}
+                          className="absolute -bottom-12 left-[calc(50%-80px)] z-[1003] flex h-7 w-7 -translate-x-1/2 touch-none cursor-ew-resize items-center justify-center rounded-full border-2 border-violet-600 bg-white text-violet-600 shadow-[0_3px_10px_rgba(124,58,237,0.28)] transition hover:scale-110 hover:bg-violet-50"
+                        >
+                          <CornerUpLeft className="h-4 w-4" strokeWidth={2.5} />
+                        </button>
+                      )}
                       {/* Corner Handles (Circles) */}
                       {(['nw', 'ne', 'sw', 'se'] as ResizeCorner[]).map((corner) => {
                         const position =
@@ -426,7 +485,7 @@ export function EditorCanvas({
             <div
               className="absolute z-[1000] flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.22)]"
               style={{
-                left: `${clamp(selectionBounds.left + selectionBounds.width / 2, 18, 82)}%`,
+                left: `${selectionBounds.left + selectionBounds.width / 2}%`,
                 top: `${selectionBounds.top < 14 ? selectionBounds.top + selectionBounds.height : selectionBounds.top}%`,
                 transform:
                   selectionBounds.top < 14 ? 'translate(-50%, 12px)' : 'translate(-50%, calc(-100% - 12px))',
@@ -496,7 +555,7 @@ export function EditorCanvas({
               <div
                 className="absolute z-[1000] flex max-w-[260px] items-center gap-1 rounded-xl border border-slate-200 bg-white p-1.5 text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.22)]"
                 style={{
-                  left: `${clamp(selectedLayer.x + selectedLayer.width / 2, 18, 82)}%`,
+                  left: `${selectedLayer.x + selectedLayer.width / 2}%`,
                   top: `${
                     selectedLayer.y < 14 ? selectedLayer.y + selectedLayer.height : selectedLayer.y
                   }%`,
@@ -561,6 +620,7 @@ export function EditorCanvas({
               )}
             </>
           )}
+          </div>
         </div>
       </div>
     </div>

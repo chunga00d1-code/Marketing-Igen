@@ -212,12 +212,12 @@ export function normalizeLayerBounds(
   layer: TemplateLayer,
   canvas: { width: number; height: number }
 ): TemplateLayer {
-  const width = clamp(Number(layer.width), 1, 100);
-  const height = clamp(Number(layer.height), 1, 100);
+  const width = clamp(Number(layer.width), 0.1, 300);
+  const height = clamp(Number(layer.height), 0.1, 300);
   return {
     ...layer,
-    x: clamp(Number(layer.x), 0, 100 - width),
-    y: clamp(Number(layer.y), 0, 100 - height),
+    x: clamp(Number(layer.x), -50, 150),
+    y: clamp(Number(layer.y), -50, 150),
     width,
     height,
     rotation: clamp(Number(layer.rotation), -360, 360),

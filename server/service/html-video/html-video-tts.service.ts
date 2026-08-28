@@ -371,7 +371,7 @@ async function generateOpenRouterTts(
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
           "HTTP-Referer": process.env.APP_URL || "https://igen-erp.app",
-          "X-Title": "Igen ERP HTML Video",
+          "X-Title": "iGen Marketing HTML Video",
         },
         body: JSON.stringify({
           model,
