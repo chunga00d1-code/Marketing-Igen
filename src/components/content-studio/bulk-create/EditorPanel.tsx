@@ -749,7 +749,7 @@ export function EditorPanel(props: EditorPanelProps) {
                 <div className="grid grid-cols-3 gap-2">
                   {uploadedImages.map((asset, idx) => {
                     const selectedImageLayer = layers.find(
-                      (l) => l.id === props.selectedLayerId && l.type === 'image'
+                      (l) => l.id === props.selectedLayerId && (l.type === 'image' || l.layerKind === 'shape')
                     );
                     return (
                       <div
@@ -802,7 +802,7 @@ export function EditorPanel(props: EditorPanelProps) {
 
             <p className="px-1 pt-2 text-sm font-bold text-slate-600">Hình ảnh trên mẫu</p>
             {layers
-              .filter((layer) => layer.type === 'image')
+              .filter((layer) => layer.type === 'image' || layer.layerKind === 'shape')
               .map((layer) => (
                 <button
                   key={layer.id}

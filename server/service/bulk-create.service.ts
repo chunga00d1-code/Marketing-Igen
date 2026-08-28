@@ -151,7 +151,7 @@ async function normalizeRowImages(
   let changed = false;
 
   await Promise.all(layers.map(async (layer) => {
-    if (layer.type !== "image") return;
+    if (layer.type !== "image" && layer.layerKind !== "shape") return;
     const source = String(
       normalizedValues[layer.id] ?? normalizedValues[layer.fieldName] ?? layer.defaultValue ?? ""
     ).trim();

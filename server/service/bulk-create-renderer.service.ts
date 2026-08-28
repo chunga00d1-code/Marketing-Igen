@@ -216,9 +216,6 @@ function renderTextLayer(layer: IBulkLayer, value: string, width: number, height
   const firstBaseline = verticallyCentered
     ? Math.max(fontSize, (height - visibleLines.length * lineHeight) / 2 + fontSize)
     : padding + fontSize;
-  const text = visibleLines.map((line, index) => (
-    `<text x="${x}" y="${firstBaseline + index * lineHeight}" text-anchor="${anchor}">${escapeXml(line)}</text>`
-  )).join("");
   const supportedFonts = new Set<string>(BULK_FONT_FAMILIES);
   const fontFamily = supportedFonts.has(layer.fontFamily || "") ? layer.fontFamily! : "DejaVu Sans";
   const color = normalizeColor(layer.color, "#ffffff");
@@ -228,7 +225,20 @@ function renderTextLayer(layer: IBulkLayer, value: string, width: number, height
     : "none";
   const radius = Math.max(0, Math.min(Math.min(width, height), layer.borderRadius || 0));
   const opacity = Number.isFinite(layer.opacity) ? Math.max(0.05, Math.min(1, layer.opacity || 1)) : 1;
-  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg"><style>text{font-family:'${fontFamily}',Arial,sans-serif;font-size:${fontSize}px;font-weight:${layer.fontWeight || 700};font-style:${layer.fontStyle || "normal"};text-decoration:${layer.textDecoration || "none"};letter-spacing:${letterSpacing}px;fill:${color};}</style><g opacity="${opacity}"><rect width="${width}" height="${height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${layer.borderWidth || 0}"/>${text}</g></svg>`);
+  const textStrokeWidth = Math.max(0, Math.min(20, layer.textStrokeWidth || 0));
+  const textStroke = textStrokeWidth > 0
+    ? normalizeColor(layer.textStrokeColor, color)
+    : "none";
+  const textShadowBlur = Math.max(0, Math.min(40, layer.textShadowBlur || 0));
+  const textShadowColor = normalizeColor(layer.textShadowColor, color);
+  const glowDefs = textShadowBlur > 0
+    ? `<defs><filter id="text-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceAlpha" stdDeviation="${textShadowBlur}" result="blur"/><feFlood flood-color="${textShadowColor}" result="glow-color"/><feComposite in="glow-color" in2="blur" operator="in" result="glow"/><feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`
+    : "";
+  const textFilter = textShadowBlur > 0 ? "url(#text-glow)" : "";
+  const text = visibleLines.map((line, index) => (
+    `<text x="${x}" y="${firstBaseline + index * lineHeight}" text-anchor="${anchor}"${textFilter ? ` filter="${textFilter}"` : ""}>${escapeXml(line)}</text>`
+  )).join("");
+  return Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">${glowDefs}<style>text{font-family:'${fontFamily}',Arial,sans-serif;font-size:${fontSize}px;font-weight:${layer.fontWeight || 700};font-style:${layer.fontStyle || "normal"};text-decoration:${layer.textDecoration || "none"};letter-spacing:${letterSpacing}px;fill:${color};stroke:${textStroke};stroke-width:${textStrokeWidth}px;paint-order:stroke fill;stroke-linejoin:round;}</style><g opacity="${opacity}"><rect width="${width}" height="${height}" rx="${radius}" fill="${fill}" stroke="${stroke}" stroke-width="${layer.borderWidth || 0}"/>${text}</g></svg>`);
 }
 
 function renderShapeLayer(layer: IBulkLayer, width: number, height: number) {
@@ -283,9 +293,10 @@ export async function renderBulkImage(
     const top = Math.round(canvasHeight * layer.y / 100);
 
     let input: Buffer;
-    if (layer.layerKind === "shape") {
+    const isShapeImage = layer.layerKind === "shape" && Boolean(value);
+    if (layer.layerKind === "shape" && !isShapeImage) {
       input = renderShapeLayer(layer, targetWidth, targetHeight);
-    } else if (layer.type === "image") {
+    } else if (layer.type === "image" || isShapeImage) {
       const source = await loadImage(value);
       let image = sharp(source);
       if (layer.sourceCrop) {
@@ -298,9 +309,21 @@ export async function renderBulkImage(
         ));
       }
       input = await image
-        .resize(targetWidth, targetHeight, { fit: layer.fit || "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .resize(targetWidth, targetHeight, { fit: layer.fit || (isShapeImage ? "cover" : "contain"), background: { r: 0, g: 0, b: 0, alpha: 0 } })
         .png()
         .toBuffer();
+
+      const radius = Math.max(0, Math.min(Math.min(targetWidth, targetHeight) / 2, layer.borderRadius || 0));
+      if (radius > 0) {
+        const svgQuote = String.fromCharCode(34);
+        const roundedMask = Buffer.from(
+          '<svg width=' + svgQuote + targetWidth + svgQuote + ' height=' + svgQuote + targetHeight + svgQuote + ' xmlns=' + svgQuote + 'http://www.w3.org/2000/svg' + svgQuote + '><rect width=' + svgQuote + targetWidth + svgQuote + ' height=' + svgQuote + targetHeight + svgQuote + ' rx=' + svgQuote + radius + svgQuote + ' fill=' + svgQuote + '#ffffff' + svgQuote + '/></svg>'
+        );
+        input = await sharp(input)
+          .composite([{ input: roundedMask, blend: 'dest-in' }])
+          .png()
+          .toBuffer();
+      }
     } else {
       input = renderTextLayer(layer, value, targetWidth, targetHeight);
     }

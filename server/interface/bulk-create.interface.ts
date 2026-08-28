@@ -77,6 +77,10 @@ export interface IBulkLayer {
   fontWeight?: number;
   fontStyle?: "normal" | "italic";
   color?: string;
+  textStrokeColor?: string;
+  textStrokeWidth?: number;
+  textShadowColor?: string;
+  textShadowBlur?: number;
   textAlign?: "left" | "center" | "right";
   textDecoration?: "none" | "underline" | "line-through";
   textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
