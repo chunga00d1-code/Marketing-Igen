@@ -21,7 +21,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/prepare",
+        "url": "https://marketing.igentechnology.net/api/v1/marketing-campaigns/internal/prepare",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -46,7 +46,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/media",
+        "url": "https://marketing.igentechnology.net/api/v1/marketing-campaigns/internal/media",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -71,7 +71,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/verify",
+        "url": "https://marketing.igentechnology.net/api/v1/marketing-campaigns/internal/verify",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -96,7 +96,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://marketing.igentechsolutions.com/api/v1/marketing-campaigns/internal/publish",
+        "url": "https://marketing.igentechnology.net/api/v1/marketing-campaigns/internal/publish",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

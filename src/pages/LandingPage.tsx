@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { 
   ArrowRight, 
   CheckCircle2, 
@@ -261,7 +261,7 @@ export default function LandingPage() {
                   <div className="w-3 h-3 rounded-full bg-green-400" />
                 </div>
                 <div className="bg-slate-100 px-6 py-1 rounded-full text-[10px] text-slate-400 font-medium">
-                  marketing.igentechsolutions.com/tong-quan
+                  marketing.igentechnology.net/tong-quan
                 </div>
                 <div className="w-6" />
               </div>
