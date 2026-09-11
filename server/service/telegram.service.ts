@@ -229,7 +229,7 @@ function buildApprovalLink(slotId: string, campaignId: string, companyCode: stri
     { expiresIn: "30d" }
   );
 
-  let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+  let baseUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
   if (baseUrl.endsWith("/")) {
     baseUrl = baseUrl.slice(0, -1);
   }
@@ -3496,7 +3496,7 @@ Trả về duy nhất JSON object theo cấu trúc:
       const campaign = result.campaign;
       const slots = result.slots || [];
 
-      let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+      let baseUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
       if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
       const campaignWebUrl = `${baseUrl}/campaigns/${campaign._id}`;
 

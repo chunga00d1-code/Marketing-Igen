@@ -1001,7 +1001,7 @@ export const marketingCampaignService = {
       { expiresIn: "30d" }
     );
     
-    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
     if (baseUrl.endsWith("/")) {
       baseUrl = baseUrl.slice(0, -1);
     }
@@ -1238,7 +1238,7 @@ export const marketingCampaignService = {
       { expiresIn: "30d" }
     );
 
-    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
     if (baseUrl.endsWith("/")) {
       baseUrl = baseUrl.slice(0, -1);
     }
@@ -1435,7 +1435,7 @@ export const marketingCampaignService = {
       { expiresIn: "30d" }
     );
 
-    let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+    let baseUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
     if (baseUrl.endsWith("/")) {
       baseUrl = baseUrl.slice(0, -1);
     }

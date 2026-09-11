@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://marketing.igentechsolutions.com/</loc>
+    <loc>https://marketing.igentechnology.net/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://marketing.igentechsolutions.com/privacy-policy</loc>
+    <loc>https://marketing.igentechnology.net/privacy-policy</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://marketing.igentechsolutions.com/terms-of-service</loc>
+    <loc>https://marketing.igentechnology.net/terms-of-service</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
-    <loc>https://marketing.igentechsolutions.com/user-data-deletion</loc>
+    <loc>https://marketing.igentechnology.net/user-data-deletion</loc>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
