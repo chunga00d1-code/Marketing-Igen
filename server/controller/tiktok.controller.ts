@@ -157,12 +157,31 @@ export const tiktokController = {
 
   async receiveWebhook(req: Request, res: Response) {
     try {
+      const challenge = req.query?.challenge || (req.body && req.body.challenge);
+      if (challenge) {
+        return res.status(200).send(challenge);
+      }
+
+      const isTestEvent =
+        req.body?.event === "test" ||
+        req.body?.event === "ping" ||
+        req.body?.event === "echo" ||
+        req.body?.test === true;
+
+      if (isTestEvent) {
+        return res.status(200).json({
+          status: "ok",
+          message: "TikTok test event received",
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       const token = String(
-        req.headers["x-tiktok-webhook-secret"] || req.headers["x-webhook-token"] || req.query.token || ""
+        req.headers["x-tiktok-webhook-secret"] || req.headers["x-webhook-token"] || req.query?.token || ""
       );
 
       if (!tiktokService.verifyWebhookRequest({
-        signature: String(req.headers["tiktok-signature"] || ""),
+        signature: String(req.headers["tiktok-signature"] || req.headers["x-tiktok-signature"] || ""),
         rawBody: String((req as Request & { rawBody?: string }).rawBody || ""),
         relayToken: token,
       })) {
