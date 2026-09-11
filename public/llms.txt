@@ -4,10 +4,10 @@
 
 ## Public information
 
-- [Homepage](https://marketing.igentechsolutions.com/): Product overview, key capabilities, TikTok integration information, security commitments, and frequently asked questions.
-- [Privacy Policy](https://marketing.igentechsolutions.com/privacy-policy): How account and connected-platform data is handled.
-- [Terms of Service](https://marketing.igentechsolutions.com/terms-of-service): Product terms and user responsibilities.
-- [User Data Deletion](https://marketing.igentechsolutions.com/user-data-deletion): Instructions for disconnecting integrations and requesting data deletion.
+- [Homepage](https://marketing.igentechnology.net/): Product overview, key capabilities, TikTok integration information, security commitments, and frequently asked questions.
+- [Privacy Policy](https://marketing.igentechnology.net/privacy-policy): How account and connected-platform data is handled.
+- [Terms of Service](https://marketing.igentechnology.net/terms-of-service): Product terms and user responsibilities.
+- [User Data Deletion](https://marketing.igentechnology.net/user-data-deletion): Instructions for disconnecting integrations and requesting data deletion.
 
 ## Product capabilities
 

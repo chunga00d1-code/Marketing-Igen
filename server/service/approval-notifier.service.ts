@@ -35,7 +35,7 @@ function buildApprovalLink(slotId: string, campaignId: string, companyCode: stri
     { expiresIn: "30d" }
   );
 
-  let baseUrl = process.env.APP_URL || "https://marketing.igentechsolutions.com";
+  let baseUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
   if (baseUrl.endsWith("/")) {
     baseUrl = baseUrl.slice(0, -1);
   }

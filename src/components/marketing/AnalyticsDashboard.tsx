@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   BarChart,
   Bar,
@@ -38,6 +38,16 @@ import {
 import { toast } from "../../pages/Toast";
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#ec4899"];
+const PILLAR_CHART_LIMIT = 6;
+
+function normalizePillarName(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function formatPillarLabel(value: string): string {
+  const label = normalizePillarName(value);
+  return label.length > 20 ? `${label.slice(0, 20).trim()}...` : label;
+}
 
 function MetricCard({
   title,
@@ -136,6 +146,12 @@ function MetricCard({
 export default function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AnalyticsResponse | null>(null);
+  const pillarChartData = useMemo(
+    () => data
+      ? [...data.byPillar].sort((left, right) => right.total - left.total).slice(0, PILLAR_CHART_LIMIT)
+      : [],
+    [data]
+  );
   
   // States bộ lọc
   const [campaignId, setCampaignId] = useState("");
@@ -551,13 +567,13 @@ export default function AnalyticsDashboard() {
                     <Layers className="h-4 w-4 text-emerald-500" />
                     HIỆU QUẢ THEO CONTENT PILLAR
                   </h3>
-                  <div className="h-48">
+                  <div className="h-56">
                     {data.byPillar.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%">
                         <BarChart
-                          data={data.byPillar}
+                          data={pillarChartData}
                           layout="vertical"
-                          margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
+                          margin={{ top: 5, right: 8, left: 0, bottom: 0 }}
                         >
                           <defs>
                             <linearGradient id="colorTotal" x1="0" y1="0" x2="1" y2="0">
@@ -571,8 +587,8 @@ export default function AnalyticsDashboard() {
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(226, 232, 240, 0.3)" />
                           <XAxis type="number" tick={{ fontSize: 9, fill: '#94a3b8' }} />
-                          <YAxis type="category" dataKey="pillar" tick={{ fontSize: 9, fill: '#64748b', fontWeight: 600 }} width={80} />
-                          <Tooltip contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid rgba(226, 232, 240, 0.8)', backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }} />
+                          <YAxis type="category" dataKey="pillar" tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} width={108} tickFormatter={formatPillarLabel} />
+                          <Tooltip labelFormatter={(label) => normalizePillarName(String(label))} contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid rgba(226, 232, 240, 0.8)', backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }} />
                           <Bar name="Tổng số bài" dataKey="total" fill="url(#colorTotal)" radius={[0, 3, 3, 0]} barSize={10} />
                           <Bar name="Thích" dataKey="likes" fill="url(#colorLikes)" radius={[0, 3, 3, 0]} barSize={10} />
                         </BarChart>

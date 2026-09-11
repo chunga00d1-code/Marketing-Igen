@@ -162,7 +162,7 @@ class OpenRouterSpeechTranscriptionProvider implements SpeechTranscriptionProvid
     });
     let response: Response;
     try {
-      response = await fetch(API_URL, { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": process.env.APP_URL || "https://igen-erp.app", "X-Title": "Igen ERP", "Idempotency-Key": input.idempotencyKey }, body: requestBody, signal: AbortSignal.timeout(30 * 60 * 1000) });
+      response = await fetch(API_URL, { method: "POST", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", "HTTP-Referer": process.env.APP_URL || "https://igen-erp.app", "X-Title": "iGen Marketing", "Idempotency-Key": input.idempotencyKey }, body: requestBody, signal: AbortSignal.timeout(30 * 60 * 1000) });
     } catch (error) {
       logStt("request_network_error", { jobId: input.webhookMetadata.jobId, elapsedMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
       throw new VideoCaptionError("Không thể kết nối tới dịch vụ nhận diện giọng nói.", "OPENROUTER_STT_NETWORK_ERROR", "transient", true, 502);

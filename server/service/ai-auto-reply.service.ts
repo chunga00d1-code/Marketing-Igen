@@ -841,16 +841,9 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            // Trọng tâm tìm kiếm là tin nhắn mới nhất của khách hàng (hoặc kèm 1-2 tin gần nhất của khách để giữ ngữ cảnh ngắn gọn)
-            const recentCustomerMessages = history
-              .filter((h) => h.sender === "user")
-              .slice(-2)
-              .map((h) => h.text);
-            const queryParts = [...recentCustomerMessages, groupedCustomerMessage].filter(Boolean);
-            const queryText = queryParts.length > 0 ? queryParts.join(" ") : groupedCustomerMessage;
             const ragContext = await aiKnowledgeService.searchRelevantContext({
               companyCode,
-              query: queryText,
+              query: groupedCustomerMessage,
               channel,
               pageId: channel === "facebook" ? resolvedPlatformId : undefined,
               topK: 8,

@@ -153,7 +153,7 @@ export const schedulerService = {
         mediaUrl = payload.imageUrl;
       }
 
-      const appUrl = process.env.APP_URL || "https://api.igentechsolutions.com";
+      const appUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
       const callbackUrl = `${appUrl.replace(/\/$/, "")}/api/v1/facebook/n8n-callback`;
 
       n8nPayload = {

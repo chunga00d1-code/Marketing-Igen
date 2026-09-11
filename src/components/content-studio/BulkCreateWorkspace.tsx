@@ -695,6 +695,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
         setBackgroundId('');
         setBackgroundSelected(true);
         clearLayerSelection();
+      } else if (selectedLayer?.layerKind === 'shape' && activeRow) {
+        updateCell(activeRow.id, selectedLayer.id, asset.url);
+        toast.success('Đã đặt ảnh vào thành phần thiết kế.');
       } else {
         addLayer('image', asset.url);
       }
@@ -705,6 +708,19 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
       toast.error(message);
     } finally {
       setUploadingAsset(false);
+    }
+  };
+
+  const replaceLayerImage = async (layerId: string, value: string) => {
+    if (!activeRow) return;
+    try {
+      const url = await bulkCreateService.uploadAsset(value, 'igen_erp/bulk-create/inputs');
+      updateCell(activeRow.id, layerId, url);
+      toast.success('Đã thay ảnh trong thành phần thiết kế.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Không thể tải ảnh lên.';
+      setErrorMessage(message);
+      toast.error(message);
     }
   };
 
@@ -1507,7 +1523,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     const readyRows = rows.filter(isRowReady);
     const localImageSources = Array.from(new Set(
       readyRows.flatMap((row) => layers
-        .filter((layer) => layer.type === 'image')
+        .filter((layer) => layer.type === 'image' || layer.layerKind === 'shape')
         .map((layer) => row.values[layer.id] || '')
         .filter((value) => value.startsWith('data:image/')))
     ));
@@ -1533,7 +1549,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     const uploaded = readyRows.map((row) => ({
       ...row.values,
       ...Object.fromEntries(layers.map((layer) => {
-        if (layer.type === 'image') {
+        if (layer.type === 'image' || layer.layerKind === 'shape') {
           const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
           return [layer.id, uploadedImageUrls.get(source) || source];
         }
@@ -1554,13 +1570,14 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     };
   };
 
-  const createPages = () => {
+  const createPages = async () => {
     const selectedRows = rows.filter((row) => row.selected !== false);
     if (selectedRows.length === 0) return;
     setPagesCreated(true);
     setActiveRowId(selectedRows[0].id);
     setSidebarOpen(false);
     toast.success(`Đã đưa ${selectedRows.length} trang vào thiết kế.`);
+    await startGeneration();
   };
 
   const startGeneration = async () => {
@@ -1954,8 +1971,12 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
     handleRotateStart,
     handleRotateMove,
     handleRotateEnd,
+    handleCornerRadiusStart,
+    handleCornerRadiusMove,
+    handleCornerRadiusEnd,
   } = useCanvasInteractions({
     canvasRef,
+    canvasSize,
     layers,
     setLayers,
     selectedLayerIds,
@@ -2193,6 +2214,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           duplicateLayer={duplicateLayer}
           removeLayer={removeLayer}
           alignLayer={alignLayer}
+          onReplaceImage={(layerId, value) => void replaceLayerImage(layerId, value)}
           onRemoveImageBackground={() => void removeSelectedImageBackground()}
           removingBackground={removingBackground}
           onOptimizeReadability={optimizeReadability}
@@ -2244,6 +2266,9 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           handleRotateStart={handleRotateStart}
           handleRotateMove={handleRotateMove}
           handleRotateEnd={handleRotateEnd}
+          handleCornerRadiusStart={handleCornerRadiusStart}
+          handleCornerRadiusMove={handleCornerRadiusMove}
+          handleCornerRadiusEnd={handleCornerRadiusEnd}
           updateCell={updateCell}
           recordLayerHistory={recordLayerHistory}
           onOpenContextMenu={(clientX, clientY, targetLayerId) => {
@@ -2262,6 +2287,10 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
             clearLayerSelection();
           }}
           onDropAsset={(url, clientX, clientY) => {
+            if (selectedLayer?.layerKind === 'shape' && activeRow) {
+              updateCell(activeRow.id, selectedLayer.id, url);
+              return;
+            }
             const bounds = canvasRef.current?.getBoundingClientRect();
             if (!bounds) {
               addLayer('image', url);

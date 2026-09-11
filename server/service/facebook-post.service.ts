@@ -104,7 +104,7 @@ export const facebookPostService = {
       mediaUrl = imageUrl;
     }
 
-    const appUrl = process.env.APP_URL || "https://api.igentechsolutions.com";
+    const appUrl = process.env.APP_URL || "https://marketing.igentechnology.net";
     const finalCallbackUrl = callbackUrl || `${appUrl.replace(/\/$/, "")}/api/v1/facebook/n8n-callback`;
 
     try {

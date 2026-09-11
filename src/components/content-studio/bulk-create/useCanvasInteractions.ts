@@ -5,6 +5,7 @@ import { snapToClosest } from './workspace-utils';
 
 type Options = {
   canvasRef: RefObject<HTMLDivElement | null>;
+  canvasSize: { width: number; height: number };
   layers: TemplateLayer[];
   setLayers: Dispatch<SetStateAction<TemplateLayer[]>>;
   selectedLayerIds: string[];
@@ -27,6 +28,7 @@ export function useCanvasInteractions(options: Options) {
   const selectionRef = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
   const selectionBoxRef = useRef<SelectionBox | null>(null);
   const rotateRef = useRef<{ layerId: string; centerX: number; centerY: number; startAngle: number; startRotation: number } | null>(null);
+  const cornerRadiusRef = useRef<{ layerId: string; pointerX: number; startRadius: number } | null>(null);
 
   const pickLayersInBox = useCallback((box: SelectionBox, additive: boolean) => {
     const selectedIds = options.layers.filter((layer) => {
@@ -132,13 +134,13 @@ export function useCanvasInteractions(options: Options) {
     const otherLayers = options.layers.filter((item) => !drag.layerIds.includes(item.id));
     const x = snapToClosest(rawX, [0, 6, 50 - layer.width / 2, 94 - layer.width, 100 - layer.width, ...otherLayers.flatMap((item) => [item.x, item.x + item.width - layer.width, item.x + item.width / 2 - layer.width / 2])]);
     const y = snapToClosest(rawY, [0, 6, 50 - layer.height / 2, 94 - layer.height, 100 - layer.height, ...otherLayers.flatMap((item) => [item.y, item.y + item.height - layer.height, item.y + item.height / 2 - layer.height / 2])]);
-    const nextX = clamp(x, 0, Math.max(0, 100 - layer.width));
-    const nextY = clamp(y, 0, Math.max(0, 100 - layer.height));
+    const nextX = clamp(x, -50, 150);
+    const nextY = clamp(y, -50, 150);
     if (drag.layerIds.length > 1) {
       const deltaX = nextX - layer.x;
       const deltaY = nextY - layer.y;
       options.setLayers((current) => current.map((item) => drag.layerIds.includes(item.id)
-        ? { ...item, x: clamp(item.x + deltaX, 0, Math.max(0, 100 - item.width)), y: clamp(item.y + deltaY, 0, Math.max(0, 100 - item.height)) }
+        ? { ...item, x: clamp(item.x + deltaX, -50, 150), y: clamp(item.y + deltaY, -50, 150) }
         : item));
     } else options.updateLayer(layer.id, { x: nextX, y: nextY });
   };
@@ -217,5 +219,35 @@ export function useCanvasInteractions(options: Options) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  return { handleSelectionStart, handleSelectionMove, handleSelectionEnd, handlePointerDown, handlePointerMove, handlePointerUp, handleResizeStart, handleResizeMove, handleResizeEnd, handleRotateStart, handleRotateMove, handleRotateEnd };
+  const handleCornerRadiusStart = (event: PointerEvent<HTMLButtonElement>, layer: TemplateLayer) => {
+    event.stopPropagation();
+    if (layer.locked) return;
+    options.recordLayerHistory();
+    cornerRadiusRef.current = { layerId: layer.id, pointerX: event.clientX, startRadius: layer.borderRadius || 0 };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleCornerRadiusMove = (event: PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const radiusDrag = cornerRadiusRef.current;
+    const rect = options.canvasRef.current?.getBoundingClientRect();
+    if (!radiusDrag || !rect || event.buttons === 0) return;
+    const layer = options.layers.find((item) => item.id === radiusDrag.layerId);
+    if (!layer) return;
+    const canvasScale = rect.width / options.canvasSize.width;
+    if (!Number.isFinite(canvasScale) || canvasScale <= 0) return;
+    const maxRadius = Math.min(
+      options.canvasSize.width * layer.width / 200,
+      options.canvasSize.height * layer.height / 200,
+    );
+    const borderRadius = clamp(radiusDrag.startRadius + (event.clientX - radiusDrag.pointerX) / canvasScale, 0, maxRadius);
+    options.updateLayer(layer.id, { borderRadius: Math.round(borderRadius) });
+  };
+
+  const handleCornerRadiusEnd = (event: PointerEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    cornerRadiusRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  return { handleSelectionStart, handleSelectionMove, handleSelectionEnd, handlePointerDown, handlePointerMove, handlePointerUp, handleResizeStart, handleResizeMove, handleResizeEnd, handleRotateStart, handleRotateMove, handleRotateEnd, handleCornerRadiusStart, handleCornerRadiusMove, handleCornerRadiusEnd };
 }

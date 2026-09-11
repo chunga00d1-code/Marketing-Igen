@@ -96,7 +96,7 @@ function AutoFitText({
           alignItems: 'center',
           width: '100%',
           height: '100%',
-          overflow: 'hidden',
+          overflow: (layer.borderRadius || 0) > 0 ? 'hidden' : 'visible',
           whiteSpace: 'pre-wrap',
           overflowWrap: 'break-word',
           color: layer.color || '#000000',
@@ -108,7 +108,13 @@ function AutoFitText({
           letterSpacing: `${(layer.letterSpacing || 0) * scale}px`,
           lineHeight: layer.lineHeight || 1.22,
           textAlign: layer.textAlign || 'left',
-          textShadow: '0 2px 7px rgba(15,23,42,0.5)',
+          WebkitTextStroke: (layer.textStrokeWidth || 0) > 0
+            ? `${(layer.textStrokeWidth || 0) * scale}px ${layer.textStrokeColor || layer.color || '#000000'}`
+            : undefined,
+          paintOrder: 'stroke fill',
+          textShadow: (layer.textShadowBlur || 0) > 0
+            ? `0 0 ${(layer.textShadowBlur || 0) * scale}px ${layer.textShadowColor || layer.color || '#000000'}`
+            : '0 2px 7px rgba(15,23,42,0.5)',
         }}
       >
         {value}
@@ -151,7 +157,8 @@ export function SceneLayerContent({
   showPlaceholder?: boolean;
   canvas?: { width: number; height: number };
 }) {
-  if (layer.type === 'image') {
+  const isImageLayer = layer.type === 'image' || (layer.layerKind === 'shape' && Boolean(value));
+  if (isImageLayer) {
     if (value) {
       const crop = layer.sourceCrop;
       const cropStyle: React.CSSProperties | undefined = crop
@@ -174,7 +181,7 @@ export function SceneLayerContent({
             display: 'block',
             width: '100%',
             height: '100%',
-            objectFit: layer.fit || 'contain',
+            objectFit: layer.fit || (layer.layerKind === 'shape' ? 'cover' : 'contain'),
             ...cropStyle,
           }}
         />
@@ -270,7 +277,7 @@ export function SceneCanvas({
               top: `${layer.y}%`,
               width: `${layer.width}%`,
               height: `${layer.height}%`,
-              overflow: 'hidden',
+              overflow: (layer.borderRadius || 0) > 0 ? 'hidden' : 'visible',
               transform: `rotate(${layer.rotation || 0}deg)`,
               transformOrigin: 'center center',
               zIndex: layer.zIndex,
