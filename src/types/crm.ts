@@ -46,6 +46,8 @@ export interface AIChatConfig {
   autoFeedback: boolean;
   replyDelay: number; // in seconds
   advancedInstructions: string;
+  customerServiceScript?: string;
+  customerServiceScriptFileName?: string;
   trainingKnowledge: string;
   model?: string;
   autoFollowUpEnabled?: boolean;

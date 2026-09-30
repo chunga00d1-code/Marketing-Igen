@@ -33,10 +33,10 @@ interface TikTokPublishModalProps {
 }
 
 const PRIVACY_LABELS: Record<TikTokPrivacyLevel, string> = {
-  PUBLIC_TO_EVERYONE: "Công khai",
-  MUTUAL_FOLLOW_FRIENDS: "Bạn bè",
-  FOLLOWER_OF_CREATOR: "Người theo dõi",
-  SELF_ONLY: "Chỉ mình tôi",
+  PUBLIC_TO_EVERYONE: "Công khai / Public to everyone",
+  MUTUAL_FOLLOW_FRIENDS: "Bạn bè / Friends",
+  FOLLOWER_OF_CREATOR: "Người theo dõi / Followers",
+  SELF_ONLY: "Chỉ mình tôi / Only me (Private)",
 };
 
 type TikTokPublishPreset = {
@@ -194,7 +194,7 @@ export default function TikTokPublishModal({
           ) : creatorInfo ? (
             <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-[#18181c] p-4">
               {creatorInfo.creatorAvatarUrl ? <img src={creatorInfo.creatorAvatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 font-bold">♪</div>}
-              <div><p className="text-xs text-slate-400">Video sẽ được đăng vào</p><p className="font-extrabold">{creatorInfo.creatorNickname}</p><p className="text-xs text-slate-400">@{creatorInfo.creatorUsername}</p></div>
+              <div><p className="text-xs text-slate-400">Đăng vào tài khoản / Posting to TikTok Account:</p><p className="font-extrabold text-sm text-white">{creatorInfo.creatorNickname}</p><p className="text-xs text-slate-400">@{creatorInfo.creatorUsername}</p></div>
             </div>
           ) : null}
 
@@ -213,7 +213,7 @@ export default function TikTokPublishModal({
                 />
               </div>
               <div className={`mt-2 rounded-xl border p-2 text-center text-[11px] ${durationTooLong || videoMetadataError ? "border-red-500/30 bg-red-500/10 text-red-200" : "border-slate-700 bg-slate-800 text-slate-300"}`}>
-                {videoMetadataError || (videoDurationSeconds ? `${Math.ceil(videoDurationSeconds)} giây / tối đa ${maxDuration || "..."} giây` : "Đang kiểm tra thời lượng video...")}
+                {videoMetadataError || (videoDurationSeconds ? `${Math.ceil(videoDurationSeconds)}s / Max ${maxDuration || "..."}s allowed (max_video_post_duration_sec)` : "Đang kiểm tra thời lượng video...")}
               </div>
             </div>
 
@@ -225,8 +225,8 @@ export default function TikTokPublishModal({
               </div>
 
               <div className="space-y-2">
-                <label htmlFor="tiktok-privacy-level" className="text-xs font-extrabold uppercase tracking-wider">Quyền riêng tư *</label>
-                <p className="text-[11px] text-slate-400">Bạn phải tự chọn từ dropdown các tùy chọn TikTok đang cho phép.</p>
+                <label htmlFor="tiktok-privacy-level" className="text-xs font-extrabold uppercase tracking-wider">Quyền riêng tư / Privacy Status *</label>
+                <p className="text-[11px] text-slate-400">Chọn quyền riêng tư từ danh sách TikTok / Select from creator_info options (No default value).</p>
                 <select
                   id="tiktok-privacy-level"
                   value={privacyLevel}
@@ -246,11 +246,11 @@ export default function TikTokPublishModal({
           </div>
 
           <div className="space-y-3 rounded-2xl border border-slate-800 bg-[#18181c] p-4">
-            <h4 className="text-xs font-extrabold uppercase tracking-wider">Cho phép tương tác</h4>
-            <p className="text-[11px] text-slate-400">Tất cả đều tắt mặc định. Tùy chọn bị TikTok vô hiệu hóa sẽ không thể bật.</p>
+            <h4 className="text-xs font-extrabold uppercase tracking-wider">Cho phép tương tác / Interaction Settings</h4>
+            <p className="text-[11px] text-slate-400">Tắt theo mặc định / Turned off by default. Tùy chọn bị TikTok vô hiệu hóa sẽ bị khóa.</p>
             <div className="grid gap-2 sm:grid-cols-3">
               {[
-                { label: "Bình luận", icon: <MessageSquare className="h-4 w-4" />, checked: allowComment, disabled: creatorInfo?.commentDisabled, set: setAllowComment },
+                { label: "Bình luận (Comment)", icon: <MessageSquare className="h-4 w-4" />, checked: allowComment, disabled: creatorInfo?.commentDisabled, set: setAllowComment },
                 { label: "Duet", icon: <Repeat className="h-4 w-4" />, checked: allowDuet, disabled: creatorInfo?.duetDisabled, set: setAllowDuet },
                 { label: "Stitch", icon: <Scissors className="h-4 w-4" />, checked: allowStitch, disabled: creatorInfo?.stitchDisabled, set: setAllowStitch },
               ].map((item) => <label key={item.label} className={`flex items-center justify-between rounded-xl border border-slate-700 bg-[#121212] p-3 text-xs ${item.disabled ? "cursor-not-allowed opacity-35" : "cursor-pointer"}`}><span className="flex items-center gap-2">{item.icon}{item.label}</span><input type="checkbox" checked={item.checked} disabled={item.disabled} onChange={(event) => item.set(event.target.checked)} className="h-4 w-4 accent-[#FE2C55]" /></label>)}
@@ -259,7 +259,7 @@ export default function TikTokPublishModal({
 
           <div className="space-y-3 rounded-2xl border border-slate-800 bg-[#18181c] p-4">
             <label className="flex cursor-pointer items-center justify-between gap-4">
-              <span><span className="flex items-center gap-1.5 text-xs font-bold"><Info className="h-4 w-4 text-amber-300" />Nội dung thương mại</span><span className="mt-1 block text-[11px] text-slate-400">Nội dung quảng bá bản thân, thương hiệu, sản phẩm hoặc dịch vụ</span></span>
+              <span><span className="flex items-center gap-1.5 text-xs font-bold"><Info className="h-4 w-4 text-amber-300" />Nội dung thương mại / Commercial Content Disclosure</span><span className="mt-1 block text-[11px] text-slate-400">Quảng bá bản thân hoặc thương hiệu / Promotes yourself, a brand, product or service (Off by default)</span></span>
               <input type="checkbox" checked={brandContentToggle} onChange={(event) => toggleCommercialDisclosure(event.target.checked)} className="h-4 w-4 accent-[#FE2C55]" />
             </label>
             {brandContentToggle && <div className="grid gap-2 border-t border-slate-700 pt-3 sm:grid-cols-2">

@@ -22,7 +22,7 @@ type PurposeScope =
 type PageScope = "all" | "selected";
 export type KnowledgeDocumentType =
   | "company_profile" | "product" | "service" | "policy" | "pricing"
-  | "promotion" | "faq" | "brand_guideline" | "general";
+  | "promotion" | "faq" | "brand_guideline" | "scenario" | "general";
 
 export interface KnowledgeConflict {
   id: string;
@@ -44,6 +44,7 @@ const DOC_TYPE_LABELS: Record<KnowledgeDocumentType, string> = {
   service: "Dịch vụ",
   faq: "Câu hỏi thường gặp (FAQ)",
   brand_guideline: "Nhận diện thương hiệu",
+  scenario: "Kịch bản chăm sóc",
   general: "Tài liệu",
 };
 
@@ -496,6 +497,7 @@ function buildRankedContextItems(params: {
     return {
       chunkId: chunk._id,
       documentId: chunk.documentId,
+      chunkIndex: chunk.chunkIndex,
       documentType: docType,
       version: chunk.version,
       embedding: chunk.embedding,
@@ -865,6 +867,8 @@ export const aiKnowledgeService = {
     topK?: number;
     pageId?: string;
     documentTypes?: KnowledgeDocumentType[];
+    strictDocumentTypes?: boolean;
+    preserveDocumentOrder?: boolean;
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
     if (!companyCode) {
@@ -894,26 +898,29 @@ export const aiKnowledgeService = {
     const topK = isProductQuery
       ? Math.max(params.topK || DEFAULT_TOP_K, 8)
       : (params.topK || DEFAULT_TOP_K);
-    const maxContextChars = isProductQuery ? 7500 : MAX_CONTEXT_CHARS;
+    const maxContextChars = params.strictDocumentTypes && params.documentTypes?.includes("scenario")
+      ? 7000
+      : isProductQuery ? 7500 : MAX_CONTEXT_CHARS;
 
     let chunks: any[] = [];
 
     // INTENT ROUTER: Tự động phân tích câu hỏi để xác định danh mục ưu tiên (để boost điểm xếp hạng)
     const detectedDocumentTypes = detectRequiredDocumentTypes(params.query);
 
-    let permittedDocumentIds: mongoose.Types.ObjectId[] | undefined;
-    if (params.documentTypes && params.documentTypes.length > 0) {
-      // Chỉ khi caller chỉ định rõ ràng documentTypes thì mới filter theo danh mục được chỉ định + general
-      const explicitTypes = Array.from(new Set([...params.documentTypes, "general"])) as KnowledgeDocumentType[];
-      const permittedDocuments = await AIKnowledgeDocumentModel.find({
-        companyCode,
-        documentType: { $in: explicitTypes },
-        status: "active",
-      }).select("_id").lean();
-      if (permittedDocuments.length > 0) {
-        permittedDocumentIds = permittedDocuments.map((document) => document._id);
-      }
-    }
+    const strictDocumentTypes = params.strictDocumentTypes === true;
+    const explicitTypes = params.documentTypes?.length
+      ? strictDocumentTypes
+        ? params.documentTypes
+        : Array.from(new Set([...params.documentTypes, "general"])) as KnowledgeDocumentType[]
+      : undefined;
+    const permittedDocuments = await AIKnowledgeDocumentModel.find({
+      companyCode,
+      status: "active",
+      ...(explicitTypes
+        ? { documentType: { $in: explicitTypes } }
+        : { documentType: { $ne: "scenario" } }),
+    }).select("_id").lean();
+    const permittedDocumentIds = permittedDocuments.map((document) => document._id);
 
     const purposeFilterValues = ["all", purpose, "sales", "support", "marketing"];
     const filter: any = {
@@ -940,9 +947,7 @@ export const aiKnowledgeService = {
         },
       ],
     };
-    if (permittedDocumentIds) {
-      filter.documentId = { $in: permittedDocumentIds };
-    }
+    filter.documentId = { $in: permittedDocumentIds };
 
     // Lấy toàn bộ chunk của doanh nghiệp trong phạm vi kênh/mục đích để chạy thuật toán xếp hạng ngữ nghĩa lai
     chunks = await AIKnowledgeChunkModel.find(filter as any)
@@ -983,18 +988,25 @@ export const aiKnowledgeService = {
             pageId: params.pageId,
             detectedDocumentTypes,
           })
-            .filter((item) => item.score > 0.02)
+            .filter((item) =>
+              strictDocumentTypes && params.documentTypes?.includes("scenario")
+                ? item.score >= 0
+                : item.score > 0.02
+            )
             .sort((a, b) => b.score - a.score)
             .slice(0, topK)
         : [];
 
     const finalRanked = ranked.length > 0 ? ranked : fallbackRanked;
+    const contextRanked = params.preserveDocumentOrder
+      ? [...finalRanked].sort((a, b) => a.chunkIndex - b.chunkIndex)
+      : finalRanked;
 
     let usedChars = 0;
     const selected: string[] = [];
     const selectedItems: typeof finalRanked = [];
 
-    for (const item of finalRanked) {
+    for (const item of contextRanked) {
       if (usedChars + item.text.length > maxContextChars) break;
       const docTypeTag = (item as any).documentType as KnowledgeDocumentType || "general";
       const tagLabel = DOC_TYPE_LABELS[docTypeTag] || "Tài liệu";
@@ -1007,10 +1019,11 @@ export const aiKnowledgeService = {
 
     // Nếu chưa tìm thấy đủ chunk khớp trực tiếp (hoặc câu hỏi chào hỏi/tổng quan/giới thiệu),
     // tự động bổ sung hồ sơ công ty và thông tin sản phẩm/dịch vụ/bảng giá từ kho tri thức
-    if (selected.length < 2 && companyCode) {
+    if (!strictDocumentTypes && selected.length < 2 && companyCode) {
       const coreDocs = await AIKnowledgeDocumentModel.find({
         companyCode,
         status: "active",
+        documentType: { $ne: "scenario" },
       })
         .sort({ updatedAt: -1 })
         .limit(8)
@@ -1070,8 +1083,10 @@ export const aiKnowledgeService = {
       items: selectedItems.map((item) => ({
         chunkId: String(item.chunkId),
         documentId: String(item.documentId),
+        chunkIndex: item.chunkIndex,
         version: String(item.version || ""),
         title: item.title,
+        documentType: item.documentType,
         sourceUrl: item.sourceUrl,
         text: item.text,
         score: item.score,
@@ -1086,6 +1101,22 @@ export const aiKnowledgeService = {
     };
   },
 
+  async searchScenarioContext(params: {
+    companyCode?: string;
+    query: string;
+    channel?: "facebook" | "zalo" | "tiktok";
+    pageId?: string;
+    topK?: number;
+  }) {
+    return this.searchRelevantContext({
+      ...params,
+      topK: params.topK || 5,
+      documentTypes: ["scenario"],
+      strictDocumentTypes: true,
+      preserveDocumentOrder: true,
+    });
+  },
+
   buildEffectiveRagContext(input: {
     companyCode?: string;
     ragContext?: {
@@ -1095,14 +1126,16 @@ export const aiKnowledgeService = {
       productCandidateNames?: string[];
       shouldAskProductConfirmation?: boolean;
     };
+    scenarioContext?: { contextText?: string };
     trainingKnowledge?: string;
   }) {
     const normalizedCompanyCode = normalizeCompanyCode(input.companyCode);
     const ragContext = input.ragContext || {};
     const trainingKnowledge = String(input.trainingKnowledge || "").trim().slice(0, 20000);
     const ragText = String(ragContext.contextText || "").trim();
+    const scenarioContextText = String(input.scenarioContext?.contextText || "").trim();
 
-    if (ragText || trainingKnowledge) {
+    if (ragText || trainingKnowledge || scenarioContextText) {
       const contextParts = [
         ragText,
         trainingKnowledge
@@ -1112,6 +1145,7 @@ export const aiKnowledgeService = {
 
       return {
         contextText: contextParts.join("\n\n"),
+        scenarioContextText,
         matches: ragContext.matches || 0,
         bestScore: ragContext.bestScore || 0,
         productCandidateNames: ragContext.productCandidateNames || [],
@@ -1121,12 +1155,15 @@ export const aiKnowledgeService = {
           ? "rag_with_training_knowledge"
           : ragText
             ? "rag"
-            : "training_knowledge",
+            : trainingKnowledge
+              ? "training_knowledge"
+              : "scenario_rag",
       };
     }
 
     return {
       contextText: "",
+      scenarioContextText: "",
       matches: 0,
       bestScore: 0,
       productCandidateNames: [],
@@ -1144,8 +1181,9 @@ export const aiKnowledgeService = {
     bestScore?: number;
     productCandidateNames?: string[];
     shouldAskProductConfirmation?: boolean;
+    scenarioContextText?: string;
   }) {
-    const preview = normalizeText(input.contextText || "").slice(0, 320);
+    const preview = normalizeText([input.contextText, input.scenarioContextText].filter(Boolean).join("\n")).slice(0, 320);
     return {
       source: input.source || "unknown",
       companyCode: normalizeCompanyCode(input.companyCode),
@@ -1164,6 +1202,7 @@ export const aiKnowledgeService = {
     const documents = await AIKnowledgeDocumentModel.find({
       companyCode: normalizedCompanyCode,
       status: "active",
+      documentType: { $ne: "scenario" },
     })
       .select("_id sourceTitle documentType contentHash")
       .lean();
@@ -1362,6 +1401,7 @@ export const aiKnowledgeService = {
         latestSyncAt: null,
         latestReplyAt: null,
         documents: [],
+        scenarioDocuments: [],
       };
     }
     const [documents, chunksCount, latestLog, conflicts] = await Promise.all([
@@ -1418,6 +1458,14 @@ export const aiKnowledgeService = {
         documentType: doc.documentType || "general",
         updatedAt: doc.updatedAt,
       })),
+      scenarioDocuments: documents
+        .filter((doc) => doc.documentType === "scenario")
+        .map((doc) => ({
+          id: String(doc._id),
+          title: doc.sourceTitle,
+          status: doc.status,
+          updatedAt: doc.updatedAt,
+        })),
     };
   },
 
@@ -1550,6 +1598,23 @@ export const aiKnowledgeService = {
       }),
     ]);
     return { id: String(document._id), title: document.sourceTitle };
+  },
+
+  async clearKnowledgeDocumentType(companyCode: string | undefined, documentType: KnowledgeDocumentType) {
+    const normalizedCompanyCode = normalizeCompanyCode(companyCode);
+    if (!normalizedCompanyCode) return { documentsRemoved: 0 };
+    const filter = { companyCode: normalizedCompanyCode, documentType };
+    const documents = await AIKnowledgeDocumentModel.find(filter).select("_id").lean();
+    if (documents.length === 0) return { documentsRemoved: 0 };
+    const documentIds = documents.map((document) => document._id);
+    await Promise.all([
+      AIKnowledgeChunkModel.deleteMany({
+        companyCode: normalizedCompanyCode,
+        documentId: { $in: documentIds },
+      }),
+      AIKnowledgeDocumentModel.deleteMany(filter),
+    ]);
+    return { documentsRemoved: documents.length };
   },
 
   async deleteKnowledgeDocumentByUrl(companyCode: string | undefined, sourceUrl: string) {

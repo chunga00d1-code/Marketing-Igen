@@ -31,6 +31,8 @@ const chatSchema = {
       autoFeedback: Joi.boolean().required(),
       replyDelay: Joi.number().required(),
       advancedInstructions: Joi.string().allow(""),
+      customerServiceScript: Joi.string().allow("").optional(),
+      customerServiceScriptFileName: Joi.string().allow("").optional(),
       trainingKnowledge: Joi.string().allow(""),
       model: Joi.string().allow("").optional(),
       autoFollowUpEnabled: Joi.boolean().optional(),
@@ -281,6 +283,10 @@ const uploadDocumentSchema = {
     fileName: Joi.string().required(),
     fileBase64: Joi.string().required(),
     mimeType: Joi.string().required(),
+    extractOnly: Joi.boolean().optional(),
+    documentType: Joi.string().valid(
+      "company_profile", "product", "service", "policy", "pricing", "promotion", "faq", "brand_guideline", "scenario", "general"
+    ).optional(),
     channelScope: Joi.array()
       .items(Joi.string().valid("facebook", "zalo", "tiktok", "all"))
       .min(1)
@@ -351,6 +357,7 @@ geminiRouter.post("/marketing-develop", requireAuth as any, validateRequest(deve
 // Knowledge management / auto reply endpoints
 geminiRouter.get("/knowledge-health", requireAuth as any, geminiController.getKnowledgeHealth as any);
 geminiRouter.post("/clear-knowledge", requireAuth as any, requireKnowledgeManager as any, geminiController.clearKnowledge as any);
+geminiRouter.delete("/customer-service-scenario", requireAuth as any, requireKnowledgeManager as any, geminiController.clearCustomerServiceScenario as any);
 geminiRouter.post("/test-reply", requireAuth as any, validateRequest(testReplySchema), geminiController.testReply as any);
 geminiRouter.get("/ai-reply-logs", requireAuth as any, geminiController.listAIReplyLogs as any);
 geminiRouter.patch("/ai-reply-logs/:id/feedback", requireAuth as any, validateRequest(feedbackSchema), geminiController.updateAIReplyFeedback as any);

@@ -21,6 +21,7 @@ export type KnowledgeDocumentType =
   | "promotion"
   | "faq"
   | "brand_guideline"
+  | "scenario"
   | "general";
 
 export type KnowledgeScopes = {

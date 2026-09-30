@@ -29,6 +29,7 @@ export interface ChatRagContext {
   bestScore?: number;
   productCandidateNames?: string[];
   shouldAskProductConfirmation?: boolean;
+  scenarioContextText?: string;
 }
 
 export interface SourceBriefExtraction {
