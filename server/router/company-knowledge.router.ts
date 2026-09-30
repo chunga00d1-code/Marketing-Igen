@@ -11,7 +11,7 @@ const managerOnly = requireRole(["superadmin", "admin", "manager"]);
 const pageScope = Joi.string().valid("all", "selected");
 const pageIds = Joi.array().items(Joi.string().trim().min(1)).max(100);
 const documentType = Joi.string().valid(
-  "company_profile", "product", "service", "policy", "pricing", "promotion", "faq", "brand_guideline", "general"
+  "company_profile", "product", "service", "policy", "pricing", "promotion", "faq", "brand_guideline", "scenario", "general"
 );
 const scopeSchema = {
   body: Joi.object({

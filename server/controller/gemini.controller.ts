@@ -7,6 +7,8 @@ import { AuthenticatedRequest } from "../middleware/auth";
 import { aiKnowledgeService } from "../service/ai-knowledge.service";
 import { walletService, API_COSTS } from "../service/wallet.service";
 import { AIMediaModel } from "../model/ai-media.model";
+import { SocialIntegrationModel } from "../model/social-integration.model";
+import { UserModel } from "../model/user.model";
 import { broadcastEvent } from "../socket";
 import * as XLSX from "xlsx";
 import AdmZip from "adm-zip";
@@ -624,7 +626,28 @@ export const geminiController = {
       const cost = getTextModelCost(aiConfig);
       await walletService.checkBalance(userId, cost);
       const companyCode = (req as any).user?.companyCode;
-      const result = await geminiService.chat(message, history, aiConfig, { companyCode });
+      const scenarioQuery = [...(history || []).slice(-6).map((item: any) => item.text), message].join(" ").slice(-4000);
+      const [ragContext, scenarioContext] = await Promise.all([
+        aiKnowledgeService.searchRelevantContext({
+          companyCode,
+          query: message,
+          channel: "facebook",
+          topK: 5,
+        }),
+        aiKnowledgeService.searchScenarioContext({
+          companyCode,
+          query: scenarioQuery,
+          channel: "facebook",
+          topK: 5,
+        }),
+      ]);
+      const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
+        companyCode,
+        ragContext,
+        scenarioContext,
+        trainingKnowledge: aiConfig?.trainingKnowledge,
+      });
+      const result = await geminiService.chat(message, history, aiConfig, effectiveRagContext);
       await walletService.deductBalance(userId    , cost, "Chi phí sử dụng Trợ lý AI Chatbot");
       return res.status(200).json(result);
     } catch (error: any) {
@@ -679,6 +702,41 @@ export const geminiController = {
   },
 
   /**
+   * DELETE /api/v1/gemini/customer-service-scenario
+   */
+  async clearCustomerServiceScenario(req: AuthenticatedRequest, res: Response) {
+    try {
+      const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
+        ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
+        : String(req.user?.companyCode || "").trim().toUpperCase();
+      await aiKnowledgeService.clearKnowledgeDocumentType(companyCode, "scenario");
+      if (companyCode) {
+        const legacyScenarioFields = {
+          $unset: {
+            "aiAutoReplyConfig.customerServiceScript": 1,
+            "aiAutoReplyConfig.customerServiceScriptFileName": 1,
+          },
+        };
+        await Promise.all([
+          UserModel.updateMany({ companyCode }, legacyScenarioFields),
+          SocialIntegrationModel.updateMany({ companyCode }, legacyScenarioFields),
+        ]);
+      }
+      return res.status(200).json({
+        status: "success",
+        message: "Đã xóa kịch bản chăm sóc khách hàng khỏi RAG."
+      });
+    } catch (error: any) {
+      console.error("[geminiController.clearCustomerServiceScenario] Error:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Không thể xóa kịch bản chăm sóc khách hàng",
+        details: error.message,
+      });
+    }
+  },
+
+  /**
    * POST /api/v1/gemini/clear-knowledge
    */
   async clearKnowledge(req: AuthenticatedRequest, res: Response) {
@@ -718,16 +776,26 @@ export const geminiController = {
       const cost = getTextModelCost(aiConfig);
       await walletService.checkBalance(userId, cost);
       const startedAt = Date.now();
-      const ragContext = await aiKnowledgeService.searchRelevantContext({
-        companyCode,
-        query: message,
-        channel: "facebook",
-        topK: 5,
-      });
+      const scenarioQuery = String(message || "").slice(-4000);
+      const [ragContext, scenarioContext] = await Promise.all([
+        aiKnowledgeService.searchRelevantContext({
+          companyCode,
+          query: message,
+          channel: "facebook",
+          topK: 5,
+        }),
+        aiKnowledgeService.searchScenarioContext({
+          companyCode,
+          query: scenarioQuery,
+          channel: "facebook",
+          topK: 5,
+        }),
+      ]);
 
       const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
         companyCode,
         ragContext,
+        scenarioContext,
         trainingKnowledge: aiConfig?.trainingKnowledge,
       });
       const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
@@ -743,7 +811,7 @@ export const geminiController = {
         channel: "test",
         customerMessage: message,
         aiResponse: result.text,
-        contextText: effectiveRagContext.contextText,
+        contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
         contextMatches: effectiveRagContext.matches,
         latencyMs: Date.now() - startedAt,
         status: "preview",
@@ -752,7 +820,7 @@ export const geminiController = {
       await walletService.deductBalance(userId, cost, "Chi phí test câu trả lời tự động AI");
       return res.status(200).json({
         ...result,
-        mode: effectiveRagContext.contextText ? "trained" : "default",
+        mode: effectiveRagContext.contextText || effectiveRagContext.scenarioContextText ? "trained" : "default",
         contextMatches: effectiveRagContext.matches || 0,
         logId: log._id,
       });
@@ -1366,6 +1434,7 @@ export const geminiController = {
         pageScope = "all",
         pageIds = [],
         documentType = "general",
+        extractOnly = false,
       } = req.body;
       if (!fileName || !fileBase64 || !mimeType) {
         return res.status(400).json({
@@ -1391,17 +1460,37 @@ export const geminiController = {
         });
       }
 
+      if (extractOnly) {
+        await walletService.deductBalance(userId, API_COSTS.GEMINI_FAQ, "Chi phí trích xuất kịch bản chăm sóc " + fileName);
+        const scenarioText = extractedText.trim();
+        const maxScenarioLength = 20_000;
+        return res.status(200).json({
+          status: "success",
+          title: fileName,
+          text: scenarioText.slice(0, maxScenarioLength),
+          truncated: scenarioText.length > maxScenarioLength,
+        });
+      }
+
       const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
         ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
         : String(req.user?.companyCode || "").trim().toUpperCase();
-      const sourceUrl = `uploaded://${fileName}_${Date.now()}`;
+      const isScenario = documentType === "scenario";
+      const scenarioText = extractedText.trim();
+      const maxScenarioLength = 20_000;
+      const indexedText = isScenario
+        ? scenarioText.slice(0, maxScenarioLength)
+        : extractedText;
+      const sourceUrl = isScenario
+        ? "scenario://customer-service"
+        : `uploaded://${fileName}_${Date.now()}`;
 
       const syncResult = await aiKnowledgeService.upsertKnowledgeFromText({
         companyCode,
         sourceType: "manual",
         sourceTitle: fileName,
         sourceUrl,
-        text: extractedText,
+        text: indexedText,
         createdBy: req.user?.id,
         channelScope,
         purposeScope,
@@ -1410,14 +1499,28 @@ export const geminiController = {
         documentType,
       });
 
+      if (isScenario && companyCode) {
+        const legacyScenarioFields = {
+          $unset: {
+            "aiAutoReplyConfig.customerServiceScript": 1,
+            "aiAutoReplyConfig.customerServiceScriptFileName": 1,
+          },
+        };
+        await Promise.all([
+          UserModel.updateMany({ companyCode }, legacyScenarioFields),
+          SocialIntegrationModel.updateMany({ companyCode }, legacyScenarioFields),
+        ]);
+      }
+
       await walletService.deductBalance(userId, API_COSTS.GEMINI_FAQ, `Chi phí trích xuất & nạp tài liệu upload (${fileName})`);
 
       return res.status(200).json({
         status: "success",
         title: fileName,
-        text: extractedText,
+        ...(!isScenario ? { text: extractedText } : {}),
         companyCode,
         chunksCount: syncResult.chunksCount,
+        truncated: isScenario && scenarioText.length > maxScenarioLength,
       });
     } catch (error: any) {
       console.error("[geminiController.uploadLocalDocument] Error:", error);

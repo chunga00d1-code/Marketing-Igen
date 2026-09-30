@@ -222,10 +222,10 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     setSavingConfig(true);
     try {
       await setAIConfig(localConfig);
-      toast.success("Đã lưu cấu hình trợ lý AI thành công!");
+      toast.success("Đã lưu thiết lập rule, kịch bản và cấu hình trợ lý AI thành công!");
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Không thể lưu cấu hình.");
+      toast.error(err.message || "Không thể lưu thiết lập rule, kịch bản và cấu hình trợ lý AI.");
     } finally {
       setSavingConfig(false);
     }
@@ -329,6 +329,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   };
 
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadingScenarioFile, setUploadingScenarioFile] = useState(false);
 
   const handleUploadLocalDoc = async (file: File) => {
     if (!file) return;
@@ -374,6 +375,59 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     }
   };
 
+  const handleUploadCustomerServiceScript = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Tệp kịch bản vượt quá dung lượng tối đa 10MB.");
+      return;
+    }
+
+    setUploadingScenarioFile(true);
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === "string" ? reader.result.split(",")[1] : "";
+          if (result) resolve(result);
+          else reject(new Error("Không thể đọc tệp kịch bản."));
+        };
+        reader.onerror = () => reject(new Error("Không thể đọc tệp kịch bản."));
+        reader.readAsDataURL(file);
+      });
+      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
+      setLocalConfig({
+        ...localConfig,
+        customerServiceScript: "",
+        customerServiceScriptFileName: file.name,
+      });
+      await refreshAIHealth();
+      if (data.truncated) toast.info("Đã nạp kịch bản vào RAG riêng; nội dung được giới hạn còn 20.000 ký tự.");
+      else toast.success(`Đã nạp kịch bản từ ${file.name} vào RAG riêng; AI sẽ dùng nội dung liên quan khi trả lời.`);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Không thể nạp tệp kịch bản vào RAG.");
+    } finally {
+      setUploadingScenarioFile(false);
+    }
+  };
+
+  const handleClearCustomerServiceScenario = async () => {
+    setUploadingScenarioFile(true);
+    try {
+      await geminiApi.clearCustomerServiceScenario();
+      setLocalConfig({
+        ...localConfig,
+        customerServiceScript: "",
+        customerServiceScriptFileName: "",
+      });
+      await refreshAIHealth();
+      toast.success("Đã xóa kịch bản khỏi RAG riêng.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Không thể xóa kịch bản.");
+    } finally {
+      setUploadingScenarioFile(false);
+    }
+  };
   const handleClearKnowledge = async () => {
     if (clearingKnowledge) return;
 
@@ -1110,6 +1164,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           handleApplyToAll={handleApplyToAllPages}
           uploadingDoc={uploadingDoc}
           handleUploadLocalDoc={handleUploadLocalDoc}
+          uploadingScenarioFile={uploadingScenarioFile}
+          handleUploadCustomerServiceScript={handleUploadCustomerServiceScript}
+          handleClearCustomerServiceScenario={handleClearCustomerServiceScenario}
         />
       )}
 

@@ -303,6 +303,17 @@ export const geminiApi = {
     return response.json();
   },
 
+  async clearCustomerServiceScenario(): Promise<any> {
+    const response = await fetch("/api/v1/gemini/customer-service-scenario", {
+      method: "DELETE",
+      headers: getJwtHeaders(true),
+    });
+    if (!response.ok) {
+      await handleErrorResponse(response, "Không thể xóa kịch bản chăm sóc khách hàng");
+    }
+    return response.json();
+  },
+
   async testReply(message: string, aiConfig: any): Promise<any> {
     const response = await fetch("/api/v1/gemini/test-reply", {
       method: "POST",
@@ -793,12 +804,18 @@ return response.json();
           return data.result || { title: '', content: '', hashtags: [] };
         },
 
-          async uploadLocalDocument(fileName: string, fileBase64: string, mimeType: string): Promise < any > {
+          async uploadLocalDocument(fileName: string, fileBase64: string, mimeType: string, options?: { extractOnly?: boolean; documentType?: "scenario" }): Promise < any > {
             const headers = await getHeaders(true);
             const response = await fetch("/api/v1/gemini/upload-document", {
               method: "POST",
               headers,
-              body: JSON.stringify({ fileName, fileBase64, mimeType }),
+              body: JSON.stringify({
+                fileName,
+                fileBase64,
+                mimeType,
+                ...(options?.extractOnly ? { extractOnly: true } : {}),
+                ...(options?.documentType ? { documentType: options.documentType } : {}),
+              }),
             });
             if(!response.ok) {
   await handleErrorResponse(response, "Lỗi tải lên tài liệu huấn luyện AI");

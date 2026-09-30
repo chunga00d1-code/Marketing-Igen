@@ -1553,7 +1553,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
           const source = row.values[layer.id] || row.values[layer.fieldName] || layer.defaultValue || '';
           return [layer.id, uploadedImageUrls.get(source) || source];
         }
-        const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.layerKind === 'shape' ? '' : (layer.defaultValue || layer.fieldName));
+        const val = row.values[layer.id] ?? row.values[layer.fieldName] ?? (layer.defaultValue || layer.fieldName);
         return [layer.id, val];
       })),
       ...(row.campaignAssetOrderId ? { __campaign_asset_order_id: row.campaignAssetOrderId } : {}),

@@ -252,7 +252,7 @@ export function formatHumanLikeChatReply(rawText: string): string {
     processedLines = processedLines.slice(1);
   }
 
-  const finalResult = processedLines.slice(0, 20).join("\n").trim();
+  const finalResult = processedLines.join("\n").trim();
   return finalResult || cleaned;
 }
 

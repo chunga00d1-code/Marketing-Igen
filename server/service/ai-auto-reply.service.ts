@@ -124,7 +124,7 @@ function splitReplyIntoMessageBubbles(text: string) {
     bubbles.push(currentBubble);
   }
 
-  return bubbles.slice(0, 6);
+  return bubbles;
 }
 
 function splitHistoryAndPendingInboundMessages(messages: any[]) {
@@ -841,30 +841,41 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            const ragContext = await aiKnowledgeService.searchRelevantContext({
-              companyCode,
-              query: groupedCustomerMessage,
-              channel,
-              pageId: channel === "facebook" ? resolvedPlatformId : undefined,
-              topK: 8,
-            });
+            const scenarioQuery = [...history.slice(-6).map((item) => item.text), groupedCustomerMessage].join(" ").slice(-4000);
+            const [ragContext, scenarioContext] = await Promise.all([
+              aiKnowledgeService.searchRelevantContext({
+                companyCode,
+                query: groupedCustomerMessage,
+                channel,
+                pageId: channel === "facebook" ? resolvedPlatformId : undefined,
+                topK: 8,
+              }),
+              aiKnowledgeService.searchScenarioContext({
+                companyCode,
+                query: scenarioQuery,
+                channel,
+                pageId: channel === "facebook" ? resolvedPlatformId : undefined,
+                topK: 5,
+              }),
+            ]);
 
             const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
               companyCode,
               ragContext,
+              scenarioContext,
               trainingKnowledge: aiConfig.trainingKnowledge,
             });
             const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
 
             console.log(
               `[AI AutoReply] Context ready: conversationId=${conversationId}, channel=${channel}, ` +
-              `matches=${effectiveRagContext.matches}, contextLength=${effectiveRagContext.contextText?.length || 0}, ` +
+              `matches=${effectiveRagContext.matches}, contextLength=${(effectiveRagContext.contextText?.length || 0) + (effectiveRagContext.scenarioContextText?.length || 0)}, ` +
               `source=${(effectiveRagContext as any).source || "unknown"}`
             );
 
             console.log(
               `[AI AutoReply] 📚 TRUY XUẤT RAG: Context ready cho conversation=${conversationId}, matches=${effectiveRagContext.matches}, ` +
-              `contextLength=${effectiveRagContext.contextText?.length || 0}`
+              `contextLength=${(effectiveRagContext.contextText?.length || 0) + (effectiveRagContext.scenarioContextText?.length || 0)}`
             );
 
             console.log("[AI AutoReply] Context diagnostics:", JSON.stringify({
@@ -959,7 +970,7 @@ export const aiAutoReplyService = {
                 conversationId,
                 customerMessage: groupedCustomerMessage,
                 aiResponse: aiResponse.text,
-                contextText: effectiveRagContext.contextText,
+                contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
                 contextMatches: effectiveRagContext.matches,
                 latencyMs: Date.now() - startedAt,
                 status: "sent",
@@ -993,7 +1004,7 @@ export const aiAutoReplyService = {
                 conversationId,
                 customerMessage: normalizedIncomingText,
                 aiResponse: `[SEND_FAILED] ${aiResponse.text}\n\nError: ${sendErr?.message || sendErr}`,
-                contextText: effectiveRagContext.contextText,
+                contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
                 contextMatches: effectiveRagContext.matches,
                 latencyMs: Date.now() - startedAt,
                 status: "failed",
@@ -1074,18 +1085,34 @@ export const aiAutoReplyService = {
             text: m.text,
           }));
 
-          const ragContext = await aiKnowledgeService.searchRelevantContext({
+          const conversationQuery = messages.slice(-8).map((m) => m.text).join(" ").slice(-4000);
+          const [ragContext, scenarioContext] = await Promise.all([
+            aiKnowledgeService.searchRelevantContext({
+              companyCode: owner.companyCode,
+              query: conversationQuery,
+              channel: "facebook",
+              pageId: conv.pageId,
+              topK: 4,
+            }),
+            aiKnowledgeService.searchScenarioContext({
+              companyCode: owner.companyCode,
+              query: conversationQuery,
+              channel: "facebook",
+              pageId: conv.pageId,
+              topK: 5,
+            }),
+          ]);
+          const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
             companyCode: owner.companyCode,
-            query: messages.map((m) => m.text).join(" "),
-            channel: "facebook",
-            pageId: conv.pageId,
-            topK: 4,
+            ragContext,
+            scenarioContext,
+            trainingKnowledge: owner.aiConfig.trainingKnowledge,
           });
 
           const followUpRes = await geminiService.generateFollowUpMessage({
             history,
             aiConfig: owner.aiConfig,
-            ragContext,
+            ragContext: effectiveRagContext,
           });
 
           if (followUpRes?.text) {
@@ -1110,7 +1137,7 @@ export const aiAutoReplyService = {
               conversationId: String(conv._id),
               customerMessage: "[AUTO_FOLLOWUP_TRIGGERED]",
               aiResponse: followUpRes.text,
-              contextText: ragContext.contextText,
+              contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
               contextMatches: ragContext.matches,
               latencyMs: 0,
               status: "sent",
@@ -1161,17 +1188,32 @@ export const aiAutoReplyService = {
             text: m.text,
           }));
 
-          const ragContext = await aiKnowledgeService.searchRelevantContext({
+          const conversationQuery = messages.slice(-8).map((m) => m.text).join(" ").slice(-4000);
+          const [ragContext, scenarioContext] = await Promise.all([
+            aiKnowledgeService.searchRelevantContext({
+              companyCode: owner.companyCode,
+              query: conversationQuery,
+              channel: "zalo",
+              topK: 4,
+            }),
+            aiKnowledgeService.searchScenarioContext({
+              companyCode: owner.companyCode,
+              query: conversationQuery,
+              channel: "zalo",
+              topK: 5,
+            }),
+          ]);
+          const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
             companyCode: owner.companyCode,
-            query: messages.map((m) => m.text).join(" "),
-            channel: "zalo",
-            topK: 4,
+            ragContext,
+            scenarioContext,
+            trainingKnowledge: owner.aiConfig.trainingKnowledge,
           });
 
           const followUpRes = await geminiService.generateFollowUpMessage({
             history,
             aiConfig: owner.aiConfig,
-            ragContext,
+            ragContext: effectiveRagContext,
           });
 
           if (followUpRes?.text) {
@@ -1196,7 +1238,7 @@ export const aiAutoReplyService = {
               conversationId: String(conv._id),
               customerMessage: "[AUTO_FOLLOWUP_TRIGGERED]",
               aiResponse: followUpRes.text,
-              contextText: ragContext.contextText,
+              contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
               contextMatches: ragContext.matches,
               latencyMs: 0,
               status: "sent",
