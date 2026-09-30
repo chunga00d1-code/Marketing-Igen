@@ -83,17 +83,27 @@ export const facebookCommentService = {
       }
 
       // Truy xuất ngữ cảnh RAG
-      const ragContext = await aiKnowledgeService.searchRelevantContext({
-        companyCode,
-        query: message,
-        channel: "facebook",
-        pageId,
-        topK: 5,
-      });
+      const [ragContext, scenarioContext] = await Promise.all([
+        aiKnowledgeService.searchRelevantContext({
+          companyCode,
+          query: message,
+          channel: "facebook",
+          pageId,
+          topK: 5,
+        }),
+        aiKnowledgeService.searchScenarioContext({
+          companyCode,
+          query: message,
+          channel: "facebook",
+          pageId,
+          topK: 5,
+        }),
+      ]);
 
       effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
         companyCode,
         ragContext,
+        scenarioContext,
         trainingKnowledge: aiConfig.trainingKnowledge,
       });
 
@@ -109,9 +119,9 @@ export const facebookCommentService = {
           postId,
           customerMessage: message,
           aiResponse: "[FAILED] Không nhận được nội dung trả lời từ Gemini",
-          contextPreview: effectiveRagContext.contextText || "",
+          contextPreview: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
           contextMatches: effectiveRagContext.matches || 0,
-          mode: aiConfig.trainingKnowledge ? "trained" : "default",
+          mode: aiConfig.trainingKnowledge || effectiveRagContext.scenarioContextText ? "trained" : "default",
           latencyMs: Date.now() - startedAt,
           status: "failed",
         });
@@ -199,9 +209,9 @@ export const facebookCommentService = {
         postId,
         customerMessage: message,
         aiResponse: combinedLogResponse,
-        contextPreview: effectiveRagContext.contextText || "",
+        contextPreview: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
         contextMatches: effectiveRagContext.matches || 0,
-        mode: aiConfig.trainingKnowledge ? "trained" : "default",
+        mode: aiConfig.trainingKnowledge || effectiveRagContext.scenarioContextText ? "trained" : "default",
         latencyMs: Date.now() - startedAt,
         status: isInboxFailed ? "failed" : "sent",
       });
@@ -239,7 +249,7 @@ export const facebookCommentService = {
           postId,
           customerMessage: messageText,
           aiResponse: `[FAILED] ${replyText || "[Không có phản hồi AI]"}\n\nError: ${error.message || error}`,
-          contextPreview: effectiveRagContext.contextText || "",
+          contextPreview: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
           contextMatches: effectiveRagContext.matches || 0,
           mode: aiConfig ? (aiConfig.trainingKnowledge ? "trained" : "default") : "default",
           latencyMs: Date.now() - startedAt,

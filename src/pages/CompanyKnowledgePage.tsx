@@ -69,6 +69,7 @@ const DOCUMENT_TYPES: Array<{ id: KnowledgeDocumentType; label: string }> = [
   { id: "policy", label: "Chính sách" },
   { id: "faq", label: "Câu hỏi thường gặp" },
   { id: "brand_guideline", label: "Nhận diện thương hiệu" },
+  { id: "scenario", label: "Kịch bản chăm sóc khách hàng" },
 ];
 
 function toggleScope<T extends string>(current: T[], value: T) {

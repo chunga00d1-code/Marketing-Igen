@@ -47,6 +47,8 @@ export interface IAiAutoReplyConfig {
   autoFeedback: boolean;
   replyDelay: number;
   advancedInstructions: string;
+  customerServiceScript?: string;
+  customerServiceScriptFileName?: string;
   trainingKnowledge: string;
   model?: string;
   autoFollowUpEnabled?: boolean;

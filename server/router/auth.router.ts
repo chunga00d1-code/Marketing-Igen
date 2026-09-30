@@ -107,6 +107,8 @@ const updateProfileSchema = {
       autoFeedback: Joi.boolean().optional(),
       replyDelay: Joi.number().optional(),
       advancedInstructions: Joi.string().allow("").optional(),
+      customerServiceScript: Joi.string().allow("").optional(),
+      customerServiceScriptFileName: Joi.string().allow("").optional(),
       trainingKnowledge: Joi.string().allow("").optional(),
       model: Joi.string().allow("").optional(),
       autoFollowUpEnabled: Joi.boolean().optional(),

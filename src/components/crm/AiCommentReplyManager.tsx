@@ -45,6 +45,8 @@ export function AiCommentReplyManager({
     autoFeedback: false,
     replyDelay: 15,
     advancedInstructions: "",
+    customerServiceScript: "",
+    customerServiceScriptFileName: "",
     trainingKnowledge: "",
     model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
     autoFollowUpEnabled: false,
@@ -57,6 +59,12 @@ export function AiCommentReplyManager({
   const [logs, setLogs] = useState<any[]>([]);
   const [knowledgeHealth, setKnowledgeHealth] = useState<any>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
+  const scenarioDocument = Array.isArray(knowledgeHealth?.scenarioDocuments) && knowledgeHealth.scenarioDocuments.length
+    ? knowledgeHealth.scenarioDocuments[0]
+    : Array.isArray(knowledgeHealth?.documents)
+      ? knowledgeHealth.documents.find((document: any) => document.documentType === "scenario")
+      : null;
+  const scenarioFileName = scenarioDocument?.title || localConfig.customerServiceScriptFileName;
 
   // Pagination states for Logs
   const [logsPage, setLogsPage] = useState(1);
@@ -67,6 +75,7 @@ export function AiCommentReplyManager({
   const [driveLink, setDriveLink] = useState("");
   const [syncingDrive, setSyncingDrive] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadingScenarioFile, setUploadingScenarioFile] = useState(false);
   const [clearingKnowledge, setClearingKnowledge] = useState(false);
 
   // Cache of Facebook post detail info (message and picture URL)
@@ -127,6 +136,8 @@ export function AiCommentReplyManager({
               autoFeedback: true,
               replyDelay: config.replyDelay ?? 15,
               advancedInstructions: config.advancedInstructions ?? "",
+              customerServiceScript: config.customerServiceScript ?? "",
+              customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
               trainingKnowledge: config.trainingKnowledge ?? "",
               model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
               autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
@@ -150,6 +161,8 @@ export function AiCommentReplyManager({
           autoFeedback: true,
           replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
           advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
+          customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
+          customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
           trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
           model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
           autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
@@ -606,6 +619,61 @@ export function AiCommentReplyManager({
     }
   };
 
+  const handleUploadCustomerServiceScript = async (file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Tệp kịch bản vượt quá dung lượng tối đa 10MB.");
+      return;
+    }
+
+    setUploadingScenarioFile(true);
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = typeof reader.result === "string" ? reader.result.split(",")[1] : "";
+          if (result) resolve(result);
+          else reject(new Error("Không thể đọc tệp kịch bản."));
+        };
+        reader.onerror = () => reject(new Error("Không thể đọc tệp kịch bản."));
+        reader.readAsDataURL(file);
+      });
+      const { geminiApi } = await import("../../api/gemini");
+      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
+      setLocalConfig({
+        ...localConfig,
+        customerServiceScript: "",
+        customerServiceScriptFileName: file.name,
+      });
+      await fetchAIHealth();
+      if (data.truncated) toast.info("Đã nạp kịch bản vào RAG riêng; nội dung được giới hạn còn 20.000 ký tự.");
+      else toast.success(`Đã nạp kịch bản từ ${file.name} vào RAG riêng; AI sẽ dùng nội dung liên quan khi trả lời.`);
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Không thể nạp tệp kịch bản vào RAG.");
+    } finally {
+      setUploadingScenarioFile(false);
+    }
+  };
+
+  const handleClearCustomerServiceScenario = async () => {
+    setUploadingScenarioFile(true);
+    try {
+      const { geminiApi } = await import("../../api/gemini");
+      await geminiApi.clearCustomerServiceScenario();
+      setLocalConfig({
+        ...localConfig,
+        customerServiceScript: "",
+        customerServiceScriptFileName: "",
+      });
+      await fetchAIHealth();
+      toast.success("Đã xóa kịch bản khỏi RAG riêng.");
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.message || "Không thể xóa kịch bản.");
+    } finally {
+      setUploadingScenarioFile(false);
+    }
+  };
   // Clear/Reset Knowledge
   const handleClearKnowledge = async () => {
     if (clearingKnowledge) return;
@@ -1005,14 +1073,35 @@ export function AiCommentReplyManager({
                   {/* Advanced Instructions */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
-                      Chỉ dẫn nâng cao (AI Prompts)
+                      Thiết lập rule
                     </label>
                     <textarea
-                      placeholder="Nhập luật hành xử nghiêm ngặt cho AI (vd: xưng hô Dạ/Thưa, tập trung trả lời đúng trọng tâm)..."
+                      placeholder="Nhập rule bổ sung riêng cho doanh nghiệp này..."
                       value={localConfig.advancedInstructions}
                       onChange={(e) => setLocalConfig({ ...localConfig, advancedInstructions: e.target.value })}
                       className="w-full h-24 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+                      Kịch bản chăm sóc khách hàng (tùy chọn)
+                    </label>
+                    {scenarioFileName || localConfig.customerServiceScript ? (
+                      <div className="flex items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[10px] text-indigo-800">
+                        <FileText className="h-4 w-4 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">{scenarioFileName || "Kịch bản đã lưu từ cấu hình trước"}</span>
+                        <button type="button" onClick={handleClearCustomerServiceScenario} disabled={uploadingScenarioFile} className="shrink-0 rounded p-1 text-slate-500 hover:bg-white hover:text-red-600 disabled:opacity-50" title="Xóa kịch bản">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      ) : null}
+                      <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50">
+                        <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md" className="sr-only" disabled={uploadingScenarioFile} onChange={(event) => { const file = event.target.files?.[0]; if (file) handleUploadCustomerServiceScript(file); event.currentTarget.value = ""; }} />
+                        <UploadCloud className="h-4 w-4 text-indigo-600" />
+                        <span>{uploadingScenarioFile ? "Đang nạp kịch bản vào RAG..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
+                      </label>
+                    <p className="text-[9px] leading-relaxed text-slate-400">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Tệp được lưu vào RAG riêng; AI truy xuất các bước liên quan theo ngữ cảnh hội thoại.</p>
                   </div>
 
                   {/* Manual Training Knowledge */}

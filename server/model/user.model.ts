@@ -58,6 +58,8 @@ export const AiAutoReplyConfigSchema = new Schema(
     autoFeedback: { type: Boolean, default: false },
     replyDelay: { type: Number, default: 15 },
     advancedInstructions: { type: String, default: "" },
+    customerServiceScript: { type: String, default: "" },
+    customerServiceScriptFileName: { type: String, default: "" },
     trainingKnowledge: { type: String, default: "" },
     model: { type: String, default: "deepseek-v4-flash-0731" },
     autoFollowUpEnabled: { type: Boolean, default: false },
