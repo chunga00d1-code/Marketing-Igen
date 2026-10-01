@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   igen-marketing:
     image: ghcr.io/chunga00d1-code/marketing-igen:${IMAGE_TAG:-latest}
