@@ -7,6 +7,7 @@ import { MarketingContentModel } from "../model/marketing-content.model";
 import { UserModel } from "../model/user.model";
 import { broadcastEvent } from "../socket";
 import { heygenLegacyService } from "./heygen-legacy.service";
+import { fetchHeyGen } from "./heygen-http";
 
 type HeyGenLibraryItem = {
   id: string;
@@ -166,7 +167,7 @@ export async function requestHeyGenJson(path: string, init?: RequestInit, overri
   const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 seconds timeout
 
   try {
-    const response = await fetch(`${HEYGEN_API_BASE}${path}`, {
+    const response = await fetchHeyGen(`${HEYGEN_API_BASE}${path}`, {
       ...init,
       signal: controller.signal,
       headers: {
@@ -1001,7 +1002,7 @@ export const heygenService = {
       requestBody.engine = { type: "avatar_iii" };
     }
 
-    const response = await fetch(`${HEYGEN_API_BASE}/v3/videos`, {
+    const response = await fetchHeyGen(`${HEYGEN_API_BASE}/v3/videos`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
