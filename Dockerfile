@@ -41,8 +41,9 @@ ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium-headless-shell
 # Copy package files first to leverage Docker build cache for node_modules
 COPY --from=builder /app/package.json /app/yarn.lock ./
 
-# Install only production dependencies
-RUN yarn install --production --frozen-lockfile
+# Install production dependencies and remove the download cache in the same layer.
+RUN yarn install --production --frozen-lockfile \
+    && yarn cache clean
 
 # Fail the image build before deployment if Sharp or its bundled musl libvips is missing.
 RUN node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"
