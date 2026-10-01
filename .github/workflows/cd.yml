@@ -131,6 +131,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || '22' }}
           envs: ENV_FILE_CONTENT
           script: |
+            set -e
             TARGET_DIR="/opt/igen-marketing/staging"
             IMAGE_TAG="develop"
             CONTAINER_NAME="igen-marketing-staging"
@@ -179,6 +180,7 @@ jobs:
           port: ${{ secrets.SSH_PORT_PROD || '22' }}
           envs: ENV_FILE_CONTENT
           script: |
+            set -e
             TARGET_DIR="/opt/igen-marketing/production"
             IMAGE_TAG="production"
             CONTAINER_NAME="igen-marketing-production"
