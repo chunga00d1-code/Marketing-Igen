@@ -7,6 +7,7 @@ import {
   HeyGenApiError,
   CreateAvatarVideoInput
 } from "./heygen.service";
+import { fetchHeyGen } from "./heygen-http";
 
 const HEYGEN_API_BASE = "https://api.heygen.com";
 
@@ -112,7 +113,7 @@ export const heygenLegacyService = {
       requestBody.callback_url = webhookUrl;
     }
 
-    const response = await fetch(`${HEYGEN_API_BASE}/v2/video/generate`, {
+    const response = await fetchHeyGen(`${HEYGEN_API_BASE}/v2/video/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
