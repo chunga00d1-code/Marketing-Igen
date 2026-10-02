@@ -318,6 +318,7 @@ export default function CRMTab() {
     autoCloseDeal: true,
     autoFeedback: true,
     replyDelay: 15,
+    customerAddressStyle: "",
     advancedInstructions: "",
     customerServiceScript: "",
     customerServiceScriptFileName: "",
@@ -356,6 +357,7 @@ export default function CRMTab() {
         autoCloseDeal: true,
         autoFeedback: true,
         replyDelay: config.replyDelay ?? 15,
+        customerAddressStyle: config.customerAddressStyle ?? "",
         advancedInstructions: config.advancedInstructions ?? "",
         customerServiceScript: config.customerServiceScript ?? "",
         customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
@@ -377,6 +379,7 @@ export default function CRMTab() {
         autoCloseDeal: true,
         autoFeedback: true,
         replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
+        customerAddressStyle: userProfile.aiAutoReplyConfig.customerAddressStyle ?? "",
         advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
         customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
         customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
@@ -414,7 +417,7 @@ export default function CRMTab() {
         }
       } else {
         const pageId = activeCustomer?.pageId || selectedFacebookPageId;
-        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && (item.username === pageId || item.isConnected));
+        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && item.username === pageId);
         if (fbIntegration?._id && !fbIntegration._id.startsWith("company_")) {
           targetIntegrationId = fbIntegration._id;
         }

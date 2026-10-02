@@ -44,6 +44,7 @@ export function AiCommentReplyManager({
     autoCloseDeal: false,
     autoFeedback: false,
     replyDelay: 15,
+    customerAddressStyle: "",
     advancedInstructions: "",
     customerServiceScript: "",
     customerServiceScriptFileName: "",
@@ -135,6 +136,7 @@ export function AiCommentReplyManager({
               autoCloseDeal: true,
               autoFeedback: true,
               replyDelay: config.replyDelay ?? 15,
+              customerAddressStyle: config.customerAddressStyle ?? "",
               advancedInstructions: config.advancedInstructions ?? "",
               customerServiceScript: config.customerServiceScript ?? "",
               customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
@@ -160,6 +162,7 @@ export function AiCommentReplyManager({
           autoCloseDeal: true,
           autoFeedback: true,
           replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
+          customerAddressStyle: userProfile.aiAutoReplyConfig.customerAddressStyle ?? "",
           advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
           customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
           customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
@@ -428,7 +431,7 @@ export function AiCommentReplyManager({
         ? facebookPages.find(p => p.username === selectedFacebookPageId)?._id
         : tiktokAccounts.find(a => a.username === selectedTiktokAccountId)?._id;
 
-      if (selectedId && !selectedId.startsWith("company_")) {
+      if (selectedId && selectedId !== "personal" && !selectedId.startsWith("company_")) {
         const res = await fetch(`/api/v1/crud/social-integrations/${selectedId}`, {
           method: "PATCH",
           headers: {
@@ -1070,6 +1073,20 @@ export function AiCommentReplyManager({
 
               {sectionsExpanded.manual && (
                 <div className="p-4 space-y-4 text-left">
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+                      Cách xưng hô với khách
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ví dụ: anh - chị (để trống để dùng mặc định anh/chị)"
+                      value={localConfig.customerAddressStyle ?? ""}
+                      onChange={(e) => setLocalConfig({ ...localConfig, customerAddressStyle: e.target.value })}
+                      className="w-full px-2.5 py-2 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
+                    />
+                    <p className="text-[9px] leading-relaxed text-slate-400">AI sẽ dùng đúng cách viết này thay cho “anh/chị” trong câu trả lời.</p>
+                  </div>
+
                   {/* Advanced Instructions */}
                   <div className="space-y-1.5">
                     <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
