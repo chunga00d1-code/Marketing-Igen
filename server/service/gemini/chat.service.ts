@@ -33,6 +33,13 @@ function sanitizePlainTextRule(candidate: string, ruleText: string): string {
     .trim();
 }
 
+function applyCustomerAddressStyle(candidate: string, addressStyle: unknown): string {
+  const preferredStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
+  if (!preferredStyle) return candidate;
+
+  return candidate.replace(/anh(?:\s*\/\s*|\s+)chị/giu, () => preferredStyle);
+}
+
 function appendCustomGuidance(
   baseInstruction: string,
   scenarioText: unknown,
@@ -71,12 +78,25 @@ async function applyAdvancedRules(
   model: string,
   ruleText: unknown,
   context: string,
-  responseParts: string[]
+  responseParts: string[],
+  addressStyle?: unknown
 ): Promise<string[]> {
   const rules = typeof ruleText === "string" ? ruleText.trim() : "";
-  if (!rules) return responseParts;
+  const preferredAddressStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
+  if (!rules) {
+    return responseParts.map((part) => applyCustomerAddressStyle(part, preferredAddressStyle));
+  }
 
-  const sanitize = (parts: string[]) => parts.map((part) => sanitizePlainTextRule(part, rules));
+  const reviewerRules = [
+    preferredAddressStyle
+      ? `Cách xưng hô với khách phải được viết chính xác là “${preferredAddressStyle}”, thay cho “anh/chị”.`
+      : "",
+    rules,
+  ].filter(Boolean).join("\n");
+
+  const sanitize = (parts: string[]) => parts.map((part) =>
+    sanitizePlainTextRule(applyCustomerAddressStyle(part, preferredAddressStyle), reviewerRules)
+  );
   const candidateParts = sanitize(responseParts);
   const review = async (parts: string[], includeCorrection: boolean) => {
     const responseSchema = includeCorrection
@@ -95,7 +115,7 @@ async function applyAdvancedRules(
         };
     const response = await generateText(
       model,
-      JSON.stringify({ rules, customerContext: context, customerVisibleResponses: parts }),
+      JSON.stringify({ rules: reviewerRules, customerContext: context, customerVisibleResponses: parts }),
       {
         systemInstruction: [
           "You are a strict business-rule compliance reviewer for customer-service replies.",
@@ -193,13 +213,18 @@ export class GeminiChatService {
     };
 
     const advancedRules = String(aiConfig?.advancedInstructions || "").trim();
+    const customerAddressStyle = String(aiConfig?.customerAddressStyle || "").trim();
     const customerServiceScript = String(aiConfig?.customerServiceScript || "").trim();
     const scenarioGuidance = String(ragContext?.scenarioContextText || customerServiceScript).trim();
     if (!process.env.OPENROUTER_API_KEY) {
       if (advancedRules || scenarioGuidance) {
         throw new Error("Cannot apply custom reply guidance because OPENROUTER_API_KEY is not configured.");
       }
-      return getMockResponse();
+      const mockResponse = await getMockResponse();
+      return {
+        ...mockResponse,
+        text: applyCustomerAddressStyle(mockResponse.text, customerAddressStyle),
+      };
     }
 
     const detectedIntent = detectChatIntent(message, history);
@@ -273,6 +298,7 @@ NGUYÊN TẮC HỖ TRỢ CHỦ ĐỘNG VÀ CÓ TRÁCH NHIỆM:
 Tùy từng doanh nghiệp sẽ có ngành nghề, phong cách thương hiệu (Tone of Voice) và quy tắc giao tiếp hoàn toàn khác nhau:
 ${aiConfig.advancedInstructions ? `👉 CHỈ DẪN ĐẶC BIỆT TỪ DOANH NGHIỆP (BẮT BUỘC TUÂN THỦ ƯU TIÊN HÀNG ĐẦU):
 ${aiConfig.advancedInstructions}` : "- Doanh nghiệp sử dụng phong cách chăm sóc khách hàng chuẩn mực, tự nhiên và thân thiện."}
+${customerAddressStyle ? `👉 CÁCH XƯNG HÔ VỚI KHÁCH (PHẢI GIỮ ĐÚNG CÁCH VIẾT): ${customerAddressStyle}` : ""}
 
 - NGUYÊN TẮC TÙY BIẾN:
   + Nếu doanh nghiệp có chỉ dẫn riêng về cách xưng hô (ví dụ: "Shop - Bạn", "Em - Anh/Chị", "Chuyên viên - Quý khách"), hãy tuân thủ chính xác chỉ dẫn của doanh nghiệp đó.
@@ -341,7 +367,8 @@ STYLE OVERRIDE:
         selectedModel,
         advancedRules,
         JSON.stringify({ message, recentHistory: history.slice(-6) }),
-        [response.text]
+        [response.text],
+        customerAddressStyle
       );
       response.text = checkedResponse;
 
@@ -378,6 +405,7 @@ STYLE OVERRIDE:
     }
 
     const advancedRules = String(aiConfig?.advancedInstructions || "").trim();
+    const customerAddressStyle = String(aiConfig?.customerAddressStyle || "").trim();
     const customerServiceScript = String(aiConfig?.customerServiceScript || "").trim();
     const scenarioGuidance = String(ragContext?.scenarioContextText || customerServiceScript).trim();
     const systemInstruction = `
@@ -397,6 +425,7 @@ ${ragContext?.contextText ? ragContext.contextText : "- Không tìm thấy tri t
 ======================================================================
 ${aiConfig.advancedInstructions ? `👉 CHỈ DẪN ĐẶC BIỆT TỪ DOANH NGHIỆP:
 ${aiConfig.advancedInstructions}` : "- Doanh nghiệp sử dụng phong cách chăm sóc khách hàng lịch thiệp, chu đáo."}
+${customerAddressStyle ? `👉 CÁCH XƯNG HÔ VỚI KHÁCH (PHẢI GIỮ ĐÚNG CÁCH VIẾT): ${customerAddressStyle}` : ""}
 
 QUY TẮC PHẢN HỒI BÌNH LUẬN CÔNG KHAI (publicComment):
 - ĐỘ DÀI: Cực kỳ ngắn gọn và súc tích, tối đa khoảng 1 đến 2 câu ngắn.
@@ -457,7 +486,8 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
         selectedModel,
         advancedRules,
         JSON.stringify({ customerMessage: message }),
-        [publicComment, privateInbox]
+        [publicComment, privateInbox],
+        customerAddressStyle
       );
       publicComment = checkedPublicComment;
       privateInbox = checkedPrivateInbox;
@@ -508,6 +538,7 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
     }
 
     const advancedRules = String(aiConfig?.advancedInstructions || "").trim();
+    const customerAddressStyle = String(aiConfig?.customerAddressStyle || "").trim();
     const customerServiceScript = String(aiConfig?.customerServiceScript || "").trim();
     const scenarioGuidance = String(ragContext?.scenarioContextText || customerServiceScript).trim();
     if (!process.env.OPENROUTER_API_KEY) {
@@ -515,7 +546,10 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
         throw new Error("Cannot apply custom reply guidance because OPENROUTER_API_KEY is not configured.");
       }
       return {
-        text: `Dạ em chào anh/chị ạ! Không biết mình còn cần bên em hỗ trợ tư vấn thêm thông tin nào về sản phẩm nữa không ạ?`,
+        text: applyCustomerAddressStyle(
+          `Dạ em chào anh/chị ạ! Không biết mình còn cần bên em hỗ trợ tư vấn thêm thông tin nào về sản phẩm nữa không ạ?`,
+          customerAddressStyle
+        ),
         isMock: true,
       };
     }
@@ -537,6 +571,7 @@ Yêu cầu nghiêm ngặt:
 4. Xưng hô "em", gọi khách là "anh/chị" hoặc xưng hô lịch sự phù hợp với ngữ cảnh.
 ${ragContext?.contextText ? `\nNgữ cảnh tài liệu nội bộ:\n${ragContext.contextText.slice(0, 2000)}` : ""}
 ${customPrompt ? `\nLưu ý đặc biệt từ doanh nghiệp:\n${customPrompt}` : ""}
+${customerAddressStyle ? `\nCách xưng hô với khách: dùng chính xác “${customerAddressStyle}” thay cho “anh/chị”.` : ""}
 `.trim();
 
     const userPrompt = `
@@ -562,14 +597,18 @@ Hãy viết 1 tin nhắn Follow-up ngắn gọn, ấm áp để hỏi thăm và 
         selectedModel,
         advancedRules,
         conversationExcerpt,
-        [replyText]
+        [replyText],
+        customerAddressStyle
       );
       return { text: checkedReply, isMock: false };
     } catch (error) {
       console.error("[geminiService.generateFollowUpMessage] Error:", error);
       if (advancedRules || scenarioGuidance) throw error;
       return {
-        text: `Dạ em chào anh/chị ạ! Không biết mình còn băn khoăn hay cần bên em hỗ trợ giải đáp thêm thông tin nào nữa không ạ?`,
+        text: applyCustomerAddressStyle(
+          `Dạ em chào anh/chị ạ! Không biết mình còn băn khoăn hay cần bên em hỗ trợ giải đáp thêm thông tin nào nữa không ạ?`,
+          customerAddressStyle
+        ),
         isMock: true,
       };
     }

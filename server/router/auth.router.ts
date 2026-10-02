@@ -106,6 +106,7 @@ const updateProfileSchema = {
       autoCloseDeal: Joi.boolean().optional(),
       autoFeedback: Joi.boolean().optional(),
       replyDelay: Joi.number().optional(),
+      customerAddressStyle: Joi.string().allow("").optional(),
       advancedInstructions: Joi.string().allow("").optional(),
       customerServiceScript: Joi.string().allow("").optional(),
       customerServiceScriptFileName: Joi.string().allow("").optional(),

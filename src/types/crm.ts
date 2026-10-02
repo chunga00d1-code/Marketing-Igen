@@ -45,6 +45,7 @@ export interface AIChatConfig {
   autoCloseDeal: boolean;
   autoFeedback: boolean;
   replyDelay: number; // in seconds
+  customerAddressStyle?: string;
   advancedInstructions: string;
   customerServiceScript?: string;
   customerServiceScriptFileName?: string;

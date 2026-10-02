@@ -214,6 +214,20 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
           <p className="text-[10px] leading-relaxed text-slate-500">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Tệp được lưu vào RAG riêng; AI truy xuất các bước liên quan theo ngữ cảnh hội thoại.</p>
         </div>
 
+        <div className="pt-4 border-t border-slate-100 space-y-2">
+          <label className="block font-extrabold text-slate-700">Cách xưng hô với khách</label>
+          <input
+            type="text"
+            placeholder="Ví dụ: anh - chị (để trống để dùng mặc định anh/chị)"
+            value={localConfig.customerAddressStyle ?? ""}
+            onChange={(e) => setLocalConfig({ ...localConfig, customerAddressStyle: e.target.value })}
+            className="w-full p-3 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-xs leading-relaxed focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all duration-200"
+          />
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            AI sẽ dùng đúng cách viết này thay cho “anh/chị” trong câu trả lời.
+          </p>
+        </div>
+
         {/* Custom active coreinstructions constraints */}
         <div className="pt-4 border-t border-slate-100 space-y-2">
           <label className="block font-extrabold text-slate-700">Thiết lập rule</label>
