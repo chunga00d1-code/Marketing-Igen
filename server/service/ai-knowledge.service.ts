@@ -6,6 +6,7 @@ import { AIReplyLogModel } from "../model/ai-reply-log.model";
 import { AIFaqCandidateModel } from "../model/ai-faq-candidate.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { geminiService } from "./gemini.service";
+import { buildChatKnowledgeQuery, type ChatContextMessage } from "./chat-context";
 
 const EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_TOP_K = 5;
@@ -859,6 +860,30 @@ export const aiKnowledgeService = {
     return { document, chunksCount: chunks.length };
   },
 
+  async prepareChatContext(params: {
+    companyCode?: string;
+    message: string;
+    history?: ChatContextMessage[];
+    channel?: "facebook" | "zalo" | "tiktok";
+    pageId?: string;
+    trainingKnowledge?: string;
+  }) {
+    const history = params.history || [];
+    const query = buildChatKnowledgeQuery(params.message, history);
+    const scope = { companyCode: params.companyCode, channel: params.channel, pageId: params.pageId };
+    const scenarioQuery = [...history.slice(-6).map((item) => item.text), params.message].join("\n").slice(-4000);
+    const [ragContext, scenarioContext] = await Promise.all([
+      this.searchRelevantContext({ ...scope, query, topK: 8 }),
+      this.searchScenarioContext({ ...scope, query: scenarioQuery, topK: 5 }),
+    ]);
+    return this.buildEffectiveRagContext({
+      companyCode: params.companyCode,
+      ragContext,
+      scenarioContext,
+      trainingKnowledge: params.trainingKnowledge,
+    });
+  },
+
   async searchRelevantContext(params: {
     companyCode?: string;
     query: string;
@@ -891,7 +916,7 @@ export const aiKnowledgeService = {
     const channel = params.channel || "facebook";
     const purpose = params.purpose || "sales";
 
-    const hasCommerceIntent = /\b(san pham|mua|ban|xem hang|xem san pham|danh sach|catalog|bang gia|bao gia|gia|bao nhieu|co gi|con gi|loai nao|mau nao|size nao|model nao|con hang|het hang|lay|dat hang|ship|gui)\b/.test(normalizedQuery);
+    const hasCommerceIntent = /\b(san pham|mua|ban|xem hang|xem san pham|danh sach|catalog|bang gia|bao gia|gia|bao nhieu|co gi|con gi|loai nao|mau nao|size nao|model nao|con hang|het hang|lay|dat hang|ship|gui)\b/.test(normalizeForLookup(normalizedQuery));
     const isProductQuery = hasCommerceIntent;
 
     // Câu hỏi sản phẩm cần nhiều chunk hơn vì dữ liệu bảng Excel được chia theo nhóm sản phẩm
@@ -1034,7 +1059,7 @@ export const aiKnowledgeService = {
         const coreDocIds = coreDocs.map((d) => d._id);
         const coreDocMap = new Map(coreDocs.map((d) => [String(d._id), d]));
         const coreChunks = await AIKnowledgeChunkModel.find({
-          companyCode,
+          ...filter,
           documentId: { $in: coreDocIds },
         })
           .sort({ chunkIndex: 1 })

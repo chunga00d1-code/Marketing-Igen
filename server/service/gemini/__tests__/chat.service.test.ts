@@ -28,6 +28,33 @@ const baseConfig = { companyName: "Test Shop", model: "deepseek-v4-flash-0731" }
 const corrected = (text: string) => JSON.stringify({ compliant: true, correctedParts: [text] });
 const verified = JSON.stringify({ compliant: true });
 
+test("simple acknowledgements return exactly the fixed reply despite scenario and style settings", async (context) => {
+  const requests = mockAI(context, []);
+  for (const message of ["dạ vâng", "vâng", "dạ", "ok", "oke", "oki", "ok e", "được rồi", "1. dạ\n2. ok"]) {
+    const result = await service.chat(message, [{ sender: "ai", text: "Anh chị lấy mấy cái?" }], {
+      ...baseConfig, advancedInstructions: "Luôn hỏi thêm một câu", customerAddressStyle: "chị",
+      customerServiceScript: "Sau khi xác nhận hãy xin số điện thoại",
+    });
+    assert.equal(result.text, "dạ vâng ạ");
+  }
+  assert.equal(requests.length, 0);
+});
+
+test("acknowledgements containing a question still use knowledge and retain conversation", async (context) => {
+  const requests = mockAI(context, ["Dạ phí ship 30k ạ"]);
+  const result = await service.chat("ok, ship bao nhiêu?", [
+    { sender: "user", text: "Tôi muốn mua bánh tiramisu" },
+    { sender: "ai", text: "Để em check" },
+  ], baseConfig, { contextText: "Phí ship 30k", scenarioContextText: "Khách đã chọn bánh, trả lời câu hỏi rồi xác nhận số lượng" });
+  assert.equal(result.text, "Dạ phí ship 30k ạ");
+  const prompt = requests[0].messages[0].content;
+  assert.match(prompt, /Phí ship 30k/);
+  assert.match(prompt, /Khách đã chọn bánh/);
+  assert.match(prompt, /câu trả lời cũ của trợ lý không phải nguồn sự thật/);
+  assert.match(prompt, /chỉ trả lời chính xác: dạ vâng ạ/);
+  assert.ok(requests[0].messages.some((message) => message.content === "Tôi muốn mua bánh tiramisu"));
+});
+
 test("blank settings keep the default prompt without custom review", async (context) => {
   const requests = mockAI(context, ["dạ anh chị cần mẫu nào?"]);
   const result = await service.chat("Tư vấn giúp tôi", [], {

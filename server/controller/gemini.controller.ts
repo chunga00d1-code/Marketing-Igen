@@ -14,6 +14,7 @@ import * as XLSX from "xlsx";
 import AdmZip from "adm-zip";
 import { PDFParse } from "pdf-parse";
 import { openrouterChat } from "../service/openrouter.service";
+import { prepareChatPreview } from "../service/chat-preview.service";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
   const rawMessage = String(error.message || "");
@@ -626,25 +627,11 @@ export const geminiController = {
       const cost = getTextModelCost(aiConfig);
       await walletService.checkBalance(userId, cost);
       const companyCode = (req as any).user?.companyCode;
-      const scenarioQuery = [...(history || []).slice(-6).map((item: any) => item.text), message].join(" ").slice(-4000);
-      const [ragContext, scenarioContext] = await Promise.all([
-        aiKnowledgeService.searchRelevantContext({
-          companyCode,
-          query: message,
-          channel: "facebook",
-          topK: 5,
-        }),
-        aiKnowledgeService.searchScenarioContext({
-          companyCode,
-          query: scenarioQuery,
-          channel: "facebook",
-          topK: 5,
-        }),
-      ]);
-      const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
+      const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
         companyCode,
-        ragContext,
-        scenarioContext,
+        message,
+        history,
+        channel: "facebook",
         trainingKnowledge: aiConfig?.trainingKnowledge,
       });
       const result = await geminiService.chat(message, history, aiConfig, effectiveRagContext);
@@ -764,7 +751,7 @@ export const geminiController = {
    */
   async testReply(req: AuthenticatedRequest, res: Response) {
     try {
-      const { message, aiConfig } = req.body;
+      const { message, conversationId, platformId, channel = "facebook" } = req.body;
       const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
         ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
         : String(req.user?.companyCode || "").trim().toUpperCase();
@@ -773,29 +760,18 @@ export const geminiController = {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
 
+      const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
+      const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId }, resolveAutoReplyOwner);
+      const aiConfig = preview.aiConfig;
       const cost = getTextModelCost(aiConfig);
       await walletService.checkBalance(userId, cost);
       const startedAt = Date.now();
-      const scenarioQuery = String(message || "").slice(-4000);
-      const [ragContext, scenarioContext] = await Promise.all([
-        aiKnowledgeService.searchRelevantContext({
-          companyCode,
-          query: message,
-          channel: "facebook",
-          topK: 5,
-        }),
-        aiKnowledgeService.searchScenarioContext({
-          companyCode,
-          query: scenarioQuery,
-          channel: "facebook",
-          topK: 5,
-        }),
-      ]);
-
-      const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
+      const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
         companyCode,
-        ragContext,
-        scenarioContext,
+        message,
+        history: preview.history,
+        channel: preview.channel,
+        pageId: preview.pageId,
         trainingKnowledge: aiConfig?.trainingKnowledge,
       });
       const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
@@ -805,7 +781,7 @@ export const geminiController = {
         ...effectiveRagContextDebug,
       }));
 
-      const result = await geminiService.chat(message, [], aiConfig || {}, effectiveRagContext);
+      const result = await geminiService.chat(message, preview.history, aiConfig, effectiveRagContext);
       const log = await aiKnowledgeService.createReplyLog({
         companyCode,
         channel: "test",
@@ -826,6 +802,9 @@ export const geminiController = {
       });
     } catch (error: any) {
       console.error("[geminiController.testReply] Error:", error);
+      if (error.status === 403 || error.status === 404) {
+        return res.status(error.status).json({ status: "error", message: error.message });
+      }
       return handleGeminiError(res, error, "Không thể tạo câu trả lời thử");
     }
   },

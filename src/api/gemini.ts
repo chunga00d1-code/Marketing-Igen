@@ -314,14 +314,18 @@ export const geminiApi = {
     return response.json();
   },
 
-  async testReply(message: string, aiConfig: any): Promise<any> {
+  async testReply(message: string, context: {
+    channel: "facebook" | "zalo" | "tiktok";
+    conversationId?: string;
+    platformId?: string;
+  }): Promise<any> {
     const response = await fetch("/api/v1/gemini/test-reply", {
       method: "POST",
       headers: getJwtHeaders(true),
-      body: JSON.stringify({ message, aiConfig }),
+      body: JSON.stringify({ message, ...context }),
     });
     if (!response.ok) {
-      throw new Error("Không thể tạo câu trả lời thử");
+      await handleErrorResponse(response, "Không thể tạo câu trả lời thử");
     }
     return response.json();
   },

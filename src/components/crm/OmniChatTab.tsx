@@ -25,6 +25,8 @@ type OmniChatTabProps = {
   onUpdateLeadStatus: (id: string, newStatus: "cold" | "warm" | "hot" | "won" | "upsell") => void;
   facebookPages: Array<{ _id: string; displayName: string; username: string; isMock?: boolean }>;
   selectedFacebookPageId: string;
+  selectedZaloAccountId: string;
+  selectedTiktokAccountId: string;
   setSelectedFacebookPageId: (val: string) => void;
   handleApplyToAllPages?: () => void;
   copyingConfig?: boolean;
@@ -57,6 +59,8 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   onUpdateLeadStatus,
   facebookPages,
   selectedFacebookPageId,
+  selectedZaloAccountId,
+  selectedTiktokAccountId,
   setSelectedFacebookPageId,
   handleApplyToAllPages,
   copyingConfig,
@@ -269,7 +273,14 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     }
     setTestingAI(true);
     try {
-      const result = await geminiApi.testReply(testQuestion, localConfig);
+      const channel = activeCustomer?.channel || (activeChannel === "all" ? "facebook" : activeChannel);
+      const result = await geminiApi.testReply(testQuestion, {
+        channel,
+        conversationId: activeCustomer?.id && /^[0-9a-fA-F]{24}$/.test(activeCustomer.id) ? activeCustomer.id : undefined,
+        platformId: (channel === "facebook"
+          ? activeCustomer?.pageId || selectedFacebookPageId
+          : channel === "zalo" ? selectedZaloAccountId : selectedTiktokAccountId) || undefined,
+      });
       setTestReply(result);
       await refreshAIHealth();
     } catch (err: any) {

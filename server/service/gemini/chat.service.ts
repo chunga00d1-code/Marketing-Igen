@@ -10,6 +10,7 @@ import {
   safeParseJson,
 } from "./core";
 import type { ChatRagContext } from "./types";
+import { ACKNOWLEDGEMENT_REPLY, isSimpleAcknowledgement } from "../chat-context";
 
 function applyCustomerAddressStyle(candidate: string, addressStyle: unknown): string {
   const preferredStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
@@ -150,6 +151,10 @@ export class GeminiChatService {
     aiConfig: any,
     ragContext?: ChatRagContext
   ): Promise<{ text: string; isMock: boolean }> {
+    // A fixed acknowledgement must not be expanded by scenarios or style review.
+    if (isSimpleAcknowledgement(message)) {
+      return { text: ACKNOWLEDGEMENT_REPLY, isMock: false };
+    }
     aiConfig = {
       ...aiConfig,
       autoClassify: true,
@@ -235,7 +240,23 @@ Không tự bịa thông tin khi chưa có dữ liệu
 
 Không tìm thấy thông tin về một sản phẩm không có nghĩa là doanh nghiệp không bán sản phẩm đó
 
-Nếu chưa đủ thông tin để trả lời chính xác, hãy nói tự nhiên rằng em cần check hoặc kiểm tra thêm, không tự suy đoán
+Nếu tri thức đã có thông tin khách hỏi, phải trả lời trực tiếp bằng thông tin đó, kể cả khi câu trả lời trước của trợ lý nói chưa biết hoặc đang kiểm tra
+
+Áp dụng cho mọi thông tin doanh nghiệp: sản phẩm, giá, kích thước, thành phần, dịch vụ, giao hàng, địa chỉ, giờ mở cửa, chính sách và quy trình
+
+Lịch sử dùng để hiểu khách đang nhắc đến sản phẩm, nhu cầu và bước kịch bản nào; câu trả lời cũ của trợ lý không phải nguồn sự thật và không được ghi đè tri thức hiện tại
+
+Với câu hỏi tiếp nối như "check xong chưa", "loại đó thì sao", "thành phần thế nào", xác định nội dung khách hỏi trước đó rồi trả lời từ tri thức hiện tại; không lặp lại lời hẹn kiểm tra
+
+Nếu thiếu thông tin để chọn đúng sản phẩm hoặc biến thể, hỏi ngắn gọn đúng thông tin còn thiếu. Nếu kho tri thức thực sự chưa có câu trả lời, nói rõ chưa có thông tin để xác nhận, không bịa và không hứa sẽ check rồi tự quay lại khi không có tác vụ thực hiện
+
+TIN NHẮN XÁC NHẬN ĐƠN THUẦN
+
+Nếu toàn bộ tin nhắn khách chỉ mang ý xác nhận như "dạ vâng", "vâng", "dạ", "ok", "oke", "oki", "ok e", "được rồi" hoặc cách nói tương đương, chỉ trả lời chính xác: dạ vâng ạ
+
+Không giải thích, không thêm dấu câu, lời cảm ơn, câu hỏi, tư vấn, chốt đơn hay bước kịch bản nào sau câu này. Quy tắc này ưu tiên hơn yêu cầu tiếp tục kịch bản hoặc phong cách khác đối với xác nhận đơn thuần
+
+Nếu khách kèm câu hỏi, yêu cầu hoặc thông tin mới (ví dụ "ok, ship bao nhiêu?", "dạ lấy 2 cái"), phải xử lý nội dung đó, không coi cả tin nhắn là xác nhận đơn thuần
 
 PHONG CÁCH GIAO TIẾP
 
@@ -269,7 +290,7 @@ Không dùng các câu máy móc như "Dạ, em xin cung cấp thông tin như s
 
 Có thể sử dụng một số từ viết tắt hoặc từ quen thuộc trong chat nếu phù hợp như "check", "stk", "sđt", "ok", "ib", "ship", "cod"
 
-Có thể dùng cách nói đời thường như "để em check giúp anh chị nhé", "anh chị gửi em sđt nhé", "bên em còn mẫu này ạ"
+Có thể dùng cách nói đời thường như "anh chị gửi em sđt nhé", "bên em còn mẫu này ạ" khi tri thức xác nhận còn hàng
 
 Không lạm dụng từ viết tắt đến mức khó đọc
 
@@ -301,7 +322,7 @@ Sai:
 "Em sẽ kiểm tra lại thông tin cho Anh/Chị."
 
 Đúng:
-"để em check lại cho anh chị nhé"
+"anh chị muốn hỏi mẫu nào ạ?"
 
 Sai:
 "1. Sản phẩm A giá 500.000đ
@@ -400,11 +421,11 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
         }
       );
 
-      response.text = formatHumanLikeChatReply(response.text || "Dạ, em kiểm tra lại rồi phản hồi mình ngay nhé ạ.");
+      response.text = formatHumanLikeChatReply(response.text || "Dạ hiện em chưa có đủ thông tin để trả lời chính xác ạ");
       const [checkedResponse] = await applyAdvancedRules(
         selectedModel,
         advancedRules,
-        JSON.stringify({ message, recentHistory: history.slice(-6) }),
+        JSON.stringify({ message, recentHistory: history.slice(-6), companyKnowledge: ragContext?.contextText }),
         [response.text],
         customerAddressStyle
       );

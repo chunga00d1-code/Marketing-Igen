@@ -1670,6 +1670,8 @@ export default function CRMTab() {
               onUpdateLeadStatus={moveLeadPipeline}
               facebookPages={facebookPages}
               selectedFacebookPageId={selectedFacebookPageId}
+              selectedZaloAccountId={selectedZaloAccountId}
+              selectedTiktokAccountId={selectedTiktokAccountId}
               setSelectedFacebookPageId={setSelectedFacebookPageId}
               handleApplyToAllPages={handleApplyToAllPages}
               copyingConfig={copyingConfig}
