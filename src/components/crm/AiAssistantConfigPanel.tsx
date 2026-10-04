@@ -406,6 +406,9 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
             >
               {testingAI ? "AI đang trả lời thử..." : "Test câu trả lời AI"}
             </button>
+            <p className="text-[9px] text-slate-500 leading-relaxed">
+              Test dùng cấu hình đã lưu và ngữ cảnh hội thoại đang chọn. Hãy lưu thay đổi rule, kịch bản trước khi test.
+            </p>
           </div>
 
           {testReply && (

@@ -332,6 +332,9 @@ const testReplySchema = {
   body: Joi.object({
     message: Joi.string().required(),
     aiConfig: Joi.object().optional(),
+    channel: Joi.string().valid("facebook", "zalo", "tiktok").optional(),
+    conversationId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+    platformId: Joi.string().max(200).optional(),
   }),
 };
 

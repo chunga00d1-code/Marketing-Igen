@@ -841,28 +841,12 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            const scenarioQuery = [...history.slice(-6).map((item) => item.text), groupedCustomerMessage].join(" ").slice(-4000);
-            const [ragContext, scenarioContext] = await Promise.all([
-              aiKnowledgeService.searchRelevantContext({
-                companyCode,
-                query: groupedCustomerMessage,
-                channel,
-                pageId: channel === "facebook" ? resolvedPlatformId : undefined,
-                topK: 8,
-              }),
-              aiKnowledgeService.searchScenarioContext({
-                companyCode,
-                query: scenarioQuery,
-                channel,
-                pageId: channel === "facebook" ? resolvedPlatformId : undefined,
-                topK: 5,
-              }),
-            ]);
-
-            const effectiveRagContext = aiKnowledgeService.buildEffectiveRagContext({
+            const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
               companyCode,
-              ragContext,
-              scenarioContext,
+              message: groupedCustomerMessage,
+              history,
+              channel,
+              pageId: channel === "facebook" ? resolvedPlatformId : undefined,
               trainingKnowledge: aiConfig.trainingKnowledge,
             });
             const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
