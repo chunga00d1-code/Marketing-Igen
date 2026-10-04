@@ -200,7 +200,7 @@ function detectRequiredDocumentTypes(query: string): KnowledgeDocumentType[] {
   }
 
   // Nhóm SẢN PHẨM & TÍNH NĂNG & THÔNG SỐ
-  if (/\b(san pham|hang|mau|size|mau sac|chat lieu|model|sku|thong so|kich thuoc|con hang|het hang|kho|trong luong|cong suat|chuc nang|tinh nang|dung nhu nao|xem hang)\b/.test(q)) {
+  if (/\b(san pham|mat hang|mau|size|mau sac|chat lieu|thanh phan|model|sku|thong so|kich thuoc|con hang|het hang|kho|trong luong|cong suat|chuc nang|tinh nang|dung nhu nao|xem hang)\b/.test(q)) {
     detected.add("product");
     detected.add("pricing");
   }
@@ -216,8 +216,14 @@ function detectRequiredDocumentTypes(query: string): KnowledgeDocumentType[] {
     detected.add("pricing");
   }
 
+  // Hỏi nơi đến/lấy hàng cũng cần địa chỉ, kể cả khi không nhắc "shop" hay "địa chỉ".
+  // Không dùng riêng "ở đâu": câu hỏi bảo quản/xuất xứ chưa chắc hỏi nơi bán.
+  const asksVisitLocation = /\b(den|qua|ghe|toi) (o )?(dau|cho nao|noi nao|dia diem nao)\b/.test(q)
+    || /\b(lay|nhan)( (banh|hang|do|san pham))? (thi )?(o |tai )?(dau|cho nao|noi nao|dia diem nao)\b/.test(q)
+    || /\b(shop|cua hang|tiem|ben (em|minh|ban)) (nam |nam o |o |tai )?(dau|cho nao|noi nao|duong nao|quan nao)\b/.test(q);
+
   // Nhóm THÔNG TIN DOANH NGHIỆP & LIÊN HỆ
-  if (/\b(cong ty|doanh nghiep|gioi thieu|dia chi|hotline|sdt|so dien thoai|email|lien he|chi nhanh|la ai|ve ben|shop o dau|cua hang o dau|gio lam viec|gio mo cua|uy tin)\b/.test(q)) {
+  if (asksVisitLocation || /\b(cong ty|doanh nghiep|gioi thieu|dia chi|hotline|sdt|so dien thoai|email|lien he|chi nhanh|la ai|ve ben|shop o dau|cua hang o dau|gio lam viec|gio mo cua|uy tin)\b/.test(q)) {
     detected.add("company_profile");
     detected.add("brand_guideline");
   }
@@ -339,6 +345,7 @@ function normalizeForLookup(text: string) {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -872,10 +879,38 @@ export const aiKnowledgeService = {
     const query = buildChatKnowledgeQuery(params.message, history);
     const scope = { companyCode: params.companyCode, channel: params.channel, pageId: params.pageId };
     const scenarioQuery = [...history.slice(-6).map((item) => item.text), params.message].join("\n").slice(-4000);
-    const [ragContext, scenarioContext] = await Promise.all([
-      this.searchRelevantContext({ ...scope, query, topK: 8 }),
-      this.searchScenarioContext({ ...scope, query: scenarioQuery, topK: 5 }),
+    const detected = detectRequiredDocumentTypes(query);
+    const groups: KnowledgeDocumentType[][] = [];
+    if (detected.some((type) => ["company_profile", "brand_guideline"].includes(type))) groups.push(["company_profile"]);
+    if (detected.some((type) => ["policy", "faq"].includes(type))) groups.push(["policy"]);
+    if (detected.some((type) => ["product", "pricing", "service", "promotion"].includes(type))) groups.push(["product", "pricing"]);
+    // Unclear intent still searches only the three factual sections, with a shared budget.
+    if (!groups.length) groups.push(["company_profile"], ["policy"], ["product", "pricing"]);
+    const [groupContexts, scenarioContext] = await Promise.all([
+      Promise.all(groups.map((documentTypes) => this.searchRelevantContext({
+        ...scope, query, documentTypes, strictDocumentTypes: true, topK: 3,
+        maxContextChars: Math.floor(7500 / groups.length),
+      }))),
+      this.searchRelevantContext({
+        ...scope, query: scenarioQuery, documentTypes: ["scenario"], strictDocumentTypes: true,
+        preserveDocumentOrder: true, topK: 5, maxContextChars: 3500,
+      }),
     ]);
+    const availableContexts = groupContexts.filter((context) => context.contextText.trim());
+    // Keep legacy/unclassified documents useful only when the default sections have no answer.
+    if (!availableContexts.length) {
+      availableContexts.push(await this.searchRelevantContext({
+        ...scope, query, documentTypes: ["general", "faq", "service", "promotion", "brand_guideline"],
+        strictDocumentTypes: true, topK: 5, maxContextChars: 4500,
+      }));
+    }
+    const ragContext = {
+      contextText: availableContexts.map((context) => context.contextText).filter(Boolean).join("\n\n---\n\n"),
+      matches: availableContexts.reduce((total, context) => total + context.matches, 0),
+      bestScore: Math.max(0, ...availableContexts.map((context) => context.bestScore)),
+      productCandidateNames: [...new Set(availableContexts.flatMap((context) => context.productCandidateNames))],
+      shouldAskProductConfirmation: availableContexts.some((context) => context.shouldAskProductConfirmation),
+    };
     return this.buildEffectiveRagContext({
       companyCode: params.companyCode,
       ragContext,
@@ -894,6 +929,7 @@ export const aiKnowledgeService = {
     documentTypes?: KnowledgeDocumentType[];
     strictDocumentTypes?: boolean;
     preserveDocumentOrder?: boolean;
+    maxContextChars?: number;
   }) {
     const companyCode = normalizeCompanyCode(params.companyCode);
     if (!companyCode) {
@@ -923,9 +959,11 @@ export const aiKnowledgeService = {
     const topK = isProductQuery
       ? Math.max(params.topK || DEFAULT_TOP_K, 8)
       : (params.topK || DEFAULT_TOP_K);
-    const maxContextChars = params.strictDocumentTypes && params.documentTypes?.includes("scenario")
+    const defaultContextChars = params.strictDocumentTypes && params.documentTypes?.includes("scenario")
       ? 7000
       : isProductQuery ? 7500 : MAX_CONTEXT_CHARS;
+    const maxContextChars = params.maxContextChars === undefined
+      ? defaultContextChars : Math.max(400, Math.min(7500, params.maxContextChars));
 
     let chunks: any[] = [];
 
@@ -1024,7 +1062,7 @@ export const aiKnowledgeService = {
 
     const finalRanked = ranked.length > 0 ? ranked : fallbackRanked;
     const contextRanked = params.preserveDocumentOrder
-      ? [...finalRanked].sort((a, b) => a.chunkIndex - b.chunkIndex)
+      ? [...finalRanked].sort((a, b) => String(a.documentId).localeCompare(String(b.documentId)) || a.chunkIndex - b.chunkIndex)
       : finalRanked;
 
     let usedChars = 0;
@@ -1032,11 +1070,11 @@ export const aiKnowledgeService = {
     const selectedItems: typeof finalRanked = [];
 
     for (const item of contextRanked) {
-      if (usedChars + item.text.length > maxContextChars) break;
+      if (usedChars + item.text.length > maxContextChars) continue;
       const docTypeTag = (item as any).documentType as KnowledgeDocumentType || "general";
       const tagLabel = DOC_TYPE_LABELS[docTypeTag] || "Tài liệu";
       const labeledText = `[${tagLabel}] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`;
-      if (usedChars + labeledText.length > maxContextChars) break;
+      if (usedChars + labeledText.length > maxContextChars) continue;
       selected.push(labeledText);
       selectedItems.push(item);
       usedChars += labeledText.length;
@@ -1047,6 +1085,7 @@ export const aiKnowledgeService = {
     if (!strictDocumentTypes && selected.length < 2 && companyCode) {
       const coreDocs = await AIKnowledgeDocumentModel.find({
         companyCode,
+        _id: { $in: permittedDocumentIds },
         status: "active",
         documentType: { $ne: "scenario" },
       })

@@ -28,6 +28,18 @@ const baseConfig = { companyName: "Test Shop", model: "deepseek-v4-flash-0731" }
 const corrected = (text: string) => JSON.stringify({ compliant: true, correctedParts: [text] });
 const verified = JSON.stringify({ compliant: true });
 
+test("chat combines knowledge and configured scenarios without losing either workflow", async (context) => {
+  const requests = mockAI(context, ["Dạ chị ạ"]);
+  await service.chat("Tí chị xuống lấy", [{ sender: "user", text: "Chị lấy 1 bánh 22cm" }], {
+    ...baseConfig, customerServiceScript: "Khi đến lấy hướng dẫn vào cửa bên trái",
+  }, { contextText: "Giờ mở cửa 8h đến 21h", scenarioContextText: "Ghi nhận khách đến lấy, không hỏi lại số lượng" });
+  const prompt = requests[0].messages[0].content;
+  assert.match(prompt, /Khi đến lấy hướng dẫn vào cửa bên trái/);
+  assert.match(prompt, /Ghi nhận khách đến lấy, không hỏi lại số lượng/);
+  assert.match(prompt, /không chứng minh đơn cụ thể đã được chuẩn bị/);
+  assert.match(prompt, /Không hỏi lại sản phẩm, kích thước hoặc số lượng khách đã nói rõ/);
+});
+
 test("simple acknowledgements return exactly the fixed reply despite scenario and style settings", async (context) => {
   const requests = mockAI(context, []);
   for (const message of ["dạ vâng", "vâng", "dạ", "ok", "oke", "oki", "ok e", "được rồi", "1. dạ\n2. ok"]) {

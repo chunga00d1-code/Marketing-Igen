@@ -1460,7 +1460,7 @@ export const geminiController = {
       const indexedText = isScenario
         ? scenarioText.slice(0, maxScenarioLength)
         : extractedText;
-      const sourceUrl = isScenario
+      const sourceUrl = isScenario && req.body.appendScenario !== true
         ? "scenario://customer-service"
         : `uploaded://${fileName}_${Date.now()}`;
 
@@ -1478,7 +1478,7 @@ export const geminiController = {
         documentType,
       });
 
-      if (isScenario && companyCode) {
+      if (isScenario && companyCode && req.body.appendScenario !== true) {
         const legacyScenarioFields = {
           $unset: {
             "aiAutoReplyConfig.customerServiceScript": 1,

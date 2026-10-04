@@ -72,6 +72,18 @@ const DOCUMENT_TYPES: Array<{ id: KnowledgeDocumentType; label: string }> = [
   { id: "scenario", label: "Kịch bản chăm sóc khách hàng" },
 ];
 
+const KNOWLEDGE_SECTIONS: Array<{
+  id: KnowledgeDocumentType;
+  label: string;
+  description: string;
+  types: KnowledgeDocumentType[];
+}> = [
+  { id: "company_profile", label: "Giới thiệu", description: "Doanh nghiệp, địa chỉ, giờ mở cửa, liên hệ", types: ["company_profile"] },
+  { id: "policy", label: "Chính sách", description: "Giao hàng, thanh toán, đặt trước, đổi trả", types: ["policy"] },
+  { id: "scenario", label: "Kịch bản", description: "Cách tư vấn và xử lý tình huống với khách", types: ["scenario"] },
+  { id: "product", label: "Sản phẩm/Bảng giá", description: "Sản phẩm, thành phần, kích thước và giá bán", types: ["product", "pricing"] },
+];
+
 function toggleScope<T extends string>(current: T[], value: T) {
   if (value === "all") return ["all"] as T[];
   const withoutAll = current.filter((item) => item !== "all");
@@ -226,7 +238,8 @@ export default function CompanyKnowledgePage() {
   ]);
   const [pageScope, setPageScope] = useState<KnowledgePageScope>("all");
   const [pageIds, setPageIds] = useState<string[]>([]);
-  const [documentType, setDocumentType] = useState<KnowledgeDocumentType>("general");
+  const [documentType, setDocumentType] = useState<KnowledgeDocumentType>("company_profile");
+  const [selectedKnowledgeSection, setSelectedKnowledgeSection] = useState<KnowledgeDocumentType | "all" | "other">("company_profile");
   const [editingId, setEditingId] = useState("");
   const [editPurposeScope, setEditPurposeScope] = useState<
     KnowledgePurposeScope[]
@@ -296,14 +309,16 @@ export default function CompanyKnowledgePage() {
 
   const visibleDocuments = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    if (!normalized) return documents;
-    return documents.filter((document) =>
-      [document.title, document.sourceType, ...document.purposeScope]
+    const section = KNOWLEDGE_SECTIONS.find((item) => item.id === selectedKnowledgeSection);
+    return documents.filter((document) => {
+      if (section && !section.types.includes(document.documentType)) return false;
+      if (selectedKnowledgeSection === "other" && KNOWLEDGE_SECTIONS.some((item) => item.types.includes(document.documentType))) return false;
+      return !normalized || [document.title, document.sourceType, ...document.purposeScope]
         .join(" ")
         .toLowerCase()
-        .includes(normalized)
-    );
-  }, [documents, query]);
+        .includes(normalized);
+    });
+  }, [documents, query, selectedKnowledgeSection]);
 
   async function syncDrive() {
     if (!driveLink.trim()) {
@@ -731,6 +746,38 @@ export default function CompanyKnowledgePage() {
 
         {activeSection === "documents" && (
           <>
+            <section className="mt-5" aria-label="Các mục kho tri thức">
+              <p className="mb-3 text-sm text-slate-600">
+                Chọn mục để xem và tải tài liệu. AI ưu tiên nội dung liên quan trong các mục này khi tư vấn khách hàng.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {KNOWLEDGE_SECTIONS.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    disabled={busy}
+                    aria-pressed={selectedKnowledgeSection === section.id}
+                    onClick={() => { setSelectedKnowledgeSection(section.id); setDocumentType(section.id); }}
+                    className={`rounded-2xl border p-4 text-left transition disabled:opacity-50 ${selectedKnowledgeSection === section.id ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white hover:border-blue-300"}`}
+                  >
+                    <span className="block text-sm font-bold text-slate-900">{section.label}</span>
+                    <span className="mt-1 block text-xs text-slate-500">{section.description}</span>
+                    <span className="mt-3 block text-xs font-semibold text-blue-650">
+                      {documents.filter((document) => section.types.includes(document.documentType)).length} tài liệu
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3 flex gap-2">
+                {([['all', 'Tất cả tài liệu'], ['other', 'Tài liệu khác']] as const).map(([id, label]) => (
+                  <button key={id} type="button" disabled={busy} aria-pressed={selectedKnowledgeSection === id}
+                    onClick={() => setSelectedKnowledgeSection(id)}
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold ${selectedKnowledgeSection === id ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600"}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </section>
             {!canManage && (
               <div className="mt-5 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
                 <ShieldCheck className="h-4 w-4 text-blue-650" />
@@ -746,10 +793,27 @@ export default function CompanyKnowledgePage() {
                     Nhập tài liệu
                   </h2>
                   <p className="mt-1 text-xs text-slate-500">
-                    Chọn một trong hai cách dưới đây. Mặc định tài liệu dùng cho
-                    toàn hệ thống.
+                    Chọn mục lưu tài liệu và một trong hai cách nhập dưới đây. Mặc định tài liệu dùng cho toàn hệ thống.
                   </p>
                 </div>
+
+                <label className="mt-4 block text-xs font-semibold text-slate-700">
+                  Mục lưu tài liệu
+                  <select value={documentType} disabled={busy}
+                    onChange={(event) => {
+                      const type = event.target.value as KnowledgeDocumentType;
+                      setDocumentType(type);
+                      setSelectedKnowledgeSection(KNOWLEDGE_SECTIONS.find((section) => section.types.includes(type))?.id || "other");
+                    }}
+                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm sm:max-w-sm">
+                    {KNOWLEDGE_SECTIONS.map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
+                    <optgroup label="Các loại tài liệu khác">
+                      {DOCUMENT_TYPES.filter((type) => !KNOWLEDGE_SECTIONS.some((section) => section.id === type.id)).map((type) => (
+                        <option key={type.id} value={type.id}>{type.label}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </label>
 
                 <div className="mt-4">
                   <div className="grid max-w-md grid-cols-2 gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-1.5">
@@ -851,18 +915,6 @@ export default function CompanyKnowledgePage() {
                     Tùy chọn phạm vi sử dụng
                   </summary>
                   <div className="mt-4 grid gap-4 rounded-xl bg-slate-50 p-4 md:grid-cols-2">
-                    <label className="text-xs font-semibold text-slate-700">
-                      Loại tài liệu
-                      <select
-                        value={documentType}
-                        onChange={(event) => setDocumentType(event.target.value as KnowledgeDocumentType)}
-                        className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal"
-                      >
-                        {DOCUMENT_TYPES.map((type) => (
-                          <option key={type.id} value={type.id}>{type.label}</option>
-                        ))}
-                      </select>
-                    </label>
                     <ScopePicker
                       label="Nghiệp vụ"
                       options={PURPOSES}
@@ -1001,7 +1053,7 @@ export default function CompanyKnowledgePage() {
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
                 <div>
                   <h2 className="text-sm font-bold text-slate-900">
-                    Tài liệu đã nhập
+                    {KNOWLEDGE_SECTIONS.find((section) => section.id === selectedKnowledgeSection)?.label || (selectedKnowledgeSection === "other" ? "Tài liệu khác" : "Tất cả tài liệu")}
                   </h2>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {health?.chunksCount || 0} khối tri thức đang được sử dụng
@@ -1032,7 +1084,7 @@ export default function CompanyKnowledgePage() {
                       Chưa có tài liệu
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Nhập một file hoặc liên kết Drive để bắt đầu.
+                      Chọn mục lưu rồi nhập file hoặc liên kết Drive để thêm tài liệu. Tài liệu đã có ở mục khác vẫn được giữ nguyên.
                     </p>
                   </div>
                 ) : (

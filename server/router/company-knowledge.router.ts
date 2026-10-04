@@ -106,12 +106,14 @@ companyKnowledgeRouter.post(
   "/documents/upload",
   managerOnly as never,
   validateRequest(uploadSchema),
+  (req, _res, next) => { req.body.appendScenario = true; next(); },
   geminiController.uploadLocalDocument as never
 );
 companyKnowledgeRouter.post(
   "/sync-drive",
   managerOnly as never,
   validateRequest(syncSchema),
+  (req, _res, next) => { req.body.clearExisting = false; next(); },
   geminiController.syncGoogleDrive as never
 );
 companyKnowledgeRouter.patch(

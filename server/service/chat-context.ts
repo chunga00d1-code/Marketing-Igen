@@ -8,6 +8,16 @@ function normalize(text: string): string {
 
 export const ACKNOWLEDGEMENT_REPLY = "dạ vâng ạ";
 
+export function combineChatScenarios(knowledgeScenario: string | undefined, configuredScenario: string): string {
+  const knowledge = (knowledgeScenario || "").trim();
+  const configured = configuredScenario.trim();
+  if (knowledge === configured) return knowledge;
+  return [
+    knowledge ? `[Kịch bản và hướng dẫn từ kho tri thức]\n${knowledge}` : "",
+    configured ? `[Kịch bản cấu hình riêng của kênh]\n${configured}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
 // Match the entire message, never just its opening ("ok, ship bao nhiêu?").
 export function isSimpleAcknowledgement(message: string): boolean {
   const parts = message.split(/\n+/).map((part) => part.replace(/^\s*\d+[.)]\s+/, ""));
@@ -25,6 +35,8 @@ function isContextualQuestion(message: string): boolean {
   return /\b(check|kiem tra|tra cuu|xem) (lai )?(xong|chua|giup)\b/.test(text)
     || /^(co (thong tin|ket qua) chua|sao roi|the nao roi|roi sao|tra loi (giup )?(em|minh|toi))\b/.test(text)
     || /\b(cai|loai|mau|banh|san pham|dich vu|goi) (do|nay|ay|vua roi)\b/.test(text)
+    || /\b(no|cai do|cai nay)\b/.test(text)
+    || /\b(size|kich thuoc) (nho|lon|to|be) hon\b/.test(text)
     || (attributeQuestion !== text && !attributeQuestion && text.split(" ").length <= 16);
 }
 

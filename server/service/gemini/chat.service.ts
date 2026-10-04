@@ -10,7 +10,7 @@ import {
   safeParseJson,
 } from "./core";
 import type { ChatRagContext } from "./types";
-import { ACKNOWLEDGEMENT_REPLY, isSimpleAcknowledgement } from "../chat-context";
+import { ACKNOWLEDGEMENT_REPLY, combineChatScenarios, isSimpleAcknowledgement } from "../chat-context";
 
 function applyCustomerAddressStyle(candidate: string, addressStyle: unknown): string {
   const preferredStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
@@ -204,7 +204,7 @@ export class GeminiChatService {
     const advancedRules = String(aiConfig?.advancedInstructions || "").trim();
     const customerAddressStyle = String(aiConfig?.customerAddressStyle || "").trim();
     const customerServiceScript = String(aiConfig?.customerServiceScript || "").trim();
-    const scenarioGuidance = String(ragContext?.scenarioContextText || customerServiceScript).trim();
+    const scenarioGuidance = combineChatScenarios(ragContext?.scenarioContextText, customerServiceScript);
     if (!process.env.OPENROUTER_API_KEY) {
       if (advancedRules || customerAddressStyle || scenarioGuidance) {
         throw new Error("Cannot apply custom reply guidance because OPENROUTER_API_KEY is not configured.");
@@ -245,6 +245,12 @@ Nếu tri thức đã có thông tin khách hỏi, phải trả lời trực ti�
 Áp dụng cho mọi thông tin doanh nghiệp: sản phẩm, giá, kích thước, thành phần, dịch vụ, giao hàng, địa chỉ, giờ mở cửa, chính sách và quy trình
 
 Lịch sử dùng để hiểu khách đang nhắc đến sản phẩm, nhu cầu và bước kịch bản nào; câu trả lời cũ của trợ lý không phải nguồn sự thật và không được ghi đè tri thức hiện tại
+
+Đọc nội dung tài liệu theo ý nghĩa, không yêu cầu từ trong câu hỏi phải xuất hiện nguyên văn trong tài liệu. Dùng lịch sử để hiểu "nó", "cái đó", "size nhỏ hơn" và câu hỏi lược bỏ tên sản phẩm
+
+Phân biệt thông tin chung với trạng thái thực tế: tài liệu có thể quy định giờ mở cửa hoặc quy trình đến lấy, nhưng không chứng minh đơn cụ thể đã được chuẩn bị, hàng còn sẵn, có nhân viên đang chờ hoặc một thao tác đã hoàn tất. Chỉ xác nhận trạng thái cụ thể khi có bằng chứng rõ trong dữ liệu hiện tại; lời hứa trước của AI không phải bằng chứng
+
+Khi khách chuyển sang sản phẩm hoặc chủ đề khác, trả lời trọng tâm mới; không tự nhắc lại giá hoặc tư vấn sản phẩm trước nếu khách không yêu cầu so sánh
 
 Với câu hỏi tiếp nối như "check xong chưa", "loại đó thì sao", "thành phần thế nào", xác định nội dung khách hỏi trước đó rồi trả lời từ tri thức hiện tại; không lặp lại lời hẹn kiểm tra
 
@@ -366,6 +372,10 @@ Kịch bản chỉ dùng để định hướng cuộc trò chuyện, không đ�
 Chỉ áp dụng bước phù hợp với trạng thái hiện tại của cuộc hội thoại
 
 Không lặp lại bước đã hoàn thành
+
+Đọc và phối hợp cả kịch bản trong kho tri thức lẫn kịch bản cấu hình riêng. Nếu hai nguồn khác nhau về cách triển khai một bước, ưu tiên cấu hình riêng của kênh cho bước đó và giữ các hướng dẫn không mâu thuẫn từ kho tri thức; không dùng kịch bản để tự tạo thông tin thực tế
+
+Không hỏi lại sản phẩm, kích thước hoặc số lượng khách đã nói rõ chỉ để tiếp tục kịch bản. Khi khách nói sẽ đến lấy, ghi nhận ngắn gọn và làm theo hướng dẫn đến lấy trong tài liệu nếu có; không tự hứa hàng đã sẵn sàng hay nhân viên đang chờ
 
 Nếu khách hỏi một vấn đề khác trong lúc đang chạy kịch bản, phải trả lời câu hỏi của khách trước rồi mới tiếp tục khi phù hợp
 
