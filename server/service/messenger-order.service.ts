@@ -4,6 +4,7 @@ import { MessengerOrderModel } from "../model/messenger-order.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
 import { openrouterChat } from "./openrouter.service";
+import { selectCurrentOrderContext } from "./messenger-order-context";
 
 interface ExtractedOrderItem {
   productCode?: string;
@@ -26,6 +27,9 @@ interface ExtractedOrder {
   discountAmount?: number;
   totalAmount?: number;
   paymentMethod?: string;
+  fulfillmentMethod?: string;
+  fulfillmentLocation?: string;
+  requestedFulfillmentTime?: string;
   customerNote?: string;
   internalNote?: string;
 }
@@ -81,10 +85,19 @@ function cleanExtractedOrder(value: ExtractedOrder) {
   const customerName = String(value.customerName || "").trim().slice(0, 300);
   const customerPhone = String(value.customerPhone || "").replace(/[^0-9+]/g, "").slice(0, 30);
   const deliveryAddress = String(value.deliveryAddress || "").trim().slice(0, 1500);
+  const normalizedFulfillmentMethod = normalizeText(String(value.fulfillmentMethod || ""));
+  const fulfillmentMethod: "" | "pickup" | "delivery" = normalizedFulfillmentMethod === "pickup" || normalizedFulfillmentMethod === "nhan tai cua hang"
+    ? "pickup"
+    : normalizedFulfillmentMethod === "delivery" || normalizedFulfillmentMethod === "giao hang"
+      ? "delivery"
+      : "";
+  const fulfillmentLocation = String(value.fulfillmentLocation || "").trim().slice(0, 1500);
+  const requestedFulfillmentTime = String(value.requestedFulfillmentTime || "").trim().slice(0, 300);
   const missingFields = [
     !customerName ? "customer_name" : "",
     !customerPhone ? "customer_phone" : "",
-    !deliveryAddress ? "delivery_address" : "",
+    !fulfillmentMethod ? "fulfillment_method" : "",
+    fulfillmentMethod === "delivery" && !deliveryAddress && !fulfillmentLocation ? "delivery_address" : "",
     items.length === 0 ? "items" : "",
   ].filter(Boolean);
 
@@ -106,6 +119,9 @@ function cleanExtractedOrder(value: ExtractedOrder) {
     discountAmount,
     totalAmount: positiveMoney(value.totalAmount) ?? calculatedTotal,
     paymentMethod: String(value.paymentMethod || "").trim().slice(0, 200),
+    fulfillmentMethod,
+    fulfillmentLocation,
+    requestedFulfillmentTime,
     customerNote: String(value.customerNote || "").trim().slice(0, 3000),
     internalNote: String(value.internalNote || "").trim().slice(0, 3000),
     missingFields,
@@ -138,6 +154,9 @@ async function extractOrder(transcript: string, model: string) {
       discountAmount: 0,
       totalAmount: 0,
       paymentMethod: "",
+      fulfillmentMethod: "",
+      fulfillmentLocation: "",
+      requestedFulfillmentTime: "",
       customerNote: "",
       internalNote: "",
     },
@@ -148,6 +167,9 @@ async function extractOrder(transcript: string, model: string) {
           "Ban la bo trich xuat don hang tu hoi thoai ban hang.",
           "Chi lay thong tin da xuat hien ro rang trong hoi thoai, khong tu bia gia, san pham, dia chi hoac thong tin khach.",
           "confirmed chi la true khi KHACH da xac nhan/chot don mot cach ro rang sau khi noi dung mua hang da duoc trao doi.",
+          "Chi su dung thong tin cua don hien tai. Khong ke thua san pham, gia, cach nhan hang, dia chi hoac thoi gian tu don cu.",
+          "Neu khach xac nhan tom tat cuoi cung cua shop thi co the coi cac truong trong tom tat do la da duoc khach xac nhan.",
+          "fulfillmentMethod chi la pickup hoac delivery. Don pickup khong bat buoc deliveryAddress. Don delivery bat buoc co dia chi.",
           "Neu khong co gia thi tra ve 0. Moi san pham la mot item. Thuoc tinh dac thu dua vao attributesJson duoi dang chuoi JSON.",
         ].join("\n"),
       },
@@ -193,6 +215,9 @@ async function syncOrder(orderId: string) {
         discountAmount: order.discountAmount,
         totalAmount: order.totalAmount,
         paymentMethod: order.paymentMethod,
+        fulfillmentMethod: order.fulfillmentMethod || undefined,
+        fulfillmentLocation: order.fulfillmentLocation,
+        requestedFulfillmentTime: order.requestedFulfillmentTime,
         customerNote: order.customerNote,
         internalNote: order.internalNote,
         sourceMessageId: order.sourceMessageId,
@@ -233,7 +258,8 @@ export const messengerOrderService = {
     if (!conversation) return null;
     const messages = await FBMessageModel.find({ conversationId }).sort({ timestamp: -1 }).limit(24).lean();
     messages.reverse();
-    const transcript = [`TEN FACEBOOK: ${conversation.senderName || ""}`, ...messages.map((message) => `${message.direction === "inbound" ? "KHACH" : "SHOP"}: ${message.text || "[dinh kem]"}`)].join("\n").slice(-14000);
+    const orderMessages = selectCurrentOrderContext(messages);
+    const transcript = [`TEN FACEBOOK: ${conversation.senderName || ""}`, ...orderMessages.map((message) => `${message.direction === "inbound" ? "KHACH" : "SHOP"}: ${message.text || "[dinh kem]"}`)].join("\n").slice(-14000);
     const replyModel = integration.aiAutoReplyConfig?.model
       || process.env.AI_REPLY_MESSAGE_MODEL
       || "deepseek-v4-flash-0731";

@@ -9,7 +9,8 @@ export const ORDER_HEADERS = [
   "conversation_id", "customer_name", "customer_phone", "delivery_address",
   "items_summary", "subtotal", "shipping_fee", "discount_amount", "total_amount",
   "payment_method", "payment_status", "order_status", "customer_note",
-  "internal_note", "source_message_id",
+  "internal_note", "source_message_id", "fulfillment_method",
+  "fulfillment_location", "requested_fulfillment_time",
 ];
 
 export const ORDER_ITEM_HEADERS = [
@@ -42,6 +43,9 @@ export interface SheetOrder {
   discountAmount?: number;
   totalAmount?: number;
   paymentMethod?: string;
+  fulfillmentMethod?: "pickup" | "delivery";
+  fulfillmentLocation?: string;
+  requestedFulfillmentTime?: string;
   paymentStatus?: string;
   orderStatus?: string;
   customerNote?: string;
@@ -217,7 +221,8 @@ export const googleOrderSheetService = {
       order.sourceAccount, order.conversationId, order.customerName, order.customerPhone,
       order.deliveryAddress, itemSummary, order.subtotal, order.shippingFee, order.discountAmount,
       order.totalAmount, order.paymentMethod, order.paymentStatus || "unpaid", order.orderStatus || "new",
-      order.customerNote, order.internalNote, order.sourceMessageId,
+      order.customerNote, order.internalNote, order.sourceMessageId, order.fulfillmentMethod,
+      order.fulfillmentLocation, order.requestedFulfillmentTime,
     ]]);
     await appendRows(spreadsheetId, itemsSheetName, order.items.map((item, index) => [
       order.orderId, index + 1, item.productCode, item.productName, item.variantSummary,

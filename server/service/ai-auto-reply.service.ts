@@ -10,6 +10,7 @@ import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.se
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
+import { selectCurrentOrderContext } from "./messenger-order-context";
 
 // In-memory timeouts map to manage debouncing per conversation.
 // messageKey prevents polling/sync from pushing the same inbound message forever.
@@ -746,6 +747,7 @@ export const aiAutoReplyService = {
               sender: m.direction === "inbound" ? "user" : "model",
               text: m.text || ""
             }));
+            history = selectCurrentOrderContext(history, groupedCustomerMessage);
           } else if (channel === "tiktok") {
             const conv = await TikTokConversationModel.findById(conversationId);
             if (!conv) {
