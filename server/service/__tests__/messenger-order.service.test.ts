@@ -17,6 +17,9 @@ test("parseGoogleSpreadsheetId rejects unrelated links", () => {
 test("Messenger order capture requires an explicit confirmation phrase", () => {
   assert.equal(messengerOrderService.isConfirmationMessage("Mình xác nhận chốt đơn nhé"), true);
   assert.equal(messengerOrderService.isConfirmationMessage("ok chốt giúp mình"), true);
+  assert.equal(messengerOrderService.isConfirmationMessage("đồng ý nha"), true);
+  assert.equal(messengerOrderService.isConfirmationMessage("đặt hàng ạ"), true);
+  assert.equal(messengerOrderService.isConfirmationMessage("lên đơn nhé"), true);
   assert.equal(messengerOrderService.isConfirmationMessage("Cho mình hỏi giá bánh này"), false);
   assert.equal(messengerOrderService.isConfirmationMessage("Mình đang cân nhắc"), false);
 });
