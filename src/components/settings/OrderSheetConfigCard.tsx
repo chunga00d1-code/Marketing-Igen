@@ -93,7 +93,7 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
           <div className="flex items-center gap-1.5 text-xs font-bold text-gray-800">
             <FileSpreadsheet className="h-4 w-4 text-emerald-600" /> Lưu đơn Messenger vào Google Sheets
           </div>
-          <p className="mt-1 text-[10px] leading-4 text-gray-500">Chỉ ghi khi khách xác nhận chốt và đơn có đủ tên, số điện thoại, địa chỉ, sản phẩm.</p>
+          <p className="mt-1 text-[10px] leading-4 text-gray-500">Chỉ ghi khi khách xác nhận chốt và đơn có đủ tên, số điện thoại, sản phẩm, cách nhận hàng; địa chỉ chỉ bắt buộc khi giao hàng.</p>
         </div>
         <label className="relative inline-flex shrink-0 cursor-pointer items-center">
           <input
