@@ -57,6 +57,7 @@ export const AiAutoReplyConfigSchema = new Schema(
     autoCloseDeal: { type: Boolean, default: false },
     autoFeedback: { type: Boolean, default: false },
     replyDelay: { type: Number, default: 15 },
+    customerAddressStyle: { type: String, default: "" },
     advancedInstructions: { type: String, default: "" },
     customerServiceScript: { type: String, default: "" },
     customerServiceScriptFileName: { type: String, default: "" },
