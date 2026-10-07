@@ -9,6 +9,7 @@ import { zaloMessengerService } from "./zalo-messenger.service";
 import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.service";
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
+import { selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 
 // In-memory timeouts map to manage debouncing per conversation.
 // messageKey prevents polling/sync from pushing the same inbound message forever.
@@ -181,6 +182,9 @@ async function collectCandidateUsers(
     isConnected: true
   }).lean();
 
+  // Reject ambiguous ownership before reading any tenant's users or knowledge.
+  selectAutoReplyCompanyIntegration(companyIntegrations);
+
   const userLevelQuery = channel === "zalo"
     ? { "zaloIntegration.isConnected": true, "zaloIntegration.oaId": resolvedPlatformId }
     : channel === "tiktok"
@@ -236,7 +240,7 @@ export async function resolveAutoReplyOwner(
     uniqueCandidates,
   } = await collectCandidateUsers(channel, resolvedPlatformId);
 
-  const companyIntegration = companyIntegrations[0] || null;
+  const companyIntegration = selectAutoReplyCompanyIntegration(companyIntegrations);
   const companyCodeFromIntegration = companyIntegration?.companyCode
     ? companyIntegration.companyCode.trim().toUpperCase()
     : null;
@@ -359,7 +363,7 @@ export async function resolveAutoReplyOwner(
 export async function ensureFacebookAutoReplyEnabled(
   ownerInfo: ResolvedAutoReplyOwner
 ): Promise<ResolvedAutoReplyOwner> {
-  const companyIntegration = ownerInfo.companyIntegrations[0];
+  const companyIntegration = selectAutoReplyCompanyIntegration(ownerInfo.companyIntegrations);
   const currentConfig = ownerInfo.aiConfig || companyIntegration?.aiAutoReplyConfig || ownerInfo.selectedUser?.aiAutoReplyConfig || {};
   const enabledConfig = {
     ...currentConfig,

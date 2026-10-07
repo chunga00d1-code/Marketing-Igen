@@ -1,6 +1,16 @@
 import { Document } from "mongoose";
 import { IAiAutoReplyConfig } from "./user.interface";
 
+export interface IOrderSheetConfig {
+  enabled: boolean;
+  spreadsheetUrl: string;
+  spreadsheetId: string;
+  ordersSheetName: string;
+  itemsSheetName: string;
+  writeTrigger: "customer_confirmed";
+  updatedAt?: Date;
+}
+
 export interface ISocialIntegration extends Document {
   companyCode: string;
   platform: "Facebook" | "TikTok" | "Zalo";
@@ -19,5 +29,6 @@ export interface ISocialIntegration extends Document {
   verifyToken?: string;
   isMock: boolean;
   aiAutoReplyConfig?: IAiAutoReplyConfig;
+  orderSheetConfig?: IOrderSheetConfig;
 }
 
