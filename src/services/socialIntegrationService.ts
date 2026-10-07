@@ -18,6 +18,17 @@ export interface SocialIntegration {
   isMock?: boolean;
   blotatoAccountId?: string;
   aiAutoReplyConfig?: Record<string, unknown>;
+  orderSheetConfig?: OrderSheetConfig;
+}
+
+export interface OrderSheetConfig {
+  enabled: boolean;
+  spreadsheetUrl: string;
+  spreadsheetId?: string;
+  ordersSheetName: string;
+  itemsSheetName: string;
+  writeTrigger: "customer_confirmed";
+  updatedAt?: string;
 }
 
 export type TikTokPrivacyLevel =
@@ -220,5 +231,25 @@ export const socialIntegrationService = {
     }
 
     return result.data as TikTokCreatorInfo;
+  },
+
+  async testOrderSheet(integrationId: string): Promise<{ title: string; sheetNames: string[]; serviceAccountEmail: string }> {
+    const res = await fetch(`/api/v1/order-sheets/integrations/${integrationId}/test`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${getAccessToken()}` },
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.message || "Khong the kiem tra Google Sheet.");
+    return result.data;
+  },
+
+  async initializeOrderSheet(integrationId: string): Promise<{ spreadsheetUrl: string }> {
+    const res = await fetch(`/api/v1/order-sheets/integrations/${integrationId}/template`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${getAccessToken()}` },
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.message || "Khong the tao mau Google Sheet.");
+    return result.data;
   }
 };

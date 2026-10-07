@@ -30,6 +30,7 @@ import { companyKnowledgeRouter } from "./company-knowledge.router";
 import { creativeImageRouter } from "./creative-image.router";
 import { htmlVideoRenderRouter } from "./html-video-render.router";
 import { realEstateMapVideoRouter } from "./real-estate-map-video.router";
+import { orderSheetRouter } from "./order-sheet.router";
 import { canvaRouter } from "./canva.router";
 export const apiRouter = Router();
 /**
@@ -94,6 +95,7 @@ apiRouter.use("/role-permissions", rolePermissionRouter);
 apiRouter.use("/wallet", walletRouter);
 
 apiRouter.use("/crud", crudRouter);
+apiRouter.use("/order-sheets", orderSheetRouter);
 
 apiRouter.use("/professional", professionalRouter);
 

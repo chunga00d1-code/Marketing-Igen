@@ -7,6 +7,7 @@ import {
 import { toast } from "../../pages/Toast";
 import { socialIntegrationService, SocialIntegration } from "../../services/socialIntegrationService";
 import { getAccessToken } from "../../services/authService";
+import OrderSheetConfigCard from "./OrderSheetConfigCard";
 
 interface CompanyIntegrationsTabProps {
   userProfile: any;
@@ -1404,6 +1405,13 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                         <span className="truncate font-sans font-medium text-gray-700" title={item.createdBy}>{item.createdBy}</span>
                       </div>
                     </div>
+
+                    {item.platform === "Facebook" && (
+                      <OrderSheetConfigCard
+                        integration={item}
+                        onSaved={() => fetchCompanyIntegrations([], false)}
+                      />
+                    )}
 
                     {/* Actions */}
                     <div className="flex gap-2 pt-2 border-t border-gray-100 mt-1">
