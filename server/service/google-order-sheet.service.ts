@@ -52,12 +52,16 @@ export interface SheetOrder {
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function credentials() {
+  const projectId = String(process.env.GOOGLE_SHEETS_PROJECT_ID || "").trim();
   const email = String(process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL || "").trim();
   const privateKey = String(process.env.GOOGLE_SHEETS_PRIVATE_KEY || "").replace(/\\n/g, "\n").trim();
+  if (!projectId) {
+    throw new Error("GOOGLE_SHEETS_PROJECT_ID chua duoc cau hinh tren server.");
+  }
   if (!email || !privateKey) {
     throw new Error("Google Sheets Service Account chua duoc cau hinh tren server.");
   }
-  return { email, privateKey };
+  return { projectId, email, privateKey };
 }
 
 async function accessToken() {
@@ -91,12 +95,14 @@ async function accessToken() {
 
 async function sheetsFetch(path: string, init?: RequestInit) {
   const token = await accessToken();
+  const { projectId } = credentials();
   const response = await fetch(`${SHEETS_API}/${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(init?.headers || {}),
+      "X-Goog-User-Project": projectId,
     },
   });
   const result = await response.json().catch(() => ({})) as { error?: { message?: string } };
