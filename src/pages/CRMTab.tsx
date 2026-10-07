@@ -293,6 +293,22 @@ export default function CRMTab() {
     socketConnectedRef.current = socketConnected;
   }, [socketConnected]);
   const conversationRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inboxFetchVersionRef = useRef(0);
+
+  const resetInboxForAccountChange = () => {
+    inboxFetchVersionRef.current += 1;
+    if (conversationRefreshTimeoutRef.current) {
+      clearTimeout(conversationRefreshTimeoutRef.current);
+      conversationRefreshTimeoutRef.current = null;
+    }
+    activeCustomerRef.current = null;
+    setInboxCustomers([]);
+    setActiveCustomer(null);
+    setIsInboxLoading(true);
+    setConvsPagination({ limit: 20, skip: 0, hasMore: true, isLoadingMore: false });
+    setChatHistory([]);
+    setChatPagination({ limit: 20, hasMore: false, nextBefore: null, loadingMore: false });
+  };
 
   // AI assistant configurations
   const [aiConfig, setAIConfig] = useState<AIChatConfig>({
@@ -302,6 +318,7 @@ export default function CRMTab() {
     autoCloseDeal: true,
     autoFeedback: true,
     replyDelay: 15,
+    customerAddressStyle: "",
     advancedInstructions: "",
     customerServiceScript: "",
     customerServiceScriptFileName: "",
@@ -340,6 +357,7 @@ export default function CRMTab() {
         autoCloseDeal: true,
         autoFeedback: true,
         replyDelay: config.replyDelay ?? 15,
+        customerAddressStyle: config.customerAddressStyle ?? "",
         advancedInstructions: config.advancedInstructions ?? "",
         customerServiceScript: config.customerServiceScript ?? "",
         customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
@@ -361,6 +379,7 @@ export default function CRMTab() {
         autoCloseDeal: true,
         autoFeedback: true,
         replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
+        customerAddressStyle: userProfile.aiAutoReplyConfig.customerAddressStyle ?? "",
         advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
         customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
         customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
@@ -398,7 +417,7 @@ export default function CRMTab() {
         }
       } else {
         const pageId = activeCustomer?.pageId || selectedFacebookPageId;
-        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && (item.username === pageId || item.isConnected));
+        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && item.username === pageId);
         if (fbIntegration?._id && !fbIntegration._id.startsWith("company_")) {
           targetIntegrationId = fbIntegration._id;
         }
@@ -628,10 +647,13 @@ export default function CRMTab() {
     }
   };
 
+  const inboxFetchVersion = inboxFetchVersionRef.current;
   const fetchOmniConversations = async (
     forceSelectFirst = false,
-    options?: { syncFacebook?: boolean; loadMore?: boolean; reset?: boolean }
+    options?: { syncFacebook?: boolean; loadMore?: boolean; reset?: boolean },
+    requestVersion = inboxFetchVersion
   ) => {
+    if (requestVersion !== inboxFetchVersionRef.current) return;
     console.log(`[FE CRMTab] fetchOmniConversations: Đang lấy dữ liệu hội thoại. loadMore=${!!options?.loadMore}, reset=${!!options?.reset}`);
     try {
       const isLoadMore = !!options?.loadMore;
@@ -678,6 +700,7 @@ export default function CRMTab() {
           }
         }
       }
+      if (requestVersion !== inboxFetchVersionRef.current) return;
 
       if (isZaloConnected) {
         const isMockZalo = selectedZaloAccountId === "igen_zalo_demo" || selectedZaloAccountId?.includes("mock");
@@ -695,6 +718,7 @@ export default function CRMTab() {
           }
         }
       }
+      if (requestVersion !== inboxFetchVersionRef.current) return;
 
       let tiktokConvs: RawInboxConversation[] = [];
       if (isTiktokConnected) {
@@ -707,6 +731,7 @@ export default function CRMTab() {
           console.error("Lỗi lấy hội thoại TikTok:", err);
         }
       }
+      if (requestVersion !== inboxFetchVersionRef.current) return;
 
       const mappedFb: CustomerInbox[] = fbConvs.map((c) => ({
         id: c._id || c.recipientId || "",
@@ -766,6 +791,7 @@ export default function CRMTab() {
       const hasMoreFetched = fetchedList.length >= limit;
 
       setInboxCustomers((prev) => {
+        if (requestVersion !== inboxFetchVersionRef.current) return prev;
         const baseList = (isLoadMore && !isReset) ? prev : [];
         const existingIds = new Set(baseList.map((x) => x.id));
         const filteredNew = fetchedList.filter((x) => !existingIds.has(x.id));
@@ -801,10 +827,13 @@ export default function CRMTab() {
         isLoadingMore: false,
       });
     } catch (err) {
+      if (requestVersion !== inboxFetchVersionRef.current) return;
       console.error("[FE CRMTab] Lỗi khi tải danh sách hội thoại:", err);
       setConvsPagination(prev => ({ ...prev, isLoadingMore: false }));
     } finally {
-      setIsInboxLoading(false);
+      if (requestVersion === inboxFetchVersionRef.current) {
+        setIsInboxLoading(false);
+      }
     }
   };
 
@@ -973,7 +1002,7 @@ export default function CRMTab() {
       unsubscribeConvUpdate();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, isFbConnected, isZaloConnected]);
+  }, [subTab, isFbConnected, isZaloConnected, selectedFacebookPageId, selectedZaloAccountId, selectedTiktokAccountId]);
 
   useEffect(() => {
     return () => {
@@ -1533,9 +1562,11 @@ export default function CRMTab() {
                           <select
                             value={selectedFacebookPageId}
                             onChange={(e) => {
-                              setSelectedFacebookPageId(e.target.value);
+                              const nextPageId = e.target.value;
+                              resetInboxForAccountChange();
+                              setSelectedFacebookPageId(nextPageId);
+                              localStorage.setItem("crm_selected_fb_page_id", nextPageId);
                               setActiveChannel("facebook");
-                              scheduleConversationRefresh();
                             }}
                             className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-medium bg-slate-50 hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
                           >
@@ -1556,9 +1587,9 @@ export default function CRMTab() {
                           <select
                             value={selectedZaloAccountId}
                             onChange={(e) => {
+                              resetInboxForAccountChange();
                               setSelectedZaloAccountId(e.target.value);
                               setActiveChannel("zalo");
-                              scheduleConversationRefresh();
                             }}
                             className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-medium bg-slate-50 hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
                           >
@@ -1579,9 +1610,9 @@ export default function CRMTab() {
                           <select
                             value={selectedTiktokAccountId}
                             onChange={(e) => {
+                              resetInboxForAccountChange();
                               setSelectedTiktokAccountId(e.target.value);
                               setActiveChannel("tiktok");
-                              scheduleConversationRefresh();
                             }}
                             className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-medium bg-slate-50 hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
                           >
@@ -1639,6 +1670,8 @@ export default function CRMTab() {
               onUpdateLeadStatus={moveLeadPipeline}
               facebookPages={facebookPages}
               selectedFacebookPageId={selectedFacebookPageId}
+              selectedZaloAccountId={selectedZaloAccountId}
+              selectedTiktokAccountId={selectedTiktokAccountId}
               setSelectedFacebookPageId={setSelectedFacebookPageId}
               handleApplyToAllPages={handleApplyToAllPages}
               copyingConfig={copyingConfig}

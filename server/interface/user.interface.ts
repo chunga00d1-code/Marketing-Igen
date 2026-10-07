@@ -46,6 +46,7 @@ export interface IAiAutoReplyConfig {
   autoCloseDeal: boolean;
   autoFeedback: boolean;
   replyDelay: number;
+  customerAddressStyle?: string;
   advancedInstructions: string;
   customerServiceScript?: string;
   customerServiceScriptFileName?: string;

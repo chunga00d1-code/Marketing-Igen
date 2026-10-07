@@ -18,7 +18,9 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
   }
 
   const cleanRequestedPageId = requestedPageId ? String(requestedPageId).trim() : "";
-  const companyCode = String(dbUser.companyCode || "").trim();
+  const companyCode = String(
+    dbUser.companyCode || (dbUser.role === "superadmin" ? "SYSTEM" : "")
+  ).trim();
 
   if (cleanRequestedPageId) {
     // 1. Check user's personal integration

@@ -6,6 +6,7 @@ import { aiAutoReplyService } from "./ai-auto-reply.service";
 import { facebookCommentService } from "./facebook-comment.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { messengerOrderService } from "./messenger-order.service";
+import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import {
   FacebookMessengerError,
   createFacebookIntegrationNotFoundError,
@@ -1020,7 +1021,23 @@ export const fbMessengerService = {
       username: resolvedPageId,
       isConnected: true
     }).lean();
-    const companyIntegration = companyIntegrations[0] || null;
+    let companyIntegration;
+    try {
+      companyIntegration = selectAutoReplyCompanyIntegration(companyIntegrations);
+    } catch (error) {
+      if (!(error instanceof AmbiguousAutoReplyOwnerError)) throw error;
+      return {
+        channel: "facebook", pageId, resolvedPageId,
+        conversationFound: !!conversation,
+        conversationPageId: conversation?.pageId || null,
+        companyCode: null, ownerSource: null, aiEnabled: false,
+        companyIntegrationCount: companyIntegrations.length,
+        companyIntegrationCompanies: companyIntegrations.map((item) => item.companyCode),
+        shouldTriggerAutoReply: false,
+        reasons: ["ambiguous_company_page_mapping"],
+        message: error.message,
+      };
+    }
     let companyCode = pageOwner?.companyCode || null;
     let aiEnabled = !!pageOwner?.aiAutoReplyConfig?.enabled;
     let replyDelay = pageOwner?.aiAutoReplyConfig?.replyDelay ?? null;
