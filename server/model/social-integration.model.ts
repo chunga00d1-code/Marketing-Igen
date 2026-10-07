@@ -20,6 +20,15 @@ const SocialIntegrationSchema = new Schema<ISocialIntegration>({
   verifyToken: { type: String },
   isMock: { type: Boolean, default: false },
   aiAutoReplyConfig: { type: AiAutoReplyConfigSchema, default: () => ({}) },
+  orderSheetConfig: {
+    enabled: { type: Boolean, default: false },
+    spreadsheetUrl: { type: String, default: "", trim: true },
+    spreadsheetId: { type: String, default: "", trim: true },
+    ordersSheetName: { type: String, default: "Orders", trim: true },
+    itemsSheetName: { type: String, default: "OrderItems", trim: true },
+    writeTrigger: { type: String, enum: ["customer_confirmed"], default: "customer_confirmed" },
+    updatedAt: { type: Date },
+  },
 });
 
 
