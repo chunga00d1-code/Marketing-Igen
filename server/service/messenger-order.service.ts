@@ -35,7 +35,12 @@ interface ExtractedOrder {
 }
 
 function normalizeText(value: string) {
-  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d")
+    .toLowerCase()
+    .trim();
 }
 
 function hasExplicitConfirmation(value: string) {
@@ -240,13 +245,17 @@ export const messengerOrderService = {
 
   async captureConfirmedOrder(pageId: string, conversationId: string, sourceMessageId: string, latestText: string) {
     if (!hasExplicitConfirmation(latestText)) return null;
+    console.log(`[Messenger Order] Bắt đầu xử lý xác nhận: pageId=${pageId}, conversationId=${conversationId}, messageId=${sourceMessageId}`);
     const integration = await SocialIntegrationModel.findOne({
       platform: "Facebook",
       username: pageId,
       isConnected: true,
       "orderSheetConfig.enabled": true,
     }).lean();
-    if (!integration?.orderSheetConfig) return null;
+    if (!integration?.orderSheetConfig) {
+      console.warn(`[Messenger Order] Bỏ qua vì chưa bật cấu hình Google Sheets: pageId=${pageId}`);
+      return null;
+    }
 
     const existing = await MessengerOrderModel.findOne({ sourceMessageId });
     if (existing) {
@@ -264,7 +273,10 @@ export const messengerOrderService = {
       || process.env.AI_REPLY_MESSAGE_MODEL
       || "deepseek-v4-flash-0731";
     const extracted = await extractOrder(transcript, replyModel);
-    if (extracted.confirmed !== true) return null;
+    if (extracted.confirmed !== true) {
+      console.warn(`[Messenger Order] AI không xác nhận đây là đơn đã chốt: conversationId=${conversationId}, messageId=${sourceMessageId}`);
+      return null;
+    }
 
     const clean = cleanExtractedOrder(extracted);
     const confirmed = clean.missingFields.length === 0;
@@ -293,7 +305,18 @@ export const messengerOrderService = {
       throw error;
     }
 
-    if (confirmed) await syncOrder(order.orderId);
+    if (confirmed) {
+      const syncedOrder = await syncOrder(order.orderId);
+      console.log(
+        `[Messenger Order] Đã lưu đơn: orderId=${order.orderId}, status=${syncedOrder?.status || order.status}, ` +
+        `syncError=${syncedOrder?.lastSyncError || "none"}`
+      );
+    } else {
+      console.warn(
+        `[Messenger Order] Đã lưu bản nháp nhưng chưa ghi Google Sheets: orderId=${order.orderId}, ` +
+        `missingFields=${clean.missingFields.join(",") || "none"}`
+      );
+    }
     return order;
   },
 
