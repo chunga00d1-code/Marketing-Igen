@@ -12,6 +12,18 @@ import {
 import type { ChatRagContext } from "./types";
 import { ACKNOWLEDGEMENT_REPLY, combineChatScenarios, isSimpleAcknowledgement } from "../chat-context";
 
+const ORDER_SESSION_RULES = `
+ORDER SESSION SAFETY - NON-OVERRIDABLE
+
+- A clear new purchase request starts a new order. Treat product, variant, quantity, price, fulfillment method, address, pickup location, requested time and payment from older orders as unknown.
+- Never carry pickup or delivery from an older order into the current order unless the customer states or explicitly confirms it for this order.
+- A short answer such as "co", "khong", a size or a variant answers only the immediately preceding question. It is not confirmation of the whole order.
+- If pickup versus delivery has not been stated in the current order, ask exactly one short question to determine it before the final summary.
+- A delivery order requires its current delivery address. A pickup order does not require a delivery address, but the customer must explicitly choose pickup for the current order.
+- When all required details are available, summarize the current order and ask the customer to reply with an explicit final confirmation such as "xac nhan chot don".
+- Never claim that an order is confirmed, booked, saved or completed before the customer sends that explicit confirmation after the summary.
+`;
+
 function applyCustomerAddressStyle(candidate: string, addressStyle: unknown): string {
   const preferredStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
   if (!preferredStyle) return candidate;
@@ -67,6 +79,7 @@ async function applyAdvancedRules(
   }
 
   const reviewerRules = [
+    ORDER_SESSION_RULES,
     preferredAddressStyle
       ? `Khi gọi khách, dùng chính xác “${preferredAddressStyle}”. Cấu hình này ưu tiên hơn cách gọi khách trong rule và prompt mặc định. Không ép thêm lời gọi khách nếu câu trả lời không cần.`
       : "",
@@ -218,6 +231,7 @@ export class GeminiChatService {
 
     const detectedIntent = detectChatIntent(message, history);
     const finalSystemInstruction = `
+${ORDER_SESSION_RULES}
 THỨ TỰ ƯU TIÊN CẤU HÌNH
 
 ${customerAddressStyle ? `Cách gọi khách bắt buộc: “${customerAddressStyle}”. Ưu tiên ô cấu hình này nếu rule hoặc ví dụ mặc định dùng cách gọi khách khác. Chỉ dùng khi cần gọi khách, không ép thêm vào mọi tin nhắn.` : "Không có cấu hình cách gọi khách riêng: áp dụng rule nếu rule có chỉ dẫn xưng hô, nếu không dùng mặc định bên dưới."}

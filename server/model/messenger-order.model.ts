@@ -27,6 +27,9 @@ export interface IMessengerOrder extends Document {
   discountAmount?: number;
   totalAmount?: number;
   paymentMethod?: string;
+  fulfillmentMethod?: "" | "pickup" | "delivery";
+  fulfillmentLocation?: string;
+  requestedFulfillmentTime?: string;
   customerNote?: string;
   internalNote?: string;
   missingFields: string[];
@@ -66,6 +69,9 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   discountAmount: { type: Number, min: 0 },
   totalAmount: { type: Number, min: 0 },
   paymentMethod: { type: String, default: "", trim: true },
+  fulfillmentMethod: { type: String, enum: ["", "pickup", "delivery"], default: "" },
+  fulfillmentLocation: { type: String, default: "", trim: true },
+  requestedFulfillmentTime: { type: String, default: "", trim: true },
   customerNote: { type: String, default: "", trim: true },
   internalNote: { type: String, default: "", trim: true },
   missingFields: { type: [String], default: [] },
