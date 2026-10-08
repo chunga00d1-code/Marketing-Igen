@@ -27,6 +27,9 @@ const SocialIntegrationSchema = new Schema<ISocialIntegration>({
     ordersSheetName: { type: String, default: "Orders", trim: true },
     itemsSheetName: { type: String, default: "OrderItems", trim: true },
     writeTrigger: { type: String, enum: ["customer_confirmed"], default: "customer_confirmed" },
+    depositEnabled: { type: Boolean, default: false },
+    depositPercent: { type: Number, default: 30, min: 1, max: 100 },
+    depositInstructions: { type: String, default: "", trim: true, maxlength: 2000 },
     updatedAt: { type: Date },
   },
 });

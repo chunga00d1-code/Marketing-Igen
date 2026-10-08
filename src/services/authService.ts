@@ -1,4 +1,4 @@
-import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig } from "../types";
+import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig, CompanySepayConfig } from "../types";
 
 export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
@@ -445,6 +445,27 @@ export const authService = {
       body: JSON.stringify(input),
     });
     return (await parseJson<{ data: { ok: boolean; botUsername: string; chatTitle: string } }>(res, "Khong the kiem tra Telegram")).data;
+  },
+
+  async getCompanySepayConfig(): Promise<CompanySepayConfig> {
+    const res = await fetch("/api/v1/company-sepay", {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    return (await parseJson<{ data: CompanySepayConfig }>(res, "Không thể tải cấu hình SePay")).data;
+  },
+
+  async updateCompanySepayConfig(input: {
+    enabled: boolean;
+    webhookSecret?: string;
+    accountNumbers: string[];
+    paymentCodePrefix: string;
+  }): Promise<CompanySepayConfig> {
+    const res = await fetch("/api/v1/company-sepay", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: CompanySepayConfig }>(res, "Không thể lưu cấu hình SePay")).data;
   },
 
   async getTelegramLinkStatus(): Promise<TelegramLinkStatus> {

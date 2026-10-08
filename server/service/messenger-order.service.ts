@@ -6,6 +6,11 @@ import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-orde
 import { openrouterChat } from "./openrouter.service";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { companyTelegramOrderService } from "./company-telegram-order.service";
+import { cloudinaryService } from "./cloudinary.service";
+import { CompanyModel } from "../model/company.model";
+
+const RECEIPT_MAX_BYTES = 15 * 1024 * 1024;
+const RECEIPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface ExtractedOrderItem {
   productCode?: string;
@@ -227,6 +232,15 @@ async function syncOrder(orderId: string) {
         customerNote: order.customerNote,
         internalNote: order.internalNote,
         sourceMessageId: order.sourceMessageId,
+        depositRequired: order.depositRequired,
+        depositAmount: order.depositAmount,
+        depositStatus: order.depositStatus,
+        receiptUrl: order.receiptUrl,
+        receiptReceivedAt: order.receiptReceivedAt,
+        paymentCode: order.paymentCode,
+        sepayTransactionId: order.sepayTransactionId,
+        sepayTransferAmount: order.sepayTransferAmount,
+        sepayVerifiedAt: order.sepayVerifiedAt,
       }
     );
     order.status = "synced";
@@ -239,6 +253,40 @@ async function syncOrder(orderId: string) {
   order.syncAttempts += 1;
   await order.save();
   return order;
+}
+
+async function downloadReceipt(url: string, pageAccessToken?: string) {
+  const request = async (withToken: boolean) => globalThis.fetch(url, {
+    headers: withToken && pageAccessToken ? { Authorization: `Bearer ${pageAccessToken}` } : undefined,
+  });
+  let response = await request(false);
+  if (!response.ok && pageAccessToken && (response.status === 401 || response.status === 403)) {
+    response = await request(true);
+  }
+  if (!response.ok) throw new Error(`Không thể tải biên lai từ Facebook (${response.status}).`);
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > RECEIPT_MAX_BYTES) throw new Error("Ảnh biên lai vượt quá giới hạn 15 MB.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length > RECEIPT_MAX_BYTES) throw new Error("Ảnh biên lai vượt quá giới hạn 15 MB.");
+  if (!buffer.length) throw new Error("Ảnh biên lai không có dữ liệu.");
+  return buffer;
+}
+
+function depositAmount(totalAmount: number | undefined, percent: number) {
+  return totalAmount && totalAmount > 0 ? Math.round(totalAmount * percent / 100) : undefined;
+}
+
+function depositRequestText(orderId: string, percent: number, amount: number | undefined, instructions: string, paymentCode?: string) {
+  const amountText = amount
+    ? `${new Intl.NumberFormat("vi-VN").format(amount)} đ (${percent}% giá trị đơn hàng)`
+    : `${percent}% giá trị đơn hàng`;
+  return [
+    `Đơn hàng ${orderId} đã được ghi nhận.`,
+    `Vui lòng đặt cọc ${amountText}.`,
+    instructions.trim(),
+    paymentCode ? `Nội dung chuyển khoản: ${paymentCode}` : "",
+    "Sau khi chuyển khoản, bạn vui lòng gửi ảnh biên lai ngay tại đây. Shop sẽ xác nhận sau khi đối soát giao dịch.",
+  ].filter(Boolean).join("\n");
 }
 
 export const messengerOrderService = {
@@ -282,15 +330,28 @@ export const messengerOrderService = {
 
     const clean = cleanExtractedOrder(extracted);
     const confirmed = clean.missingFields.length === 0;
+    const configuredDepositPercent = Math.min(100, Math.max(1, Number(integration.orderSheetConfig.depositPercent || 30)));
+    const depositRequired = confirmed
+      && integration.orderSheetConfig.depositEnabled === true
+      && Boolean(String(integration.orderSheetConfig.depositInstructions || "").trim());
     const fingerprint = createHash("sha256")
       .update(JSON.stringify({ conversationId, ...clean }))
       .digest("hex");
     const duplicateOrder = await MessengerOrderModel.findOne({ fingerprint });
     if (duplicateOrder) return duplicateOrder;
+    const orderId = randomUUID();
+    let paymentCode = "";
+    if (depositRequired) {
+      const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
+      if (company?.sepayConfig?.enabled) {
+        const prefix = String(company.sepayConfig.paymentCodePrefix || "DH").toUpperCase();
+        paymentCode = `${prefix}${orderId.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+      }
+    }
     let order;
     try {
       order = await MessengerOrderModel.create({
-        orderId: randomUUID(),
+        orderId,
         fingerprint,
         companyCode: integration.companyCode,
         integrationId: integration._id,
@@ -300,6 +361,11 @@ export const messengerOrderService = {
         ...clean,
         status: confirmed ? "confirmed" : "draft",
         confirmedAt: confirmed ? new Date() : undefined,
+        depositRequired,
+        depositPercent: depositRequired ? configuredDepositPercent : undefined,
+        depositAmount: depositRequired ? depositAmount(clean.totalAmount, configuredDepositPercent) : undefined,
+        depositStatus: depositRequired ? "awaiting_receipt" : "not_required",
+        paymentCode: paymentCode || undefined,
       });
     } catch (error: unknown) {
       const duplicate = error as { code?: number };
@@ -319,6 +385,78 @@ export const messengerOrderService = {
         `[Messenger Order] Đã lưu bản nháp nhưng chưa ghi Google Sheets: orderId=${order.orderId}, ` +
         `missingFields=${clean.missingFields.join(",") || "none"}`
       );
+    }
+    return order;
+  },
+
+  async getDepositRequest(orderId: string) {
+    const order = await MessengerOrderModel.findOne({ orderId });
+    if (!order || !order.depositRequired || order.depositStatus !== "awaiting_receipt" || order.depositRequestedAt) return null;
+    const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
+    const instructions = String(integration?.orderSheetConfig?.depositInstructions || "").trim();
+    if (!integration?.orderSheetConfig?.depositEnabled || !instructions) return null;
+    const percent = order.depositPercent || integration.orderSheetConfig.depositPercent || 30;
+    return depositRequestText(order.orderId, percent, order.depositAmount, instructions, order.paymentCode);
+  },
+
+  async markDepositRequested(orderId: string) {
+    return MessengerOrderModel.findOneAndUpdate(
+      { orderId, depositStatus: "awaiting_receipt", depositRequestedAt: { $exists: false } },
+      { $set: { depositRequestedAt: new Date() } },
+      { new: true },
+    );
+  },
+
+  async capturePaymentReceipt(
+    pageId: string,
+    conversationId: string,
+    sourceMessageId: string,
+    attachments: Array<{ type: string; url: string }>,
+    pageAccessToken?: string,
+  ) {
+    const image = attachments.find((attachment) => attachment.type === "image" && attachment.url);
+    if (!image) return null;
+    const oldestAllowed = new Date(Date.now() - RECEIPT_WINDOW_MS);
+    const order = await MessengerOrderModel.findOne({
+      pageId,
+      conversationId,
+      depositStatus: "awaiting_receipt",
+      depositRequestedAt: { $gte: oldestAllowed },
+    }).sort({ depositRequestedAt: -1 });
+    if (!order) return null;
+    if (order.receiptMessageId === sourceMessageId && order.receiptUrl) return order;
+
+    const buffer = await downloadReceipt(image.url, pageAccessToken);
+    const safeCompany = order.companyCode.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "company";
+    const safeMessageId = sourceMessageId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(-100) || order.orderId;
+    const receiptUrl = await cloudinaryService.uploadMediaBuffer(
+      buffer,
+      `messenger_order_receipts/${safeCompany}`,
+      `${order.orderId}_${safeMessageId}`,
+    );
+    order.receiptUrl = receiptUrl;
+    order.receiptMessageId = sourceMessageId;
+    order.receiptReceivedAt = new Date();
+    order.depositStatus = "receipt_received";
+    order.receiptSheetSyncError = "";
+    await order.save();
+
+    const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
+    const config = integration?.orderSheetConfig;
+    if (config?.enabled) {
+      try {
+        const spreadsheetId = config.spreadsheetId || parseGoogleSpreadsheetId(config.spreadsheetUrl);
+        await googleOrderSheetService.updatePaymentReceipt(
+          spreadsheetId,
+          config.ordersSheetName || "Orders",
+          order.orderId,
+          { depositAmount: order.depositAmount, receiptUrl, receiptReceivedAt: order.receiptReceivedAt },
+        );
+      } catch (error) {
+        order.receiptSheetSyncError = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
+        await order.save();
+        console.error(`[Messenger Order] Không thể ghi biên lai vào Sheet orderId=${order.orderId}:`, error);
+      }
     }
     return order;
   },

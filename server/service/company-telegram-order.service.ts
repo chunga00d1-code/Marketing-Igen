@@ -183,6 +183,19 @@ export const companyTelegramOrderService = {
     }
   },
 
+  async notifySepayPayment(orderId: string) {
+    const order = await MessengerOrderModel.findOne({ orderId });
+    if (!order?.sepayVerifiedAt || !order.sepayTransactionId) return;
+    await sendCompany(order.companyCode, [
+      "✅ <b>ĐÃ XÁC NHẬN TIỀN CỌC QUA SEPAY</b>",
+      `Mã đơn: <code>${escapeHtml(order.orderId)}</code>`,
+      `Mã thanh toán: <code>${escapeHtml(order.paymentCode || "")}</code>`,
+      `Khách hàng: <b>${escapeHtml(order.customerName)}</b>`,
+      `Số tiền: <b>${Number(order.sepayTransferAmount || 0).toLocaleString("vi-VN")} đ</b>`,
+      `Mã giao dịch: <code>${escapeHtml(order.sepayTransactionId)}</code>`,
+    ].join("\n"));
+  },
+
   async notifyLeadWon(lead: ICRMTicket) {
     const products = Array.isArray(lead.selectedProducts) && lead.selectedProducts.length
       ? lead.selectedProducts.map((item) => `\u2022 <b>${escapeHtml(item.name)}</b> x ${item.quantity} - ${(item.price * item.quantity).toLocaleString("vi-VN")} d`).join("\n")
