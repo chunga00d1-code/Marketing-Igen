@@ -1,6 +1,8 @@
 import jwt from "jsonwebtoken";
 import { CompanyModel } from "../model/company.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
+import { cloudinaryService } from "./cloudinary.service";
+import { openrouterChat } from "./openrouter.service";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -8,6 +10,7 @@ const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CATALOG_FILES = 300;
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 export interface CakeCatalogImage {
   id: string;
@@ -29,6 +32,7 @@ interface DriveFile {
 }
 
 const cache = new Map<string, { expiresAt: number; categories: CakeCatalogCategory[] }>();
+const publicImageCache = new Map<string, { expiresAt: number; url: string }>();
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function credentials() {
@@ -103,6 +107,39 @@ async function listChildren(folderId: string) {
   return files.slice(0, MAX_CATALOG_FILES);
 }
 
+async function downloadDriveImage(fileId: string) {
+  const token = await accessToken();
+  const { projectId } = credentials();
+  const response = await fetch(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}`, "X-Goog-User-Project": projectId },
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Không thể tải ảnh từ Google Drive (${response.status}): ${detail.slice(0, 300)}`);
+  }
+  const contentLength = Number(response.headers.get("content-length") || 0);
+  if (contentLength > MAX_IMAGE_BYTES) throw new Error("Ảnh mẫu trên Google Drive vượt quá giới hạn 15 MB.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.length) throw new Error("Ảnh mẫu trên Google Drive không có dữ liệu.");
+  if (buffer.length > MAX_IMAGE_BYTES) throw new Error("Ảnh mẫu trên Google Drive vượt quá giới hạn 15 MB.");
+  return buffer;
+}
+
+async function publicImageUrl(companyCode: string, image: CakeCatalogImage) {
+  const cacheKey = `${companyCode}:${image.id}`;
+  const cached = publicImageCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  const safeCompany = companyCode.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "company";
+  const safeImageId = image.id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
+  const url = await cloudinaryService.uploadMediaBuffer(
+    await downloadDriveImage(image.id),
+    `messenger_cake_catalog/${safeCompany}`,
+    safeImageId,
+  );
+  publicImageCache.set(cacheKey, { url, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
+  return url;
+}
+
 function toImage(file: DriveFile): CakeCatalogImage {
   return {
     id: file.id,
@@ -150,16 +187,56 @@ export function findMatchingCategory(categories: CakeCatalogCategory[], customer
   const text = normalizeCatalogText(customerText);
   if (!text) return null;
   const genericWords = new Set(["banh", "mau", "anh", "hinh"]);
+  const textWords = new Set(text.split(" ").filter((word) => word.length >= 2));
   return categories.map((category) => {
     const fullKey = normalizeCatalogText(category.name);
     const specificKey = fullKey.split(" ").filter((word) => !genericWords.has(word)).join(" ");
     const matchedKey = [fullKey, specificKey]
       .filter((key) => key.length >= 3)
       .find((key) => text.includes(key)) || "";
-    return { category, matchedKey };
+    const specificWords = specificKey.split(" ").filter((word) => word.length >= 2);
+    const overlap = specificWords.filter((word) => textWords.has(word)).length;
+    const overlapScore = specificWords.length ? overlap / specificWords.length : 0;
+    return { category, matchedKey, overlap, overlapScore };
   })
-    .filter(({ matchedKey }) => matchedKey)
-    .sort((a, b) => b.matchedKey.length - a.matchedKey.length)[0]?.category || null;
+    .filter(({ matchedKey, overlap, overlapScore }) => matchedKey || (overlap >= 1 && overlapScore >= 0.5))
+    .sort((a, b) => b.matchedKey.length - a.matchedKey.length || b.overlapScore - a.overlapScore)[0]?.category || null;
+}
+
+function mayRequestCakeImages(customerText: string) {
+  const text = normalizeCatalogText(customerText);
+  return ["banh", "mau", "anh", "hinh", "xem", "tham khao", "goi y", "kieu"].some((word) => text.includes(word));
+}
+
+async function selectCategoryWithAi(categories: CakeCatalogCategory[], customerText: string, model: string) {
+  if (!mayRequestCakeImages(customerText) || !categories.length) return null;
+  try {
+    const response = await openrouterChat({
+      model,
+      temperature: 0,
+      maxTokens: 120,
+      timeoutMs: 12_000,
+      maxRetries: 1,
+      jsonMode: true,
+      strictJsonSchema: true,
+      responseSchema: { categoryIndex: -1 },
+      messages: [
+        {
+          role: "system",
+          content: "Chọn loại bánh phù hợp nhất với yêu cầu khách. Trả categoryIndex theo danh sách, hoặc -1 nếu chưa đủ thông tin. Không tự bịa loại bánh.",
+        },
+        {
+          role: "user",
+          content: `Yêu cầu khách: ${customerText}\nDanh sách: ${categories.map((category, index) => `${index}: ${category.name}`).join("\n")}`,
+        },
+      ],
+    });
+    const index = Number((JSON.parse(response.text) as { categoryIndex?: number }).categoryIndex);
+    return Number.isInteger(index) && index >= 0 && index < categories.length ? categories[index] : null;
+  } catch (error) {
+    console.warn("[CakeCatalog] AI không chọn được loại bánh:", error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 async function companyRecord(companyCode: string) {
@@ -228,12 +305,27 @@ export const companyCakeCatalogService = {
     const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
     const config = company?.cakeCatalogConfig;
     if (!config?.enabled || !config.rootFolderUrl) return null;
-    const category = findMatchingCategory(await this.scanCompany(integration.companyCode), customerText);
+    const categories = await this.scanCompany(integration.companyCode);
+    const category = findMatchingCategory(categories, customerText)
+      || await selectCategoryWithAi(
+        categories,
+        customerText,
+        integration.aiAutoReplyConfig?.model || process.env.AI_REPLY_MESSAGE_MODEL || "deepseek-v4-flash-0731",
+      );
     if (!category) return null;
+    const selectedImages = category.images.slice(0, Math.min(10, Math.max(1, Number(config.maxImagesPerReply || 5))));
+    const images = [];
+    for (const image of selectedImages) {
+      try {
+        images.push({ ...image, imageUrl: await publicImageUrl(integration.companyCode, image) });
+      } catch (error) {
+        console.error(`[CakeCatalog] Không thể chuẩn bị ảnh ${image.id} để gửi Messenger:`, error);
+      }
+    }
     return {
       companyCode: integration.companyCode,
       categoryName: category.name,
-      images: category.images.slice(0, Math.min(10, Math.max(1, Number(config.maxImagesPerReply || 5)))),
+      images,
     };
   },
 };

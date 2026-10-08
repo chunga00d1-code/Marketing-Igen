@@ -87,7 +87,7 @@ export default function CakeCatalogConfigCard({ userProfile }: { userProfile: Us
       </div>
 
       <p className="rounded-xl bg-amber-50 px-3 py-2 text-left text-[11px] leading-relaxed text-amber-800">
-        Chia sẻ thư mục cho <b>{config.serviceAccountEmail}</b> và bật quyền xem bằng liên kết để Facebook tải được ảnh. Mỗi thư mục con nên đặt đúng tên loại bánh, ví dụ “Bánh sinh nhật”, “Bánh cưới”.
+        Chia sẻ thư mục với quyền Người xem cho <b>{config.serviceAccountEmail}</b>. Hệ thống sẽ tải ảnh an toàn qua Service Account và gửi bản Cloudinary cho khách. Mỗi thư mục con nên đặt đúng tên loại bánh, ví dụ “Bánh sinh nhật”, “Bánh cưới”.
       </p>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
