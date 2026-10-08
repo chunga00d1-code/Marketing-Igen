@@ -11,6 +11,9 @@ export interface SepayConfigInput {
   webhookSecret?: string;
   accountNumbers?: string[];
   paymentCodePrefix?: string;
+  qrBankId?: string;
+  qrAccountNumber?: string;
+  qrAccountName?: string;
 }
 
 export interface SepayPayload {
@@ -82,6 +85,9 @@ function publicConfig(record: Awaited<ReturnType<typeof companyWithSecret>>, bas
     webhookUrl: webhookId ? `${baseUrl.replace(/\/$/, "")}/api/v1/webhooks/sepay/${webhookId}` : "",
     accountNumbers: config?.accountNumbers || [],
     paymentCodePrefix: config?.paymentCodePrefix || "DH",
+    qrBankId: String(config?.qrBankId || ""),
+    qrAccountNumber: String(config?.qrAccountNumber || ""),
+    qrAccountName: String(config?.qrAccountName || ""),
     lastWebhookAt: config?.lastWebhookAt || null,
     lastWebhookStatus: config?.lastWebhookStatus || "untested",
     lastWebhookError: String(config?.lastWebhookError || ""),
@@ -111,6 +117,15 @@ export function verifySepaySignature(rawBody: string, signature: string, timesta
   }
   const expected = `sha256=${createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex")}`;
   if (!safeEqual(expected, signature)) throw new Error("Chữ ký webhook SePay không hợp lệ.");
+}
+
+export function buildVietQrImageUrl(bankId: string, accountNumber: string, accountName: string, amount: number, paymentCode: string) {
+  const query = new URLSearchParams({
+    amount: String(Math.round(amount)),
+    addInfo: paymentCode.slice(0, 25),
+    accountName,
+  });
+  return `https://img.vietqr.io/image/${encodeURIComponent(bankId)}-${encodeURIComponent(accountNumber)}-compact2.png?${query.toString()}`;
 }
 
 async function syncVerifiedPayment(orderId: string) {
@@ -160,12 +175,41 @@ export const companySepayService = {
     record.set("sepayConfig.webhookSecretEncrypted", encryptedSecret);
     record.set("sepayConfig.accountNumbers", accountNumbers);
     record.set("sepayConfig.paymentCodePrefix", normalizePrefix(input.paymentCodePrefix ?? current?.paymentCodePrefix));
+    const qrBankId = String(input.qrBankId ?? current?.qrBankId ?? "").trim();
+    const qrAccountNumber = normalizeAccount(input.qrAccountNumber ?? current?.qrAccountNumber ?? "");
+    const qrAccountName = String(input.qrAccountName ?? current?.qrAccountName ?? "").trim().slice(0, 100);
+    if (qrBankId && !/^[a-zA-Z0-9]{2,20}$/.test(qrBankId)) throw new Error("Mã ngân hàng VietQR không hợp lệ.");
+    if (qrAccountNumber && !/^[a-zA-Z0-9]{6,19}$/.test(qrAccountNumber)) throw new Error("Số tài khoản VietQR phải có 6-19 ký tự chữ hoặc số.");
+    if ((qrBankId || qrAccountNumber || qrAccountName) && (!qrBankId || !qrAccountNumber || !qrAccountName)) {
+      throw new Error("Cần nhập đủ ngân hàng, số tài khoản và tên chủ tài khoản để gửi VietQR.");
+    }
+    if (qrAccountNumber && !accountNumbers.includes(qrAccountNumber)) {
+      throw new Error("Số tài khoản VietQR phải nằm trong danh sách tài khoản nhận webhook.");
+    }
+    record.set("sepayConfig.qrBankId", qrBankId);
+    record.set("sepayConfig.qrAccountNumber", qrAccountNumber);
+    record.set("sepayConfig.qrAccountName", qrAccountName);
     if (suppliedSecret) {
       record.set("sepayConfig.lastWebhookStatus", "untested");
       record.set("sepayConfig.lastWebhookError", "");
     }
     await record.save();
     return publicConfig(record, baseUrl);
+  },
+
+  async getPaymentQr(companyCode: string, amount: number | undefined, paymentCode: string | undefined) {
+    const company = await CompanyModel.findOne({ code: String(companyCode || "").trim().toUpperCase() }).lean();
+    const config = company?.sepayConfig;
+    const bankId = String(config?.qrBankId || "").trim();
+    const accountNumber = normalizeAccount(config?.qrAccountNumber);
+    const accountName = String(config?.qrAccountName || "").trim();
+    if (!config?.enabled || !bankId || !accountNumber || !accountName || !amount || amount <= 0 || !paymentCode) return null;
+    return {
+      bankId,
+      accountNumber,
+      accountName,
+      imageUrl: buildVietQrImageUrl(bankId, accountNumber, accountName, amount, paymentCode),
+    };
   },
 
   async processWebhook(webhookId: string, rawBody: string, signature: string, timestamp: string, payload: SepayPayload) {

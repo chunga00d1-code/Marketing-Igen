@@ -459,6 +459,9 @@ export const authService = {
     webhookSecret?: string;
     accountNumbers: string[];
     paymentCodePrefix: string;
+    qrBankId: string;
+    qrAccountNumber: string;
+    qrAccountName: string;
   }): Promise<CompanySepayConfig> {
     const res = await fetch("/api/v1/company-sepay", {
       method: "PUT",

@@ -8,6 +8,7 @@ import { selectCurrentOrderContext } from "./messenger-order-context";
 import { companyTelegramOrderService } from "./company-telegram-order.service";
 import { cloudinaryService } from "./cloudinary.service";
 import { CompanyModel } from "../model/company.model";
+import { companySepayService } from "./company-sepay.service";
 
 const RECEIPT_MAX_BYTES = 15 * 1024 * 1024;
 const RECEIPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -276,7 +277,14 @@ function depositAmount(totalAmount: number | undefined, percent: number) {
   return totalAmount && totalAmount > 0 ? Math.round(totalAmount * percent / 100) : undefined;
 }
 
-function depositRequestText(orderId: string, percent: number, amount: number | undefined, instructions: string, paymentCode?: string) {
+function depositRequestText(
+  orderId: string,
+  percent: number,
+  amount: number | undefined,
+  instructions: string,
+  paymentCode?: string,
+  paymentQr?: { bankId: string; accountNumber: string; accountName: string } | null,
+) {
   const amountText = amount
     ? `${new Intl.NumberFormat("vi-VN").format(amount)} đ (${percent}% giá trị đơn hàng)`
     : `${percent}% giá trị đơn hàng`;
@@ -284,6 +292,9 @@ function depositRequestText(orderId: string, percent: number, amount: number | u
     `Đơn hàng ${orderId} đã được ghi nhận.`,
     `Vui lòng đặt cọc ${amountText}.`,
     instructions.trim(),
+    paymentQr ? `Ngân hàng: ${paymentQr.bankId}` : "",
+    paymentQr ? `Số tài khoản: ${paymentQr.accountNumber}` : "",
+    paymentQr ? `Chủ tài khoản: ${paymentQr.accountName}` : "",
     paymentCode ? `Nội dung chuyển khoản: ${paymentCode}` : "",
     "Sau khi chuyển khoản, bạn vui lòng gửi ảnh biên lai ngay tại đây. Shop sẽ xác nhận sau khi đối soát giao dịch.",
   ].filter(Boolean).join("\n");
@@ -396,7 +407,14 @@ export const messengerOrderService = {
     const instructions = String(integration?.orderSheetConfig?.depositInstructions || "").trim();
     if (!integration?.orderSheetConfig?.depositEnabled || !instructions) return null;
     const percent = order.depositPercent || integration.orderSheetConfig.depositPercent || 30;
-    return depositRequestText(order.orderId, percent, order.depositAmount, instructions, order.paymentCode);
+    const paymentQr = await companySepayService.getPaymentQr(order.companyCode, order.depositAmount, order.paymentCode);
+    return depositRequestText(order.orderId, percent, order.depositAmount, instructions, order.paymentCode, paymentQr);
+  },
+
+  async getDepositPaymentQr(orderId: string) {
+    const order = await MessengerOrderModel.findOne({ orderId });
+    if (!order?.depositRequired || order.depositStatus !== "awaiting_receipt") return null;
+    return companySepayService.getPaymentQr(order.companyCode, order.depositAmount, order.paymentCode);
   },
 
   async markDepositRequested(orderId: string) {

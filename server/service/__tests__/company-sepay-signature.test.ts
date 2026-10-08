@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { verifySepaySignature } from "../company-sepay.service";
+import { buildVietQrImageUrl, verifySepaySignature } from "../company-sepay.service";
 
 const rawBody = '{"id":92704,"transferAmount":500000}';
 const secret = "company-specific-secret";
@@ -28,4 +28,13 @@ test("rejects a webhook timestamp older than five minutes", () => {
     () => verifySepaySignature(rawBody, signature(), timestamp, secret, nowMs + 301_000),
     /hết hạn/i,
   );
+});
+
+test("builds a VietQR image URL with amount, payment code and account details", () => {
+  const url = new URL(buildVietQrImageUrl("970422", "123456789", "CONG TY IGEN", 150000, "DH12AB34CD56EF"));
+  assert.equal(url.hostname, "img.vietqr.io");
+  assert.equal(url.pathname, "/image/970422-123456789-compact2.png");
+  assert.equal(url.searchParams.get("amount"), "150000");
+  assert.equal(url.searchParams.get("addInfo"), "DH12AB34CD56EF");
+  assert.equal(url.searchParams.get("accountName"), "CONG TY IGEN");
 });
