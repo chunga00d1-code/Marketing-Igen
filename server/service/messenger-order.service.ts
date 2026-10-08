@@ -341,10 +341,16 @@ export const messengerOrderService = {
 
     const clean = cleanExtractedOrder(extracted);
     const confirmed = clean.missingFields.length === 0;
-    const configuredDepositPercent = Math.min(100, Math.max(1, Number(integration.orderSheetConfig.depositPercent || 30)));
-    const depositRequired = confirmed
-      && integration.orderSheetConfig.depositEnabled === true
+    const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
+    const companyDepositEnabled = company?.sepayConfig?.depositEnabled === true;
+    const legacyDepositEnabled = integration.orderSheetConfig.depositEnabled === true
       && Boolean(String(integration.orderSheetConfig.depositInstructions || "").trim());
+    const configuredDepositPercent = Math.min(100, Math.max(1, Number(
+      companyDepositEnabled
+        ? company?.sepayConfig?.depositPercent || 30
+        : integration.orderSheetConfig.depositPercent || 30,
+    )));
+    const depositRequired = confirmed && (companyDepositEnabled || legacyDepositEnabled);
     const fingerprint = createHash("sha256")
       .update(JSON.stringify({ conversationId, ...clean }))
       .digest("hex");
@@ -353,7 +359,6 @@ export const messengerOrderService = {
     const orderId = randomUUID();
     let paymentCode = "";
     if (depositRequired) {
-      const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
       if (company?.sepayConfig?.enabled) {
         const prefix = String(company.sepayConfig.paymentCodePrefix || "DH").toUpperCase();
         paymentCode = `${prefix}${orderId.replace(/-/g, "").slice(0, 12).toUpperCase()}`;
@@ -405,8 +410,13 @@ export const messengerOrderService = {
     if (!order || !order.depositRequired || order.depositStatus !== "awaiting_receipt" || order.depositRequestedAt) return null;
     const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
     const instructions = String(integration?.orderSheetConfig?.depositInstructions || "").trim();
-    if (!integration?.orderSheetConfig?.depositEnabled || !instructions) return null;
-    const percent = order.depositPercent || integration.orderSheetConfig.depositPercent || 30;
+    const company = await CompanyModel.findOne({ code: order.companyCode }).lean();
+    const companyDepositEnabled = company?.sepayConfig?.depositEnabled === true;
+    const legacyDepositEnabled = integration?.orderSheetConfig?.depositEnabled === true && Boolean(instructions);
+    if (!companyDepositEnabled && !legacyDepositEnabled) return null;
+    const percent = order.depositPercent
+      || (companyDepositEnabled ? company?.sepayConfig?.depositPercent : integration?.orderSheetConfig?.depositPercent)
+      || 30;
     const paymentQr = await companySepayService.getPaymentQr(order.companyCode, order.depositAmount, order.paymentCode);
     return depositRequestText(order.orderId, percent, order.depositAmount, instructions, order.paymentCode, paymentQr);
   },

@@ -11,6 +11,8 @@ export interface SepayConfigInput {
   webhookSecret?: string;
   accountNumbers?: string[];
   paymentCodePrefix?: string;
+  depositEnabled?: boolean;
+  depositPercent?: number;
   qrBankId?: string;
   qrAccountNumber?: string;
   qrAccountName?: string;
@@ -85,6 +87,8 @@ function publicConfig(record: Awaited<ReturnType<typeof companyWithSecret>>, bas
     webhookUrl: webhookId ? `${baseUrl.replace(/\/$/, "")}/api/v1/webhooks/sepay/${webhookId}` : "",
     accountNumbers: config?.accountNumbers || [],
     paymentCodePrefix: config?.paymentCodePrefix || "DH",
+    depositEnabled: Boolean(config?.depositEnabled),
+    depositPercent: Number(config?.depositPercent || 30),
     qrBankId: String(config?.qrBankId || ""),
     qrAccountNumber: String(config?.qrAccountNumber || ""),
     qrAccountName: String(config?.qrAccountName || ""),
@@ -206,6 +210,11 @@ export const companySepayService = {
     const qrBankId = String(input.qrBankId ?? current?.qrBankId ?? "").trim();
     const qrAccountNumber = normalizeAccount(input.qrAccountNumber ?? current?.qrAccountNumber ?? "");
     const qrAccountName = String(input.qrAccountName ?? current?.qrAccountName ?? "").trim().slice(0, 100);
+    const depositEnabled = input.depositEnabled ?? current?.depositEnabled ?? false;
+    const depositPercent = Number(input.depositPercent ?? current?.depositPercent ?? 30);
+    if (!Number.isFinite(depositPercent) || depositPercent < 1 || depositPercent > 100) {
+      throw new Error("Phần trăm đặt cọc phải từ 1 đến 100.");
+    }
     if (qrBankId && !/^[a-zA-Z0-9]{2,20}$/.test(qrBankId)) throw new Error("Mã ngân hàng VietQR không hợp lệ.");
     if (qrAccountNumber && !/^[a-zA-Z0-9]{6,19}$/.test(qrAccountNumber)) throw new Error("Số tài khoản VietQR phải có 6-19 ký tự chữ hoặc số.");
     if ((qrBankId || qrAccountNumber || qrAccountName) && (!qrBankId || !qrAccountNumber || !qrAccountName)) {
@@ -214,9 +223,14 @@ export const companySepayService = {
     if (qrAccountNumber && !accountNumbers.includes(qrAccountNumber)) {
       throw new Error("Số tài khoản VietQR phải nằm trong danh sách tài khoản nhận webhook.");
     }
+    if (depositEnabled && (!enabled || !qrBankId || !qrAccountNumber || !qrAccountName)) {
+      throw new Error("Cần bật SePay và nhập đủ thông tin VietQR trước khi bật yêu cầu đặt cọc.");
+    }
     record.set("sepayConfig.qrBankId", qrBankId);
     record.set("sepayConfig.qrAccountNumber", qrAccountNumber);
     record.set("sepayConfig.qrAccountName", qrAccountName);
+    record.set("sepayConfig.depositEnabled", depositEnabled);
+    record.set("sepayConfig.depositPercent", Math.round(depositPercent));
     if (suppliedSecret) {
       record.set("sepayConfig.lastWebhookStatus", "untested");
       record.set("sepayConfig.lastWebhookError", "");

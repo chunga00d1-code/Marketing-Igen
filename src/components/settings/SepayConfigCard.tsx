@@ -9,6 +9,8 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
   const [secret, setSecret] = useState("");
   const [accounts, setAccounts] = useState("");
   const [prefix, setPrefix] = useState("DH");
+  const [depositEnabled, setDepositEnabled] = useState(false);
+  const [depositPercent, setDepositPercent] = useState(30);
   const [qrBankId, setQrBankId] = useState("");
   const [qrAccountNumber, setQrAccountNumber] = useState("");
   const [qrAccountName, setQrAccountName] = useState("");
@@ -19,6 +21,8 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
     setConfig(value);
     setAccounts(value.accountNumbers.join("\n"));
     setPrefix(value.paymentCodePrefix || "DH");
+    setDepositEnabled(Boolean(value.depositEnabled));
+    setDepositPercent(value.depositPercent || 30);
     setQrBankId(value.qrBankId || "");
     setQrAccountNumber(value.qrAccountNumber || "");
     setQrAccountName(value.qrAccountName || "");
@@ -42,6 +46,8 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
         webhookSecret: secret.trim() || undefined,
         accountNumbers,
         paymentCodePrefix: prefix.trim().toUpperCase(),
+        depositEnabled,
+        depositPercent: Math.min(100, Math.max(1, Number(depositPercent || 30))),
         qrBankId: qrBankId.trim(),
         qrAccountNumber: qrAccountNumber.replace(/\s+/g, "").trim(),
         qrAccountName: qrAccountName.trim(),
@@ -76,6 +82,31 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
           <input type="checkbox" checked={config.enabled} disabled={!canEdit} onChange={(event) => setConfig({ ...config, enabled: event.target.checked })} />
           Bật
+        </label>
+      </div>
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-left">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-slate-800">Yêu cầu đặt cọc cho đơn Messenger</p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">Áp dụng chung cho các Fanpage của doanh nghiệp khi khách xác nhận chốt đơn.</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
+            <input type="checkbox" checked={depositEnabled} disabled={!canEdit} onChange={(event) => setDepositEnabled(event.target.checked)} />
+            Bật cọc
+          </label>
+        </div>
+        <label className="mt-3 block space-y-1 text-[11px] font-semibold text-slate-700">
+          Phần trăm đặt cọc (%)
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={depositPercent}
+            disabled={!canEdit || !depositEnabled}
+            onChange={(event) => setDepositPercent(Number(event.target.value))}
+            className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-bold text-blue-700 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+          />
         </label>
       </div>
 

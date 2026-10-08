@@ -459,6 +459,8 @@ export const authService = {
     webhookSecret?: string;
     accountNumbers: string[];
     paymentCodePrefix: string;
+    depositEnabled: boolean;
+    depositPercent: number;
     qrBankId: string;
     qrAccountNumber: string;
     qrAccountName: string;
