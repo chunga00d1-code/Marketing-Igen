@@ -242,6 +242,8 @@ async function syncOrder(orderId: string) {
         sepayTransactionId: order.sepayTransactionId,
         sepayTransferAmount: order.sepayTransferAmount,
         sepayVerifiedAt: order.sepayVerifiedAt,
+        selectedCakeImageUrl: order.selectedCakeImageUrl,
+        selectedCakeSelectedAt: order.selectedCakeSelectedAt,
       }
     );
     order.status = "synced";
@@ -389,6 +391,9 @@ export const messengerOrderService = {
         depositAmount: depositRequired ? depositAmount(clean.totalAmount, configuredDepositPercent) : undefined,
         depositStatus: depositRequired ? "awaiting_receipt" : "not_required",
         paymentCode: paymentCode || undefined,
+        selectedCakeImageUrl: conversation.selectedCakeImageUrl || undefined,
+        selectedCakeMessageId: conversation.selectedCakeMessageId || undefined,
+        selectedCakeSelectedAt: conversation.selectedCakeSelectedAt || undefined,
       });
     } catch (error: unknown) {
       const duplicate = error as { code?: number };
@@ -459,6 +464,12 @@ export const messengerOrderService = {
       depositRequestedAt: { $gte: oldestAllowed },
     }).sort({ depositRequestedAt: -1 });
     if (!order) return null;
+    const conversation = await FBConversationModel.findById(conversationId).lean();
+    if (
+      conversation?.cakeCatalogSentAt
+      && order.depositRequestedAt
+      && conversation.cakeCatalogSentAt.getTime() > order.depositRequestedAt.getTime()
+    ) return null;
     if (order.receiptMessageId === sourceMessageId && order.receiptUrl) return order;
 
     const buffer = await downloadReceipt(image.url, pageAccessToken);
@@ -494,6 +505,66 @@ export const messengerOrderService = {
       }
     }
     return order;
+  },
+
+  async captureCakeSelection(
+    pageId: string,
+    conversationId: string,
+    sourceMessageId: string,
+    attachments: Array<{ type: string; url: string }>,
+    pageAccessToken?: string,
+  ) {
+    const image = attachments.find((attachment) => attachment.type === "image" && attachment.url);
+    if (!image) return null;
+    const conversation = await FBConversationModel.findOne({
+      _id: conversationId,
+      pageId,
+      cakeCatalogSentAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+    });
+    if (!conversation || conversation.selectedCakeMessageId === sourceMessageId) return null;
+    const integration = await SocialIntegrationModel.findOne({ platform: "Facebook", username: pageId, isConnected: true }).lean();
+    if (!integration?.companyCode) return null;
+    const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
+    if (!company?.cakeCatalogConfig?.enabled) return null;
+
+    const buffer = await downloadReceipt(image.url, pageAccessToken);
+    const safeCompany = integration.companyCode.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "company";
+    const safeMessageId = sourceMessageId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(-100) || conversationId;
+    const imageUrl = await cloudinaryService.uploadMediaBuffer(buffer, `messenger_cake_selections/${safeCompany}`, safeMessageId);
+    const selectedAt = new Date();
+    conversation.selectedCakeImageUrl = imageUrl;
+    conversation.selectedCakeMessageId = sourceMessageId;
+    conversation.selectedCakeSelectedAt = selectedAt;
+    conversation.cakeCatalogSentAt = undefined;
+    await conversation.save();
+
+    const order = await MessengerOrderModel.findOne({ pageId, conversationId }).sort({ createdAt: -1 });
+    if (order) {
+      order.selectedCakeImageUrl = imageUrl;
+      order.selectedCakeMessageId = sourceMessageId;
+      order.selectedCakeSelectedAt = selectedAt;
+      order.selectedCakeSheetSyncError = "";
+      await order.save();
+      const orderIntegration = await SocialIntegrationModel.findById(order.integrationId).lean();
+      const sheetConfig = orderIntegration?.orderSheetConfig;
+      if (order.status === "synced" && sheetConfig?.enabled) {
+        try {
+          const spreadsheetId = sheetConfig.spreadsheetId || parseGoogleSpreadsheetId(sheetConfig.spreadsheetUrl);
+          await googleOrderSheetService.updateCakeSelection(
+            spreadsheetId,
+            sheetConfig.ordersSheetName || "Orders",
+            order.orderId,
+            { imageUrl, selectedAt },
+          );
+        } catch (error) {
+          order.selectedCakeSheetSyncError = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
+          await order.save();
+          console.error(`[Messenger Order] Không thể cập nhật ảnh mẫu vào Sheet orderId=${order.orderId}:`, error);
+        }
+      }
+      void companyTelegramOrderService.notifyCakeSelection(order.orderId);
+    }
+    return { orderId: order?.orderId || "", imageUrl, categoryName: conversation.cakeCatalogCategory || "" };
   },
 
   async retry(orderId: string, companyCode: string) {

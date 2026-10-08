@@ -1,4 +1,4 @@
-import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig, CompanySepayConfig } from "../types";
+import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig, CompanySepayConfig, CompanyCakeCatalogConfig } from "../types";
 
 export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
@@ -471,6 +471,35 @@ export const authService = {
       body: JSON.stringify(input),
     });
     return (await parseJson<{ data: CompanySepayConfig }>(res, "Không thể lưu cấu hình SePay")).data;
+  },
+
+  async getCompanyCakeCatalogConfig(): Promise<CompanyCakeCatalogConfig> {
+    const res = await fetch("/api/v1/company-cake-catalog", {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    return (await parseJson<{ data: CompanyCakeCatalogConfig }>(res, "Không thể tải cấu hình thư viện ảnh bánh.")).data;
+  },
+
+  async updateCompanyCakeCatalogConfig(input: {
+    enabled: boolean;
+    rootFolderUrl: string;
+    maxImagesPerReply: number;
+  }): Promise<CompanyCakeCatalogConfig> {
+    const res = await fetch("/api/v1/company-cake-catalog", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: CompanyCakeCatalogConfig }>(res, "Không thể lưu cấu hình thư viện ảnh bánh.")).data;
+  },
+
+  async testCompanyCakeCatalogConfig(rootFolderUrl: string) {
+    const res = await fetch("/api/v1/company-cake-catalog/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify({ rootFolderUrl }),
+    });
+    return (await parseJson<{ data: { categoryCount: number; imageCount: number; categories: Array<{ name: string; imageCount: number }> } }>(res, "Không thể đọc thư mục Google Drive.")).data;
   },
 
   async getTelegramLinkStatus(): Promise<TelegramLinkStatus> {

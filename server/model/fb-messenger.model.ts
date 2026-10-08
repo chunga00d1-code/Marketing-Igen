@@ -18,6 +18,11 @@ export interface IFBConversation extends Document {
   lastAssistantMessageAt?: Date;
   followUpCount?: number;
   followUpStatus?: "idle" | "pending" | "sent" | "responded";
+  cakeCatalogSentAt?: Date;
+  cakeCatalogCategory?: string;
+  selectedCakeImageUrl?: string;
+  selectedCakeMessageId?: string;
+  selectedCakeSelectedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +63,11 @@ const FBConversationSchema: Schema = new Schema(
     lastAssistantMessageAt: { type: Date, default: null },
     followUpCount: { type: Number, default: 0 },
     followUpStatus: { type: String, enum: ["idle", "pending", "sent", "responded"], default: "idle" },
+    cakeCatalogSentAt: { type: Date, default: null },
+    cakeCatalogCategory: { type: String, default: "", trim: true },
+    selectedCakeImageUrl: { type: String, default: "", trim: true },
+    selectedCakeMessageId: { type: String, default: "", trim: true },
+    selectedCakeSelectedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

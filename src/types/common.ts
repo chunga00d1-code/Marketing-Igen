@@ -105,3 +105,12 @@ export interface CompanySepayConfig {
   lastWebhookStatus: "success" | "failed" | "untested";
   lastWebhookError: string;
 }
+
+export interface CompanyCakeCatalogConfig {
+  companyCode: string;
+  companyName: string;
+  enabled: boolean;
+  rootFolderUrl: string;
+  maxImagesPerReply: number;
+  serviceAccountEmail: string;
+}

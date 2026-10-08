@@ -54,6 +54,15 @@ const CompanySepayConfigSchema = new Schema(
   { _id: false }
 );
 
+const CompanyCakeCatalogConfigSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    rootFolderUrl: { type: String, default: "", trim: true, maxlength: 1000 },
+    maxImagesPerReply: { type: Number, default: 5, min: 1, max: 10 },
+  },
+  { _id: false },
+);
+
 const CompanySchema = new Schema<ICompany>({
   code: { type: String, required: true, unique: true, index: true, uppercase: true },
   name: { type: String, required: true },
@@ -63,6 +72,7 @@ const CompanySchema = new Schema<ICompany>({
   elevenlabsConfig: { type: CompanyElevenLabsConfigSchema, default: () => ({}) },
   telegramOrderConfig: { type: CompanyTelegramOrderConfigSchema, default: () => ({}) },
   sepayConfig: { type: CompanySepayConfigSchema, default: () => ({}) },
+  cakeCatalogConfig: { type: CompanyCakeCatalogConfigSchema, default: () => ({}) },
 });
 
 CompanySchema.index({ "sepayConfig.webhookId": 1 }, { unique: true, sparse: true });

@@ -6,6 +6,7 @@ import { aiAutoReplyService } from "./ai-auto-reply.service";
 import { facebookCommentService } from "./facebook-comment.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { messengerOrderService } from "./messenger-order.service";
+import { companyCakeCatalogService } from "./company-cake-catalog.service";
 import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import {
   FacebookMessengerError,
@@ -689,6 +690,18 @@ export const fbMessengerService = {
           return;
         }
 
+        const cakeSelection = await messengerOrderService.captureCakeSelection(
+          resolvedPageId,
+          conversationId,
+          messageId,
+          attachments,
+          token || undefined,
+        );
+        if (cakeSelection) {
+          await this.sendReply(resolvedPageId, conversationId, "Shop đã lưu ảnh mẫu bánh bạn chọn.", "ai");
+          return;
+        }
+
         if (messengerOrderService.isConfirmationMessage(text)) {
           const order = await messengerOrderService.captureConfirmedOrder(resolvedPageId, conversationId, messageId, text);
           if (order) {
@@ -699,11 +712,33 @@ export const fbMessengerService = {
               const paymentQr = await messengerOrderService.getDepositPaymentQr(order.orderId);
               if (paymentQr) {
                 try {
-                  await this.sendImage(resolvedPageId, conversationId, paymentQr.imageUrl);
+                  await this.sendImage(resolvedPageId, conversationId, paymentQr.imageUrl, undefined, "[Mã VietQR thanh toán]");
                 } catch (qrError) {
                   console.error(`[FB Service processIncomingMessage] Khong the gui VietQR orderId=${order.orderId}:`, qrError);
                 }
               }
+              return;
+            }
+          }
+        }
+
+        if (text) {
+          const suggestions = await companyCakeCatalogService.findSuggestionsForPage(resolvedPageId, text);
+          if (suggestions?.images.length) {
+            let sentCount = 0;
+            for (const image of suggestions.images) {
+              try {
+                await this.sendImage(resolvedPageId, conversationId, image.imageUrl, undefined, "[Ảnh mẫu bánh]");
+                sentCount += 1;
+              } catch (imageError) {
+                console.error(`[FB Service processIncomingMessage] Không thể gửi ảnh mẫu ${image.id}:`, imageError);
+              }
+            }
+            if (sentCount) {
+              conversation.cakeCatalogSentAt = new Date();
+              conversation.cakeCatalogCategory = suggestions.categoryName;
+              await conversation.save();
+              await this.sendReply(resolvedPageId, conversationId, "Bạn chọn mẫu rồi gửi lại ảnh giúp shop nhé.", "ai");
               return;
             }
           }
@@ -948,6 +983,7 @@ export const fbMessengerService = {
     conversationId: string,
     imageUrl: string,
     tokenContext?: FacebookTokenContext,
+    messageLabel = "[Hình ảnh]",
   ) {
     const conversation = await FBConversationModel.findOne({ _id: conversationId, pageId });
     if (!conversation) throw new Error("Không tìm thấy cuộc hội thoại để gửi ảnh.");
@@ -975,7 +1011,7 @@ export const fbMessengerService = {
       throw translateFacebookSendError(responseText, response.status);
     }
     const data = await response.json();
-    conversation.lastMessageText = "[Mã VietQR thanh toán]";
+    conversation.lastMessageText = messageLabel;
     conversation.lastMessageAt = new Date();
     conversation.unreadCount = 0;
     await conversation.save();
