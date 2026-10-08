@@ -285,6 +285,13 @@ function depositRequestText(
   paymentCode?: string,
   paymentQr?: { bankId: string; accountNumber: string; accountName: string } | null,
 ) {
+  if (paymentQr) {
+    return [
+      `Số tài khoản: ${paymentQr.accountNumber}`,
+      "Chuyển khoản xong bạn vui lòng chụp lại biên lai và gửi vào đây nhé.",
+    ].join("\n");
+  }
+
   const amountText = amount
     ? `${new Intl.NumberFormat("vi-VN").format(amount)} đ (${percent}% giá trị đơn hàng)`
     : `${percent}% giá trị đơn hàng`;
