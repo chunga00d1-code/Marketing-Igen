@@ -669,19 +669,48 @@ export const fbMessengerService = {
     });
     emitToPage(resolvedPageId, "conversation_updated", conversation);
 
-    // Kích hoạt AI Auto-Reply Bot bất đồng bộ
-    console.log(
-      `[FB Service processIncomingMessage] 🚀 TRIGGER AI: Đang chuyển tiếp sang aiAutoReplyService.triggerAutoReply ` +
-      `cho conversationId=${conversation._id.toString()}, pageId=${resolvedPageId}, textLength=${text.length}`
-    );
-    aiAutoReplyService.triggerAutoReply("facebook", resolvedPageId, conversation._id.toString(), text, messageId);
-    if (messengerOrderService.isConfirmationMessage(text)) {
-      void messengerOrderService
-        .captureConfirmedOrder(resolvedPageId, conversation._id.toString(), messageId, text)
-        .catch((error) => {
-          console.error(`[FB Service processIncomingMessage] Khong the luu don Messenger messageId=${messageId}:`, error);
-        });
-    }
+    const conversationId = conversation._id.toString();
+    const handleOrderMessage = async () => {
+      try {
+        const receiptOrder = await messengerOrderService.capturePaymentReceipt(
+          resolvedPageId,
+          conversationId,
+          messageId,
+          attachments,
+          token || undefined,
+        );
+        if (receiptOrder) {
+          await this.sendReply(
+            resolvedPageId,
+            conversationId,
+            `Shop đã nhận biên lai cho đơn ${receiptOrder.orderId}. Shop sẽ kiểm tra và xác nhận sau khi đối soát giao dịch.`,
+            "ai",
+          );
+          return;
+        }
+
+        if (messengerOrderService.isConfirmationMessage(text)) {
+          const order = await messengerOrderService.captureConfirmedOrder(resolvedPageId, conversationId, messageId, text);
+          if (order) {
+            const depositRequest = await messengerOrderService.getDepositRequest(order.orderId);
+            if (depositRequest) {
+              await this.sendReply(resolvedPageId, conversationId, depositRequest, "ai");
+              await messengerOrderService.markDepositRequested(order.orderId);
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`[FB Service processIncomingMessage] Khong the xu ly don/bien lai Messenger messageId=${messageId}:`, error);
+      }
+
+      console.log(
+        `[FB Service processIncomingMessage] TRIGGER AI: conversationId=${conversationId}, ` +
+        `pageId=${resolvedPageId}, textLength=${text.length}`
+      );
+      aiAutoReplyService.triggerAutoReply("facebook", resolvedPageId, conversationId, text, messageId);
+    };
+    void handleOrderMessage();
   },
 
   /**

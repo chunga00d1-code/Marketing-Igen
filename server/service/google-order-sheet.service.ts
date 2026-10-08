@@ -5,17 +5,18 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 export const ORDER_HEADERS = [
-  "order_id", "created_at", "confirmed_at", "source_channel", "source_account",
-  "conversation_id", "customer_name", "customer_phone", "delivery_address",
-  "items_summary", "subtotal", "shipping_fee", "discount_amount", "total_amount",
-  "payment_method", "payment_status", "order_status", "customer_note",
-  "internal_note", "source_message_id", "fulfillment_method",
-  "fulfillment_location", "requested_fulfillment_time",
+  "Mã đơn hàng", "Ngày tạo", "Ngày xác nhận", "Kênh bán hàng", "Tài khoản nguồn",
+  "Mã hội thoại", "Tên khách hàng", "Số điện thoại", "Địa chỉ giao hàng",
+  "Sản phẩm", "Tạm tính", "Phí vận chuyển", "Giảm giá", "Tổng thanh toán",
+  "Phương thức thanh toán", "Trạng thái thanh toán", "Trạng thái đơn hàng", "Ghi chú khách hàng",
+  "Ghi chú nội bộ", "Mã tin nhắn nguồn", "Hình thức nhận hàng",
+  "Địa điểm nhận hàng", "Thời gian nhận hàng", "Yêu cầu đặt cọc",
+  "Số tiền đặt cọc", "Trạng thái đặt cọc", "Link biên lai thanh toán", "Thời gian nhận biên lai",
 ];
 
 export const ORDER_ITEM_HEADERS = [
-  "order_id", "line_number", "product_code", "product_name", "variant_summary",
-  "quantity", "unit_price", "line_total", "attributes_json",
+  "Mã đơn hàng", "STT", "Mã sản phẩm", "Tên sản phẩm", "Phân loại / thuộc tính",
+  "Số lượng", "Đơn giá", "Thành tiền", "Thuộc tính chi tiết",
 ];
 
 export interface SheetOrderItem {
@@ -51,6 +52,11 @@ export interface SheetOrder {
   customerNote?: string;
   internalNote?: string;
   sourceMessageId: string;
+  depositRequired?: boolean;
+  depositAmount?: number;
+  depositStatus?: "not_required" | "awaiting_receipt" | "receipt_received";
+  receiptUrl?: string;
+  receiptReceivedAt?: Date;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -127,6 +133,23 @@ function a1SheetName(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
+function columnLetters(columnNumber: number) {
+  let value = columnNumber;
+  let result = "";
+  while (value > 0) {
+    value -= 1;
+    result = String.fromCharCode(65 + (value % 26)) + result;
+    value = Math.floor(value / 26);
+  }
+  return result;
+}
+
+function depositStatusLabel(status?: SheetOrder["depositStatus"]) {
+  if (status === "receipt_received") return "Đã nhận biên lai - chờ đối soát";
+  if (status === "awaiting_receipt") return "Chờ khách gửi biên lai";
+  return "Không yêu cầu";
+}
+
 function safeCell(value: unknown) {
   if (value === null || value === undefined) return "";
   if (typeof value === "number" || typeof value === "boolean") return value;
@@ -161,7 +184,7 @@ async function ensureTabs(spreadsheetId: string, tabNames: string[]) {
 }
 
 async function writeHeader(spreadsheetId: string, sheetName: string, headers: string[]) {
-  const range = `${a1SheetName(sheetName)}!A1:${String.fromCharCode(64 + headers.length)}1`;
+  const range = `${a1SheetName(sheetName)}!A1:${columnLetters(headers.length)}1`;
   await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
     method: "PUT",
     body: JSON.stringify({ range, majorDimension: "ROWS", values: [headers] }),
@@ -170,7 +193,8 @@ async function writeHeader(spreadsheetId: string, sheetName: string, headers: st
 
 async function appendRows(spreadsheetId: string, sheetName: string, rows: unknown[][]) {
   if (!rows.length) return;
-  const range = `${a1SheetName(sheetName)}!A:Z`;
+  const width = Math.max(...rows.map((row) => row.length), 1);
+  const range = `${a1SheetName(sheetName)}!A:${columnLetters(width)}`;
   await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
     method: "POST",
     body: JSON.stringify({ majorDimension: "ROWS", values: rows.map((row) => row.map(safeCell)) }),
@@ -220,9 +244,11 @@ export const googleOrderSheetService = {
       order.orderId, order.createdAt.toISOString(), order.confirmedAt.toISOString(), "facebook_messenger",
       order.sourceAccount, order.conversationId, order.customerName, order.customerPhone,
       order.deliveryAddress, itemSummary, order.subtotal, order.shippingFee, order.discountAmount,
-      order.totalAmount, order.paymentMethod, order.paymentStatus || "unpaid", order.orderStatus || "new",
+      order.totalAmount, order.paymentMethod, order.paymentStatus || "Chưa thanh toán", order.orderStatus || "Mới",
       order.customerNote, order.internalNote, order.sourceMessageId, order.fulfillmentMethod,
-      order.fulfillmentLocation, order.requestedFulfillmentTime,
+      order.fulfillmentLocation, order.requestedFulfillmentTime, order.depositRequired ? "Có" : "Không",
+      order.depositAmount, depositStatusLabel(order.depositStatus), order.receiptUrl,
+      order.receiptReceivedAt?.toISOString(),
     ]]);
     await appendRows(spreadsheetId, itemsSheetName, order.items.map((item, index) => [
       order.orderId, index + 1, item.productCode, item.productName, item.variantSummary,
@@ -230,5 +256,37 @@ export const googleOrderSheetService = {
       Object.keys(item.attributes || {}).length ? JSON.stringify(item.attributes) : "",
     ]));
     return { duplicate: false };
+  },
+
+  async updatePaymentReceipt(
+    spreadsheetId: string,
+    ordersName: string,
+    orderId: string,
+    receipt: { depositAmount?: number; receiptUrl: string; receiptReceivedAt: Date },
+  ) {
+    const ordersSheetName = safeSheetName(ordersName, "Orders");
+    await ensureTabs(spreadsheetId, [ordersSheetName]);
+    await writeHeader(spreadsheetId, ordersSheetName, ORDER_HEADERS);
+    const lookupRange = `${a1SheetName(ordersSheetName)}!A:A`;
+    const existing = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(lookupRange)}`) as { values?: unknown[][] };
+    const rowIndex = (existing.values || []).findIndex((row) => String(row?.[0] || "") === orderId);
+    if (rowIndex < 1) throw new Error("Không tìm thấy đơn hàng trong Google Sheet để cập nhật biên lai.");
+    const rowNumber = rowIndex + 1;
+    const paymentRange = `${a1SheetName(ordersSheetName)}!P${rowNumber}:P${rowNumber}`;
+    const receiptRange = `${a1SheetName(ordersSheetName)}!X${rowNumber}:AB${rowNumber}`;
+    await Promise.all([
+      sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(paymentRange)}?valueInputOption=RAW`, {
+        method: "PUT",
+        body: JSON.stringify({ range: paymentRange, majorDimension: "ROWS", values: [["Đã nhận biên lai - chờ đối soát"]] }),
+      }),
+      sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(receiptRange)}?valueInputOption=RAW`, {
+        method: "PUT",
+        body: JSON.stringify({
+          range: receiptRange,
+          majorDimension: "ROWS",
+          values: [["Có", receipt.depositAmount ?? "", depositStatusLabel("receipt_received"), safeCell(receipt.receiptUrl), receipt.receiptReceivedAt.toISOString()]],
+        }),
+      }),
+    ]);
   },
 };

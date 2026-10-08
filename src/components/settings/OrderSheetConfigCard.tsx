@@ -14,6 +14,9 @@ const DEFAULT_CONFIG: OrderSheetConfig = {
   ordersSheetName: "Orders",
   itemsSheetName: "OrderItems",
   writeTrigger: "customer_confirmed",
+  depositEnabled: false,
+  depositPercent: 30,
+  depositInstructions: "",
 };
 
 interface OrderSheetConfigCardProps {
@@ -51,6 +54,9 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
     if (config.enabled && !/\/spreadsheets\/d\/[a-zA-Z0-9_-]+/.test(config.spreadsheetUrl)) {
       throw new Error("Vui lòng nhập link Google Sheet hợp lệ.");
     }
+    if (config.depositEnabled && !String(config.depositInstructions || "").trim()) {
+      throw new Error("Vui lòng nhập thông tin chuyển khoản trước khi bật yêu cầu đặt cọc.");
+    }
     const nextConfig: OrderSheetConfig = {
       ...config,
       spreadsheetId: "",
@@ -58,6 +64,9 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
       ordersSheetName: config.ordersSheetName.trim() || "Orders",
       itemsSheetName: config.itemsSheetName.trim() || "OrderItems",
       writeTrigger: "customer_confirmed",
+      depositEnabled: Boolean(config.depositEnabled),
+      depositPercent: Math.min(100, Math.max(1, Number(config.depositPercent || 30))),
+      depositInstructions: String(config.depositInstructions || "").trim(),
       updatedAt: new Date().toISOString(),
     };
     await socialIntegrationService.updateIntegration(integration._id, { orderSheetConfig: nextConfig });
@@ -131,6 +140,50 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
           placeholder="OrderItems"
           className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
         />
+      </div>
+      <div className="space-y-2 rounded-lg border border-blue-100 bg-white p-2.5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold text-gray-800">Yêu cầu khách đặt cọc</p>
+            <p className="mt-0.5 text-[10px] leading-4 text-gray-500">Sau khi chốt đơn, bot gửi hướng dẫn cọc và yêu cầu ảnh biên lai.</p>
+          </div>
+          <label className="relative inline-flex shrink-0 cursor-pointer items-center">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={Boolean(config.depositEnabled)}
+              onChange={(event) => setConfig((current) => ({ ...current, depositEnabled: event.target.checked }))}
+            />
+            <span className="h-5 w-9 rounded-full bg-gray-300 transition peer-checked:bg-blue-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-4" />
+          </label>
+        </div>
+        {config.depositEnabled && (
+          <>
+            <label className="block text-[10px] font-semibold text-gray-600">
+              Phần trăm đặt cọc
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={config.depositPercent ?? 30}
+                onChange={(event) => setConfig((current) => ({ ...current, depositPercent: Number(event.target.value) }))}
+                className="mt-1 h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-blue-500"
+              />
+            </label>
+            <label className="block text-[10px] font-semibold text-gray-600">
+              Thông tin chuyển khoản gửi cho khách
+              <textarea
+                rows={4}
+                maxLength={2000}
+                value={config.depositInstructions || ""}
+                onChange={(event) => setConfig((current) => ({ ...current, depositInstructions: event.target.value }))}
+                placeholder={"Ngân hàng: ...\nSố tài khoản: ...\nChủ tài khoản: ...\nNội dung chuyển khoản: Tên + SĐT"}
+                className="mt-1 w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-500"
+              />
+            </label>
+            <p className="text-[10px] leading-4 text-amber-700">Ảnh khách gửi sẽ được lưu lên Cloudinary; Sheet chỉ ghi nhận “chờ đối soát”, không tự xác nhận đã thanh toán.</p>
+          </>
+        )}
       </div>
       <div className="grid grid-cols-3 gap-2">
         <button type="button" onClick={() => void run("save")} disabled={!!busyAction} className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-[10px] font-bold text-gray-700 disabled:opacity-50">

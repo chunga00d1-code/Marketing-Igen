@@ -27,6 +27,15 @@ export interface IMessengerOrder extends Document {
   discountAmount?: number;
   totalAmount?: number;
   paymentMethod?: string;
+  depositRequired: boolean;
+  depositPercent?: number;
+  depositAmount?: number;
+  depositStatus: "not_required" | "awaiting_receipt" | "receipt_received";
+  depositRequestedAt?: Date;
+  receiptUrl?: string;
+  receiptMessageId?: string;
+  receiptReceivedAt?: Date;
+  receiptSheetSyncError?: string;
   fulfillmentMethod?: "" | "pickup" | "delivery";
   fulfillmentLocation?: string;
   requestedFulfillmentTime?: string;
@@ -71,6 +80,20 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   discountAmount: { type: Number, min: 0 },
   totalAmount: { type: Number, min: 0 },
   paymentMethod: { type: String, default: "", trim: true },
+  depositRequired: { type: Boolean, default: false },
+  depositPercent: { type: Number, min: 1, max: 100 },
+  depositAmount: { type: Number, min: 0 },
+  depositStatus: {
+    type: String,
+    enum: ["not_required", "awaiting_receipt", "receipt_received"],
+    default: "not_required",
+    index: true,
+  },
+  depositRequestedAt: { type: Date },
+  receiptUrl: { type: String, default: "", trim: true },
+  receiptMessageId: { type: String, default: "", trim: true },
+  receiptReceivedAt: { type: Date },
+  receiptSheetSyncError: { type: String, default: "" },
   fulfillmentMethod: { type: String, enum: ["", "pickup", "delivery"], default: "" },
   fulfillmentLocation: { type: String, default: "", trim: true },
   requestedFulfillmentTime: { type: String, default: "", trim: true },
