@@ -41,11 +41,18 @@ export interface ICompanySepayConfig {
   lastWebhookError?: string;
 }
 
-export interface ICompanyCakeCatalogConfig {
+export interface ICompanyProductCatalogConfig {
   enabled: boolean;
   rootFolderUrl: string;
   maxImagesPerReply: number;
+  catalogName: string;
+  itemLabel: string;
+  selectionMessage: string;
+  businessDescription: string;
+  categoryAliases?: Record<string, string[]>;
 }
+
+export type ICompanyCakeCatalogConfig = ICompanyProductCatalogConfig;
 
 export interface ICompany extends Document {
   code: string;
@@ -56,5 +63,6 @@ export interface ICompany extends Document {
   elevenlabsConfig?: ICompanyElevenLabsConfig;
   telegramOrderConfig?: ICompanyTelegramOrderConfig;
   sepayConfig?: ICompanySepayConfig;
+  productCatalogConfig?: ICompanyProductCatalogConfig;
   cakeCatalogConfig?: ICompanyCakeCatalogConfig;
 }

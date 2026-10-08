@@ -1,4 +1,4 @@
-import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig, CompanySepayConfig, CompanyCakeCatalogConfig } from "../types";
+import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig, CompanySepayConfig, CompanyProductCatalogConfig } from "../types";
 
 export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
@@ -473,33 +473,59 @@ export const authService = {
     return (await parseJson<{ data: CompanySepayConfig }>(res, "Không thể lưu cấu hình SePay")).data;
   },
 
-  async getCompanyCakeCatalogConfig(): Promise<CompanyCakeCatalogConfig> {
-    const res = await fetch("/api/v1/company-cake-catalog", {
+  async getCompanyProductCatalogConfig(): Promise<CompanyProductCatalogConfig> {
+    const res = await fetch("/api/v1/company-product-catalog", {
       headers: { Authorization: `Bearer ${getAccessToken()}` },
     });
-    return (await parseJson<{ data: CompanyCakeCatalogConfig }>(res, "Không thể tải cấu hình thư viện ảnh bánh.")).data;
+    return (await parseJson<{ data: CompanyProductCatalogConfig }>(res, "Không thể tải cấu hình thư viện ảnh sản phẩm.")).data;
+  },
+
+  async updateCompanyProductCatalogConfig(input: {
+    enabled: boolean;
+    rootFolderUrl: string;
+    maxImagesPerReply: number;
+    catalogName: string;
+    itemLabel: string;
+    selectionMessage: string;
+    businessDescription: string;
+    categoryAliases: Record<string, string[]>;
+  }): Promise<CompanyProductCatalogConfig> {
+    const res = await fetch("/api/v1/company-product-catalog", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: CompanyProductCatalogConfig }>(res, "Không thể lưu cấu hình thư viện ảnh sản phẩm.")).data;
+  },
+
+  async testCompanyProductCatalogConfig(input: { rootFolderUrl: string; catalogName: string }) {
+    const res = await fetch("/api/v1/company-product-catalog/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: { categoryCount: number; imageCount: number; categories: Array<{ name: string; imageCount: number }>; previewImageUrl: string } }>(res, "Không thể đọc thư mục Google Drive.")).data;
+  },
+
+  async getCompanyCakeCatalogConfig(): Promise<CompanyProductCatalogConfig> {
+    return this.getCompanyProductCatalogConfig();
   },
 
   async updateCompanyCakeCatalogConfig(input: {
     enabled: boolean;
     rootFolderUrl: string;
     maxImagesPerReply: number;
-  }): Promise<CompanyCakeCatalogConfig> {
-    const res = await fetch("/api/v1/company-cake-catalog", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
-      body: JSON.stringify(input),
-    });
-    return (await parseJson<{ data: CompanyCakeCatalogConfig }>(res, "Không thể lưu cấu hình thư viện ảnh bánh.")).data;
+    catalogName: string;
+    itemLabel: string;
+    selectionMessage: string;
+    businessDescription: string;
+    categoryAliases: Record<string, string[]>;
+  }) {
+    return this.updateCompanyProductCatalogConfig(input);
   },
 
   async testCompanyCakeCatalogConfig(rootFolderUrl: string) {
-    const res = await fetch("/api/v1/company-cake-catalog/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
-      body: JSON.stringify({ rootFolderUrl }),
-    });
-    return (await parseJson<{ data: { categoryCount: number; imageCount: number; categories: Array<{ name: string; imageCount: number }> } }>(res, "Không thể đọc thư mục Google Drive.")).data;
+    return this.testCompanyProductCatalogConfig({ rootFolderUrl, catalogName: "Thư viện sản phẩm" });
   },
 
   async getTelegramLinkStatus(): Promise<TelegramLinkStatus> {

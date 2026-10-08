@@ -54,11 +54,16 @@ const CompanySepayConfigSchema = new Schema(
   { _id: false }
 );
 
-const CompanyCakeCatalogConfigSchema = new Schema(
+const CompanyProductCatalogConfigSchema = new Schema(
   {
     enabled: { type: Boolean, default: false },
     rootFolderUrl: { type: String, default: "", trim: true, maxlength: 1000 },
     maxImagesPerReply: { type: Number, default: 5, min: 1, max: 10 },
+    catalogName: { type: String, default: "Thư viện sản phẩm", trim: true, maxlength: 100 },
+    itemLabel: { type: String, default: "sản phẩm", trim: true, maxlength: 80 },
+    selectionMessage: { type: String, default: "Bạn chọn mẫu phù hợp rồi gửi lại ảnh giúp shop nhé.", trim: true, maxlength: 500 },
+    businessDescription: { type: String, default: "", trim: true, maxlength: 1000 },
+    categoryAliases: { type: Schema.Types.Mixed, default: {} },
   },
   { _id: false },
 );
@@ -72,7 +77,8 @@ const CompanySchema = new Schema<ICompany>({
   elevenlabsConfig: { type: CompanyElevenLabsConfigSchema, default: () => ({}) },
   telegramOrderConfig: { type: CompanyTelegramOrderConfigSchema, default: () => ({}) },
   sepayConfig: { type: CompanySepayConfigSchema, default: () => ({}) },
-  cakeCatalogConfig: { type: CompanyCakeCatalogConfigSchema, default: () => ({}) },
+  productCatalogConfig: { type: CompanyProductCatalogConfigSchema, default: () => ({}) },
+  cakeCatalogConfig: { type: CompanyProductCatalogConfigSchema, default: () => ({}) },
 });
 
 CompanySchema.index({ "sepayConfig.webhookId": 1 }, { unique: true, sparse: true });

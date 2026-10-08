@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
-import { companyCakeCatalogService } from "../service/company-cake-catalog.service";
+import { companyProductCatalogService } from "../service/company-cake-catalog.service";
 
 function companyCode(req: AuthenticatedRequest) {
   const value = String(req.user?.companyCode || "").trim();
@@ -8,10 +8,10 @@ function companyCode(req: AuthenticatedRequest) {
   return value;
 }
 
-export const companyCakeCatalogController = {
+export const companyProductCatalogController = {
   async get(req: AuthenticatedRequest, res: Response) {
     try {
-      return res.json({ status: "success", data: await companyCakeCatalogService.getConfig(companyCode(req)) });
+      return res.json({ status: "success", data: await companyProductCatalogService.getConfig(companyCode(req)) });
     } catch (error) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : String(error) });
     }
@@ -19,7 +19,7 @@ export const companyCakeCatalogController = {
 
   async update(req: AuthenticatedRequest, res: Response) {
     try {
-      return res.json({ status: "success", data: await companyCakeCatalogService.updateConfig(companyCode(req), req.body) });
+      return res.json({ status: "success", data: await companyProductCatalogService.updateConfig(companyCode(req), req.body) });
     } catch (error) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : String(error) });
     }
@@ -27,9 +27,11 @@ export const companyCakeCatalogController = {
 
   async test(req: AuthenticatedRequest, res: Response) {
     try {
-      return res.json({ status: "success", data: await companyCakeCatalogService.testConfig(companyCode(req), req.body.rootFolderUrl) });
+      return res.json({ status: "success", data: await companyProductCatalogService.testConfig(companyCode(req), req.body) });
     } catch (error) {
       return res.status(400).json({ status: "error", message: error instanceof Error ? error.message : String(error) });
     }
   },
 };
+
+export const companyCakeCatalogController = companyProductCatalogController;

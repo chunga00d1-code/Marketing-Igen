@@ -6,7 +6,7 @@ import { aiAutoReplyService } from "./ai-auto-reply.service";
 import { facebookCommentService } from "./facebook-comment.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { messengerOrderService } from "./messenger-order.service";
-import { companyCakeCatalogService } from "./company-cake-catalog.service";
+import { companyProductCatalogService } from "./company-product-catalog.service";
 import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import {
   FacebookMessengerError,
@@ -690,15 +690,15 @@ export const fbMessengerService = {
           return;
         }
 
-        const cakeSelection = await messengerOrderService.captureCakeSelection(
+        const productSelection = await messengerOrderService.captureProductSelection(
           resolvedPageId,
           conversationId,
           messageId,
           attachments,
           token || undefined,
         );
-        if (cakeSelection) {
-          await this.sendReply(resolvedPageId, conversationId, "Shop đã lưu ảnh mẫu bánh bạn chọn.", "ai");
+        if (productSelection) {
+          await this.sendReply(resolvedPageId, conversationId, `Shop đã lưu ảnh ${productSelection.itemLabel} bạn chọn.`, "ai");
           return;
         }
 
@@ -723,22 +723,24 @@ export const fbMessengerService = {
         }
 
         if (text) {
-          const suggestions = await companyCakeCatalogService.findSuggestionsForPage(resolvedPageId, text);
+          const suggestions = await companyProductCatalogService.findSuggestionsForPage(resolvedPageId, text);
           if (suggestions?.images.length) {
             let sentCount = 0;
             for (const image of suggestions.images) {
               try {
-                await this.sendImage(resolvedPageId, conversationId, image.imageUrl, undefined, "[Ảnh mẫu bánh]");
+                await this.sendImage(resolvedPageId, conversationId, image.imageUrl, undefined, `[Ảnh ${suggestions.itemLabel}]`);
                 sentCount += 1;
               } catch (imageError) {
                 console.error(`[FB Service processIncomingMessage] Không thể gửi ảnh mẫu ${image.id}:`, imageError);
               }
             }
             if (sentCount) {
-              conversation.cakeCatalogSentAt = new Date();
-              conversation.cakeCatalogCategory = suggestions.categoryName;
+              conversation.productCatalogSentAt = new Date();
+              conversation.productCatalogCategory = suggestions.categoryName;
+              conversation.productCatalogItemLabel = suggestions.itemLabel;
+              conversation.productSelectionStatus = "awaiting_selection";
               await conversation.save();
-              await this.sendReply(resolvedPageId, conversationId, "Bạn chọn mẫu rồi gửi lại ảnh giúp shop nhé.", "ai");
+              await this.sendReply(resolvedPageId, conversationId, suggestions.selectionMessage, "ai");
               return;
             }
           }
