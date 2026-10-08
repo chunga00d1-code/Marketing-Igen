@@ -13,6 +13,18 @@ export interface ICompanyElevenLabsConfig {
   apiKey: string;
 }
 
+export interface ICompanyTelegramOrderConfig {
+  enabled: boolean;
+  notifyNewOrder: boolean;
+  botTokenEncrypted: string;
+  groupChatId: string;
+  messageThreadId?: number | null;
+  botUsername: string;
+  lastTestedAt?: Date | null;
+  lastTestStatus?: "success" | "failed" | "untested";
+  lastTestError?: string;
+}
+
 export interface ICompany extends Document {
   code: string;
   name: string;
@@ -20,4 +32,5 @@ export interface ICompany extends Document {
   ownerEmail: string;
   heygenConfig?: ICompanyHeyGenConfig;
   elevenlabsConfig?: ICompanyElevenLabsConfig;
+  telegramOrderConfig?: ICompanyTelegramOrderConfig;
 }

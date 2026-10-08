@@ -38,6 +38,8 @@ export interface IMessengerOrder extends Document {
   lastSyncError?: string;
   confirmedAt?: Date;
   syncedAt?: Date;
+  telegramNotifiedAt?: Date;
+  telegramNotificationError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -80,6 +82,8 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   lastSyncError: { type: String, default: "" },
   confirmedAt: { type: Date },
   syncedAt: { type: Date },
+  telegramNotifiedAt: { type: Date },
+  telegramNotificationError: { type: String, default: "" },
 }, { timestamps: true });
 
 MessengerOrderSchema.index({ companyCode: 1, createdAt: -1 });

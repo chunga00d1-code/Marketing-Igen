@@ -72,3 +72,17 @@ export interface TelegramLinkStatus {
   pendingCodeExpiresAt: string | Date | null;
   botUsername: string;
 }
+
+export interface CompanyTelegramOrderConfig {
+  companyCode: string;
+  companyName: string;
+  enabled: boolean;
+  notifyNewOrder: boolean;
+  hasBotToken: boolean;
+  groupChatId: string;
+  messageThreadId: number | null;
+  botUsername: string;
+  lastTestedAt: string | Date | null;
+  lastTestStatus: "success" | "failed" | "untested";
+  lastTestError: string;
+}
