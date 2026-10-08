@@ -126,3 +126,18 @@ test("empty corrected output cannot bypass review via a fallback reply", async (
   );
   assert.equal(requests.length, 2);
 });
+
+test("chat preserves a scenario product URL and makes markdown-escaped schemes clickable", async (context) => {
+  const escapedUrl = "https\\://vibarycake.com/products?category=banh-sinh-nhat";
+  const requests = mockAI(context, [`Dạ chị xem mẫu tại ${escapedUrl} nha`]);
+
+  const result = await service.chat("Chị muốn đặt một bánh sinh nhật", [], baseConfig, {
+    contextText: "Các mẫu bánh sinh nhật theo yêu cầu",
+    scenarioContextText: `Nếu khách chưa có mẫu, bắt buộc gửi ${escapedUrl}`,
+  });
+
+  assert.equal(result.text, "Dạ chị xem mẫu tại https://vibarycake.com/products?category=banh-sinh-nhat nha");
+  const prompt = requests[0].messages[0].content;
+  assert.match(prompt, /phải chép nguyên vẹn URL đầy đủ/);
+  assert.match(prompt, /khách đã có mẫu thì không gửi link/);
+});
