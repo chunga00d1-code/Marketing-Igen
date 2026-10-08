@@ -47,6 +47,10 @@ export interface IMessengerOrder extends Document {
   requestedFulfillmentTime?: string;
   customerNote?: string;
   internalNote?: string;
+  selectedCakeImageUrl?: string;
+  selectedCakeMessageId?: string;
+  selectedCakeSelectedAt?: Date;
+  selectedCakeSheetSyncError?: string;
   missingFields: string[];
   status: "draft" | "confirmed" | "synced" | "failed";
   syncAttempts: number;
@@ -111,6 +115,10 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   requestedFulfillmentTime: { type: String, default: "", trim: true },
   customerNote: { type: String, default: "", trim: true },
   internalNote: { type: String, default: "", trim: true },
+  selectedCakeImageUrl: { type: String, default: "", trim: true },
+  selectedCakeMessageId: { type: String, default: "", trim: true },
+  selectedCakeSelectedAt: { type: Date },
+  selectedCakeSheetSyncError: { type: String, default: "" },
   missingFields: { type: [String], default: [] },
   status: { type: String, enum: ["draft", "confirmed", "synced", "failed"], default: "draft", index: true },
   syncAttempts: { type: Number, default: 0 },

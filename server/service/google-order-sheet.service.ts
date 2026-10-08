@@ -13,6 +13,7 @@ export const ORDER_HEADERS = [
   "Địa điểm nhận hàng", "Thời gian nhận hàng", "Yêu cầu đặt cọc",
   "Số tiền đặt cọc", "Trạng thái đặt cọc", "Link biên lai thanh toán", "Thời gian nhận biên lai",
   "Mã thanh toán", "Mã giao dịch SePay", "Số tiền SePay", "Thời gian xác nhận SePay",
+  "Link ảnh mẫu bánh khách chọn", "Thời gian chọn ảnh mẫu",
 ];
 
 export const ORDER_ITEM_HEADERS = [
@@ -62,6 +63,8 @@ export interface SheetOrder {
   sepayTransactionId?: string;
   sepayTransferAmount?: number;
   sepayVerifiedAt?: Date;
+  selectedCakeImageUrl?: string;
+  selectedCakeSelectedAt?: Date;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -256,6 +259,7 @@ export const googleOrderSheetService = {
       order.depositAmount, depositStatusLabel(order.depositStatus), order.receiptUrl,
       order.receiptReceivedAt?.toISOString(), order.paymentCode, order.sepayTransactionId,
       order.sepayTransferAmount, order.sepayVerifiedAt?.toISOString(),
+      order.selectedCakeImageUrl, order.selectedCakeSelectedAt?.toISOString(),
     ]]);
     await appendRows(spreadsheetId, itemsSheetName, order.items.map((item, index) => [
       order.orderId, index + 1, item.productCode, item.productName, item.variantSummary,
@@ -332,5 +336,26 @@ export const googleOrderSheetService = {
         }),
       }),
     ]);
+  },
+
+  async updateCakeSelection(
+    spreadsheetId: string,
+    ordersName: string,
+    orderId: string,
+    selection: { imageUrl: string; selectedAt: Date },
+  ) {
+    const ordersSheetName = safeSheetName(ordersName, "Orders");
+    await ensureTabs(spreadsheetId, [ordersSheetName]);
+    await writeHeader(spreadsheetId, ordersSheetName, ORDER_HEADERS);
+    const lookupRange = `${a1SheetName(ordersSheetName)}!A:A`;
+    const existing = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(lookupRange)}`) as { values?: unknown[][] };
+    const rowIndex = (existing.values || []).findIndex((row) => String(row?.[0] || "") === orderId);
+    if (rowIndex < 1) throw new Error("Không tìm thấy đơn hàng trong Google Sheet để cập nhật ảnh mẫu bánh.");
+    const rowNumber = rowIndex + 1;
+    const range = `${a1SheetName(ordersSheetName)}!AG${rowNumber}:AH${rowNumber}`;
+    await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
+      method: "PUT",
+      body: JSON.stringify({ range, majorDimension: "ROWS", values: [[safeCell(selection.imageUrl), selection.selectedAt.toISOString()]] }),
+    });
   },
 };

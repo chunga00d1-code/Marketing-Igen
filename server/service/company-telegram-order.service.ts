@@ -172,6 +172,7 @@ export const companyTelegramOrderService = {
       order.deliveryAddress ? `\u0110\u1ecba ch\u1ec9: ${escapeHtml(order.deliveryAddress)}` : "",
       items,
       `T\u1ed5ng ti\u1ec1n: <b>${Number(order.totalAmount || 0).toLocaleString("vi-VN")} \u0111</b>`,
+      order.selectedCakeImageUrl ? `Ảnh mẫu bánh: ${escapeHtml(order.selectedCakeImageUrl)}` : "",
     ].filter(Boolean).join("\n");
     try {
       const sent = await sendCompany(order.companyCode, message);
@@ -193,6 +194,17 @@ export const companyTelegramOrderService = {
       `Khách hàng: <b>${escapeHtml(order.customerName)}</b>`,
       `Số tiền: <b>${Number(order.sepayTransferAmount || 0).toLocaleString("vi-VN")} đ</b>`,
       `Mã giao dịch: <code>${escapeHtml(order.sepayTransactionId)}</code>`,
+    ].join("\n"));
+  },
+
+  async notifyCakeSelection(orderId: string) {
+    const order = await MessengerOrderModel.findOne({ orderId });
+    if (!order?.selectedCakeImageUrl) return;
+    await sendCompany(order.companyCode, [
+      "🎂 <b>KHÁCH ĐÃ CHỌN ẢNH MẪU BÁNH</b>",
+      `Mã đơn: <code>${escapeHtml(order.orderId)}</code>`,
+      `Khách hàng: <b>${escapeHtml(order.customerName)}</b>`,
+      `Ảnh mẫu: ${escapeHtml(order.selectedCakeImageUrl)}`,
     ].join("\n"));
   },
 
