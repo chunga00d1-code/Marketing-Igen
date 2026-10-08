@@ -1,4 +1,4 @@
-import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig } from "../types";
+import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig, CompanySepayConfig, CompanyProductCatalogConfig } from "../types";
 
 export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
@@ -412,6 +412,120 @@ export const authService = {
 
     const result = await parseJson<{ data: Record<string, unknown> }>(res, "Khong the dong bo thu vien HeyGen");
     return result.data;
+  },
+
+  async getCompanyTelegramOrderConfig(): Promise<CompanyTelegramOrderConfig> {
+    const res = await fetch("/api/v1/company-telegram-order", {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    const result = await parseJson<{ data: CompanyTelegramOrderConfig }>(res, "Khong the lay cau hinh Telegram");
+    return result.data;
+  },
+
+  async updateCompanyTelegramOrderConfig(updateData: {
+    enabled: boolean;
+    notifyNewOrder: boolean;
+    botToken?: string;
+    groupChatId: string;
+    messageThreadId: number | null;
+  }): Promise<CompanyTelegramOrderConfig> {
+    const res = await fetch("/api/v1/company-telegram-order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(updateData),
+    });
+    const result = await parseJson<{ data: CompanyTelegramOrderConfig }>(res, "Khong the luu cau hinh Telegram");
+    return result.data;
+  },
+
+  async testCompanyTelegramOrderConfig(input: { botToken?: string; groupChatId: string; messageThreadId: number | null }) {
+    const res = await fetch("/api/v1/company-telegram-order/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: { ok: boolean; botUsername: string; chatTitle: string } }>(res, "Khong the kiem tra Telegram")).data;
+  },
+
+  async getCompanySepayConfig(): Promise<CompanySepayConfig> {
+    const res = await fetch("/api/v1/company-sepay", {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    return (await parseJson<{ data: CompanySepayConfig }>(res, "Không thể tải cấu hình SePay")).data;
+  },
+
+  async updateCompanySepayConfig(input: {
+    enabled: boolean;
+    webhookSecret?: string;
+    accountNumbers: string[];
+    paymentCodePrefix: string;
+    depositEnabled: boolean;
+    depositPercent: number;
+    qrBankId: string;
+    qrAccountNumber: string;
+    qrAccountName: string;
+  }): Promise<CompanySepayConfig> {
+    const res = await fetch("/api/v1/company-sepay", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: CompanySepayConfig }>(res, "Không thể lưu cấu hình SePay")).data;
+  },
+
+  async getCompanyProductCatalogConfig(): Promise<CompanyProductCatalogConfig> {
+    const res = await fetch("/api/v1/company-product-catalog", {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    return (await parseJson<{ data: CompanyProductCatalogConfig }>(res, "Không thể tải cấu hình thư viện ảnh sản phẩm.")).data;
+  },
+
+  async updateCompanyProductCatalogConfig(input: {
+    enabled: boolean;
+    rootFolderUrl: string;
+    maxImagesPerReply: number;
+    catalogName: string;
+    itemLabel: string;
+    selectionMessage: string;
+    businessDescription: string;
+    categoryAliases: Record<string, string[]>;
+  }): Promise<CompanyProductCatalogConfig> {
+    const res = await fetch("/api/v1/company-product-catalog", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: CompanyProductCatalogConfig }>(res, "Không thể lưu cấu hình thư viện ảnh sản phẩm.")).data;
+  },
+
+  async testCompanyProductCatalogConfig(input: { rootFolderUrl: string; catalogName: string }) {
+    const res = await fetch("/api/v1/company-product-catalog/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: { categoryCount: number; imageCount: number; categories: Array<{ name: string; imageCount: number }>; previewImageUrl: string } }>(res, "Không thể đọc thư mục Google Drive.")).data;
+  },
+
+  async getCompanyCakeCatalogConfig(): Promise<CompanyProductCatalogConfig> {
+    return this.getCompanyProductCatalogConfig();
+  },
+
+  async updateCompanyCakeCatalogConfig(input: {
+    enabled: boolean;
+    rootFolderUrl: string;
+    maxImagesPerReply: number;
+    catalogName: string;
+    itemLabel: string;
+    selectionMessage: string;
+    businessDescription: string;
+    categoryAliases: Record<string, string[]>;
+  }) {
+    return this.updateCompanyProductCatalogConfig(input);
+  },
+
+  async testCompanyCakeCatalogConfig(rootFolderUrl: string) {
+    return this.testCompanyProductCatalogConfig({ rootFolderUrl, catalogName: "Thư viện sản phẩm" });
   },
 
   async getTelegramLinkStatus(): Promise<TelegramLinkStatus> {

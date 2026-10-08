@@ -72,3 +72,53 @@ export interface TelegramLinkStatus {
   pendingCodeExpiresAt: string | Date | null;
   botUsername: string;
 }
+
+export interface CompanyTelegramOrderConfig {
+  companyCode: string;
+  companyName: string;
+  enabled: boolean;
+  notifyNewOrder: boolean;
+  hasBotToken: boolean;
+  groupChatId: string;
+  messageThreadId: number | null;
+  botUsername: string;
+  lastTestedAt: string | Date | null;
+  lastTestStatus: "success" | "failed" | "untested";
+  lastTestError: string;
+}
+
+export interface CompanySepayConfig {
+  companyCode: string;
+  companyName: string;
+  enabled: boolean;
+  hasWebhookSecret: boolean;
+  webhookId: string;
+  webhookUrl: string;
+  accountNumbers: string[];
+  paymentCodePrefix: string;
+  depositEnabled: boolean;
+  depositPercent: number;
+  qrBankId: string;
+  qrAccountNumber: string;
+  qrAccountName: string;
+  lastWebhookAt: string | Date | null;
+  lastWebhookStatus: "success" | "failed" | "untested";
+  lastWebhookError: string;
+}
+
+export interface CompanyProductCatalogConfig {
+  companyCode: string;
+  companyName: string;
+  enabled: boolean;
+  rootFolderUrl: string;
+  maxImagesPerReply: number;
+  catalogName: string;
+  itemLabel: string;
+  selectionMessage: string;
+  businessDescription: string;
+  categoryAliases: Record<string, string[]>;
+  migratedFromLegacy?: boolean;
+  serviceAccountEmail: string;
+}
+
+export type CompanyCakeCatalogConfig = CompanyProductCatalogConfig;

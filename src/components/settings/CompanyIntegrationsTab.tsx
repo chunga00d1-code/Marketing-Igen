@@ -8,6 +8,9 @@ import { toast } from "../../pages/Toast";
 import { socialIntegrationService, SocialIntegration } from "../../services/socialIntegrationService";
 import { getAccessToken } from "../../services/authService";
 import OrderSheetConfigCard from "./OrderSheetConfigCard";
+import TelegramOrderConfigCard from "./TelegramOrderConfigCard";
+import SepayConfigCard from "./SepayConfigCard";
+import ProductCatalogConfigCard from "./ProductCatalogConfigCard";
 
 interface CompanyIntegrationsTabProps {
   userProfile: any;
@@ -689,6 +692,9 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
   return (
     <div className="space-y-6">
+      <TelegramOrderConfigCard userProfile={userProfile} />
+      <SepayConfigCard userProfile={userProfile} />
+      <ProductCatalogConfigCard userProfile={userProfile} />
       <div className="bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
           <div className="text-left">

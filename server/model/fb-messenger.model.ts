@@ -18,6 +18,18 @@ export interface IFBConversation extends Document {
   lastAssistantMessageAt?: Date;
   followUpCount?: number;
   followUpStatus?: "idle" | "pending" | "sent" | "responded";
+  productCatalogSentAt?: Date;
+  productCatalogCategory?: string;
+  productCatalogItemLabel?: string;
+  productSelectionStatus?: "idle" | "awaiting_selection" | "selected";
+  selectedProductImageUrl?: string;
+  selectedProductMessageId?: string;
+  selectedProductSelectedAt?: Date;
+  cakeCatalogSentAt?: Date;
+  cakeCatalogCategory?: string;
+  selectedCakeImageUrl?: string;
+  selectedCakeMessageId?: string;
+  selectedCakeSelectedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,6 +70,18 @@ const FBConversationSchema: Schema = new Schema(
     lastAssistantMessageAt: { type: Date, default: null },
     followUpCount: { type: Number, default: 0 },
     followUpStatus: { type: String, enum: ["idle", "pending", "sent", "responded"], default: "idle" },
+    productCatalogSentAt: { type: Date, default: null },
+    productCatalogCategory: { type: String, default: "", trim: true },
+    productCatalogItemLabel: { type: String, default: "sản phẩm", trim: true },
+    productSelectionStatus: { type: String, enum: ["idle", "awaiting_selection", "selected"], default: "idle" },
+    selectedProductImageUrl: { type: String, default: "", trim: true },
+    selectedProductMessageId: { type: String, default: "", trim: true },
+    selectedProductSelectedAt: { type: Date, default: null },
+    cakeCatalogSentAt: { type: Date, default: null },
+    cakeCatalogCategory: { type: String, default: "", trim: true },
+    selectedCakeImageUrl: { type: String, default: "", trim: true },
+    selectedCakeMessageId: { type: String, default: "", trim: true },
+    selectedCakeSelectedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

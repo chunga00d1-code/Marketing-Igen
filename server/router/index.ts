@@ -32,6 +32,10 @@ import { htmlVideoRenderRouter } from "./html-video-render.router";
 import { realEstateMapVideoRouter } from "./real-estate-map-video.router";
 import { orderSheetRouter } from "./order-sheet.router";
 import { canvaRouter } from "./canva.router";
+import { companyTelegramOrderRouter } from "./company-telegram-order.router";
+import { companySepayRouter } from "./company-sepay.router";
+import { companyCakeCatalogRouter } from "./company-cake-catalog.router";
+import { companyProductCatalogRouter } from "./company-product-catalog.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -96,6 +100,10 @@ apiRouter.use("/wallet", walletRouter);
 
 apiRouter.use("/crud", crudRouter);
 apiRouter.use("/order-sheets", orderSheetRouter);
+apiRouter.use("/company-telegram-order", companyTelegramOrderRouter);
+apiRouter.use(companySepayRouter);
+apiRouter.use("/company-cake-catalog", companyCakeCatalogRouter);
+apiRouter.use("/company-product-catalog", companyProductCatalogRouter);
 
 apiRouter.use("/professional", professionalRouter);
 

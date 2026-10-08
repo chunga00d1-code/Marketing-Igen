@@ -8,6 +8,9 @@ export interface IOrderSheetConfig {
   ordersSheetName: string;
   itemsSheetName: string;
   writeTrigger: "customer_confirmed";
+  depositEnabled?: boolean;
+  depositPercent?: number;
+  depositInstructions?: string;
   updatedAt?: Date;
 }
 

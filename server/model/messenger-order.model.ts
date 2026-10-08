@@ -27,17 +27,44 @@ export interface IMessengerOrder extends Document {
   discountAmount?: number;
   totalAmount?: number;
   paymentMethod?: string;
+  depositRequired: boolean;
+  depositPercent?: number;
+  depositAmount?: number;
+  depositStatus: "not_required" | "awaiting_receipt" | "receipt_received" | "verified";
+  paymentCode?: string;
+  sepayTransactionId?: string;
+  sepayTransferAmount?: number;
+  sepayVerifiedAt?: Date;
+  sepayCustomerNotifiedAt?: Date;
+  sepayCustomerNotificationError?: string;
+  depositRequestedAt?: Date;
+  receiptUrl?: string;
+  receiptMessageId?: string;
+  receiptReceivedAt?: Date;
+  receiptSheetSyncError?: string;
   fulfillmentMethod?: "" | "pickup" | "delivery";
   fulfillmentLocation?: string;
   requestedFulfillmentTime?: string;
   customerNote?: string;
   internalNote?: string;
+  selectedProductImageUrl?: string;
+  selectedProductMessageId?: string;
+  selectedProductSelectedAt?: Date;
+  selectedProductCategory?: string;
+  productCatalogItemLabel?: string;
+  selectedProductSheetSyncError?: string;
+  selectedCakeImageUrl?: string;
+  selectedCakeMessageId?: string;
+  selectedCakeSelectedAt?: Date;
+  selectedCakeSheetSyncError?: string;
   missingFields: string[];
   status: "draft" | "confirmed" | "synced" | "failed";
   syncAttempts: number;
   lastSyncError?: string;
   confirmedAt?: Date;
   syncedAt?: Date;
+  telegramNotifiedAt?: Date;
+  telegramNotificationError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -69,21 +96,57 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   discountAmount: { type: Number, min: 0 },
   totalAmount: { type: Number, min: 0 },
   paymentMethod: { type: String, default: "", trim: true },
+  depositRequired: { type: Boolean, default: false },
+  depositPercent: { type: Number, min: 1, max: 100 },
+  depositAmount: { type: Number, min: 0 },
+  depositStatus: {
+    type: String,
+    enum: ["not_required", "awaiting_receipt", "receipt_received", "verified"],
+    default: "not_required",
+    index: true,
+  },
+  depositRequestedAt: { type: Date },
+  receiptUrl: { type: String, default: "", trim: true },
+  receiptMessageId: { type: String, default: "", trim: true },
+  receiptReceivedAt: { type: Date },
+  receiptSheetSyncError: { type: String, default: "" },
+  paymentCode: { type: String, trim: true, uppercase: true },
+  sepayTransactionId: { type: String, default: "", trim: true },
+  sepayTransferAmount: { type: Number, min: 0 },
+  sepayVerifiedAt: { type: Date },
+  sepayCustomerNotifiedAt: { type: Date },
+  sepayCustomerNotificationError: { type: String, default: "" },
   fulfillmentMethod: { type: String, enum: ["", "pickup", "delivery"], default: "" },
   fulfillmentLocation: { type: String, default: "", trim: true },
   requestedFulfillmentTime: { type: String, default: "", trim: true },
   customerNote: { type: String, default: "", trim: true },
   internalNote: { type: String, default: "", trim: true },
+  selectedProductImageUrl: { type: String, default: "", trim: true },
+  selectedProductMessageId: { type: String, default: "", trim: true },
+  selectedProductSelectedAt: { type: Date },
+  selectedProductCategory: { type: String, default: "", trim: true },
+  productCatalogItemLabel: { type: String, default: "sản phẩm", trim: true },
+  selectedProductSheetSyncError: { type: String, default: "" },
+  selectedCakeImageUrl: { type: String, default: "", trim: true },
+  selectedCakeMessageId: { type: String, default: "", trim: true },
+  selectedCakeSelectedAt: { type: Date },
+  selectedCakeSheetSyncError: { type: String, default: "" },
   missingFields: { type: [String], default: [] },
   status: { type: String, enum: ["draft", "confirmed", "synced", "failed"], default: "draft", index: true },
   syncAttempts: { type: Number, default: 0 },
   lastSyncError: { type: String, default: "" },
   confirmedAt: { type: Date },
   syncedAt: { type: Date },
+  telegramNotifiedAt: { type: Date },
+  telegramNotificationError: { type: String, default: "" },
 }, { timestamps: true });
 
 MessengerOrderSchema.index({ companyCode: 1, createdAt: -1 });
 MessengerOrderSchema.index({ integrationId: 1, status: 1, updatedAt: -1 });
 MessengerOrderSchema.index({ conversationId: 1, createdAt: -1 });
+MessengerOrderSchema.index(
+  { companyCode: 1, paymentCode: 1 },
+  { unique: true, partialFilterExpression: { paymentCode: { $type: "string" } } },
+);
 
 export const MessengerOrderModel = mongoose.model<IMessengerOrder>("MessengerOrder", MessengerOrderSchema);

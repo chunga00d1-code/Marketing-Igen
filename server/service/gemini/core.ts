@@ -229,6 +229,7 @@ export function formatHumanLikeChatReply(rawText: string): string {
     .replace(/\r/g, "")
     .replace(/```[\s\S]*?```/g, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/\b(https?)\\+:\/\//gi, "$1://")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

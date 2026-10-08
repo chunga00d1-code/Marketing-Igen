@@ -10,6 +10,7 @@ import mongoose from "mongoose";
 import { facebookPostService } from "./facebook-post.service";
 import { zaloMessengerService } from "./zalo-messenger.service";
 import { telegramService } from "./telegram.service";
+import { companyTelegramOrderService } from "./company-telegram-order.service";
 
 const DEMO_VIDEO_URL_PATTERNS = [
   "w3schools.com/html/mov_bbb.mp4",
@@ -279,7 +280,7 @@ export const crudService = {
     await newItem.save();
 
     if (modelName === "crm-tickets" && newItem.status === "won") {
-      telegramService.sendLeadWonNotification(newItem).catch((err) => {
+      companyTelegramOrderService.notifyLeadWon(newItem).catch((err) => {
         console.error("[crudService.create] Error sending Telegram notification:", err);
       });
     }
@@ -355,7 +356,7 @@ export const crudService = {
     }
 
     if (modelName === "crm-tickets" && updatePayload.status === "won" && oldStatus !== "won") {
-      telegramService.sendLeadWonNotification(updatedItem).catch((err) => {
+      companyTelegramOrderService.notifyLeadWon(updatedItem).catch((err) => {
         console.error("[crudService.update] Error sending Telegram notification:", err);
       });
     }
