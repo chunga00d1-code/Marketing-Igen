@@ -696,6 +696,14 @@ export const fbMessengerService = {
             if (depositRequest) {
               await this.sendReply(resolvedPageId, conversationId, depositRequest, "ai");
               await messengerOrderService.markDepositRequested(order.orderId);
+              const paymentQr = await messengerOrderService.getDepositPaymentQr(order.orderId);
+              if (paymentQr) {
+                try {
+                  await this.sendImage(resolvedPageId, conversationId, paymentQr.imageUrl);
+                } catch (qrError) {
+                  console.error(`[FB Service processIncomingMessage] Khong the gui VietQR orderId=${order.orderId}:`, qrError);
+                }
+              }
               return;
             }
           }
@@ -933,6 +941,65 @@ export const fbMessengerService = {
         "FB_SEND_FAILED",
       );
     }
+  },
+
+  async sendImage(
+    pageId: string,
+    conversationId: string,
+    imageUrl: string,
+    tokenContext?: FacebookTokenContext,
+  ) {
+    const conversation = await FBConversationModel.findOne({ _id: conversationId, pageId });
+    if (!conversation) throw new Error("Không tìm thấy cuộc hội thoại để gửi ảnh.");
+    const recipientPsid = conversation.recipientId;
+    const resolvedPageId = conversation.pageId || pageId || process.env.FB_PAGE_ID || "";
+    const token = await this.getPageAccessTokenByPageId(resolvedPageId, tokenContext);
+    if (!token) throw createFacebookIntegrationNotFoundError();
+    const url = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
+    const response = await (globalThis as any).fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipient: { id: recipientPsid },
+        message: {
+          attachment: {
+            type: "image",
+            payload: { url: imageUrl, is_reusable: true },
+          },
+        },
+        messaging_type: "RESPONSE",
+      }),
+    });
+    if (!response.ok) {
+      const responseText = await response.text();
+      throw translateFacebookSendError(responseText, response.status);
+    }
+    const data = await response.json();
+    conversation.lastMessageText = "[Mã VietQR thanh toán]";
+    conversation.lastMessageAt = new Date();
+    conversation.unreadCount = 0;
+    await conversation.save();
+    const outboundMessageId = data.message_id || `out_image_${conversation._id.toString()}_${Date.now()}`;
+    const newMsg = await FBMessageModel.findOneAndUpdate(
+      { messageId: outboundMessageId },
+      {
+        $setOnInsert: {
+          conversationId: conversation._id,
+          senderId: resolvedPageId,
+          recipientId: recipientPsid,
+          direction: "outbound",
+          text: "",
+          attachments: [{ type: "image", url: imageUrl }],
+          messageId: outboundMessageId,
+          timestamp: new Date(),
+          status: "sent",
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    if (newMsg) emitToPage(resolvedPageId, "new_message", { message: newMsg, conversation });
+    emitToPage(resolvedPageId, "conversation_updated", conversation);
+    return { status: "success", messageId: outboundMessageId };
   },
 
   /**

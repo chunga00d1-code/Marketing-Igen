@@ -9,6 +9,11 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
   const [secret, setSecret] = useState("");
   const [accounts, setAccounts] = useState("");
   const [prefix, setPrefix] = useState("DH");
+  const [depositEnabled, setDepositEnabled] = useState(false);
+  const [depositPercent, setDepositPercent] = useState(30);
+  const [qrBankId, setQrBankId] = useState("");
+  const [qrAccountNumber, setQrAccountNumber] = useState("");
+  const [qrAccountName, setQrAccountName] = useState("");
   const [busy, setBusy] = useState(true);
   const canEdit = userProfile?.role === "admin" || userProfile?.role === "superadmin";
 
@@ -16,6 +21,11 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
     setConfig(value);
     setAccounts(value.accountNumbers.join("\n"));
     setPrefix(value.paymentCodePrefix || "DH");
+    setDepositEnabled(Boolean(value.depositEnabled));
+    setDepositPercent(value.depositPercent || 30);
+    setQrBankId(value.qrBankId || "");
+    setQrAccountNumber(value.qrAccountNumber || "");
+    setQrAccountName(value.qrAccountName || "");
     setSecret("");
   };
 
@@ -36,6 +46,11 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
         webhookSecret: secret.trim() || undefined,
         accountNumbers,
         paymentCodePrefix: prefix.trim().toUpperCase(),
+        depositEnabled,
+        depositPercent: Math.min(100, Math.max(1, Number(depositPercent || 30))),
+        qrBankId: qrBankId.trim(),
+        qrAccountNumber: qrAccountNumber.replace(/\s+/g, "").trim(),
+        qrAccountName: qrAccountName.trim(),
       }));
       toast.success("Đã lưu cấu hình webhook SePay cho doanh nghiệp.");
     } catch (error) {
@@ -70,6 +85,31 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
         </label>
       </div>
 
+      <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3 text-left">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-slate-800">Yêu cầu đặt cọc cho đơn Messenger</p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">Áp dụng chung cho các Fanpage của doanh nghiệp khi khách xác nhận chốt đơn.</p>
+          </div>
+          <label className="flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-600">
+            <input type="checkbox" checked={depositEnabled} disabled={!canEdit} onChange={(event) => setDepositEnabled(event.target.checked)} />
+            Bật cọc
+          </label>
+        </div>
+        <label className="mt-3 block space-y-1 text-[11px] font-semibold text-slate-700">
+          Phần trăm đặt cọc (%)
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={depositPercent}
+            disabled={!canEdit || !depositEnabled}
+            onChange={(event) => setDepositPercent(Number(event.target.value))}
+            className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm font-bold text-blue-700 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+          />
+        </label>
+      </div>
+
       <div className="space-y-1 text-left text-[11px] font-semibold text-slate-600">
         URL webhook nhập trên SePay
         <div className="flex gap-2">
@@ -93,6 +133,27 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
         Số tài khoản nhận tiền (mỗi dòng một số)
         <textarea rows={3} value={accounts} disabled={!canEdit} onChange={(event) => setAccounts(event.target.value)} placeholder={"1017588888\n0123456789"} className="w-full resize-y rounded-xl border border-slate-200 px-3 py-2.5 font-mono text-xs outline-none focus:border-emerald-500" />
       </label>
+
+      <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 text-left">
+        <div>
+          <p className="text-xs font-bold text-slate-700">Thông tin gửi VietQR cho khách</p>
+          <p className="mt-1 text-[10px] text-slate-500">Ảnh QR sẽ tự điền tiền cọc và mã thanh toán của từng đơn.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="space-y-1 text-[11px] font-semibold text-slate-600">
+            Mã ngân hàng / BIN
+            <input value={qrBankId} disabled={!canEdit} onChange={(event) => setQrBankId(event.target.value.replace(/[^a-zA-Z0-9]/g, ""))} placeholder="970422 hoặc MBBank" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-emerald-500" />
+          </label>
+          <label className="space-y-1 text-[11px] font-semibold text-slate-600">
+            Số tài khoản gửi trên QR
+            <input value={qrAccountNumber} disabled={!canEdit} onChange={(event) => setQrAccountNumber(event.target.value.replace(/\s+/g, ""))} placeholder="1017588888" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 font-mono text-xs outline-none focus:border-emerald-500" />
+          </label>
+        </div>
+        <label className="block space-y-1 text-[11px] font-semibold text-slate-600">
+          Tên chủ tài khoản
+          <input value={qrAccountName} disabled={!canEdit} onChange={(event) => setQrAccountName(event.target.value)} placeholder="NGUYEN VAN A" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs uppercase outline-none focus:border-emerald-500" />
+        </label>
+      </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[10px] leading-4 text-amber-800">
         Trên SePay chọn sự kiện <b>Có tiền vào</b>, xác thực <b>HMAC-SHA256</b>, bật chỉ gửi khi có mã thanh toán và cấu hình cùng tiền tố ở trên. Phần hậu tố chọn <b>12 ký tự chữ và số</b>. Hệ thống chỉ xác nhận khi đúng tài khoản, mã đơn và đúng số tiền cọc.

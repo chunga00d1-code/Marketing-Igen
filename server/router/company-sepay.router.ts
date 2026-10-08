@@ -13,6 +13,11 @@ const updateSchema = {
     webhookSecret: Joi.string().max(500).allow("").optional(),
     accountNumbers: Joi.array().items(Joi.string().trim().max(50)).max(20).optional(),
     paymentCodePrefix: Joi.string().trim().uppercase().pattern(/^[A-Z0-9]{2,5}$/).optional(),
+    depositEnabled: Joi.boolean().optional(),
+    depositPercent: Joi.number().integer().min(1).max(100).optional(),
+    qrBankId: Joi.string().trim().max(20).allow("").optional(),
+    qrAccountNumber: Joi.string().trim().max(19).allow("").optional(),
+    qrAccountName: Joi.string().trim().max(100).allow("").optional(),
   }),
 };
 

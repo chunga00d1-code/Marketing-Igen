@@ -31,6 +31,11 @@ export interface ICompanySepayConfig {
   webhookSecretEncrypted: string;
   accountNumbers: string[];
   paymentCodePrefix: string;
+  depositEnabled?: boolean;
+  depositPercent?: number;
+  qrBankId?: string;
+  qrAccountNumber?: string;
+  qrAccountName?: string;
   lastWebhookAt?: Date | null;
   lastWebhookStatus?: "success" | "failed" | "untested";
   lastWebhookError?: string;

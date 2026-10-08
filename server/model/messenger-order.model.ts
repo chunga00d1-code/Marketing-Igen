@@ -35,6 +35,8 @@ export interface IMessengerOrder extends Document {
   sepayTransactionId?: string;
   sepayTransferAmount?: number;
   sepayVerifiedAt?: Date;
+  sepayCustomerNotifiedAt?: Date;
+  sepayCustomerNotificationError?: string;
   depositRequestedAt?: Date;
   receiptUrl?: string;
   receiptMessageId?: string;
@@ -102,6 +104,8 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   sepayTransactionId: { type: String, default: "", trim: true },
   sepayTransferAmount: { type: Number, min: 0 },
   sepayVerifiedAt: { type: Date },
+  sepayCustomerNotifiedAt: { type: Date },
+  sepayCustomerNotificationError: { type: String, default: "" },
   fulfillmentMethod: { type: String, enum: ["", "pickup", "delivery"], default: "" },
   fulfillmentLocation: { type: String, default: "", trim: true },
   requestedFulfillmentTime: { type: String, default: "", trim: true },
