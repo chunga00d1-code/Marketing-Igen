@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { ICompanyProductCatalogConfig } from "../interface/company.interface";
 import { CompanyModel } from "../model/company.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { cloudinaryService } from "./cloudinary.service";
@@ -12,18 +13,21 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CATALOG_FILES = 300;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
-export interface CakeCatalogImage {
+export interface ProductCatalogImage {
   id: string;
   name: string;
   imageUrl: string;
   driveUrl: string;
 }
 
-export interface CakeCatalogCategory {
+export interface ProductCatalogCategory {
   id: string;
   name: string;
-  images: CakeCatalogImage[];
+  images: ProductCatalogImage[];
 }
+
+export type CakeCatalogImage = ProductCatalogImage;
+export type CakeCatalogCategory = ProductCatalogCategory;
 
 interface DriveFile {
   id: string;
@@ -31,7 +35,7 @@ interface DriveFile {
   mimeType: string;
 }
 
-const cache = new Map<string, { expiresAt: number; categories: CakeCatalogCategory[] }>();
+const cache = new Map<string, { expiresAt: number; categories: ProductCatalogCategory[] }>();
 const publicImageCache = new Map<string, { expiresAt: number; url: string }>();
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -125,7 +129,7 @@ async function downloadDriveImage(fileId: string) {
   return buffer;
 }
 
-async function publicImageUrl(companyCode: string, image: CakeCatalogImage) {
+async function publicImageUrl(companyCode: string, image: ProductCatalogImage) {
   const cacheKey = `${companyCode}:${image.id}`;
   const cached = publicImageCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.url;
@@ -133,14 +137,14 @@ async function publicImageUrl(companyCode: string, image: CakeCatalogImage) {
   const safeImageId = image.id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
   const url = await cloudinaryService.uploadMediaBuffer(
     await downloadDriveImage(image.id),
-    `messenger_cake_catalog/${safeCompany}`,
+    `messenger_product_catalog/${safeCompany}`,
     safeImageId,
   );
   publicImageCache.set(cacheKey, { url, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
   return url;
 }
 
-function toImage(file: DriveFile): CakeCatalogImage {
+function toImage(file: DriveFile): ProductCatalogImage {
   return {
     id: file.id,
     name: file.name,
@@ -153,7 +157,7 @@ function isImage(file: DriveFile) {
   return file.mimeType.startsWith("image/") || /\.(jpe?g|png|webp|gif)$/i.test(file.name);
 }
 
-async function collectImages(folderId: string, depth = 0): Promise<CakeCatalogImage[]> {
+async function collectImages(folderId: string, depth = 0): Promise<ProductCatalogImage[]> {
   const children = await listChildren(folderId);
   const images = children.filter(isImage).map(toImage);
   if (depth >= 2 || images.length >= MAX_CATALOG_FILES) return images.slice(0, MAX_CATALOG_FILES);
@@ -164,17 +168,17 @@ async function collectImages(folderId: string, depth = 0): Promise<CakeCatalogIm
   return images.slice(0, MAX_CATALOG_FILES);
 }
 
-async function scan(rootFolderUrl: string) {
+async function scan(rootFolderUrl: string, rootCategoryName = "Sản phẩm") {
   const rootId = parseGoogleDriveFolderId(rootFolderUrl);
   const children = await listChildren(rootId);
   const folders = children.filter((file) => file.mimeType === FOLDER_MIME);
-  const categories: CakeCatalogCategory[] = [];
+  const categories: ProductCatalogCategory[] = [];
   for (const folder of folders) {
     const images = await collectImages(folder.id);
     if (images.length) categories.push({ id: folder.id, name: folder.name, images });
   }
   const rootImages = children.filter(isImage).map(toImage);
-  if (rootImages.length) categories.unshift({ id: rootId, name: "Mẫu bánh", images: rootImages });
+  if (rootImages.length) categories.unshift({ id: rootId, name: rootCategoryName, images: rootImages });
   return categories;
 }
 
@@ -183,15 +187,26 @@ export function normalizeCatalogText(value: string) {
     .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-export function findMatchingCategory(categories: CakeCatalogCategory[], customerText: string) {
+export function findMatchingCategory(
+  categories: ProductCatalogCategory[],
+  customerText: string,
+  options?: { genericTerms?: string[]; categoryAliases?: Record<string, string[]> },
+) {
   const text = normalizeCatalogText(customerText);
   if (!text) return null;
-  const genericWords = new Set(["banh", "mau", "anh", "hinh"]);
+  const genericWords = new Set(
+    ["san pham", "banh", "mau", "anh", "hinh", ...(options?.genericTerms || [])]
+      .flatMap((value) => normalizeCatalogText(value).split(" "))
+      .filter(Boolean),
+  );
   const textWords = new Set(text.split(" ").filter((word) => word.length >= 2));
   return categories.map((category) => {
     const fullKey = normalizeCatalogText(category.name);
     const specificKey = fullKey.split(" ").filter((word) => !genericWords.has(word)).join(" ");
-    const matchedKey = [fullKey, specificKey]
+    const aliases = Object.entries(options?.categoryAliases || {})
+      .filter(([categoryName]) => normalizeCatalogText(categoryName) === fullKey)
+      .flatMap(([, values]) => values.map(normalizeCatalogText));
+    const matchedKey = [fullKey, specificKey, ...aliases]
       .filter((key) => key.length >= 3)
       .find((key) => text.includes(key)) || "";
     const specificWords = specificKey.split(" ").filter((word) => word.length >= 2);
@@ -203,13 +218,48 @@ export function findMatchingCategory(categories: CakeCatalogCategory[], customer
     .sort((a, b) => b.matchedKey.length - a.matchedKey.length || b.overlapScore - a.overlapScore)[0]?.category || null;
 }
 
-function mayRequestCakeImages(customerText: string) {
+function mayRequestProductImages(customerText: string, itemLabel: string) {
   const text = normalizeCatalogText(customerText);
-  return ["banh", "mau", "anh", "hinh", "xem", "tham khao", "goi y", "kieu"].some((word) => text.includes(word));
+  return [itemLabel, "san pham", "mau", "anh", "hinh", "xem", "tham khao", "goi y", "kieu"]
+    .map(normalizeCatalogText)
+    .some((word) => word && text.includes(word));
 }
 
-async function selectCategoryWithAi(categories: CakeCatalogCategory[], customerText: string, model: string) {
-  if (!mayRequestCakeImages(customerText) || !categories.length) return null;
+function requestsVisualExamples(customerText: string) {
+  const text = normalizeCatalogText(customerText);
+  return ["mau", "anh", "hinh", "xem", "tham khao", "goi y", "kieu"].some((word) => text.includes(word));
+}
+
+export function isGenericVisualRequest(customerText: string, genericTerms: string[] = ["sản phẩm", "bánh"]) {
+  if (!requestsVisualExamples(customerText)) return false;
+  const ignoredWords = new Set([
+    "cho", "toi", "minh", "em", "anh", "chi", "xem", "cac", "hinh", "ve", "mau", "banh", "san", "pham",
+    "tham", "khao", "goi", "y", "kieu", "shop", "co", "khong", "duoc", "nao", "voi", "a",
+    ...genericTerms.flatMap((value) => normalizeCatalogText(value).split(" ")),
+  ]);
+  return normalizeCatalogText(customerText).split(" ").filter((word) => word && !ignoredWords.has(word)).length === 0;
+}
+
+export function buildCatalogOverview(categories: ProductCatalogCategory[], limit: number) {
+  const images: ProductCatalogImage[] = [];
+  const maxCategorySize = Math.max(0, ...categories.map((category) => category.images.length));
+  for (let imageIndex = 0; imageIndex < maxCategorySize && images.length < limit; imageIndex += 1) {
+    for (const category of categories) {
+      const image = category.images[imageIndex];
+      if (image) images.push(image);
+      if (images.length >= limit) break;
+    }
+  }
+  return images;
+}
+
+async function selectCategoryWithAi(
+  categories: ProductCatalogCategory[],
+  customerText: string,
+  model: string,
+  config: Pick<ICompanyProductCatalogConfig, "itemLabel" | "businessDescription">,
+) {
+  if (!mayRequestProductImages(customerText, config.itemLabel) || !categories.length) return null;
   try {
     const response = await openrouterChat({
       model,
@@ -223,7 +273,11 @@ async function selectCategoryWithAi(categories: CakeCatalogCategory[], customerT
       messages: [
         {
           role: "system",
-          content: "Chọn loại bánh phù hợp nhất với yêu cầu khách. Trả categoryIndex theo danh sách, hoặc -1 nếu chưa đủ thông tin. Không tự bịa loại bánh.",
+          content: [
+            `Chọn danh mục ${config.itemLabel} phù hợp nhất với yêu cầu khách.`,
+            config.businessDescription ? `Ngành hàng: ${config.businessDescription}.` : "",
+            "Trả categoryIndex theo danh sách, hoặc -1 nếu chưa đủ thông tin. Không tự bịa danh mục.",
+          ].filter(Boolean).join("\n"),
         },
         {
           role: "user",
@@ -234,7 +288,7 @@ async function selectCategoryWithAi(categories: CakeCatalogCategory[], customerT
     const index = Number((JSON.parse(response.text) as { categoryIndex?: number }).categoryIndex);
     return Number.isInteger(index) && index >= 0 && index < categories.length ? categories[index] : null;
   } catch (error) {
-    console.warn("[CakeCatalog] AI không chọn được loại bánh:", error instanceof Error ? error.message : error);
+    console.warn("[ProductCatalog] AI không chọn được danh mục:", error instanceof Error ? error.message : error);
     return null;
   }
 }
@@ -245,31 +299,97 @@ async function companyRecord(companyCode: string) {
   return company;
 }
 
-export const companyCakeCatalogService = {
+const DEFAULT_CATALOG_CONFIG: ICompanyProductCatalogConfig = {
+  enabled: false,
+  rootFolderUrl: "",
+  maxImagesPerReply: 5,
+  catalogName: "Thư viện sản phẩm",
+  itemLabel: "sản phẩm",
+  selectionMessage: "Bạn chọn mẫu phù hợp rồi gửi lại ảnh giúp shop nhé.",
+  businessDescription: "",
+  categoryAliases: {},
+};
+
+function sanitizeCategoryAliases(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .slice(0, 100)
+      .map(([category, aliases]) => [
+        String(category).trim().slice(0, 100),
+        (Array.isArray(aliases) ? aliases : [])
+          .map((alias) => String(alias).trim().slice(0, 100))
+          .filter(Boolean)
+          .slice(0, 20),
+      ])
+      .filter(([category]) => Boolean(category)),
+  );
+}
+
+export function resolveCatalogConfig(company: {
+  productCatalogConfig?: Partial<ICompanyProductCatalogConfig>;
+  cakeCatalogConfig?: Partial<ICompanyProductCatalogConfig>;
+}) {
+  const product = company.productCatalogConfig;
+  const hasProductConfig = Boolean(
+    product?.rootFolderUrl
+    || product?.enabled
+    || product?.businessDescription
+    || Object.keys(product?.categoryAliases || {}).length
+    || (product?.itemLabel && product.itemLabel !== DEFAULT_CATALOG_CONFIG.itemLabel)
+    || (product?.catalogName && product.catalogName !== DEFAULT_CATALOG_CONFIG.catalogName),
+  );
+  const legacy = company.cakeCatalogConfig;
+  const source = hasProductConfig ? product : legacy;
+  const migratedFromLegacy = !hasProductConfig && Boolean(legacy?.rootFolderUrl || legacy?.enabled);
+  return {
+    ...DEFAULT_CATALOG_CONFIG,
+    ...source,
+    catalogName: String(migratedFromLegacy ? "Thư viện ảnh mẫu bánh" : (source?.catalogName || DEFAULT_CATALOG_CONFIG.catalogName)).trim(),
+    itemLabel: String(migratedFromLegacy ? "bánh" : (source?.itemLabel || DEFAULT_CATALOG_CONFIG.itemLabel)).trim(),
+    selectionMessage: String(migratedFromLegacy ? "Bạn chọn mẫu bánh rồi gửi lại ảnh giúp shop nhé." : (source?.selectionMessage || DEFAULT_CATALOG_CONFIG.selectionMessage)).trim(),
+    businessDescription: String(source?.businessDescription || "").trim(),
+    categoryAliases: sanitizeCategoryAliases(source?.categoryAliases),
+    migratedFromLegacy,
+  };
+}
+
+export const companyProductCatalogService = {
   async getConfig(companyCode: string) {
     const company = await companyRecord(companyCode);
-    const config = company.cakeCatalogConfig;
+    const config = resolveCatalogConfig(company);
     return {
       companyCode: company.code,
       companyName: company.name,
       enabled: Boolean(config?.enabled),
       rootFolderUrl: String(config?.rootFolderUrl || ""),
       maxImagesPerReply: Number(config?.maxImagesPerReply || 5),
+      catalogName: config.catalogName,
+      itemLabel: config.itemLabel,
+      selectionMessage: config.selectionMessage,
+      businessDescription: config.businessDescription,
+      categoryAliases: config.categoryAliases,
+      migratedFromLegacy: config.migratedFromLegacy,
       serviceAccountEmail: String(process.env.GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL || "").trim(),
     };
   },
 
-  async updateConfig(companyCode: string, input: { enabled?: boolean; rootFolderUrl?: string; maxImagesPerReply?: number }) {
+  async updateConfig(companyCode: string, input: Partial<ICompanyProductCatalogConfig>) {
     const company = await companyRecord(companyCode);
-    const current = company.cakeCatalogConfig;
+    const current = resolveCatalogConfig(company);
     const rootFolderUrl = String(input.rootFolderUrl ?? current?.rootFolderUrl ?? "").trim();
     if (rootFolderUrl) parseGoogleDriveFolderId(rootFolderUrl);
     const enabled = input.enabled ?? current?.enabled ?? false;
-    if (enabled && !rootFolderUrl) throw new Error("Cần nhập link thư mục Google Drive trước khi bật thư viện ảnh bánh.");
-    company.cakeCatalogConfig = {
+    if (enabled && !rootFolderUrl) throw new Error("Cần nhập link thư mục Google Drive trước khi bật thư viện ảnh sản phẩm.");
+    company.productCatalogConfig = {
       enabled,
       rootFolderUrl,
       maxImagesPerReply: Math.min(10, Math.max(1, Math.round(Number(input.maxImagesPerReply ?? current?.maxImagesPerReply ?? 5)))),
+      catalogName: String(input.catalogName ?? current.catalogName ?? DEFAULT_CATALOG_CONFIG.catalogName).trim().slice(0, 100) || DEFAULT_CATALOG_CONFIG.catalogName,
+      itemLabel: String(input.itemLabel ?? current.itemLabel ?? DEFAULT_CATALOG_CONFIG.itemLabel).trim().slice(0, 80) || DEFAULT_CATALOG_CONFIG.itemLabel,
+      selectionMessage: String(input.selectionMessage ?? current.selectionMessage ?? DEFAULT_CATALOG_CONFIG.selectionMessage).trim().slice(0, 500) || DEFAULT_CATALOG_CONFIG.selectionMessage,
+      businessDescription: String(input.businessDescription ?? current.businessDescription ?? "").trim().slice(0, 1000),
+      categoryAliases: sanitizeCategoryAliases(input.categoryAliases ?? current.categoryAliases),
     };
     await company.save();
     cache.delete(company.code);
@@ -278,24 +398,28 @@ export const companyCakeCatalogService = {
 
   async scanCompany(companyCode: string, force = false) {
     const company = await companyRecord(companyCode);
-    const config = company.cakeCatalogConfig;
+    const config = resolveCatalogConfig(company);
     if (!config?.rootFolderUrl) throw new Error("Chưa cấu hình link thư mục Google Drive.");
     const cached = cache.get(company.code);
     if (!force && cached && cached.expiresAt > Date.now()) return cached.categories;
-    const categories = await scan(config.rootFolderUrl);
+    const categories = await scan(config.rootFolderUrl, config.catalogName);
     cache.set(company.code, { categories, expiresAt: Date.now() + CACHE_TTL_MS });
     return categories;
   },
 
-  async testConfig(companyCode: string, rootFolderUrl?: string) {
+  async testConfig(companyCode: string, input?: { rootFolderUrl?: string; catalogName?: string }) {
     const company = await companyRecord(companyCode);
-    const url = String(rootFolderUrl || company.cakeCatalogConfig?.rootFolderUrl || "").trim();
+    const config = resolveCatalogConfig(company);
+    const url = String(input?.rootFolderUrl || config.rootFolderUrl || "").trim();
     if (!url) throw new Error("Chưa nhập link thư mục Google Drive.");
-    const categories = await scan(url);
+    const categories = await scan(url, String(input?.catalogName || config.catalogName));
+    const firstImage = categories.flatMap((category) => category.images).at(0);
+    const previewImageUrl = firstImage ? await publicImageUrl(company.code, firstImage) : "";
     return {
       categoryCount: categories.length,
       imageCount: categories.reduce((sum, category) => sum + category.images.length, 0),
       categories: categories.map((category) => ({ name: category.name, imageCount: category.images.length })),
+      previewImageUrl,
     };
   },
 
@@ -303,29 +427,53 @@ export const companyCakeCatalogService = {
     const integration = await SocialIntegrationModel.findOne({ platform: "Facebook", username: pageId, isConnected: true }).lean();
     if (!integration?.companyCode) return null;
     const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
-    const config = company?.cakeCatalogConfig;
+    const config = company ? resolveCatalogConfig(company) : DEFAULT_CATALOG_CONFIG;
     if (!config?.enabled || !config.rootFolderUrl) return null;
     const categories = await this.scanCompany(integration.companyCode);
-    const category = findMatchingCategory(categories, customerText)
-      || await selectCategoryWithAi(
+    const imageLimit = Math.min(10, Math.max(1, Number(config.maxImagesPerReply || 5)));
+    let category = findMatchingCategory(categories, customerText, {
+      genericTerms: [config.itemLabel, config.catalogName],
+      categoryAliases: config.categoryAliases,
+    });
+    if (!category && isGenericVisualRequest(customerText, [config.itemLabel, config.catalogName])) {
+      category = {
+        id: "catalog-overview",
+        name: config.catalogName,
+        images: buildCatalogOverview(categories, imageLimit),
+      };
+    }
+    category ||= await selectCategoryWithAi(
         categories,
         customerText,
         integration.aiAutoReplyConfig?.model || process.env.AI_REPLY_MESSAGE_MODEL || "deepseek-v4-flash-0731",
+        config,
       );
+    if (!category && requestsVisualExamples(customerText)) {
+      category = {
+        id: "catalog-overview",
+        name: config.catalogName,
+        images: buildCatalogOverview(categories, imageLimit),
+      };
+    }
     if (!category) return null;
-    const selectedImages = category.images.slice(0, Math.min(10, Math.max(1, Number(config.maxImagesPerReply || 5))));
+    const selectedImages = category.images.slice(0, imageLimit);
     const images = [];
     for (const image of selectedImages) {
       try {
         images.push({ ...image, imageUrl: await publicImageUrl(integration.companyCode, image) });
       } catch (error) {
-        console.error(`[CakeCatalog] Không thể chuẩn bị ảnh ${image.id} để gửi Messenger:`, error);
+        console.error(`[ProductCatalog] Không thể chuẩn bị ảnh ${image.id} để gửi Messenger:`, error);
       }
     }
     return {
       companyCode: integration.companyCode,
       categoryName: category.name,
+      itemLabel: config.itemLabel,
+      selectionMessage: config.selectionMessage,
       images,
     };
   },
 };
+
+// Backward-compatible export for the existing route while clients migrate.
+export const companyCakeCatalogService = companyProductCatalogService;

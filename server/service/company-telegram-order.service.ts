@@ -172,7 +172,10 @@ export const companyTelegramOrderService = {
       order.deliveryAddress ? `\u0110\u1ecba ch\u1ec9: ${escapeHtml(order.deliveryAddress)}` : "",
       items,
       `T\u1ed5ng ti\u1ec1n: <b>${Number(order.totalAmount || 0).toLocaleString("vi-VN")} \u0111</b>`,
-      order.selectedCakeImageUrl ? `Ảnh mẫu bánh: ${escapeHtml(order.selectedCakeImageUrl)}` : "",
+      (order.selectedProductImageUrl || order.selectedCakeImageUrl)
+        ? `Ảnh ${escapeHtml(order.productCatalogItemLabel || "sản phẩm")}: ${escapeHtml(order.selectedProductImageUrl || order.selectedCakeImageUrl)}`
+        : "",
+      order.selectedProductCategory ? `Danh mục: ${escapeHtml(order.selectedProductCategory)}` : "",
     ].filter(Boolean).join("\n");
     try {
       const sent = await sendCompany(order.companyCode, message);
@@ -197,15 +200,17 @@ export const companyTelegramOrderService = {
     ].join("\n"));
   },
 
-  async notifyCakeSelection(orderId: string) {
+  async notifyProductSelection(orderId: string) {
     const order = await MessengerOrderModel.findOne({ orderId });
-    if (!order?.selectedCakeImageUrl) return;
+    const imageUrl = order?.selectedProductImageUrl || order?.selectedCakeImageUrl;
+    if (!order || !imageUrl) return;
     await sendCompany(order.companyCode, [
-      "🎂 <b>KHÁCH ĐÃ CHỌN ẢNH MẪU BÁNH</b>",
+      "🖼️ <b>KHÁCH ĐÃ CHỌN ẢNH SẢN PHẨM</b>",
       `Mã đơn: <code>${escapeHtml(order.orderId)}</code>`,
       `Khách hàng: <b>${escapeHtml(order.customerName)}</b>`,
-      `Ảnh mẫu: ${escapeHtml(order.selectedCakeImageUrl)}`,
-    ].join("\n"));
+      order.selectedProductCategory ? `Danh mục: <b>${escapeHtml(order.selectedProductCategory)}</b>` : "",
+      `Ảnh tham khảo: ${escapeHtml(imageUrl)}`,
+    ].filter(Boolean).join("\n"));
   },
 
   async notifyLeadWon(lead: ICRMTicket) {

@@ -9,6 +9,7 @@ import { companyTelegramOrderService } from "./company-telegram-order.service";
 import { cloudinaryService } from "./cloudinary.service";
 import { CompanyModel } from "../model/company.model";
 import { companySepayService } from "./company-sepay.service";
+import { companyProductCatalogService } from "./company-product-catalog.service";
 
 const RECEIPT_MAX_BYTES = 15 * 1024 * 1024;
 const RECEIPT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -242,8 +243,9 @@ async function syncOrder(orderId: string) {
         sepayTransactionId: order.sepayTransactionId,
         sepayTransferAmount: order.sepayTransferAmount,
         sepayVerifiedAt: order.sepayVerifiedAt,
-        selectedCakeImageUrl: order.selectedCakeImageUrl,
-        selectedCakeSelectedAt: order.selectedCakeSelectedAt,
+        selectedProductImageUrl: order.selectedProductImageUrl || order.selectedCakeImageUrl,
+        selectedProductSelectedAt: order.selectedProductSelectedAt || order.selectedCakeSelectedAt,
+        selectedProductCategory: order.selectedProductCategory,
       }
     );
     order.status = "synced";
@@ -391,9 +393,11 @@ export const messengerOrderService = {
         depositAmount: depositRequired ? depositAmount(clean.totalAmount, configuredDepositPercent) : undefined,
         depositStatus: depositRequired ? "awaiting_receipt" : "not_required",
         paymentCode: paymentCode || undefined,
-        selectedCakeImageUrl: conversation.selectedCakeImageUrl || undefined,
-        selectedCakeMessageId: conversation.selectedCakeMessageId || undefined,
-        selectedCakeSelectedAt: conversation.selectedCakeSelectedAt || undefined,
+        selectedProductImageUrl: conversation.selectedProductImageUrl || conversation.selectedCakeImageUrl || undefined,
+        selectedProductMessageId: conversation.selectedProductMessageId || conversation.selectedCakeMessageId || undefined,
+        selectedProductSelectedAt: conversation.selectedProductSelectedAt || conversation.selectedCakeSelectedAt || undefined,
+        selectedProductCategory: conversation.productCatalogCategory || conversation.cakeCatalogCategory || undefined,
+        productCatalogItemLabel: conversation.productCatalogItemLabel || undefined,
       });
     } catch (error: unknown) {
       const duplicate = error as { code?: number };
@@ -466,9 +470,10 @@ export const messengerOrderService = {
     if (!order) return null;
     const conversation = await FBConversationModel.findById(conversationId).lean();
     if (
-      conversation?.cakeCatalogSentAt
+      (conversation?.productSelectionStatus === "awaiting_selection" || conversation?.cakeCatalogSentAt)
+      && (conversation?.productCatalogSentAt || conversation?.cakeCatalogSentAt)
       && order.depositRequestedAt
-      && conversation.cakeCatalogSentAt.getTime() > order.depositRequestedAt.getTime()
+      && (conversation.productCatalogSentAt || conversation.cakeCatalogSentAt)!.getTime() > order.depositRequestedAt.getTime()
     ) return null;
     if (order.receiptMessageId === sourceMessageId && order.receiptUrl) return order;
 
@@ -507,7 +512,7 @@ export const messengerOrderService = {
     return order;
   },
 
-  async captureCakeSelection(
+  async captureProductSelection(
     pageId: string,
     conversationId: string,
     sourceMessageId: string,
@@ -519,52 +524,67 @@ export const messengerOrderService = {
     const conversation = await FBConversationModel.findOne({
       _id: conversationId,
       pageId,
-      cakeCatalogSentAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+      $or: [
+        {
+          productSelectionStatus: "awaiting_selection",
+          productCatalogSentAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+        { cakeCatalogSentAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+      ],
     });
-    if (!conversation || conversation.selectedCakeMessageId === sourceMessageId) return null;
+    if (!conversation || conversation.selectedProductMessageId === sourceMessageId || conversation.selectedCakeMessageId === sourceMessageId) return null;
     const integration = await SocialIntegrationModel.findOne({ platform: "Facebook", username: pageId, isConnected: true }).lean();
     if (!integration?.companyCode) return null;
-    const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
-    if (!company?.cakeCatalogConfig?.enabled) return null;
+    const catalogConfig = await companyProductCatalogService.getConfig(integration.companyCode);
+    if (!catalogConfig.enabled) return null;
 
     const buffer = await downloadReceipt(image.url, pageAccessToken);
     const safeCompany = integration.companyCode.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "company";
     const safeMessageId = sourceMessageId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(-100) || conversationId;
-    const imageUrl = await cloudinaryService.uploadMediaBuffer(buffer, `messenger_cake_selections/${safeCompany}`, safeMessageId);
+    const imageUrl = await cloudinaryService.uploadMediaBuffer(buffer, `messenger_product_selections/${safeCompany}`, safeMessageId);
     const selectedAt = new Date();
-    conversation.selectedCakeImageUrl = imageUrl;
-    conversation.selectedCakeMessageId = sourceMessageId;
-    conversation.selectedCakeSelectedAt = selectedAt;
+    conversation.selectedProductImageUrl = imageUrl;
+    conversation.selectedProductMessageId = sourceMessageId;
+    conversation.selectedProductSelectedAt = selectedAt;
+    conversation.productSelectionStatus = "selected";
     conversation.cakeCatalogSentAt = undefined;
+    conversation.productCatalogSentAt = undefined;
     await conversation.save();
 
     const order = await MessengerOrderModel.findOne({ pageId, conversationId }).sort({ createdAt: -1 });
     if (order) {
-      order.selectedCakeImageUrl = imageUrl;
-      order.selectedCakeMessageId = sourceMessageId;
-      order.selectedCakeSelectedAt = selectedAt;
-      order.selectedCakeSheetSyncError = "";
+      order.selectedProductImageUrl = imageUrl;
+      order.selectedProductMessageId = sourceMessageId;
+      order.selectedProductSelectedAt = selectedAt;
+      order.selectedProductCategory = conversation.productCatalogCategory || conversation.cakeCatalogCategory || "";
+      order.productCatalogItemLabel = conversation.productCatalogItemLabel || catalogConfig.itemLabel;
+      order.selectedProductSheetSyncError = "";
       await order.save();
       const orderIntegration = await SocialIntegrationModel.findById(order.integrationId).lean();
       const sheetConfig = orderIntegration?.orderSheetConfig;
       if (order.status === "synced" && sheetConfig?.enabled) {
         try {
           const spreadsheetId = sheetConfig.spreadsheetId || parseGoogleSpreadsheetId(sheetConfig.spreadsheetUrl);
-          await googleOrderSheetService.updateCakeSelection(
+          await googleOrderSheetService.updateProductSelection(
             spreadsheetId,
             sheetConfig.ordersSheetName || "Orders",
             order.orderId,
-            { imageUrl, selectedAt },
+            { imageUrl, selectedAt, categoryName: order.selectedProductCategory || "" },
           );
         } catch (error) {
-          order.selectedCakeSheetSyncError = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
+          order.selectedProductSheetSyncError = error instanceof Error ? error.message.slice(0, 2000) : String(error).slice(0, 2000);
           await order.save();
           console.error(`[Messenger Order] Không thể cập nhật ảnh mẫu vào Sheet orderId=${order.orderId}:`, error);
         }
       }
-      void companyTelegramOrderService.notifyCakeSelection(order.orderId);
+      void companyTelegramOrderService.notifyProductSelection(order.orderId);
     }
-    return { orderId: order?.orderId || "", imageUrl, categoryName: conversation.cakeCatalogCategory || "" };
+    return {
+      orderId: order?.orderId || "",
+      imageUrl,
+      categoryName: conversation.productCatalogCategory || conversation.cakeCatalogCategory || "",
+      itemLabel: conversation.productCatalogItemLabel || catalogConfig.itemLabel,
+    };
   },
 
   async retry(orderId: string, companyCode: string) {

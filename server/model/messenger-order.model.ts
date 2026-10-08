@@ -47,6 +47,12 @@ export interface IMessengerOrder extends Document {
   requestedFulfillmentTime?: string;
   customerNote?: string;
   internalNote?: string;
+  selectedProductImageUrl?: string;
+  selectedProductMessageId?: string;
+  selectedProductSelectedAt?: Date;
+  selectedProductCategory?: string;
+  productCatalogItemLabel?: string;
+  selectedProductSheetSyncError?: string;
   selectedCakeImageUrl?: string;
   selectedCakeMessageId?: string;
   selectedCakeSelectedAt?: Date;
@@ -115,6 +121,12 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   requestedFulfillmentTime: { type: String, default: "", trim: true },
   customerNote: { type: String, default: "", trim: true },
   internalNote: { type: String, default: "", trim: true },
+  selectedProductImageUrl: { type: String, default: "", trim: true },
+  selectedProductMessageId: { type: String, default: "", trim: true },
+  selectedProductSelectedAt: { type: Date },
+  selectedProductCategory: { type: String, default: "", trim: true },
+  productCatalogItemLabel: { type: String, default: "sản phẩm", trim: true },
+  selectedProductSheetSyncError: { type: String, default: "" },
   selectedCakeImageUrl: { type: String, default: "", trim: true },
   selectedCakeMessageId: { type: String, default: "", trim: true },
   selectedCakeSelectedAt: { type: Date },

@@ -106,11 +106,19 @@ export interface CompanySepayConfig {
   lastWebhookError: string;
 }
 
-export interface CompanyCakeCatalogConfig {
+export interface CompanyProductCatalogConfig {
   companyCode: string;
   companyName: string;
   enabled: boolean;
   rootFolderUrl: string;
   maxImagesPerReply: number;
+  catalogName: string;
+  itemLabel: string;
+  selectionMessage: string;
+  businessDescription: string;
+  categoryAliases: Record<string, string[]>;
+  migratedFromLegacy?: boolean;
   serviceAccountEmail: string;
 }
+
+export type CompanyCakeCatalogConfig = CompanyProductCatalogConfig;
