@@ -128,9 +128,37 @@ export function buildVietQrImageUrl(bankId: string, accountNumber: string, accou
   return `https://img.vietqr.io/image/${encodeURIComponent(bankId)}-${encodeURIComponent(accountNumber)}-compact2.png?${query.toString()}`;
 }
 
+async function notifyCustomerPayment(orderId: string) {
+  const order = await MessengerOrderModel.findOne({ orderId });
+  if (!order?.sepayVerifiedAt || order.sepayCustomerNotifiedAt) return;
+  const amount = Number(order.sepayTransferAmount || 0).toLocaleString("vi-VN");
+  const message = [
+    `Shop đã nhận được khoản đặt cọc ${amount} đ cho đơn hàng ${order.orderId}.`,
+    order.paymentCode ? `Mã thanh toán: ${order.paymentCode}.` : "",
+    "Giao dịch đã được xác nhận thành công. Shop sẽ tiếp tục xử lý đơn hàng và thông báo khi có cập nhật mới. Cảm ơn bạn!",
+  ].filter(Boolean).join("\n");
+  try {
+    // Dynamic import avoids the Messenger -> order -> SePay service cycle during module initialization.
+    const { fbMessengerService } = await import("./fb-messenger.service");
+    await fbMessengerService.sendReply(order.pageId, order.conversationId.toString(), message, "ai");
+    await MessengerOrderModel.updateOne(
+      { _id: order._id, sepayCustomerNotifiedAt: { $exists: false } },
+      { $set: { sepayCustomerNotifiedAt: new Date(), sepayCustomerNotificationError: "" } },
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await MessengerOrderModel.updateOne(
+      { _id: order._id },
+      { $set: { sepayCustomerNotificationError: errorMessage.slice(0, 1000) } },
+    ).catch(() => undefined);
+    console.error(`[SePay] Không thể thông báo khách hàng orderId=${order.orderId}:`, errorMessage);
+  }
+}
+
 async function syncVerifiedPayment(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order?.sepayVerifiedAt) return;
+  void notifyCustomerPayment(order.orderId);
   const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
   const config = integration?.orderSheetConfig;
   if (config?.enabled) {
