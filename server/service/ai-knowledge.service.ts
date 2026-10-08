@@ -325,6 +325,9 @@ function normalizeCompanyCode(companyCode?: string) {
 function normalizeText(text: string) {
   return (text || "")
     .replace(/\r\n/g, "\n")
+    // Markdown exports may escape the URL scheme as `https\://`, which stops
+    // chat channels from recognizing the copied value as a clickable link.
+    .replace(/\b(https?)\\+:\/\//gi, "$1://")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -1073,7 +1076,9 @@ export const aiKnowledgeService = {
       if (usedChars + item.text.length > maxContextChars) continue;
       const docTypeTag = (item as any).documentType as KnowledgeDocumentType || "general";
       const tagLabel = DOC_TYPE_LABELS[docTypeTag] || "Tài liệu";
-      const labeledText = `[${tagLabel}] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`;
+      const labeledText = normalizeText(
+        `[${tagLabel}] ${item.title}${item.sourceUrl ? `\n[Link] ${item.sourceUrl}` : ""}\n${item.text}`
+      );
       if (usedChars + labeledText.length > maxContextChars) continue;
       selected.push(labeledText);
       selectedItems.push(item);
@@ -1113,7 +1118,9 @@ export const aiKnowledgeService = {
           const doc = coreDocMap.get(String(pChunk.documentId));
           const docType = (doc?.documentType as KnowledgeDocumentType) || "general";
           const docTypeLabel = DOC_TYPE_LABELS[docType] || "Thông tin doanh nghiệp";
-          const labeledText = `[${docTypeLabel}] ${doc?.sourceTitle || "Thông tin doanh nghiệp"}${doc?.sourceUrl ? `\n[Link] ${doc.sourceUrl}` : ""}\n${pChunk.text}`;
+          const labeledText = normalizeText(
+            `[${docTypeLabel}] ${doc?.sourceTitle || "Thông tin doanh nghiệp"}${doc?.sourceUrl ? `\n[Link] ${doc.sourceUrl}` : ""}\n${pChunk.text}`
+          );
           if (usedChars + labeledText.length > maxContextChars) break;
           selected.push(labeledText);
           usedChars += labeledText.length;

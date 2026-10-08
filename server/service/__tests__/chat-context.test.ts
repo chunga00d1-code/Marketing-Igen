@@ -209,3 +209,31 @@ test("fallback knowledge retains channel and page restrictions", async (context)
   assert.deepEqual(filters[1].channelScope, { $in: ["all", "facebook"] });
   assert.equal(filters[1].companyCode, "SHOP");
 });
+
+test("retrieved knowledge normalizes markdown-escaped URLs for clickable chat links", async (context) => {
+  context.mock.method(AIKnowledgeDocumentModel, "find", () => {
+    const chain = { select: () => chain, lean: async () => [{
+      _id: "scenario-1", sourceTitle: "Kịch bản tư vấn", documentType: "scenario",
+    }] };
+    return chain;
+  });
+  context.mock.method(AIKnowledgeChunkModel, "find", () => {
+    const chain = {
+      sort: () => chain,
+      limit: () => chain,
+      lean: async () => [{
+        _id: "chunk-1", documentId: "scenario-1", chunkIndex: 0,
+        text: "Bánh sinh nhật: https\\://vibarycake.com/products?category=banh-sinh-nhat",
+        embedding: Array(96).fill(0), pageScope: "all",
+      }],
+    };
+    return chain;
+  });
+
+  const result = await aiKnowledgeService.searchScenarioContext({
+    companyCode: "SHOP", query: "Chị muốn đặt bánh sinh nhật",
+  });
+
+  assert.match(result.contextText, /https:\/\/vibarycake\.com\/products\?category=banh-sinh-nhat/);
+  assert.doesNotMatch(result.contextText, /https\\:\/\//);
+});
