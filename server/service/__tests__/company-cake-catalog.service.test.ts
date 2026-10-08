@@ -19,3 +19,11 @@ test("cake catalog matches the specific folder name without generic cake words",
   assert.equal(findMatchingCategory(categories, "Có bánh cưới không shop?")?.id, "wedding");
   assert.equal(findMatchingCategory(categories, "Cho mình hỏi giá bánh")?.id, undefined);
 });
+
+test("cake catalog accepts a partial but meaningful customer description", () => {
+  const detailedCategories: CakeCatalogCategory[] = [
+    { id: "boy", name: "Bánh sinh nhật bé trai", images: [] },
+    { id: "girl", name: "Bánh sinh nhật bé gái", images: [] },
+  ];
+  assert.equal(findMatchingCategory(detailedCategories, "Cho mình xem mẫu cho bé trai")?.id, "boy");
+});
