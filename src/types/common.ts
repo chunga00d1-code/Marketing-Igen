@@ -86,3 +86,17 @@ export interface CompanyTelegramOrderConfig {
   lastTestStatus: "success" | "failed" | "untested";
   lastTestError: string;
 }
+
+export interface CompanySepayConfig {
+  companyCode: string;
+  companyName: string;
+  enabled: boolean;
+  hasWebhookSecret: boolean;
+  webhookId: string;
+  webhookUrl: string;
+  accountNumbers: string[];
+  paymentCodePrefix: string;
+  lastWebhookAt: string | Date | null;
+  lastWebhookStatus: "success" | "failed" | "untested";
+  lastWebhookError: string;
+}

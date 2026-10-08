@@ -33,6 +33,7 @@ import { realEstateMapVideoRouter } from "./real-estate-map-video.router";
 import { orderSheetRouter } from "./order-sheet.router";
 import { canvaRouter } from "./canva.router";
 import { companyTelegramOrderRouter } from "./company-telegram-order.router";
+import { companySepayRouter } from "./company-sepay.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -98,6 +99,7 @@ apiRouter.use("/wallet", walletRouter);
 apiRouter.use("/crud", crudRouter);
 apiRouter.use("/order-sheets", orderSheetRouter);
 apiRouter.use("/company-telegram-order", companyTelegramOrderRouter);
+apiRouter.use(companySepayRouter);
 
 apiRouter.use("/professional", professionalRouter);
 

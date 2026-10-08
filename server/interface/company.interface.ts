@@ -25,6 +25,17 @@ export interface ICompanyTelegramOrderConfig {
   lastTestError?: string;
 }
 
+export interface ICompanySepayConfig {
+  enabled: boolean;
+  webhookId: string;
+  webhookSecretEncrypted: string;
+  accountNumbers: string[];
+  paymentCodePrefix: string;
+  lastWebhookAt?: Date | null;
+  lastWebhookStatus?: "success" | "failed" | "untested";
+  lastWebhookError?: string;
+}
+
 export interface ICompany extends Document {
   code: string;
   name: string;
@@ -33,4 +44,5 @@ export interface ICompany extends Document {
   heygenConfig?: ICompanyHeyGenConfig;
   elevenlabsConfig?: ICompanyElevenLabsConfig;
   telegramOrderConfig?: ICompanyTelegramOrderConfig;
+  sepayConfig?: ICompanySepayConfig;
 }

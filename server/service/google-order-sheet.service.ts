@@ -12,6 +12,7 @@ export const ORDER_HEADERS = [
   "Ghi chú nội bộ", "Mã tin nhắn nguồn", "Hình thức nhận hàng",
   "Địa điểm nhận hàng", "Thời gian nhận hàng", "Yêu cầu đặt cọc",
   "Số tiền đặt cọc", "Trạng thái đặt cọc", "Link biên lai thanh toán", "Thời gian nhận biên lai",
+  "Mã thanh toán", "Mã giao dịch SePay", "Số tiền SePay", "Thời gian xác nhận SePay",
 ];
 
 export const ORDER_ITEM_HEADERS = [
@@ -54,9 +55,13 @@ export interface SheetOrder {
   sourceMessageId: string;
   depositRequired?: boolean;
   depositAmount?: number;
-  depositStatus?: "not_required" | "awaiting_receipt" | "receipt_received";
+  depositStatus?: "not_required" | "awaiting_receipt" | "receipt_received" | "verified";
   receiptUrl?: string;
   receiptReceivedAt?: Date;
+  paymentCode?: string;
+  sepayTransactionId?: string;
+  sepayTransferAmount?: number;
+  sepayVerifiedAt?: Date;
 }
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -145,6 +150,7 @@ function columnLetters(columnNumber: number) {
 }
 
 function depositStatusLabel(status?: SheetOrder["depositStatus"]) {
+  if (status === "verified") return "Đã xác nhận qua SePay";
   if (status === "receipt_received") return "Đã nhận biên lai - chờ đối soát";
   if (status === "awaiting_receipt") return "Chờ khách gửi biên lai";
   return "Không yêu cầu";
@@ -248,7 +254,8 @@ export const googleOrderSheetService = {
       order.customerNote, order.internalNote, order.sourceMessageId, order.fulfillmentMethod,
       order.fulfillmentLocation, order.requestedFulfillmentTime, order.depositRequired ? "Có" : "Không",
       order.depositAmount, depositStatusLabel(order.depositStatus), order.receiptUrl,
-      order.receiptReceivedAt?.toISOString(),
+      order.receiptReceivedAt?.toISOString(), order.paymentCode, order.sepayTransactionId,
+      order.sepayTransferAmount, order.sepayVerifiedAt?.toISOString(),
     ]]);
     await appendRows(spreadsheetId, itemsSheetName, order.items.map((item, index) => [
       order.orderId, index + 1, item.productCode, item.productName, item.variantSummary,
@@ -285,6 +292,43 @@ export const googleOrderSheetService = {
           range: receiptRange,
           majorDimension: "ROWS",
           values: [["Có", receipt.depositAmount ?? "", depositStatusLabel("receipt_received"), safeCell(receipt.receiptUrl), receipt.receiptReceivedAt.toISOString()]],
+        }),
+      }),
+    ]);
+  },
+
+  async updateSepayPayment(
+    spreadsheetId: string,
+    ordersName: string,
+    orderId: string,
+    payment: { transactionId: string; transferAmount: number; verifiedAt: Date },
+  ) {
+    const ordersSheetName = safeSheetName(ordersName, "Orders");
+    await ensureTabs(spreadsheetId, [ordersSheetName]);
+    await writeHeader(spreadsheetId, ordersSheetName, ORDER_HEADERS);
+    const lookupRange = `${a1SheetName(ordersSheetName)}!A:A`;
+    const existing = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(lookupRange)}`) as { values?: unknown[][] };
+    const rowIndex = (existing.values || []).findIndex((row) => String(row?.[0] || "") === orderId);
+    if (rowIndex < 1) throw new Error("Không tìm thấy đơn hàng trong Google Sheet để xác nhận SePay.");
+    const rowNumber = rowIndex + 1;
+    const paymentRange = `${a1SheetName(ordersSheetName)}!P${rowNumber}:P${rowNumber}`;
+    const statusRange = `${a1SheetName(ordersSheetName)}!Z${rowNumber}:Z${rowNumber}`;
+    const sepayRange = `${a1SheetName(ordersSheetName)}!AD${rowNumber}:AF${rowNumber}`;
+    await Promise.all([
+      sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(paymentRange)}?valueInputOption=RAW`, {
+        method: "PUT",
+        body: JSON.stringify({ range: paymentRange, majorDimension: "ROWS", values: [["Đã thanh toán cọc"]] }),
+      }),
+      sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(statusRange)}?valueInputOption=RAW`, {
+        method: "PUT",
+        body: JSON.stringify({ range: statusRange, majorDimension: "ROWS", values: [[depositStatusLabel("verified")]] }),
+      }),
+      sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(sepayRange)}?valueInputOption=RAW`, {
+        method: "PUT",
+        body: JSON.stringify({
+          range: sepayRange,
+          majorDimension: "ROWS",
+          values: [[payment.transactionId, payment.transferAmount, payment.verifiedAt.toISOString()]],
         }),
       }),
     ]);

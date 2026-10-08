@@ -30,7 +30,11 @@ export interface IMessengerOrder extends Document {
   depositRequired: boolean;
   depositPercent?: number;
   depositAmount?: number;
-  depositStatus: "not_required" | "awaiting_receipt" | "receipt_received";
+  depositStatus: "not_required" | "awaiting_receipt" | "receipt_received" | "verified";
+  paymentCode?: string;
+  sepayTransactionId?: string;
+  sepayTransferAmount?: number;
+  sepayVerifiedAt?: Date;
   depositRequestedAt?: Date;
   receiptUrl?: string;
   receiptMessageId?: string;
@@ -85,7 +89,7 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   depositAmount: { type: Number, min: 0 },
   depositStatus: {
     type: String,
-    enum: ["not_required", "awaiting_receipt", "receipt_received"],
+    enum: ["not_required", "awaiting_receipt", "receipt_received", "verified"],
     default: "not_required",
     index: true,
   },
@@ -94,6 +98,10 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   receiptMessageId: { type: String, default: "", trim: true },
   receiptReceivedAt: { type: Date },
   receiptSheetSyncError: { type: String, default: "" },
+  paymentCode: { type: String, trim: true, uppercase: true },
+  sepayTransactionId: { type: String, default: "", trim: true },
+  sepayTransferAmount: { type: Number, min: 0 },
+  sepayVerifiedAt: { type: Date },
   fulfillmentMethod: { type: String, enum: ["", "pickup", "delivery"], default: "" },
   fulfillmentLocation: { type: String, default: "", trim: true },
   requestedFulfillmentTime: { type: String, default: "", trim: true },
@@ -112,5 +120,9 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
 MessengerOrderSchema.index({ companyCode: 1, createdAt: -1 });
 MessengerOrderSchema.index({ integrationId: 1, status: 1, updatedAt: -1 });
 MessengerOrderSchema.index({ conversationId: 1, createdAt: -1 });
+MessengerOrderSchema.index(
+  { companyCode: 1, paymentCode: 1 },
+  { unique: true, partialFilterExpression: { paymentCode: { $type: "string" } } },
+);
 
 export const MessengerOrderModel = mongoose.model<IMessengerOrder>("MessengerOrder", MessengerOrderSchema);
