@@ -675,7 +675,7 @@ Hãy viết 1 tin nhắn Follow-up ngắn gọn, ấm áp để hỏi thăm và 
 `.trim();
 
     try {
-      const selectedModel = aiConfig?.model || GEMINI_TEXT_MODEL;
+      const selectedModel = aiConfig?.model || AI_REPLY_MESSAGE_MODEL;
       const response = await generateText(
         selectedModel,
         [{ role: "user", parts: [{ text: userPrompt }] }],

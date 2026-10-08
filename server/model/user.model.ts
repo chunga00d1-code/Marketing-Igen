@@ -62,7 +62,7 @@ export const AiAutoReplyConfigSchema = new Schema(
     customerServiceScript: { type: String, default: "" },
     customerServiceScriptFileName: { type: String, default: "" },
     trainingKnowledge: { type: String, default: "" },
-    model: { type: String, default: "deepseek-v4-flash-0731" },
+    model: { type: String, default: "openai/gpt-6-luna" },
     autoFollowUpEnabled: { type: Boolean, default: false },
     followUpDelayHours: { type: Number, default: 2 },
     followUpPrompt: { type: String, default: "" },

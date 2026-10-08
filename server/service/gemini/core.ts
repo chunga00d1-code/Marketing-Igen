@@ -16,8 +16,8 @@ export const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 export const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 export const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
 export const HTML_VIDEO_MODEL = process.env.HTML_VIDEO_MODEL || process.env.GEMINI_MODEL || "google/gemini-2.5-flash";
-export const AI_REPLY_MESSAGE_MODEL = process.env.AI_REPLY_MESSAGE_MODEL || process.env.GEMINI_MODEL || "deepseek-v4-flash-0731";
-export const AI_REPLY_COMMENT_MODEL = process.env.AI_REPLY_COMMENT_MODEL || process.env.GEMINI_MODEL || "deepseek-v4-flash-0731";
+export const AI_REPLY_MESSAGE_MODEL = process.env.AI_REPLY_MESSAGE_MODEL || process.env.GEMINI_MODEL || "openai/gpt-6-luna";
+export const AI_REPLY_COMMENT_MODEL = process.env.AI_REPLY_COMMENT_MODEL || process.env.GEMINI_MODEL || "openai/gpt-6-luna";
 
 export const Type = {
   OBJECT: "object",

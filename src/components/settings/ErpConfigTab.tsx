@@ -8,7 +8,7 @@ export default function ErpConfigTab() {
   const [darkMode, setDarkMode] = useState(false);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [aiModel, setAiModel] = useState(() => {
-    return userProfile?.aiAutoReplyConfig?.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731";
+    return userProfile?.aiAutoReplyConfig?.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna";
   });
   const [autoBackup, setAutoBackup] = useState(true);
 
@@ -112,6 +112,8 @@ export default function ErpConfigTab() {
               }}
               className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none cursor-pointer"
             >
+              <option value="openai/gpt-6-luna">OpenAI GPT-6 Luna</option>
+              <option value="deepseek/deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
               <option value="deepseek-v4-flash-0731">DeepSeek V4 Flash </option>
               <option value="gemini-3.5-flash">Gemini 3.5 Flash </option>
               <option value="gemini-3.1-pro">Gemini 3.1 Pro </option>
