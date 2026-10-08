@@ -20,6 +20,21 @@ const CompanyElevenLabsConfigSchema = new Schema(
   { _id: false }
 );
 
+const CompanyTelegramOrderConfigSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    notifyNewOrder: { type: Boolean, default: true },
+    botTokenEncrypted: { type: String, default: "", select: false },
+    groupChatId: { type: String, default: "", trim: true },
+    messageThreadId: { type: Number, default: null },
+    botUsername: { type: String, default: "", trim: true },
+    lastTestedAt: { type: Date, default: null },
+    lastTestStatus: { type: String, enum: ["success", "failed", "untested"], default: "untested" },
+    lastTestError: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
 const CompanySchema = new Schema<ICompany>({
   code: { type: String, required: true, unique: true, index: true, uppercase: true },
   name: { type: String, required: true },
@@ -27,6 +42,7 @@ const CompanySchema = new Schema<ICompany>({
   ownerEmail: { type: String, required: true },
   heygenConfig: { type: CompanyHeyGenConfigSchema, default: () => ({}) },
   elevenlabsConfig: { type: CompanyElevenLabsConfigSchema, default: () => ({}) },
+  telegramOrderConfig: { type: CompanyTelegramOrderConfigSchema, default: () => ({}) },
 });
 
 export const CompanyModel = model<ICompany>("Company", CompanySchema);

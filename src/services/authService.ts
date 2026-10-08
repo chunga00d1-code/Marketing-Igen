@@ -1,4 +1,4 @@
-import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig } from "../types";
+import { UserProfile, CompanyProfile, TelegramLinkStatus, CompanyHeyGenConfig, CompanyTelegramOrderConfig } from "../types";
 
 export function getAccessToken(): string | null {
   return localStorage.getItem("accessToken");
@@ -412,6 +412,39 @@ export const authService = {
 
     const result = await parseJson<{ data: Record<string, unknown> }>(res, "Khong the dong bo thu vien HeyGen");
     return result.data;
+  },
+
+  async getCompanyTelegramOrderConfig(): Promise<CompanyTelegramOrderConfig> {
+    const res = await fetch("/api/v1/company-telegram-order", {
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    const result = await parseJson<{ data: CompanyTelegramOrderConfig }>(res, "Khong the lay cau hinh Telegram");
+    return result.data;
+  },
+
+  async updateCompanyTelegramOrderConfig(updateData: {
+    enabled: boolean;
+    notifyNewOrder: boolean;
+    botToken?: string;
+    groupChatId: string;
+    messageThreadId: number | null;
+  }): Promise<CompanyTelegramOrderConfig> {
+    const res = await fetch("/api/v1/company-telegram-order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(updateData),
+    });
+    const result = await parseJson<{ data: CompanyTelegramOrderConfig }>(res, "Khong the luu cau hinh Telegram");
+    return result.data;
+  },
+
+  async testCompanyTelegramOrderConfig(input: { botToken?: string; groupChatId: string; messageThreadId: number | null }) {
+    const res = await fetch("/api/v1/company-telegram-order/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAccessToken()}` },
+      body: JSON.stringify(input),
+    });
+    return (await parseJson<{ data: { ok: boolean; botUsername: string; chatTitle: string } }>(res, "Khong the kiem tra Telegram")).data;
   },
 
   async getTelegramLinkStatus(): Promise<TelegramLinkStatus> {

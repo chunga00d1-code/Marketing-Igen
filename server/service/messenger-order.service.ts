@@ -5,6 +5,7 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
 import { openrouterChat } from "./openrouter.service";
 import { selectCurrentOrderContext } from "./messenger-order-context";
+import { companyTelegramOrderService } from "./company-telegram-order.service";
 
 interface ExtractedOrderItem {
   productCode?: string;
@@ -260,6 +261,7 @@ export const messengerOrderService = {
     const existing = await MessengerOrderModel.findOne({ sourceMessageId });
     if (existing) {
       if (existing.status === "confirmed" || existing.status === "failed") await syncOrder(existing.orderId);
+      void companyTelegramOrderService.notifyMessengerOrder(existing.orderId);
       return existing;
     }
 
@@ -307,6 +309,7 @@ export const messengerOrderService = {
 
     if (confirmed) {
       const syncedOrder = await syncOrder(order.orderId);
+      void companyTelegramOrderService.notifyMessengerOrder(order.orderId);
       console.log(
         `[Messenger Order] Đã lưu đơn: orderId=${order.orderId}, status=${syncedOrder?.status || order.status}, ` +
         `syncError=${syncedOrder?.lastSyncError || "none"}`
@@ -327,6 +330,8 @@ export const messengerOrderService = {
     if (!order.confirmedAt) order.confirmedAt = new Date();
     order.status = "confirmed";
     await order.save();
-    return syncOrder(order.orderId);
+    const syncedOrder = await syncOrder(order.orderId);
+    void companyTelegramOrderService.notifyMessengerOrder(order.orderId);
+    return syncedOrder;
   },
 };
