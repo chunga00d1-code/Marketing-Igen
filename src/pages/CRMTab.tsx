@@ -323,7 +323,7 @@ export default function CRMTab() {
     customerServiceScript: "",
     customerServiceScriptFileName: "",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+    model: localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
     autoFollowUpEnabled: false,
     followUpDelayHours: 2,
     followUpPrompt: ""
@@ -362,7 +362,7 @@ export default function CRMTab() {
         customerServiceScript: config.customerServiceScript ?? "",
         customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
         trainingKnowledge: config.trainingKnowledge ?? "",
-        model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+        model: config.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
         autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
         followUpDelayHours: config.followUpDelayHours ?? 2,
         followUpPrompt: config.followUpPrompt ?? ""
@@ -384,7 +384,7 @@ export default function CRMTab() {
         customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
         customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
         trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
         autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
         followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
         followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? ""
