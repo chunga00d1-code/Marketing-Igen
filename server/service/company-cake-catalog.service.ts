@@ -208,6 +208,33 @@ function mayRequestCakeImages(customerText: string) {
   return ["banh", "mau", "anh", "hinh", "xem", "tham khao", "goi y", "kieu"].some((word) => text.includes(word));
 }
 
+function requestsVisualExamples(customerText: string) {
+  const text = normalizeCatalogText(customerText);
+  return ["mau", "anh", "hinh", "xem", "tham khao", "goi y", "kieu"].some((word) => text.includes(word));
+}
+
+export function isGenericVisualRequest(customerText: string) {
+  if (!requestsVisualExamples(customerText)) return false;
+  const ignoredWords = new Set([
+    "cho", "toi", "minh", "em", "anh", "chi", "xem", "cac", "hinh", "ve", "mau", "banh",
+    "tham", "khao", "goi", "y", "kieu", "shop", "co", "khong", "duoc", "nao", "voi", "a",
+  ]);
+  return normalizeCatalogText(customerText).split(" ").filter((word) => word && !ignoredWords.has(word)).length === 0;
+}
+
+export function buildCatalogOverview(categories: CakeCatalogCategory[], limit: number) {
+  const images: CakeCatalogImage[] = [];
+  const maxCategorySize = Math.max(0, ...categories.map((category) => category.images.length));
+  for (let imageIndex = 0; imageIndex < maxCategorySize && images.length < limit; imageIndex += 1) {
+    for (const category of categories) {
+      const image = category.images[imageIndex];
+      if (image) images.push(image);
+      if (images.length >= limit) break;
+    }
+  }
+  return images;
+}
+
 async function selectCategoryWithAi(categories: CakeCatalogCategory[], customerText: string, model: string) {
   if (!mayRequestCakeImages(customerText) || !categories.length) return null;
   try {
@@ -306,14 +333,29 @@ export const companyCakeCatalogService = {
     const config = company?.cakeCatalogConfig;
     if (!config?.enabled || !config.rootFolderUrl) return null;
     const categories = await this.scanCompany(integration.companyCode);
-    const category = findMatchingCategory(categories, customerText)
-      || await selectCategoryWithAi(
+    const imageLimit = Math.min(10, Math.max(1, Number(config.maxImagesPerReply || 5)));
+    let category = findMatchingCategory(categories, customerText);
+    if (!category && isGenericVisualRequest(customerText)) {
+      category = {
+        id: "catalog-overview",
+        name: "Mẫu bánh tổng hợp",
+        images: buildCatalogOverview(categories, imageLimit),
+      };
+    }
+    category ||= await selectCategoryWithAi(
         categories,
         customerText,
         integration.aiAutoReplyConfig?.model || process.env.AI_REPLY_MESSAGE_MODEL || "deepseek-v4-flash-0731",
       );
+    if (!category && requestsVisualExamples(customerText)) {
+      category = {
+        id: "catalog-overview",
+        name: "Mẫu bánh tổng hợp",
+        images: buildCatalogOverview(categories, imageLimit),
+      };
+    }
     if (!category) return null;
-    const selectedImages = category.images.slice(0, Math.min(10, Math.max(1, Number(config.maxImagesPerReply || 5))));
+    const selectedImages = category.images.slice(0, imageLimit);
     const images = [];
     for (const image of selectedImages) {
       try {
