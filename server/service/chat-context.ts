@@ -38,13 +38,16 @@ export function isAcknowledgementToAssistantOffer(message: string, history: Chat
   return /\b(gui|gui lai|gui them)\b.{0,80}\b(link|duong dan|mau|hinh|anh|danh sach|thong tin|bang gia|chi tiet)\b/.test(assistantText);
 }
 
-function isContextualQuestion(message: string): boolean {
+export function isContextualQuestion(message: string): boolean {
+  const lines = message.split(/\n+/).map(line => line.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean);
+  if (lines.length > 1) return lines.every(line => isSimpleAcknowledgement(line) || isContextualQuestion(line));
   const text = normalize(message);
   const attributeQuestion = text
     .replace(/\b(gia|size|kich thuoc|thanh phan|chat lieu|mau sac|bao hanh|doi tra|phi ship|ship|giao hang|van chuyen|thanh toan|han su dung|bao quan|cach dung|tinh nang|thong so|con hang)\b/g, " ")
     .replace(/\b(da|vang|ok|oke|oki|con|the|vay|thi|la|gi|sao|nao|bao|nhieu|nhu|the|co|khong|ko|k|a|ah|em|e|anh|chi|minh|toi|ban|cho|hoi|xin|voi|nhe|nha|duoc|chua|het|roi)\b/g, " ")
     .trim();
   return /\b(check|kiem tra|tra cuu|xem) (lai )?(xong|chua|giup)\b/.test(text)
+    || /^(?:da |dip |mung )?(sinh nhat|thoi noi|day thang|ky niem|khai truong|tan gia|dam cuoi)(?:\s+(?:a|nhe|nha|thoi|nhe em))*$/.test(text)
     || /^(?:(?:be|chau|con|nam nay)\s+)*\d{1,3}\s+(?:tuoi|thang tuoi)(?:\s+(?:a|roi|nhe|nha))*$/.test(text)
     || /^(?:be|con) (?:trai|gai)(?:\s+(?:a|nhe|nha))*$/.test(text)
     || /^(co (thong tin|ket qua) chua|sao roi|the nao roi|roi sao|tra loi (giup )?(em|minh|toi))\b/.test(text)

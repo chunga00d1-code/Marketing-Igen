@@ -12,6 +12,7 @@ import { aiKnowledgeService } from "./ai-knowledge.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
+import { analyzeChatImages, splitHistoryAndPendingInboundMessages } from "./chat-image-context";
 
 // In-memory timeouts map to manage debouncing per conversation.
 // messageKey prevents polling/sync from pushing the same inbound message forever.
@@ -128,38 +129,6 @@ function splitReplyIntoMessageBubbles(text: string) {
   }
 
   return bubbles;
-}
-
-function splitHistoryAndPendingInboundMessages(messages: any[]) {
-  const pendingInboundMessages: any[] = [];
-
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.direction !== "inbound") {
-      break;
-    }
-
-    const text = normalizeIncomingText(message.text);
-    if (text) {
-      pendingInboundMessages.unshift(message);
-    }
-  }
-
-  const pendingIds = new Set(pendingInboundMessages.map((message) => String(message._id)));
-  const historyMessages = messages.filter((message) => !pendingIds.has(String(message._id)));
-  const pendingTexts = pendingInboundMessages
-    .map((message) => normalizeIncomingText(message.text))
-    .filter(Boolean);
-  const combinedText = pendingTexts.length > 1
-    ? pendingTexts.map((text, index) => `${index + 1}. ${text}`).join("\n")
-    : pendingTexts[0] || "";
-
-  return {
-    historyMessages,
-    combinedText,
-    pendingMessageCount: pendingInboundMessages.length,
-    latestPendingMessage: pendingInboundMessages[pendingInboundMessages.length - 1] || null,
-  };
 }
 
 type ResolvedAutoReplyOwner = {
@@ -568,7 +537,7 @@ export const aiAutoReplyService = {
         return;
       }
 
-      if (!normalizedIncomingText) {
+      if (!normalizedIncomingText && !incomingMessageId) {
         await logAutoReplyFailure({
           companyCode: targetCompanyCode,
           channel,
@@ -637,6 +606,7 @@ export const aiAutoReplyService = {
           let latestDbMessage: any = null;
           let groupedCustomerMessage = normalizedIncomingText;
           let groupedMessageCount = 1;
+          let pendingImageUrls: string[] = [];
 
           if (channel === "zalo") {
             const conv = await ZaloConversationModel.findOne({ _id: conversationId, oaId: resolvedPlatformId });
@@ -681,6 +651,7 @@ export const aiAutoReplyService = {
 
             const grouped = splitHistoryAndPendingInboundMessages(dbMsgs);
             groupedCustomerMessage = grouped.combinedText || normalizedIncomingText;
+            pendingImageUrls = grouped.imageUrls;
             groupedMessageCount = grouped.pendingMessageCount || 1;
 
             history = grouped.historyMessages.map(m => ({
@@ -730,6 +701,7 @@ export const aiAutoReplyService = {
 
             const grouped = splitHistoryAndPendingInboundMessages(dbMsgs);
             groupedCustomerMessage = grouped.combinedText || normalizedIncomingText;
+            pendingImageUrls = grouped.imageUrls;
             groupedMessageCount = grouped.pendingMessageCount || 1;
 
             history = grouped.historyMessages.map(m => ({
@@ -779,6 +751,7 @@ export const aiAutoReplyService = {
 
             const grouped = splitHistoryAndPendingInboundMessages(dbMsgs);
             groupedCustomerMessage = grouped.combinedText || normalizedIncomingText;
+            pendingImageUrls = grouped.imageUrls;
             groupedMessageCount = grouped.pendingMessageCount || 1;
 
             history = grouped.historyMessages.map(m => ({
@@ -786,6 +759,8 @@ export const aiAutoReplyService = {
               text: m.text || ""
             }));
           }
+
+          if (!groupedCustomerMessage && !pendingImageUrls.length) return;
 
           // Security check 1: if the last message in DB is outbound (meaning human agent replied in the meantime),
           // we do not auto-reply anymore.
@@ -836,9 +811,14 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
+            const imageObservation = await analyzeChatImages(pendingImageUrls);
+            if (imageObservation) console.log(`[AI AutoReply] Image analysis: count=${pendingImageUrls.length}, status=${imageObservation.status}`);
+            const retrievalMessage = imageObservation?.status === "ready"
+              ? `${groupedCustomerMessage}\nKhách gửi ảnh sản phẩm cần tư vấn: ${imageObservation.description}`
+              : groupedCustomerMessage;
             const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
               companyCode,
-              message: groupedCustomerMessage,
+              message: retrievalMessage,
               history,
               channel,
               pageId: channel === "facebook" ? resolvedPlatformId : undefined,
@@ -868,7 +848,7 @@ export const aiAutoReplyService = {
             // Call Gemini Service
             console.log(`[AI AutoReply] 🧠 GEMINI CALL: Đang gửi request tới Gemini cho conversation=${conversationId}...`);
             console.log(`[AI AutoReply] Gemini call: conversationId=${conversationId}, channel=${channel}`);
-            const aiResponse = await geminiService.chat(groupedCustomerMessage, history, aiConfig, effectiveRagContext);
+            const aiResponse = await geminiService.chat(groupedCustomerMessage, history, aiConfig, { ...effectiveRagContext, imageObservation });
 
             if (!aiResponse || !aiResponse.text) {
               console.error(`[AI AutoReply] ❌ LỖI API: Không nhận được câu trả lời từ Gemini cho hội thoại: ${conversationId}`);

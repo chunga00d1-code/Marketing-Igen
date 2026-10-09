@@ -23,6 +23,7 @@ export interface GenerateTextConfig {
 }
 
 export interface ChatRagContext {
+  imageObservation?: import("../chat-image-context").ChatImageObservation;
   contextText?: string;
   companyCode?: string;
   matches?: number;

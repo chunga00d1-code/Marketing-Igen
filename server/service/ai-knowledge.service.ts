@@ -886,7 +886,7 @@ export const aiKnowledgeService = {
       ...history.slice(-8).filter((item) => item.sender === "user").map((item) => item.text),
       params.message,
     ].join("\n").slice(-4000);
-    const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) ||
+    const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) || query !== params.message ||
       /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
         normalizeForLookup(categoryLookupQuery)
       );
@@ -912,7 +912,7 @@ export const aiKnowledgeService = {
         ? this.searchRelevantContext({
             ...scope,
             query: `${categoryLookupQuery}\nDanh mục sản phẩm dịch vụ, link danh mục chính xác, từ khóa khách có thể dùng`,
-            documentTypes: ["product", "service"],
+            documentTypes: ["product", "service", "general", "faq"],
             strictDocumentTypes: true,
             topK: 12,
             maxContextChars: 4500,
