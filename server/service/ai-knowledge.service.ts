@@ -6,7 +6,7 @@ import { AIReplyLogModel } from "../model/ai-reply-log.model";
 import { AIFaqCandidateModel } from "../model/ai-faq-candidate.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { geminiService } from "./gemini.service";
-import { buildChatKnowledgeQuery, type ChatContextMessage } from "./chat-context";
+import { buildChatKnowledgeQuery, isAcknowledgementToAssistantOffer, type ChatContextMessage } from "./chat-context";
 
 const EMBEDDING_DIMENSIONS = 96;
 const DEFAULT_TOP_K = 5;
@@ -886,9 +886,10 @@ export const aiKnowledgeService = {
       ...history.slice(-8).filter((item) => item.sender === "user").map((item) => item.text),
       params.message,
     ].join("\n").slice(-4000);
-    const hasPurchaseIntent = /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
-      normalizeForLookup(categoryLookupQuery)
-    );
+    const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) ||
+      /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
+        normalizeForLookup(categoryLookupQuery)
+      );
     const detected = detectRequiredDocumentTypes(query);
     const groups: KnowledgeDocumentType[][] = [];
     if (detected.some((type) => ["company_profile", "brand_guideline"].includes(type))) groups.push(["company_profile", "brand_guideline"]);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildChatKnowledgeQuery, isSimpleAcknowledgement } from "../chat-context";
+import { buildChatKnowledgeQuery, isAcknowledgementToAssistantOffer, isSimpleAcknowledgement } from "../chat-context";
 import { aiKnowledgeService } from "../ai-knowledge.service";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../../model/ai-knowledge.model";
 
@@ -11,6 +11,50 @@ test("acknowledgements match whole messages, including grouped messages", () => 
   for (const text of ["", "ok, ship bao nhiêu?", "dạ lấy 2 cái", "vâng nhưng bánh có trứng không?", "không được rồi", "1. ok\n2. địa chỉ ở đâu?"]) {
     assert.equal(isSimpleAcknowledgement(text), false, text);
   }
+});
+
+test("an acknowledgement to a pending link or sample offer keeps the customer topic for retrieval", () => {
+  const history = [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật cho bé gái" },
+    { sender: "model", text: "Dạ em gửi chị link danh mục mẫu bé gái nhé" },
+  ];
+  assert.equal(isAcknowledgementToAssistantOffer("ok", history), true);
+  const query = buildChatKnowledgeQuery("ok", history);
+  assert.match(query, /bánh sinh nhật cho bé gái/);
+  assert.match(query, /ok/);
+
+  assert.equal(isAcknowledgementToAssistantOffer("ok", [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Dạ em đã gửi link mẫu bánh rồi ạ" },
+  ]), false);
+  assert.equal(isAcknowledgementToAssistantOffer("ok", [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Dạ em gửi link rồi ạ" },
+  ]), false);
+  assert.equal(isAcknowledgementToAssistantOffer("ok", [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Anh chị lấy mấy cái ạ?" },
+  ]), false);
+});
+
+test("short age and recipient answers preserve the topic for retrieval", () => {
+  const history = [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Chị đặt cho bé trai hay bé gái ạ?" },
+    { sender: "user", text: "Bé gái" },
+    { sender: "model", text: "Bé bao nhiêu tuổi ạ?" },
+  ];
+  assert.match(buildChatKnowledgeQuery("3 tuổi", history), /bánh sinh nhật/);
+  history.push(
+    { sender: "user", text: "3 tuổi" },
+    { sender: "model", text: "Dạ em gửi chị link mẫu nhé" },
+  );
+  const query = buildChatKnowledgeQuery("ok", history);
+  assert.match(query, /bánh sinh nhật/);
+  assert.match(query, /Bé gái/);
+  assert.match(query, /3 tuổi/);
+  assert.doesNotMatch(query, /Dạ em gửi/);
+  assert.equal(buildChatKnowledgeQuery("Giá gói CRM bao nhiêu?", history), "Giá gói CRM bao nhiêu?");
 });
 
 test("follow-ups recover customer topic without treating old AI claims as facts", () => {

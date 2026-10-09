@@ -29,7 +29,7 @@ const corrected = (text: string) => JSON.stringify({ compliant: true, correctedP
 const verified = JSON.stringify({ compliant: true });
 
 test("chat combines knowledge and configured scenarios without losing either workflow", async (context) => {
-  const requests = mockAI(context, ["Dạ chị ạ"]);
+  const requests = mockAI(context, ["Dạ chị ạ", corrected("Dạ chị ạ"), verified]);
   await service.chat("Tí chị xuống lấy", [{ sender: "user", text: "Chị lấy 1 bánh 22cm" }], {
     ...baseConfig, customerServiceScript: "Khi đến lấy hướng dẫn vào cửa bên trái",
   }, { contextText: "Giờ mở cửa 8h đến 21h", scenarioContextText: "Ghi nhận khách đến lấy, không hỏi lại số lượng" });
@@ -53,7 +53,7 @@ test("simple acknowledgements return exactly the fixed reply despite scenario an
 });
 
 test("acknowledgements containing a question still use knowledge and retain conversation", async (context) => {
-  const requests = mockAI(context, ["Dạ phí ship 30k ạ"]);
+  const requests = mockAI(context, ["Dạ phí ship 30k ạ", corrected("Dạ phí ship 30k ạ"), verified]);
   const result = await service.chat("ok, ship bao nhiêu?", [
     { sender: "user", text: "Tôi muốn mua bánh tiramisu" },
     { sender: "ai", text: "Để em check" },
@@ -67,7 +67,7 @@ test("acknowledgements containing a question still use knowledge and retain conv
   assert.ok(requests[0].messages.some((message) => message.content === "Tôi muốn mua bánh tiramisu"));
 });
 
-test("blank settings keep the default prompt without custom review", async (context) => {
+test("blank settings keep the default prompt without running a review when no company knowledge is available", async (context) => {
   const requests = mockAI(context, ["dạ anh chị cần mẫu nào?"]);
   const result = await service.chat("Tư vấn giúp tôi", [], {
     ...baseConfig, advancedInstructions: "  ", customerAddressStyle: "\n",
@@ -118,6 +118,20 @@ test("failed final verification blocks the response", async (context) => {
   );
 });
 
+test("the final independent review can approve a valid correction after an uncertain first review", async (context) => {
+  const expected = "chị cần mẫu nào ạ?";
+  const requests = mockAI(context, [
+    "bạn cần gì?",
+    JSON.stringify({ compliant: false, correctedParts: [expected] }),
+    verified,
+  ]);
+
+  const result = await service.chat("Tư vấn giúp tôi", [], { ...baseConfig, customerAddressStyle: "chị" });
+
+  assert.equal(result.text, expected);
+  assert.equal(requests.length, 3);
+});
+
 test("empty corrected output cannot bypass review via a fallback reply", async (context) => {
   const requests = mockAI(context, ["bạn cần gì?", corrected(" ")]);
   await assert.rejects(
@@ -129,7 +143,8 @@ test("empty corrected output cannot bypass review via a fallback reply", async (
 
 test("chat preserves a scenario product URL and makes markdown-escaped schemes clickable", async (context) => {
   const escapedUrl = "https\\://vibarycake.com/products?category=banh-sinh-nhat";
-  const requests = mockAI(context, [`Dạ chị xem mẫu tại ${escapedUrl} nha`]);
+  const candidate = `Dạ chị xem mẫu tại ${escapedUrl} nha`;
+  const requests = mockAI(context, [candidate, corrected("Dạ chị xem mẫu tại https://vibarycake.com/products?category=banh-sinh-nhat nha"), verified]);
 
   const result = await service.chat("Chị muốn đặt một bánh sinh nhật", [], baseConfig, {
     contextText: "Các mẫu bánh sinh nhật theo yêu cầu",
@@ -140,4 +155,58 @@ test("chat preserves a scenario product URL and makes markdown-escaped schemes c
   const prompt = requests[0].messages[0].content;
   assert.match(prompt, /phải chép nguyên vẹn URL đầy đủ/);
   assert.match(prompt, /khách đã có mẫu thì không gửi link/);
+});
+
+test("an acknowledgement to a pending category-link offer sends the exact matching URL", async (context) => {
+  const url = "https://cakes.example/products?category=be-gai";
+  const knowledge = `Dòng 2: Tên danh mục trên website: Bé gái | Link danh mục chính xác: ${url} | Từ khóa khách có thể dùng: bé gái; con gái`;
+  const history = [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật cho bé gái" },
+    { sender: "model", text: "Dạ em gửi chị link danh mục mẫu bé gái nhé" },
+  ];
+  const expected = `Dạ em gửi chị nhé\n\nTham khảo Bé gái tại đây:\n${url}`;
+  const requests = mockAI(context, ["Dạ em gửi chị nhé", corrected(expected), verified]);
+
+  const result = await service.chat("Ok", history, baseConfig, { contextText: knowledge });
+
+  assert.equal(result.text, expected);
+  const reviewPayload = JSON.parse(requests[1].messages.at(-1)?.content || "{}");
+  assert.equal(reviewPayload.companyKnowledge, knowledge);
+  assert.match(reviewPayload.customerVisibleResponses[0], new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(JSON.stringify(requests[0].messages), /Chị muốn xem bánh sinh nhật cho bé gái/);
+});
+
+test("fact review corrects unsupported prices and setup fees from company knowledge", async (context) => {
+  const knowledge = "Gói CRM: 1.200.000đ/tháng. Phí setup: 500.000đ.";
+  const incorrect = "Gói CRM chỉ 900.000đ/tháng và miễn phí setup";
+  const correctedReply = "Gói CRM là 1.200.000đ/tháng, phí setup 500.000đ";
+  const requests = mockAI(context, [incorrect, corrected(correctedReply), verified]);
+
+  const result = await service.chat("Gói CRM giá bao nhiêu, phí setup thế nào?", [], baseConfig, { contextText: knowledge });
+
+  assert.equal(result.text, correctedReply);
+  const reviewPayload = JSON.parse(requests[1].messages.at(-1)?.content || "{}");
+  assert.equal(reviewPayload.companyKnowledge, knowledge);
+  assert.match(requests[1].messages[0].content, /Use companyKnowledge and explicit factual statements in configured business rules or scenarios/);
+  assert.match(JSON.stringify(reviewPayload.customerVisibleResponses), /900\.000đ/);
+});
+
+test("changing the gift recipient keeps the confirmed occasion and supersedes the old recipient", async (context) => {
+  const history = [
+    { sender: "user", text: "Sinh nhật nha bé" },
+    { sender: "model", text: "Dạ bé nhà mình là trai hay gái ạ, bao nhiêu tuổi rồi ạ?" },
+    { sender: "user", text: "Bé gái 3 tuổi" },
+    { sender: "model", text: "Bé thích nhân vật gì để em gửi mẫu nha?" },
+  ];
+  const response = "Dạ mình đổi người nhận sang chồng chị, dịp sinh nhật vẫn giữ nguyên nha. Chị thích mẫu bánh phong cách nào ạ?";
+  const requests = mockAI(context, [response]);
+
+  const result = await service.chat("Chị đặt cho chồng", history, baseConfig);
+
+  assert.equal(result.text, response);
+  const generationPrompt = requests[0].messages[0].content;
+  assert.match(generationPrompt, /A change to the recipient/);
+  assert.match(generationPrompt, /Keep the occasion and other confirmed details/);
+  assert.match(generationPrompt, /Do not ask again for details already confirmed/);
+  assert.ok(requests[0].messages.some((message) => message.content === "Sinh nhật nha bé"));
 });
