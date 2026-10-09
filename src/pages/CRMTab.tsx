@@ -12,6 +12,7 @@ import { socketService } from "../services/socketService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
 import { resolveAiReplyScope } from "../utils/aiReplyScope";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 
 function getCustomerInitials(customerName: string) {
   const parts = customerName.trim().split(/\s+/).filter(Boolean);
@@ -324,7 +325,7 @@ export default function CRMTab() {
     customerServiceScript: "",
     customerServiceScriptFileName: "",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+    model: AI_REPLY_PRIMARY_MODEL,
     autoFollowUpEnabled: false,
     followUpDelayHours: 2,
     followUpPrompt: ""
@@ -358,7 +359,7 @@ export default function CRMTab() {
         customerServiceScript: config.customerServiceScript ?? "",
         customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
         trainingKnowledge: config.trainingKnowledge ?? "",
-        model: config.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+        model: AI_REPLY_PRIMARY_MODEL,
         autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
         followUpDelayHours: config.followUpDelayHours ?? 2,
         followUpPrompt: config.followUpPrompt ?? ""
@@ -381,7 +382,7 @@ export default function CRMTab() {
         customerServiceScript: fallbackConfig?.customerServiceScript ?? "",
         customerServiceScriptFileName: fallbackConfig?.customerServiceScriptFileName ?? "",
         trainingKnowledge: fallbackConfig?.trainingKnowledge ?? "",
-        model: fallbackConfig?.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+        model: AI_REPLY_PRIMARY_MODEL,
         autoFollowUpEnabled: fallbackConfig?.autoFollowUpEnabled ?? false,
         followUpDelayHours: fallbackConfig?.followUpDelayHours ?? 2,
         followUpPrompt: fallbackConfig?.followUpPrompt ?? ""
@@ -392,6 +393,7 @@ export default function CRMTab() {
   const handleUpdateAIConfig = async (newConfig: AIChatConfig) => {
     const configWithTimestamp: AIChatConfig = {
       ...newConfig,
+      model: AI_REPLY_PRIMARY_MODEL,
       autoClassify: true,
       autoCloseDeal: true,
       autoFeedback: true,

@@ -1,5 +1,6 @@
 import { Schema, model } from "mongoose";
 import { IUser } from "../interface/user.interface";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 
 const FacebookIntegrationSchema = new Schema(
   {
@@ -62,7 +63,7 @@ export const AiAutoReplyConfigSchema = new Schema(
     customerServiceScript: { type: String, default: "" },
     customerServiceScriptFileName: { type: String, default: "" },
     trainingKnowledge: { type: String, default: "" },
-    model: { type: String, default: "openai/gpt-6-luna" },
+    model: { type: String, default: AI_REPLY_PRIMARY_MODEL },
     autoFollowUpEnabled: { type: Boolean, default: false },
     followUpDelayHours: { type: Number, default: 2 },
     followUpPrompt: { type: String, default: "" },

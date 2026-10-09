@@ -3,7 +3,7 @@ import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model
 import { MessengerOrderModel } from "../model/messenger-order.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
-import { openrouterChat } from "./openrouter.service";
+import { generateReplyCompletion } from "./ai-reply-provider";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { companyTelegramOrderService } from "./company-telegram-order.service";
 import { cloudinaryService } from "./cloudinary.service";
@@ -141,9 +141,8 @@ function cleanExtractedOrder(value: ExtractedOrder) {
   };
 }
 
-async function extractOrder(transcript: string, model: string) {
-  const response = await openrouterChat({
-    model,
+async function extractOrder(transcript: string) {
+  const response = await generateReplyCompletion({
     temperature: 0,
     maxTokens: 1800,
     jsonMode: true,
@@ -341,10 +340,7 @@ export const messengerOrderService = {
     messages.reverse();
     const orderMessages = selectCurrentOrderContext(messages);
     const transcript = [`TEN FACEBOOK: ${conversation.senderName || ""}`, ...orderMessages.map((message) => `${message.direction === "inbound" ? "KHACH" : "SHOP"}: ${message.text || "[dinh kem]"}`)].join("\n").slice(-14000);
-    const replyModel = integration.aiAutoReplyConfig?.model
-      || process.env.AI_REPLY_MESSAGE_MODEL
-      || "deepseek-v4-flash-0731";
-    const extracted = await extractOrder(transcript, replyModel);
+    const extracted = await extractOrder(transcript);
     if (extracted.confirmed !== true) {
       console.warn(`[Messenger Order] AI không xác nhận đây là đơn đã chốt: conversationId=${conversationId}, messageId=${sourceMessageId}`);
       return null;
