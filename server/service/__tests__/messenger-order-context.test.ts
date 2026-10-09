@@ -29,3 +29,15 @@ test("starts with empty history when the current message opens a new order", () 
   const history = [{ sender: "user", text: "don cu lay tai cua hang" }];
   assert.deepEqual(selectCurrentOrderContext(history, "minh can mua mot san pham moi"), []);
 });
+
+test("a changed gift recipient keeps the current occasion and confirmed child details in context", () => {
+  const history = [
+    { sender: "user", text: "Sinh nhật nha bé" },
+    { sender: "model", text: "Bé gái hay bé trai, bao nhiêu tuổi?" },
+    { sender: "user", text: "Bé gái 3 tuổi" },
+    { sender: "model", text: "Bé thích nhân vật gì để em gửi mẫu?" },
+  ];
+
+  assert.equal(isNewOrderStartMessage("Chị đặt cho chồng"), false);
+  assert.deepEqual(selectCurrentOrderContext(history, "Chị đặt cho chồng"), history);
+});

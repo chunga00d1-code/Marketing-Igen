@@ -23,6 +23,35 @@ test("a short answer retains the recipient but an unrelated question does not ap
   assert.equal(findRelevantWebsiteCategoryLink("Cửa hàng mở lúc mấy giờ?", history, cakeKnowledge), undefined);
 });
 
+test("an acknowledgement to a pending link offer retrieves the category for the current page", async context => {
+  const calls: Array<{ query: string; topK?: number }> = [];
+  context.mock.method(aiKnowledgeService, "searchRelevantContext", async input => {
+    calls.push({ query: input.query, topK: input.topK });
+    const isCategoryLookup = input.topK === 12;
+    return {
+      contextText: "",
+      items: isCategoryLookup ? [{ title: "Danh mục bánh", text: cakeKnowledge }] : [],
+      matches: isCategoryLookup ? 1 : 0,
+      bestScore: isCategoryLookup ? 1 : 0,
+      productCandidateNames: [],
+      shouldAskProductConfirmation: false,
+    };
+  });
+
+  const result = await aiKnowledgeService.prepareChatContext({
+    companyCode: "CAKE", channel: "facebook", pageId: "cake-page", message: "ok",
+    history: [
+      { sender: "user", text: "Chị muốn xem bánh sinh nhật cho bé gái" },
+      { sender: "model", text: "Dạ em gửi link danh mục bé gái nhé" },
+    ],
+  });
+
+  const categoryLookup = calls.find(call => call.topK === 12);
+  assert.ok(categoryLookup, "a pending offer should request category retrieval");
+  assert.match(categoryLookup.query, /bánh sinh nhật cho bé gái/);
+  assert.match(result.contextText, /https:\/\/cakes\.example\/products\?category=be-gai/);
+});
+
 test("an explicit resend request can repeat a previously sent category URL", () => {
   const history = [
     { sender: "user", text: "Cho xem mẫu bé gái" },

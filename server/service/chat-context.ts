@@ -27,6 +27,17 @@ export function isSimpleAcknowledgement(message: string): boolean {
   );
 }
 
+/** An acknowledgement to a concrete offer is a request to carry out that offer. */
+export function isAcknowledgementToAssistantOffer(message: string, history: ChatContextMessage[] = []): boolean {
+  if (!isSimpleAcknowledgement(message)) return false;
+  const latestTurn = [...history].reverse().find((turn) => turn.text.trim());
+  if (!latestTurn || latestTurn.sender === "user") return false;
+
+  const assistantText = normalize(latestTurn.text);
+  if (/\b(da|vua|moi)\s+gui\b/.test(assistantText) || /\bgui\b.{0,80}\b(roi|xong)\b/.test(assistantText)) return false;
+  return /\b(gui|gui lai|gui them)\b.{0,80}\b(link|duong dan|mau|hinh|anh|danh sach|thong tin|bang gia|chi tiet)\b/.test(assistantText);
+}
+
 function isContextualQuestion(message: string): boolean {
   const text = normalize(message);
   const attributeQuestion = text
@@ -34,6 +45,8 @@ function isContextualQuestion(message: string): boolean {
     .replace(/\b(da|vang|ok|oke|oki|con|the|vay|thi|la|gi|sao|nao|bao|nhieu|nhu|the|co|khong|ko|k|a|ah|em|e|anh|chi|minh|toi|ban|cho|hoi|xin|voi|nhe|nha|duoc|chua|het|roi)\b/g, " ")
     .trim();
   return /\b(check|kiem tra|tra cuu|xem) (lai )?(xong|chua|giup)\b/.test(text)
+    || /^(?:(?:be|chau|con|nam nay)\s+)*\d{1,3}\s+(?:tuoi|thang tuoi)(?:\s+(?:a|roi|nhe|nha))*$/.test(text)
+    || /^(?:be|con) (?:trai|gai)(?:\s+(?:a|nhe|nha))*$/.test(text)
     || /^(co (thong tin|ket qua) chua|sao roi|the nao roi|roi sao|tra loi (giup )?(em|minh|toi))\b/.test(text)
     || /\b(cai|loai|mau|banh|san pham|dich vu|goi) (do|nay|ay|vua roi)\b/.test(text)
     || /\b(no|cai do|cai nay)\b/.test(text)
@@ -45,7 +58,10 @@ function isContextualQuestion(message: string): boolean {
  * Previous assistant replies may contain ungrounded facts and are not search evidence.
  */
 export function buildChatKnowledgeQuery(message: string, history: ChatContextMessage[] = []): string {
-  if (isSimpleAcknowledgement(message) || !isContextualQuestion(message)) return message.slice(0, 4000);
+  const acknowledgesOffer = isAcknowledgementToAssistantOffer(message, history);
+  if ((isSimpleAcknowledgement(message) && !acknowledgesOffer) || (!acknowledgesOffer && !isContextualQuestion(message))) {
+    return message.slice(0, 4000);
+  }
   const anchors: string[] = [];
   for (const turn of history.slice(-15).reverse()) {
     if (turn.sender !== "user" || !turn.text.trim() || isSimpleAcknowledgement(turn.text)) continue;
