@@ -28,6 +28,49 @@ const baseConfig = { companyName: "Test Shop", model: "deepseek-v4-flash-0731" }
 const corrected = (text: string) => JSON.stringify({ compliant: true, correctedParts: [text] });
 const verified = JSON.stringify({ compliant: true });
 
+test("image quotes select one configured group and hide other price rows from reviewers", async (context) => {
+  const quote = "Bánh trái tim size 14cm cao 7cm giá 180k, size 18cm cao 10cm giá 330k.";
+  const requests = mockAI(context, [JSON.stringify({ groupId: "TIM" }), corrected(quote), verified]);
+  const result = await service.chat("", [], baseConfig, {
+    imageObservation: { status: "ready", description: "Một bánh hình trái tim." },
+    contextText: `Dòng 2: Mã nhóm: TRON | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Bánh tròn size 5cm giá 65k.\nDòng 3: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: ${quote}`,
+  });
+  assert.equal(result.text, quote);
+  assert.equal(requests.length, 3);
+  assert.doesNotMatch(JSON.stringify(requests[1]), /65k/);
+  assert.doesNotMatch(JSON.stringify(requests[2]), /65k/);
+});
+
+test("an unreadable image never returns the whole price sheet or a generic acknowledgement", async (context) => {
+  const requests = mockAI(context, []);
+  const result = await service.chat("ok", [], baseConfig, {
+    imageObservation: { status: "unavailable", description: "Chưa đọc được ảnh" },
+    contextText: "Bánh tròn 65k. Bánh trái tim 180k. Bánh vuông 330k.",
+  });
+  assert.match(result.text, /gửi lại ảnh/);
+  assert.doesNotMatch(result.text, /65k|180k|330k/);
+  assert.equal(requests.length, 0);
+});
+
+test("ambiguous images and unknown group IDs ask for clarification instead of dumping prices", async (context) => {
+  mockAI(context, [JSON.stringify({ groupId: "UNKNOWN" })]);
+  const result = await service.chat("Bao nhiêu?", [], baseConfig, {
+    imageObservation: { status: "ready", description: "Chưa rõ hình dạng." },
+    contextText: "Dòng 2: Mã nhóm: TRON | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Bánh tròn size 5cm giá 65k.",
+  });
+  assert.match(result.text, /xác nhận/);
+  assert.doesNotMatch(result.text, /65k/);
+});
+
+test("image quote review cannot reintroduce the old full sheet from conversation history", async (context) => {
+  const wrong = "Bánh trái tim 180k. Bánh tròn 65k.";
+  mockAI(context, [JSON.stringify({ groupId: "TIM" }), corrected(wrong), verified]);
+  await assert.rejects(service.chat("", [{ sender: "model", text: wrong }], baseConfig, {
+    imageObservation: { status: "ready", description: "Bánh trái tim" },
+    contextText: "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Bánh trái tim 180k.\nDòng 3: Mã nhóm: TRON | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Bánh tròn 65k.",
+  }), /unrelated price group/);
+});
+
 test("chat combines knowledge and configured scenarios without losing either workflow", async (context) => {
   const requests = mockAI(context, ["Dạ chị ạ", corrected("Dạ chị ạ"), verified]);
   await service.chat("Tí chị xuống lấy", [{ sender: "user", text: "Chị lấy 1 bánh 22cm" }], {

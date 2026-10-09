@@ -52,6 +52,40 @@ test("an acknowledgement to a pending link offer retrieves the category for the 
   assert.match(result.contextText, /https:\/\/cakes\.example\/products\?category=be-gai/);
 });
 
+test("birthday and price follow-ups retain the girl's category from customer history", () => {
+  const history = [
+    { sender: "user", text: "Anh đặt bánh cho bé gái" },
+    { sender: "model", text: "Bé bao nhiêu tuổi?" },
+    { sender: "user", text: "5 tuổi" },
+  ];
+  for (const message of ["sinh nhật nhé", "1. 5 tuổi\n2. sinh nhật nhé", "cho anh xin giá"]) {
+    assert.equal(findRelevantWebsiteCategoryLink(message, history, cakeKnowledge)?.url, "https://cakes.example/products?category=be-gai", message);
+  }
+  assert.equal(findRelevantWebsiteCategoryLink("Bánh trái tim", history, cakeKnowledge, true)?.url, "https://cakes.example/products?category=be-gai");
+  assert.equal(findRelevantWebsiteCategoryLink("Giá dịch vụ CRM bao nhiêu?", history, cakeKnowledge), undefined);
+});
+
+test("occasion-only replies retrieve links from legacy sheets under the same Page scope", async context => {
+  let categoryCalls = 0;
+  context.mock.method(aiKnowledgeService, "searchRelevantContext", async input => {
+    assert.equal(input.companyCode, "SHOP");
+    assert.equal(input.pageId, "page-1");
+    assert.equal(input.channel, "facebook");
+    const category = input.topK === 12;
+    if (category) {
+      categoryCalls++;
+      assert.ok(input.documentTypes.includes("general"));
+      assert.match(input.query, /bé gái/);
+    }
+    return { contextText: category ? "" : "Bánh size 14cm giá 180k", items: category ? [{ title: "Sheet URL cũ", text: cakeKnowledge }] : [],
+      matches: 1, bestScore: 1, productCandidateNames: [], shouldAskProductConfirmation: false };
+  });
+  const result = await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", channel: "facebook", pageId: "page-1",
+    message: "sinh nhật nhé", history: [{ sender: "user", text: "bé gái" }, { sender: "user", text: "5 tuổi" }] });
+  assert.equal(categoryCalls, 1);
+  assert.match(result.contextText, /https:\/\/cakes.example\/products\?category=be-gai/);
+});
+
 test("an explicit resend request can repeat a previously sent category URL", () => {
   const history = [
     { sender: "user", text: "Cho xem mẫu bé gái" },

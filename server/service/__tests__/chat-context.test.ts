@@ -96,7 +96,8 @@ test("shared preparation applies the same scope to knowledge and scenario with c
     assert.match(input.query, /Tiramisu/);
     assert.equal(input.strictDocumentTypes, true);
     const scenario = input.documentTypes.includes("scenario");
-    assert.deepEqual(input.documentTypes, scenario ? ["scenario"] : ["product", "pricing", "promotion"]);
+    assert.deepEqual(input.documentTypes, scenario ? ["scenario"]
+      : input.topK === 12 ? ["product", "service", "general", "faq"] : ["product", "pricing", "promotion"]);
     if (scenario) {
       assert.match(input.query, /Đã hỏi kích thước/);
       assert.equal(input.maxContextChars, 3500);
