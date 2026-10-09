@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   MessageSquare, Zap, RefreshCw, Terminal, CheckCircle,
   HelpCircle, Save, Sliders, ExternalLink, ChevronDown, ChevronUp,
@@ -101,9 +101,24 @@ export function AiCommentReplyManager({
 
 
   const [activePlatform, setActivePlatform] = useState<"facebook" | "tiktok">("facebook");
+  const configScopeKey = activePlatform === "facebook"
+    ? `facebook:${selectedFacebookPageId}`
+    : `tiktok:${selectedTiktokAccountId}`;
+  const configDraftDirtyRef = useRef(false);
+  const previousConfigScopeRef = useRef(configScopeKey);
+
+  const setLocalConfigDraft = (config: React.SetStateAction<AIChatConfig>) => {
+    configDraftDirtyRef.current = true;
+    setLocalConfig(config);
+  };
 
   // Sync settings from selectedFacebookPageId or selectedTiktokAccountId or fallback to userProfile
   useEffect(() => {
+    if (previousConfigScopeRef.current !== configScopeKey) {
+      previousConfigScopeRef.current = configScopeKey;
+      configDraftDirtyRef.current = false;
+    }
+
     let active = true;
     const loadPageConfig = async () => {
       let targetId = "";
@@ -127,7 +142,7 @@ export function AiCommentReplyManager({
             },
           });
           const result = await res.json().catch(() => ({}));
-          if (active && res.ok && result.status === "success" && result.data?.aiAutoReplyConfig) {
+          if (active && !configDraftDirtyRef.current && res.ok && result.status === "success" && result.data?.aiAutoReplyConfig) {
             const config = result.data.aiAutoReplyConfig;
             setLocalConfig({
               enabled: config.enabled ?? false,
@@ -154,7 +169,7 @@ export function AiCommentReplyManager({
       }
 
       // Fallback to userProfile
-      if (active && userProfile?.aiAutoReplyConfig) {
+      if (active && !configDraftDirtyRef.current && userProfile?.aiAutoReplyConfig) {
         setLocalConfig({
           enabled: userProfile.aiAutoReplyConfig.enabled ?? false,
           commentReplyEnabled: userProfile.aiAutoReplyConfig.commentReplyEnabled ?? false,
@@ -180,7 +195,7 @@ export function AiCommentReplyManager({
     return () => {
       active = false;
     };
-  }, [selectedFacebookPageId, facebookPages, userProfile]);
+  }, [selectedFacebookPageId, selectedTiktokAccountId, activePlatform, facebookPages, tiktokAccounts, userProfile]);
 
   const fetchSinglePostDetail = async (postId: string) => {
     if (!postId || postId === "unknown_post" || postId.includes("mock")) return;
@@ -447,6 +462,7 @@ export function AiCommentReplyManager({
       } else {
         await updateAiAutoReplyConfig(configToSave);
       }
+      configDraftDirtyRef.current = false;
       toast.success(`Đã cập nhật cấu hình tự động trả lời bình luận ${activePlatform === "facebook" ? "Facebook" : "TikTok"}!`);
     } catch (err: any) {
       console.error(err);
@@ -472,7 +488,7 @@ export function AiCommentReplyManager({
       if (!confirmed) return;
     }
 
-    setLocalConfig((previous) => ({
+    setLocalConfigDraft((previous) => ({
       ...previous,
       trainingKnowledge: mode === "append" && currentKnowledge
         ? `${currentKnowledge}\n\n${scenarioLibrary}`
@@ -563,7 +579,7 @@ export function AiCommentReplyManager({
           ...localConfig,
           trainingKnowledge: data.text
         };
-        setLocalConfig(nextConfig);
+        setLocalConfigDraft(nextConfig);
         toast.success(`Đồng bộ thành công từ ${data.title}! Hãy bấm "Lưu cấu hình auto-reply" để áp dụng.`);
         void fetchAIHealth();
       } else {
@@ -601,7 +617,7 @@ export function AiCommentReplyManager({
             ...localConfig,
             trainingKnowledge: data.text
           };
-          setLocalConfig(nextConfig);
+          setLocalConfigDraft(nextConfig);
           toast.success(`Đã trích xuất & nạp tài liệu: ${file.name} thành công! Hãy bấm "Lưu cấu hình" để hoàn tất.`);
           void fetchAIHealth();
         } catch (err: any) {
@@ -642,7 +658,7 @@ export function AiCommentReplyManager({
       });
       const { geminiApi } = await import("../../api/gemini");
       const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
-      setLocalConfig({
+      setLocalConfigDraft({
         ...localConfig,
         customerServiceScript: "",
         customerServiceScriptFileName: file.name,
@@ -663,7 +679,7 @@ export function AiCommentReplyManager({
     try {
       const { geminiApi } = await import("../../api/gemini");
       await geminiApi.clearCustomerServiceScenario();
-      setLocalConfig({
+      setLocalConfigDraft({
         ...localConfig,
         customerServiceScript: "",
         customerServiceScriptFileName: "",
@@ -689,7 +705,7 @@ export function AiCommentReplyManager({
       const { geminiApi } = await import("../../api/gemini");
       await geminiApi.clearKnowledge();
       const nextConfig = { ...localConfig, trainingKnowledge: "" };
-      setLocalConfig(nextConfig);
+      setLocalConfigDraft(nextConfig);
       toast.success("Đã xóa toàn bộ tài liệu AI đã feed.");
       void fetchAIHealth();
     } catch (err: any) {
@@ -889,7 +905,7 @@ export function AiCommentReplyManager({
                       <input
                         type="checkbox"
                         checked={localConfig.commentReplyEnabled}
-                        onChange={(e) => setLocalConfig({ ...localConfig, commentReplyEnabled: e.target.checked })}
+                        onChange={(e) => setLocalConfigDraft({ ...localConfig, commentReplyEnabled: e.target.checked })}
                         className="sr-only peer"
                       />
                       <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-indigo-650" />
@@ -909,7 +925,7 @@ export function AiCommentReplyManager({
                       min={1}
                       max={45}
                       value={localConfig.replyDelay}
-                      onChange={(e) => setLocalConfig({ ...localConfig, replyDelay: parseInt(e.target.value) })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, replyDelay: parseInt(e.target.value) })}
                       className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-650"
                     />
                   </div>
@@ -1081,7 +1097,7 @@ export function AiCommentReplyManager({
                       type="text"
                       placeholder="Ví dụ: anh - chị (để trống để dùng mặc định anh/chị)"
                       value={localConfig.customerAddressStyle ?? ""}
-                      onChange={(e) => setLocalConfig({ ...localConfig, customerAddressStyle: e.target.value })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, customerAddressStyle: e.target.value })}
                       className="w-full px-2.5 py-2 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                     <p className="text-[9px] leading-relaxed text-slate-400">AI sẽ dùng đúng cách viết này thay cho “anh/chị” trong câu trả lời.</p>
@@ -1095,7 +1111,7 @@ export function AiCommentReplyManager({
                     <textarea
                       placeholder="Nhập rule bổ sung riêng cho doanh nghiệp này..."
                       value={localConfig.advancedInstructions}
-                      onChange={(e) => setLocalConfig({ ...localConfig, advancedInstructions: e.target.value })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, advancedInstructions: e.target.value })}
                       className="w-full h-24 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                   </div>
@@ -1160,7 +1176,7 @@ export function AiCommentReplyManager({
                     <textarea
                       placeholder="Nhập thông tin sản phẩm, câu hỏi thường gặp FAQ, chính sách giao hàng..."
                       value={localConfig.trainingKnowledge}
-                      onChange={(e) => setLocalConfig({ ...localConfig, trainingKnowledge: e.target.value })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, trainingKnowledge: e.target.value })}
                       className="w-full h-36 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                     <p className="text-[8px] text-slate-400 leading-normal">

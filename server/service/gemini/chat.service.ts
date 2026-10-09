@@ -31,6 +31,99 @@ function applyCustomerAddressStyle(candidate: string, addressStyle: unknown): st
   return candidate.replace(/anh(?:\s*\/\s*|\s+)chị/giu, () => preferredStyle);
 }
 
+function normalizeWebsiteCategoryText(value: string): string {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractWebsiteCategoryLinks(knowledgeText: string) {
+  const rows: Array<{ name: string; url: string; keywords: string }> = [];
+  for (const line of String(knowledgeText || "").split(/\r?\n/)) {
+    const rowMatch = line.match(/\bDòng\s+\d+\s*:\s*(.*)/i);
+    if (!rowMatch) continue;
+
+    let name = "";
+    let url = "";
+    let keywords = "";
+    for (const field of rowMatch[1].split(/\s*\|\s*/)) {
+      const separatorIndex = field.indexOf(":");
+      if (separatorIndex < 0) continue;
+      const label = normalizeWebsiteCategoryText(field.slice(0, separatorIndex));
+      const value = field.slice(separatorIndex + 1).trim();
+      if (label === "ten danh muc tren website" || label === "danh muc tren website") {
+        name = value;
+      } else if (label === "link danh muc chinh xac" || label === "url danh muc chinh xac") {
+        url = value.replace(/[),.;]+$/g, "");
+      } else if (label.startsWith("tu khoa khach") || label.startsWith("tu khoa")) {
+        keywords = value;
+      }
+    }
+
+    if (name && /^https?:\/\//i.test(url)) rows.push({ name, url, keywords });
+  }
+  return rows;
+}
+
+function findRelevantWebsiteCategoryLink(
+  message: string,
+  history: any[],
+  knowledgeText: string
+) {
+  const userMessages = history
+    .filter((item) => item?.sender === "user" || item?.role === "user" || item?.direction === "inbound")
+    .map((item) => String(item?.text || ""))
+    .filter(Boolean);
+  userMessages.push(message);
+  const priorAssistantText = history
+    .filter((item) => item?.sender !== "user" && item?.role !== "user" && item?.direction !== "inbound")
+    .map((item) => String(item?.text || ""))
+    .join("\n");
+  const genericWords = new Set([
+    "banh", "mau", "danh", "muc", "tren", "website", "khach", "goi", "y", "loai",
+    "cho", "cua", "toi", "minh", "anh", "chi", "em", "theo", "va", "voi", "nhung",
+  ]);
+  let best: { name: string; url: string; score: number } | undefined;
+
+  for (const row of extractWebsiteCategoryLinks(knowledgeText)) {
+    const rawPhrases = [row.name, ...row.keywords.split(/[;,]+/)];
+    const phrases = new Set<string>();
+    for (const rawPhrase of rawPhrases) {
+      const normalized = normalizeWebsiteCategoryText(rawPhrase);
+      if (!normalized) continue;
+      phrases.add(normalized);
+      if (normalized.startsWith("banh ")) phrases.add(normalized.slice("banh ".length));
+      const meaningfulWords = normalized.split(" ").filter((word) => !genericWords.has(word));
+      if (meaningfulWords.length >= 2) phrases.add(meaningfulWords.join(" "));
+    }
+
+    for (const [messageIndex, userMessage] of userMessages.entries()) {
+      const normalizedMessage = ` ${normalizeWebsiteCategoryText(userMessage)} `;
+      for (const phrase of phrases) {
+        const words = phrase.split(" ");
+        if (words.length === 1 && words[0].length < 4) continue;
+        if (!normalizedMessage.includes(` ${phrase} `)) continue;
+        const score = messageIndex * 100 + words.filter((word) => word.length >= 3).length * 10 + phrase.length;
+        if (!best || score > best.score) best = { name: row.name, url: row.url, score };
+      }
+    }
+  }
+
+  if (!best || priorAssistantText.includes(best.url)) return undefined;
+  return { name: best.name, url: best.url };
+}
+
+function appendWebsiteCategoryLink(response: string, categoryLink?: { name: string; url: string }) {
+  if (!categoryLink || response.includes(categoryLink.url)) return response;
+  const name = categoryLink.name.toLocaleLowerCase("vi-VN");
+  return `${response.trim()}\n\nanh chị tham khảo các mẫu ${name} tại đây nhé:\n${categoryLink.url}`;
+}
+
 function appendCustomGuidance(
   baseInstruction: string,
   scenarioText: unknown,
@@ -463,7 +556,8 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
         [response.text],
         customerAddressStyle
       );
-      response.text = checkedResponse;
+      const categoryLink = findRelevantWebsiteCategoryLink(message, history, ragContext?.contextText || "");
+      response.text = appendWebsiteCategoryLink(checkedResponse, categoryLink);
 
       return {
         text: response.text || "Xin lỗi, tôi chưa thể xử lý yêu cầu lúc này. Vui lòng thử lại.",
