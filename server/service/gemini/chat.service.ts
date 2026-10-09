@@ -10,7 +10,7 @@ import {
   safeParseJson,
 } from "./core";
 import type { ChatRagContext } from "./types";
-import { extractImageQuoteRows, selectImageQuote } from "../chat-image-context";
+import { extractImageQuoteRows, IMAGE_SELECTION_PREFIX, selectImageQuote } from "../chat-image-context";
 import {
   ACKNOWLEDGEMENT_REPLY,
   combineChatScenarios,
@@ -280,6 +280,9 @@ export class GeminiChatService {
     ragContext?: ChatRagContext
   ): Promise<{ text: string; isMock: boolean }> {
     const imageObservation = ragContext?.imageObservation;
+    if (imageObservation?.status === "needs_selection") {
+      return { text: `${IMAGE_SELECTION_PREFIX}: ${imageObservation.description}\nMình muốn hỏi mẫu nào trong ảnh ạ?`, isMock: false };
+    }
     const imageQuoteRows = imageObservation ? extractImageQuoteRows(ragContext?.contextText || "") : [];
     if (imageObservation?.status === "unavailable") {
       return { text: imageObservation.description.includes("nhiều ảnh")

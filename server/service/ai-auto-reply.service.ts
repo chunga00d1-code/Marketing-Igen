@@ -811,7 +811,7 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            const imageObservation = await analyzeChatImages(pendingImageUrls);
+            const imageObservation = await analyzeChatImages(pendingImageUrls, groupedCustomerMessage);
             if (imageObservation) console.log(`[AI AutoReply] Image analysis: count=${pendingImageUrls.length}, status=${imageObservation.status}`);
             const retrievalMessage = imageObservation?.status === "ready"
               ? `${groupedCustomerMessage}\nKhách gửi ảnh sản phẩm cần tư vấn: ${imageObservation.description}`

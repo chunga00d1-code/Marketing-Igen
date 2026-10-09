@@ -28,6 +28,18 @@ const baseConfig = { companyName: "Test Shop", model: "deepseek-v4-flash-0731" }
 const corrected = (text: string) => JSON.stringify({ compliant: true, correctedParts: [text] });
 const verified = JSON.stringify({ compliant: true });
 
+test("a screenshot with several cakes asks which visible cake instead of claiming it cannot read the image", async (context) => {
+  const requests = mockAI(context, []);
+  const result = await service.chat("", [], baseConfig, {
+    imageObservation: { status: "needs_selection", description: "Bánh chữ nhật bên trái, bánh tròn ở trên phải và bánh tròn phía dưới." },
+    contextText: "Bánh tròn 65k; bánh chữ nhật 500k",
+  });
+  assert.match(result.text, /chữ nhật bên trái/);
+  assert.match(result.text, /muốn hỏi mẫu nào/);
+  assert.doesNotMatch(result.text, /65k|500k|chưa đọc/);
+  assert.equal(requests.length, 0);
+});
+
 test("image quotes select one configured group and hide other price rows from reviewers", async (context) => {
   const quote = "Bánh trái tim size 14cm cao 7cm giá 180k, size 18cm cao 10cm giá 330k.";
   const requests = mockAI(context, [JSON.stringify({ groupId: "TIM" }), corrected(quote), verified]);
