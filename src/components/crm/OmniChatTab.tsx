@@ -217,15 +217,36 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
 
   const [localConfig, setLocalConfig] = useState<AIChatConfig>(aiConfig);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [localConfigDraftDirty, setLocalConfigDraftDirty] = useState(false);
+  const configScopeKey = [
+    activeCustomer?.channel || activeChannel,
+    activeCustomer?.pageId || selectedFacebookPageId,
+    selectedZaloAccountId,
+    selectedTiktokAccountId,
+  ].join(":");
+  const previousConfigScopeRef = useRef(configScopeKey);
 
   useEffect(() => {
-    setLocalConfig(aiConfig);
-  }, [aiConfig]);
+    if (previousConfigScopeRef.current !== configScopeKey) {
+      previousConfigScopeRef.current = configScopeKey;
+      setLocalConfigDraftDirty(false);
+      setLocalConfig(aiConfig);
+      return;
+    }
+
+    if (!localConfigDraftDirty) setLocalConfig(aiConfig);
+  }, [aiConfig, configScopeKey, localConfigDraftDirty]);
+
+  const updateLocalConfig = (config: AIChatConfig) => {
+    setLocalConfig(config);
+    setLocalConfigDraftDirty(true);
+  };
 
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
       await setAIConfig(localConfig);
+      setLocalConfigDraftDirty(false);
       toast.success("Đã lưu thiết lập rule, kịch bản và cấu hình trợ lý AI thành công!");
     } catch (err: any) {
       console.error(err);
@@ -324,8 +345,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           ...localConfig,
           trainingKnowledge: data.text
         };
-        setLocalConfig(nextConfig);
+        updateLocalConfig(nextConfig);
         await setAIConfig(nextConfig);
+        setLocalConfigDraftDirty(false);
         toast.success(`Đồng bộ thành công từ ${data.title}!`);
         refreshAIHealth();
       } else {
@@ -364,8 +386,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
             ...localConfig,
             trainingKnowledge: data.text
           };
-          setLocalConfig(nextConfig);
+          updateLocalConfig(nextConfig);
           await setAIConfig(nextConfig);
+          setLocalConfigDraftDirty(false);
           toast.success(`Đã trích xuất & nạp tài liệu: ${file.name} thành công!`);
           refreshAIHealth();
         } catch (err: any) {
@@ -405,7 +428,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         reader.readAsDataURL(file);
       });
       const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
-      setLocalConfig({
+      updateLocalConfig({
         ...localConfig,
         customerServiceScript: "",
         customerServiceScriptFileName: file.name,
@@ -425,7 +448,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     setUploadingScenarioFile(true);
     try {
       await geminiApi.clearCustomerServiceScenario();
-      setLocalConfig({
+      updateLocalConfig({
         ...localConfig,
         customerServiceScript: "",
         customerServiceScriptFileName: "",
@@ -449,8 +472,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     try {
       await geminiApi.clearKnowledge();
       const nextConfig = { ...localConfig, trainingKnowledge: "" };
-      setLocalConfig(nextConfig);
+      updateLocalConfig(nextConfig);
       await setAIConfig(nextConfig);
+      setLocalConfigDraftDirty(false);
       setTestReply(null);
       await refreshAIHealth();
       toast.success("Đã xóa toàn bộ tài liệu AI đã feed.");
@@ -1153,7 +1177,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         <AiAssistantConfigPanel
           onClose={() => setShowConfig(false)}
           localConfig={localConfig}
-          setLocalConfig={setLocalConfig}
+          setLocalConfig={updateLocalConfig}
           savingConfig={savingConfig}
           handleSaveConfig={handleSaveConfig}
           driveLink={driveLink}

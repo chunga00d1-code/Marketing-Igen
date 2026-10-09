@@ -390,7 +390,7 @@ export default function CRMTab() {
         followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? ""
       });
     }
-  }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer]);
+  }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer?.channel, activeCustomer?.pageId]);
 
   const handleUpdateAIConfig = async (newConfig: AIChatConfig) => {
     const configWithTimestamp: AIChatConfig = {

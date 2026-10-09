@@ -882,6 +882,13 @@ export const aiKnowledgeService = {
     const query = buildChatKnowledgeQuery(params.message, history);
     const scope = { companyCode: params.companyCode, channel: params.channel, pageId: params.pageId };
     const scenarioQuery = [...history.slice(-6).map((item) => item.text), params.message].join("\n").slice(-4000);
+    const categoryLookupQuery = [
+      ...history.slice(-8).filter((item) => item.sender === "user").map((item) => item.text),
+      params.message,
+    ].join("\n").slice(-4000);
+    const hasPurchaseIntent = /\b(dat|mua|banh|san pham|danh muc|xem mau|xem san pham)\b/.test(
+      normalizeForLookup(categoryLookupQuery)
+    );
     const detected = detectRequiredDocumentTypes(query);
     const groups: KnowledgeDocumentType[][] = [];
     if (detected.some((type) => ["company_profile", "brand_guideline"].includes(type))) groups.push(["company_profile"]);
@@ -889,7 +896,7 @@ export const aiKnowledgeService = {
     if (detected.some((type) => ["product", "pricing", "service", "promotion"].includes(type))) groups.push(["product", "pricing"]);
     // Unclear intent still searches only the three factual sections, with a shared budget.
     if (!groups.length) groups.push(["company_profile"], ["policy"], ["product", "pricing"]);
-    const [groupContexts, scenarioContext] = await Promise.all([
+    const [groupContexts, scenarioContext, categoryContext] = await Promise.all([
       Promise.all(groups.map((documentTypes) => this.searchRelevantContext({
         ...scope, query, documentTypes, strictDocumentTypes: true, topK: 3,
         maxContextChars: Math.floor(7500 / groups.length),
@@ -898,6 +905,16 @@ export const aiKnowledgeService = {
         ...scope, query: scenarioQuery, documentTypes: ["scenario"], strictDocumentTypes: true,
         preserveDocumentOrder: true, topK: 5, maxContextChars: 3500,
       }),
+      hasPurchaseIntent
+        ? this.searchRelevantContext({
+            ...scope,
+            query: `${categoryLookupQuery}\nDanh mục sản phẩm, link danh mục chính xác, từ khóa khách có thể dùng`,
+            documentTypes: ["product"],
+            strictDocumentTypes: true,
+            topK: 12,
+            maxContextChars: 4500,
+          })
+        : Promise.resolve(undefined),
     ]);
     const availableContexts = groupContexts.filter((context) => context.contextText.trim());
     // Keep legacy/unclassified documents useful only when the default sections have no answer.
@@ -907,10 +924,22 @@ export const aiKnowledgeService = {
         strictDocumentTypes: true, topK: 5, maxContextChars: 4500,
       }));
     }
+    const existingContextText = availableContexts.map((context) => context.contextText).filter(Boolean).join("\n\n---\n\n");
+    const categoryLinkItems = ((categoryContext?.items || []) as Array<{ title: string; text: string }>).filter((item) => {
+      const normalizedItem = normalizeForLookup(item.text || "");
+      return normalizedItem.includes("ten danh muc tren website") &&
+        normalizedItem.includes("link danh muc chinh xac") &&
+        /https?:\/\//i.test(item.text || "") &&
+        !existingContextText.includes(item.text || "");
+    });
     const ragContext = {
-      contextText: availableContexts.map((context) => context.contextText).filter(Boolean).join("\n\n---\n\n"),
-      matches: availableContexts.reduce((total, context) => total + context.matches, 0),
-      bestScore: Math.max(0, ...availableContexts.map((context) => context.bestScore)),
+      contextText: [
+        existingContextText,
+        ...categoryLinkItems.map((item) => `[Danh mục sản phẩm] ${item.title}\n${item.text}`),
+      ].filter(Boolean).join("\n\n---\n\n"),
+      matches: availableContexts.reduce((total, context) => total + context.matches, 0) +
+        categoryLinkItems.length,
+      bestScore: Math.max(0, ...availableContexts.map((context) => context.bestScore), categoryContext?.bestScore || 0),
       productCandidateNames: [...new Set(availableContexts.flatMap((context) => context.productCandidateNames))],
       shouldAskProductConfirmation: availableContexts.some((context) => context.shouldAskProductConfirmation),
     };
