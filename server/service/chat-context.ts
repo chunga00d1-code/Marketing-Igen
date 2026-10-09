@@ -13,6 +13,7 @@ export function combineChatScenarios(knowledgeScenario: string | undefined, conf
   const configured = configuredScenario.trim();
   if (knowledge === configured) return knowledge;
   return [
+    knowledge && configured ? "Kịch bản cấu hình riêng của kênh ưu tiên hơn hướng dẫn dùng chung khi có mâu thuẫn; vẫn tuân thủ rule doanh nghiệp." : "",
     knowledge ? `[Kịch bản và hướng dẫn từ kho tri thức]\n${knowledge}` : "",
     configured ? `[Kịch bản cấu hình riêng của kênh]\n${configured}` : "",
   ].filter(Boolean).join("\n\n");

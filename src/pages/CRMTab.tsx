@@ -11,6 +11,7 @@ import { getAccessToken } from "../services/authService";
 import { socketService } from "../services/socketService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
+import { resolveAiReplyScope } from "../utils/aiReplyScope";
 
 function getCustomerInitials(customerName: string) {
   const parts = customerName.trim().split(/\s+/).filter(Boolean);
@@ -329,24 +330,19 @@ export default function CRMTab() {
     followUpPrompt: ""
   });
 
+  const replyScope = resolveAiReplyScope({
+    customer: activeCustomer, activeChannel, facebookId: selectedFacebookPageId,
+    zaloId: selectedZaloAccountId, tiktokId: selectedTiktokAccountId,
+  });
+  const targetReplyIntegration = companySocialIntegrations.find(item =>
+    item.platform === replyScope.platform && item.username === replyScope.accountId
+  );
+  const currentReplyScopeRef = useRef(replyScope.key);
+  currentReplyScopeRef.current = replyScope.key;
+
   // Synchronize AI Config based on selected page/channel or fallback to userProfile
   useEffect(() => {
-    let targetIntegration: SocialIntegration | null = null;
-
-    if (activeCustomer?.channel === "zalo") {
-      const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && item.isConnected);
-      if (zaloIntegration) {
-        targetIntegration = zaloIntegration;
-      }
-    } else {
-      const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-      if (selectedPage && selectedPage._id !== "personal") {
-        const integration = companySocialIntegrations.find(item => item._id === selectedPage._id);
-        if (integration) {
-          targetIntegration = integration;
-        }
-      }
-    }
+    const targetIntegration = targetReplyIntegration;
 
     if (targetIntegration?.aiAutoReplyConfig) {
       const config = targetIntegration.aiAutoReplyConfig as unknown as AIChatConfig;
@@ -371,26 +367,27 @@ export default function CRMTab() {
     }
 
     // fallback
-    if (userProfile?.aiAutoReplyConfig) {
+    {
+      const fallbackConfig = targetIntegration ? undefined : userProfile?.aiAutoReplyConfig;
       setAIConfig({
-        enabled: userProfile.aiAutoReplyConfig.enabled ?? true,
-        commentReplyEnabled: userProfile.aiAutoReplyConfig.commentReplyEnabled ?? true,
+        enabled: fallbackConfig?.enabled ?? true,
+        commentReplyEnabled: fallbackConfig?.commentReplyEnabled ?? true,
         autoClassify: true,
         autoCloseDeal: true,
         autoFeedback: true,
-        replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
-        customerAddressStyle: userProfile.aiAutoReplyConfig.customerAddressStyle ?? "",
-        advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
-        customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
-        customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
-        trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-        model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
-        autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
-        followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
-        followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? ""
+        replyDelay: fallbackConfig?.replyDelay ?? 15,
+        customerAddressStyle: fallbackConfig?.customerAddressStyle ?? "",
+        advancedInstructions: fallbackConfig?.advancedInstructions ?? "",
+        customerServiceScript: fallbackConfig?.customerServiceScript ?? "",
+        customerServiceScriptFileName: fallbackConfig?.customerServiceScriptFileName ?? "",
+        trainingKnowledge: fallbackConfig?.trainingKnowledge ?? "",
+        model: fallbackConfig?.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+        autoFollowUpEnabled: fallbackConfig?.autoFollowUpEnabled ?? false,
+        followUpDelayHours: fallbackConfig?.followUpDelayHours ?? 2,
+        followUpPrompt: fallbackConfig?.followUpPrompt ?? ""
       });
     }
-  }, [selectedFacebookPageId, facebookPages, companySocialIntegrations, userProfile, activeCustomer?.channel, activeCustomer?.pageId]);
+  }, [replyScope.key, targetReplyIntegration, userProfile]);
 
   const handleUpdateAIConfig = async (newConfig: AIChatConfig) => {
     const configWithTimestamp: AIChatConfig = {
@@ -401,26 +398,11 @@ export default function CRMTab() {
       disabledAt: newConfig.enabled === false ? new Date().toISOString() : null,
     };
 
-    setAIConfig(configWithTimestamp);
     try {
-      let targetIntegrationId: string | null = null;
-
-      if (activeCustomer?.channel === "zalo" || (!activeCustomer && activeChannel === "zalo")) {
-        const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && (item.username === selectedZaloAccountId || item.isConnected));
-        if (zaloIntegration?._id && !zaloIntegration._id.startsWith("company_")) {
-          targetIntegrationId = zaloIntegration._id;
-        }
-      } else if (activeCustomer?.channel === "tiktok" || (!activeCustomer && activeChannel === "tiktok")) {
-        const tiktokIntegration = companySocialIntegrations.find(item => item.platform === "TikTok" && (item.username === selectedTiktokAccountId || item.isConnected));
-        if (tiktokIntegration?._id && !tiktokIntegration._id.startsWith("company_")) {
-          targetIntegrationId = tiktokIntegration._id;
-        }
-      } else {
-        const pageId = activeCustomer?.pageId || selectedFacebookPageId;
-        const fbIntegration = companySocialIntegrations.find(item => item.platform === "Facebook" && item.username === pageId);
-        if (fbIntegration?._id && !fbIntegration._id.startsWith("company_")) {
-          targetIntegrationId = fbIntegration._id;
-        }
+      const integrationId = targetReplyIntegration?._id;
+      const targetIntegrationId = integrationId && !integrationId.startsWith("company_") ? integrationId : null;
+      if (targetReplyIntegration && !targetIntegrationId) {
+        throw new Error("Không thể xác định tài khoản liên kết để lưu cấu hình AI.");
       }
 
       if (targetIntegrationId) {
@@ -442,8 +424,8 @@ export default function CRMTab() {
         );
       }
 
-      // Always also save to userProfile as fallback
-      await updateAiAutoReplyConfig(configWithTimestamp);
+      if (!targetIntegrationId) await updateAiAutoReplyConfig(configWithTimestamp);
+      if (currentReplyScopeRef.current === replyScope.key) setAIConfig(configWithTimestamp);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Lỗi lưu cấu hình AI";
       console.error("[CRMTab] Lỗi lưu cấu hình AI:", err);
@@ -455,19 +437,7 @@ export default function CRMTab() {
   const [copyingConfig, setCopyingConfig] = useState(false);
 
   const handleApplyToAllPages = async () => {
-    let activeId: string | null = null;
-
-    if (activeCustomer?.channel === "zalo") {
-      const zaloIntegration = companySocialIntegrations.find(item => item.platform === "Zalo" && item.isConnected);
-      if (zaloIntegration) {
-        activeId = zaloIntegration._id || null;
-      }
-    } else {
-      const selectedPage = facebookPages.find(p => p.username === selectedFacebookPageId);
-      if (selectedPage && selectedPage._id !== "personal") {
-        activeId = selectedPage._id;
-      }
-    }
+    const activeId = targetReplyIntegration?._id || null;
 
     if (!activeId) {
       toast.warning("Chỉ hỗ trợ đồng bộ cấu hình giữa các tài khoản liên kết doanh nghiệp.");

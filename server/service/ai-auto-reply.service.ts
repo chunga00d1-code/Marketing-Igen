@@ -9,7 +9,7 @@ import { zaloMessengerService } from "./zalo-messenger.service";
 import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.service";
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
-import { selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
+import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 
 // In-memory timeouts map to manage debouncing per conversation.
@@ -251,16 +251,16 @@ export async function resolveAutoReplyOwner(
   if (companyCodeFromIntegration) {
     const targetCompanyCode = companyCodeFromIntegration;
 
-    // 1a. Ưu tiên cấu hình AI riêng của Page nếu đã bật
-    if (companyIntegration.aiAutoReplyConfig?.enabled === true) {
+    // Page configuration remains authoritative even while disabled or awaiting activation.
+    if (companyIntegration.aiAutoReplyConfig) {
       const representativeUser =
-        uniqueCandidates.find((c: any) => c?.companyCode?.toUpperCase() === targetCompanyCode) || null;
+        uniqueCandidates.find((c: any) => c?.companyCode?.trim().toUpperCase() === targetCompanyCode) || null;
 
       return {
         companyCode: targetCompanyCode,
         selectedUser: representativeUser,
         aiConfig: companyIntegration.aiAutoReplyConfig,
-        source: "company_integration_enabled",
+        source: companyIntegration.aiAutoReplyConfig.enabled === true ? "company_integration_enabled" : "company_integration_fallback",
         userLevelOwners,
         companyIntegrations,
         uniqueCandidates,
@@ -268,9 +268,9 @@ export async function resolveAutoReplyOwner(
     }
 
     // 1b. Tìm người dùng thuộc đúng doanh nghiệp này đang bật AI
-    const companyEnabledUser = uniqueCandidates.find(
+    const companyEnabledUser = userLevelOwners.find(
       (c: any) =>
-        c?.companyCode?.toUpperCase() === targetCompanyCode &&
+        c?.companyCode?.trim().toUpperCase() === targetCompanyCode &&
         c?.role !== "superadmin" &&
         c?.aiAutoReplyConfig?.enabled === true
     ) || null;
@@ -287,30 +287,17 @@ export async function resolveAutoReplyOwner(
       };
     }
 
-    // 1c. Nếu tích hợp doanh nghiệp có cấu hình AI (dù chưa bật hoặc đang chờ kích hoạt)
-    if (companyIntegration.aiAutoReplyConfig) {
-      const representativeUser =
-        uniqueCandidates.find((c: any) => c?.companyCode?.toUpperCase() === targetCompanyCode) || null;
-
-      return {
-        companyCode: targetCompanyCode,
-        selectedUser: representativeUser,
-        aiConfig: companyIntegration.aiAutoReplyConfig,
-        source: "company_integration_fallback",
-        userLevelOwners,
-        companyIntegrations,
-        uniqueCandidates,
-      };
-    }
-
     // 1d. Fallback về tài khoản đại diện trong cùng doanh nghiệp
     const companyFallbackUser =
-      uniqueCandidates.find((c: any) => c?.companyCode?.toUpperCase() === targetCompanyCode) || null;
+      uniqueCandidates.find((c: any) => c?.companyCode?.trim().toUpperCase() === targetCompanyCode) || null;
+    const directCompanyOwner = userLevelOwners.find((c: any) =>
+      c?.companyCode?.trim().toUpperCase() === targetCompanyCode && c?.role !== "superadmin"
+    );
 
     return {
       companyCode: targetCompanyCode,
       selectedUser: companyFallbackUser,
-      aiConfig: companyFallbackUser?.aiAutoReplyConfig || null,
+      aiConfig: directCompanyOwner?.aiAutoReplyConfig || null,
       source: "company_fallback",
       userLevelOwners,
       companyIntegrations,
@@ -319,6 +306,7 @@ export async function resolveAutoReplyOwner(
   }
 
   // RULE 2: Tích hợp ở cấp tài khoản cá nhân (Personal User Integration)
+  assertPersonalAutoReplyOwnership(userLevelOwners);
   const directEnabledUser =
     userLevelOwners.find((c: any) => c?.aiAutoReplyConfig?.enabled === true) || null;
   const directUserFallback = userLevelOwners[0] || null;
@@ -650,7 +638,7 @@ export const aiAutoReplyService = {
           let groupedMessageCount = 1;
 
           if (channel === "zalo") {
-            const conv = await ZaloConversationModel.findById(conversationId);
+            const conv = await ZaloConversationModel.findOne({ _id: conversationId, oaId: resolvedPlatformId });
             if (!conv) {
               console.error(`[AI AutoReply] ❌ LỖI: Không tìm thấy cuộc hội thoại Zalo ${conversationId} trong DB.`);
               await aiKnowledgeService.createReplyLog({
@@ -699,7 +687,7 @@ export const aiAutoReplyService = {
               text: m.text || ""
             }));
           } else if (channel === "facebook") {
-            const conv = await FBConversationModel.findById(conversationId);
+            const conv = await FBConversationModel.findOne({ _id: conversationId, pageId: resolvedPlatformId });
             if (!conv) {
               console.error(`[AI AutoReply] ❌ LỖI: Không tìm thấy cuộc hội thoại FB ${conversationId} trong DB.`);
               await aiKnowledgeService.createReplyLog({
@@ -749,7 +737,7 @@ export const aiAutoReplyService = {
             }));
             history = selectCurrentOrderContext(history, groupedCustomerMessage);
           } else if (channel === "tiktok") {
-            const conv = await TikTokConversationModel.findById(conversationId);
+            const conv = await TikTokConversationModel.findOne({ _id: conversationId, businessAccountId: resolvedPlatformId });
             if (!conv) {
               console.error(`[AI AutoReply] ❌ LỖI: Không tìm thấy cuộc hội thoại TikTok ${conversationId} trong DB.`);
               await aiKnowledgeService.createReplyLog({

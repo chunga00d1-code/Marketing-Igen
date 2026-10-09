@@ -886,16 +886,18 @@ export const aiKnowledgeService = {
       ...history.slice(-8).filter((item) => item.sender === "user").map((item) => item.text),
       params.message,
     ].join("\n").slice(-4000);
-    const hasPurchaseIntent = /\b(dat|mua|banh|san pham|danh muc|xem mau|xem san pham)\b/.test(
+    const hasPurchaseIntent = /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
       normalizeForLookup(categoryLookupQuery)
     );
     const detected = detectRequiredDocumentTypes(query);
     const groups: KnowledgeDocumentType[][] = [];
-    if (detected.some((type) => ["company_profile", "brand_guideline"].includes(type))) groups.push(["company_profile"]);
-    if (detected.some((type) => ["policy", "faq"].includes(type))) groups.push(["policy"]);
-    if (detected.some((type) => ["product", "pricing", "service", "promotion"].includes(type))) groups.push(["product", "pricing"]);
+    if (detected.some((type) => ["company_profile", "brand_guideline"].includes(type))) groups.push(["company_profile", "brand_guideline"]);
+    if (detected.some((type) => ["policy", "faq"].includes(type))) groups.push(["policy", "faq"]);
+    if (detected.some((type) => ["product", "pricing", "service", "promotion"].includes(type))) {
+      groups.push(["product", "pricing", ...detected.filter((type) => type === "service" || type === "promotion")]);
+    }
     // Unclear intent still searches only the three factual sections, with a shared budget.
-    if (!groups.length) groups.push(["company_profile"], ["policy"], ["product", "pricing"]);
+    if (!groups.length) groups.push(["company_profile", "brand_guideline"], ["policy", "faq"], ["product", "pricing", "service", "promotion"]);
     const [groupContexts, scenarioContext, categoryContext] = await Promise.all([
       Promise.all(groups.map((documentTypes) => this.searchRelevantContext({
         ...scope, query, documentTypes, strictDocumentTypes: true, topK: 3,
@@ -908,8 +910,8 @@ export const aiKnowledgeService = {
       hasPurchaseIntent
         ? this.searchRelevantContext({
             ...scope,
-            query: `${categoryLookupQuery}\nDanh mục sản phẩm, link danh mục chính xác, từ khóa khách có thể dùng`,
-            documentTypes: ["product"],
+            query: `${categoryLookupQuery}\nDanh mục sản phẩm dịch vụ, link danh mục chính xác, từ khóa khách có thể dùng`,
+            documentTypes: ["product", "service"],
             strictDocumentTypes: true,
             topK: 12,
             maxContextChars: 4500,
@@ -927,15 +929,15 @@ export const aiKnowledgeService = {
     const existingContextText = availableContexts.map((context) => context.contextText).filter(Boolean).join("\n\n---\n\n");
     const categoryLinkItems = ((categoryContext?.items || []) as Array<{ title: string; text: string }>).filter((item) => {
       const normalizedItem = normalizeForLookup(item.text || "");
-      return normalizedItem.includes("ten danh muc tren website") &&
-        normalizedItem.includes("link danh muc chinh xac") &&
+      return /\b(ten danh muc|danh muc tren website|ten san pham|ten dich vu|category|name)\b/.test(normalizedItem) &&
+        /\b(link|url|duong dan)\b/.test(normalizedItem) &&
         /https?:\/\//i.test(item.text || "") &&
         !existingContextText.includes(item.text || "");
     });
     const ragContext = {
       contextText: [
         existingContextText,
-        ...categoryLinkItems.map((item) => `[Danh mục sản phẩm] ${item.title}\n${item.text}`),
+        ...categoryLinkItems.map((item) => `[Danh mục sản phẩm/dịch vụ] ${item.title}\n${item.text}`),
       ].filter(Boolean).join("\n\n---\n\n"),
       matches: availableContexts.reduce((total, context) => total + context.matches, 0) +
         categoryLinkItems.length,

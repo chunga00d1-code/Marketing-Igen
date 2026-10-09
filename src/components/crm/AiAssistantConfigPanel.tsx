@@ -65,11 +65,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
   handleUploadCustomerServiceScript,
   handleClearCustomerServiceScenario,
 }) => {
-  const knowledgeDocuments = Array.isArray(knowledgeHealth?.documents) ? knowledgeHealth.documents : [];
-  const scenarioDocument = (Array.isArray(knowledgeHealth?.scenarioDocuments) && knowledgeHealth.scenarioDocuments.length
-    ? knowledgeHealth.scenarioDocuments
-    : knowledgeDocuments.filter((document: any) => document.documentType === "scenario"))[0];
-  const scenarioFileName = scenarioDocument?.title || localConfig.customerServiceScriptFileName;
+  const scenarioFileName = localConfig.customerServiceScriptFileName;
   const detectedTopics = Array.isArray(knowledgeHealth?.detectedTopics) ? knowledgeHealth.detectedTopics : [];
   const knowledgeWarnings = Array.isArray(knowledgeHealth?.warnings) ? knowledgeHealth.warnings : [];
 
@@ -209,9 +205,9 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50">
               <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md" className="sr-only" disabled={uploadingScenarioFile} onChange={(event) => { const file = event.target.files?.[0]; if (file) handleUploadCustomerServiceScript(file); event.currentTarget.value = ""; }} />
               <UploadCloud className="h-4 w-4 text-indigo-600" />
-              <span>{uploadingScenarioFile ? "Đang nạp kịch bản vào RAG..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
+              <span>{uploadingScenarioFile ? "Đang đọc kịch bản..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
             </label>
-          <p className="text-[10px] leading-relaxed text-slate-500">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Tệp được lưu vào RAG riêng; AI truy xuất các bước liên quan theo ngữ cảnh hội thoại.</p>
+          <p className="text-[10px] leading-relaxed text-slate-500">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Nhấn Lưu để dùng kịch bản riêng cho tài khoản đang chọn. Tài liệu trong kho tri thức có phạm vi dùng chung hoặc theo Page được cấu hình tại kho.</p>
         </div>
 
         <div className="pt-4 border-t border-slate-100 space-y-2">

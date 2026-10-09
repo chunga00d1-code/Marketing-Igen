@@ -60,12 +60,7 @@ export function AiCommentReplyManager({
   const [logs, setLogs] = useState<any[]>([]);
   const [knowledgeHealth, setKnowledgeHealth] = useState<any>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
-  const scenarioDocument = Array.isArray(knowledgeHealth?.scenarioDocuments) && knowledgeHealth.scenarioDocuments.length
-    ? knowledgeHealth.scenarioDocuments[0]
-    : Array.isArray(knowledgeHealth?.documents)
-      ? knowledgeHealth.documents.find((document: any) => document.documentType === "scenario")
-      : null;
-  const scenarioFileName = scenarioDocument?.title || localConfig.customerServiceScriptFileName;
+  const scenarioFileName = localConfig.customerServiceScriptFileName;
 
   // Pagination states for Logs
   const [logsPage, setLogsPage] = useState(1);
@@ -106,8 +101,12 @@ export function AiCommentReplyManager({
     : `tiktok:${selectedTiktokAccountId}`;
   const configDraftDirtyRef = useRef(false);
   const previousConfigScopeRef = useRef(configScopeKey);
+  const currentConfigScopeRef = useRef(configScopeKey);
+  currentConfigScopeRef.current = configScopeKey;
+  const draftRevisionRef = useRef(0);
 
   const setLocalConfigDraft = (config: React.SetStateAction<AIChatConfig>) => {
+    draftRevisionRef.current += 1;
     configDraftDirtyRef.current = true;
     setLocalConfig(config);
   };
@@ -116,6 +115,7 @@ export function AiCommentReplyManager({
   useEffect(() => {
     if (previousConfigScopeRef.current !== configScopeKey) {
       previousConfigScopeRef.current = configScopeKey;
+      draftRevisionRef.current += 1;
       configDraftDirtyRef.current = false;
     }
 
@@ -134,7 +134,7 @@ export function AiCommentReplyManager({
         }
       }
 
-      if (targetId && !targetId.startsWith("company_")) {
+      if (targetId && targetId !== "personal" && !targetId.startsWith("company_")) {
         try {
           const res = await fetch(`/api/v1/crud/social-integrations/${targetId}`, {
             headers: {
@@ -169,23 +169,24 @@ export function AiCommentReplyManager({
       }
 
       // Fallback to userProfile
-      if (active && !configDraftDirtyRef.current && userProfile?.aiAutoReplyConfig) {
+      const fallbackConfig = targetId && targetId !== "personal" ? undefined : userProfile?.aiAutoReplyConfig;
+      if (active && !configDraftDirtyRef.current) {
         setLocalConfig({
-          enabled: userProfile.aiAutoReplyConfig.enabled ?? false,
-          commentReplyEnabled: userProfile.aiAutoReplyConfig.commentReplyEnabled ?? false,
+          enabled: fallbackConfig?.enabled ?? false,
+          commentReplyEnabled: fallbackConfig?.commentReplyEnabled ?? false,
           autoClassify: true,
           autoCloseDeal: true,
           autoFeedback: true,
-          replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
-          customerAddressStyle: userProfile.aiAutoReplyConfig.customerAddressStyle ?? "",
-          advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
-          customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
-          customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
-          trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-          model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
-          autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
-          followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
-          followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? "",
+          replyDelay: fallbackConfig?.replyDelay ?? 15,
+          customerAddressStyle: fallbackConfig?.customerAddressStyle ?? "",
+          advancedInstructions: fallbackConfig?.advancedInstructions ?? "",
+          customerServiceScript: fallbackConfig?.customerServiceScript ?? "",
+          customerServiceScriptFileName: fallbackConfig?.customerServiceScriptFileName ?? "",
+          trainingKnowledge: fallbackConfig?.trainingKnowledge ?? "",
+          model: fallbackConfig?.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+          autoFollowUpEnabled: fallbackConfig?.autoFollowUpEnabled ?? false,
+          followUpDelayHours: fallbackConfig?.followUpDelayHours ?? 2,
+          followUpPrompt: fallbackConfig?.followUpPrompt ?? "",
         });
       }
     };
@@ -434,6 +435,8 @@ export function AiCommentReplyManager({
 
   // Save config
   const handleSaveConfig = async () => {
+    const submittedRevision = draftRevisionRef.current;
+    const submittedScope = configScopeKey;
     setSavingConfig(true);
     const configToSave = {
       ...localConfig,
@@ -462,7 +465,9 @@ export function AiCommentReplyManager({
       } else {
         await updateAiAutoReplyConfig(configToSave);
       }
-      configDraftDirtyRef.current = false;
+      if (submittedRevision === draftRevisionRef.current && submittedScope === currentConfigScopeRef.current) {
+        configDraftDirtyRef.current = false;
+      }
       toast.success(`Đã cập nhật cấu hình tự động trả lời bình luận ${activePlatform === "facebook" ? "Facebook" : "TikTok"}!`);
     } catch (err: any) {
       console.error(err);
@@ -574,12 +579,12 @@ export function AiCommentReplyManager({
         body: JSON.stringify({ docLink: driveLink, clearExisting: true })
       });
       const data = await res.json();
+      if (currentConfigScopeRef.current !== configScopeKey) return;
       if (res.ok && data.status === "success") {
-        const nextConfig = {
-          ...localConfig,
+        setLocalConfigDraft(previous => ({
+          ...previous,
           trainingKnowledge: data.text
-        };
-        setLocalConfigDraft(nextConfig);
+        }));
         toast.success(`Đồng bộ thành công từ ${data.title}! Hãy bấm "Lưu cấu hình auto-reply" để áp dụng.`);
         void fetchAIHealth();
       } else {
@@ -612,12 +617,11 @@ export function AiCommentReplyManager({
 
           const { geminiApi } = await import("../../api/gemini");
           const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type);
-
-          const nextConfig = {
-            ...localConfig,
+          if (currentConfigScopeRef.current !== configScopeKey) return;
+          setLocalConfigDraft(previous => ({
+            ...previous,
             trainingKnowledge: data.text
-          };
-          setLocalConfigDraft(nextConfig);
+          }));
           toast.success(`Đã trích xuất & nạp tài liệu: ${file.name} thành công! Hãy bấm "Lưu cấu hình" để hoàn tất.`);
           void fetchAIHealth();
         } catch (err: any) {
@@ -657,15 +661,16 @@ export function AiCommentReplyManager({
         reader.readAsDataURL(file);
       });
       const { geminiApi } = await import("../../api/gemini");
-      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
-      setLocalConfigDraft({
-        ...localConfig,
-        customerServiceScript: "",
+      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario", extractOnly: true });
+      if (currentConfigScopeRef.current !== configScopeKey) return;
+      setLocalConfigDraft(previous => ({
+        ...previous,
+        customerServiceScript: data.text,
         customerServiceScriptFileName: file.name,
-      });
+      }));
       await fetchAIHealth();
-      if (data.truncated) toast.info("Đã nạp kịch bản vào RAG riêng; nội dung được giới hạn còn 20.000 ký tự.");
-      else toast.success(`Đã nạp kịch bản từ ${file.name} vào RAG riêng; AI sẽ dùng nội dung liên quan khi trả lời.`);
+      if (data.truncated) toast.info("Đã đọc kịch bản, giới hạn 20.000 ký tự. Nhấn Lưu để áp dụng cho tài khoản đang chọn.");
+      else toast.success(`Đã đọc kịch bản từ ${file.name}. Nhấn Lưu để áp dụng cho tài khoản đang chọn.`);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Không thể nạp tệp kịch bản vào RAG.");
@@ -677,15 +682,13 @@ export function AiCommentReplyManager({
   const handleClearCustomerServiceScenario = async () => {
     setUploadingScenarioFile(true);
     try {
-      const { geminiApi } = await import("../../api/gemini");
-      await geminiApi.clearCustomerServiceScenario();
-      setLocalConfigDraft({
-        ...localConfig,
+      setLocalConfigDraft(previous => ({
+        ...previous,
         customerServiceScript: "",
         customerServiceScriptFileName: "",
-      });
+      }));
       await fetchAIHealth();
-      toast.success("Đã xóa kịch bản khỏi RAG riêng.");
+      toast.success("Đã bỏ kịch bản riêng. Nhấn Lưu để áp dụng cho tài khoản đang chọn.");
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Không thể xóa kịch bản.");
@@ -1132,9 +1135,9 @@ export function AiCommentReplyManager({
                       <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50">
                         <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md" className="sr-only" disabled={uploadingScenarioFile} onChange={(event) => { const file = event.target.files?.[0]; if (file) handleUploadCustomerServiceScript(file); event.currentTarget.value = ""; }} />
                         <UploadCloud className="h-4 w-4 text-indigo-600" />
-                        <span>{uploadingScenarioFile ? "Đang nạp kịch bản vào RAG..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
+                        <span>{uploadingScenarioFile ? "Đang đọc kịch bản..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
                       </label>
-                    <p className="text-[9px] leading-relaxed text-slate-400">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Tệp được lưu vào RAG riêng; AI truy xuất các bước liên quan theo ngữ cảnh hội thoại.</p>
+                    <p className="text-[9px] leading-relaxed text-slate-400">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Nhấn Lưu để dùng kịch bản riêng cho tài khoản đang chọn. Tài liệu trong kho tri thức có phạm vi dùng chung hoặc theo Page được cấu hình tại kho.</p>
                   </div>
 
                   {/* Manual Training Knowledge */}
