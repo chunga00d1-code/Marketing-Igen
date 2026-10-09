@@ -1,22 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Sliders, Moon, Sun, Bell, Sparkles, Laptop } from "lucide-react";
 import { toast } from "../../pages/Toast";
-import { useAuth } from "../../context/AuthContext";
+import { AI_REPLY_PRIMARY_MODEL, AI_REPLY_FALLBACK_MODEL } from "../../../shared/ai-reply-models";
 
 export default function ErpConfigTab() {
-  const { userProfile, updateAiAutoReplyConfig } = useAuth();
   const [darkMode, setDarkMode] = useState(false);
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [aiModel, setAiModel] = useState(() => {
-    return userProfile?.aiAutoReplyConfig?.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna";
-  });
   const [autoBackup, setAutoBackup] = useState(true);
-
-  useEffect(() => {
-    if (userProfile?.aiAutoReplyConfig?.model) {
-      setAiModel(userProfile.aiAutoReplyConfig.model);
-    }
-  }, [userProfile]);
 
   return (
     <div className="bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-2xl p-6 shadow-xs space-y-6">
@@ -90,34 +80,13 @@ export default function ErpConfigTab() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5 text-left">
             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Mô hình AI Auto-Reply</label>
-            <select
-              value={aiModel}
-              onChange={async (e) => {
-                const model = e.target.value;
-                setAiModel(model);
-                localStorage.setItem("selected_ai_model", model);
-                if (userProfile?.aiAutoReplyConfig) {
-                  try {
-                    await updateAiAutoReplyConfig({
-                      ...userProfile.aiAutoReplyConfig,
-                      model
-                    });
-                    toast.success(`Đã đồng bộ và đổi mô hình AI sang: ${model}`);
-                  } catch (err) {
-                    console.error(err);
-                  }
-                } else {
-                  toast.success(`Đã đổi mô hình AI sang: ${model}`);
-                }
-              }}
-              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none cursor-pointer"
-            >
-              <option value="openai/gpt-6-luna">OpenAI GPT-6 Luna</option>
-              <option value="deepseek/deepseek-v4.1-flash">DeepSeek V4.1 Flash</option>
-              <option value="deepseek-v4-flash-0731">DeepSeek V4 Flash </option>
-              <option value="gemini-3.5-flash">Gemini 3.5 Flash </option>
-              <option value="gemini-3.1-pro">Gemini 3.1 Pro </option>
-            </select>
+            <input
+              value={AI_REPLY_PRIMARY_MODEL}
+              readOnly
+              aria-label="Model AI Auto-Reply chính"
+              className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs text-gray-800"
+            />
+            <p className="text-[10px] text-gray-500">Dự phòng khi model chính lỗi: {AI_REPLY_FALLBACK_MODEL}. Áp dụng thống nhất cho mọi tài khoản.</p>
           </div>
 
           <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-150 rounded-xl mt-4 md:mt-0 text-left">

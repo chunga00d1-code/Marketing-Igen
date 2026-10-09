@@ -1,5 +1,6 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
 import { ZaloConversationModel, ZaloMessageModel } from "../model/zalo-messenger.model";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import { UserModel } from "../model/user.model";
 import { emitToPage } from "../socket";
 import { aiAutoReplyService } from "./ai-auto-reply.service";
@@ -746,7 +747,7 @@ export const zaloMessengerService = {
     let ownerSource = userOwner ? "user" : null;
     let aiEnabled = !!userOwner?.aiAutoReplyConfig?.enabled;
     let replyDelay = userOwner?.aiAutoReplyConfig?.replyDelay ?? null;
-    let model = userOwner?.aiAutoReplyConfig?.model || null;
+    const model = AI_REPLY_PRIMARY_MODEL;
 
     if (!userOwner && companyCode) {
       const companyUser = await UserModel.findOne({
@@ -759,7 +760,6 @@ export const zaloMessengerService = {
         ownerSource = "company";
         aiEnabled = !!companyUser.aiAutoReplyConfig?.enabled;
         replyDelay = companyUser.aiAutoReplyConfig?.replyDelay ?? null;
-        model = companyUser.aiAutoReplyConfig?.model || null;
       }
     }
 

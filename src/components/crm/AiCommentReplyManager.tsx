@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from "react";
+import { AI_REPLY_PRIMARY_MODEL } from "../../../shared/ai-reply-models";
 import {
   MessageSquare, Zap, RefreshCw, Terminal, CheckCircle,
   HelpCircle, Save, Sliders, ExternalLink, ChevronDown, ChevronUp,
@@ -49,7 +50,7 @@ export function AiCommentReplyManager({
     customerServiceScript: "",
     customerServiceScriptFileName: "",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+    model: AI_REPLY_PRIMARY_MODEL,
     autoFollowUpEnabled: false,
     followUpDelayHours: 2,
     followUpPrompt: ""
@@ -156,7 +157,7 @@ export function AiCommentReplyManager({
               customerServiceScript: config.customerServiceScript ?? "",
               customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
               trainingKnowledge: config.trainingKnowledge ?? "",
-              model: config.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+              model: AI_REPLY_PRIMARY_MODEL,
               autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
               followUpDelayHours: config.followUpDelayHours ?? 2,
               followUpPrompt: config.followUpPrompt ?? "",
@@ -183,7 +184,7 @@ export function AiCommentReplyManager({
           customerServiceScript: fallbackConfig?.customerServiceScript ?? "",
           customerServiceScriptFileName: fallbackConfig?.customerServiceScriptFileName ?? "",
           trainingKnowledge: fallbackConfig?.trainingKnowledge ?? "",
-          model: fallbackConfig?.model || localStorage.getItem("selected_ai_model") || "openai/gpt-6-luna",
+          model: AI_REPLY_PRIMARY_MODEL,
           autoFollowUpEnabled: fallbackConfig?.autoFollowUpEnabled ?? false,
           followUpDelayHours: fallbackConfig?.followUpDelayHours ?? 2,
           followUpPrompt: fallbackConfig?.followUpPrompt ?? "",
@@ -440,6 +441,7 @@ export function AiCommentReplyManager({
     setSavingConfig(true);
     const configToSave = {
       ...localConfig,
+      model: AI_REPLY_PRIMARY_MODEL,
       autoClassify: true,
       autoCloseDeal: true,
       autoFeedback: true

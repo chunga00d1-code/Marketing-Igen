@@ -11,6 +11,7 @@ import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 
 // In-memory timeouts map to manage debouncing per conversation.
 // messageKey prevents polling/sync from pushing the same inbound message forever.
@@ -608,7 +609,7 @@ export const aiAutoReplyService = {
       console.log(
         `[AI AutoReply] Schedule reply: channel=${channel}, conversationId=${conversationId}, ` +
         `groupingDelayMs=${groupingDelayMs}, userDelayMs=${userDelayMs}, totalDelayMs=${delayMs}, ` +
-        `model=${aiConfig.model || "n/a"}, user=${user?.email || targetCompanyCode || "company_integration"}`
+        `model=${AI_REPLY_PRIMARY_MODEL}, user=${user?.email || targetCompanyCode || "company_integration"}`
       );
       console.log(`[AI AutoReply] 🕒 LÊN LỊCH: Đang gom tin ${groupingDelayMs / 1000}s rồi chờ thêm ${aiConfig.replyDelay}s cấu hình trước khi phản hồi hội thoại: ${conversationId} (User: ${user?.email || targetCompanyCode || "company_integration"})`);
 

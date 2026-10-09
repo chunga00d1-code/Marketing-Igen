@@ -542,7 +542,7 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
     });
 
     try {
-      const selectedModel = aiConfig?.model || AI_REPLY_MESSAGE_MODEL;
+      const selectedModel = AI_REPLY_MESSAGE_MODEL;
 
       const response = await generateText(
         selectedModel,
@@ -649,7 +649,7 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
     };
 
     try {
-      const selectedModel = aiConfig?.model || AI_REPLY_COMMENT_MODEL;
+      const selectedModel = AI_REPLY_COMMENT_MODEL;
       const response = await generateText(
         selectedModel,
         `Nội dung bình luận của khách hàng:\n"${message}"`,
@@ -779,7 +779,7 @@ Hãy viết 1 tin nhắn Follow-up ngắn gọn, ấm áp để hỏi thăm và 
 `.trim();
 
     try {
-      const selectedModel = aiConfig?.model || AI_REPLY_MESSAGE_MODEL;
+      const selectedModel = AI_REPLY_MESSAGE_MODEL;
       const response = await generateText(
         selectedModel,
         [{ role: "user", parts: [{ text: userPrompt }] }],

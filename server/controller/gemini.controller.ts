@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-useless-escape, prefer-const */
 import { Request, Response } from "express";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import mongoose from "mongoose";
 import { geminiService } from "../service/gemini.service";
 import { videoBlueprintService } from "../service/video-blueprint.service";
@@ -624,7 +625,7 @@ export const geminiController = {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
 
-      const cost = getTextModelCost(aiConfig);
+      const cost = getTextModelCost({ ...aiConfig, model: AI_REPLY_PRIMARY_MODEL });
       await walletService.checkBalance(userId, cost);
       const companyCode = (req as any).user?.companyCode;
       const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
@@ -763,7 +764,7 @@ export const geminiController = {
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
       const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId }, resolveAutoReplyOwner);
       const aiConfig = preview.aiConfig;
-      const cost = getTextModelCost(aiConfig);
+      const cost = getTextModelCost({ ...aiConfig, model: AI_REPLY_PRIMARY_MODEL });
       await walletService.checkBalance(userId, cost);
       const startedAt = Date.now();
       const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
@@ -776,9 +777,9 @@ export const geminiController = {
       });
       const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
       console.log("[geminiController.testReply] Context diagnostics:", JSON.stringify({
-        companyCode,
         messageLength: String(message || "").length,
         ...effectiveRagContextDebug,
+        companyCode,
       }));
 
       const result = await geminiService.chat(message, preview.history, aiConfig, effectiveRagContext);

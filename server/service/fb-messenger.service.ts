@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
 import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import { UserModel } from "../model/user.model";
 import { emitToPage } from "../socket";
 import { aiAutoReplyService } from "./ai-auto-reply.service";
@@ -1208,7 +1209,7 @@ export const fbMessengerService = {
     let companyCode = pageOwner?.companyCode || null;
     let aiEnabled = !!pageOwner?.aiAutoReplyConfig?.enabled;
     let replyDelay = pageOwner?.aiAutoReplyConfig?.replyDelay ?? null;
-    let model = pageOwner?.aiAutoReplyConfig?.model || null;
+    const model = AI_REPLY_PRIMARY_MODEL;
     let pageOwnerEmail = pageOwner?.email || null;
     let ownerSource = pageOwner ? "user" : null;
 
@@ -1224,7 +1225,6 @@ export const fbMessengerService = {
           pageOwnerEmail = companyUser.email;
           aiEnabled = !!companyUser.aiAutoReplyConfig?.enabled;
           replyDelay = companyUser.aiAutoReplyConfig?.replyDelay ?? null;
-          model = companyUser.aiAutoReplyConfig?.model || null;
           ownerSource = "company";
         }
       }

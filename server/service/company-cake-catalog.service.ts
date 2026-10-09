@@ -3,7 +3,7 @@ import { ICompanyProductCatalogConfig } from "../interface/company.interface";
 import { CompanyModel } from "../model/company.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { cloudinaryService } from "./cloudinary.service";
-import { openrouterChat } from "./openrouter.service";
+import { generateReplyCompletion } from "./ai-reply-provider";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -256,13 +256,11 @@ export function buildCatalogOverview(categories: ProductCatalogCategory[], limit
 async function selectCategoryWithAi(
   categories: ProductCatalogCategory[],
   customerText: string,
-  model: string,
   config: Pick<ICompanyProductCatalogConfig, "itemLabel" | "businessDescription">,
 ) {
   if (!mayRequestProductImages(customerText, config.itemLabel) || !categories.length) return null;
   try {
-    const response = await openrouterChat({
-      model,
+    const response = await generateReplyCompletion({
       temperature: 0,
       maxTokens: 120,
       timeoutMs: 12_000,
@@ -445,7 +443,6 @@ export const companyProductCatalogService = {
     category ||= await selectCategoryWithAi(
         categories,
         customerText,
-        integration.aiAutoReplyConfig?.model || process.env.AI_REPLY_MESSAGE_MODEL || "deepseek-v4-flash-0731",
         config,
       );
     if (!category && requestsVisualExamples(customerText)) {
