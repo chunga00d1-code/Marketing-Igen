@@ -52,7 +52,7 @@ test("shared preparation applies the same scope to knowledge and scenario with c
     assert.match(input.query, /Tiramisu/);
     assert.equal(input.strictDocumentTypes, true);
     const scenario = input.documentTypes.includes("scenario");
-    assert.deepEqual(input.documentTypes, scenario ? ["scenario"] : ["product", "pricing"]);
+    assert.deepEqual(input.documentTypes, scenario ? ["scenario"] : ["product", "pricing", "promotion"]);
     if (scenario) {
       assert.match(input.query, /Đã hỏi kích thước/);
       assert.equal(input.maxContextChars, 3500);
@@ -82,9 +82,9 @@ test("chat selects relevant default sections and combines sections for mixed que
       productCandidateNames: [], shouldAskProductConfirmation: false };
   });
   for (const [message, expected] of [
-    ["Địa chỉ cửa hàng ở đâu?", [["company_profile"], ["scenario"]]],
-    ["Đổi trả thế nào?", [["policy"], ["scenario"]]],
-    ["Tiramisu giá sao, địa chỉ ở đâu, có giao hàng không?", [["company_profile"], ["policy"], ["product", "pricing"], ["scenario"]]],
+    ["Địa chỉ cửa hàng ở đâu?", [["company_profile", "brand_guideline"], ["scenario"]]],
+    ["Đổi trả thế nào?", [["policy", "faq"], ["scenario"]]],
+    ["Tiramisu giá sao, địa chỉ ở đâu, có giao hàng không?", [["company_profile", "brand_guideline"], ["policy", "faq"], ["product", "pricing", "promotion"], ["scenario"]]],
   ] as const) {
     calls.length = 0;
     await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", message });
@@ -108,7 +108,7 @@ test("visit and pickup location questions include introduction without dropping 
   ]) {
     calls.length = 0;
     await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", message });
-    assert.deepEqual(calls[0], ["company_profile"], message);
+    assert.deepEqual(calls[0], ["company_profile", "brand_guideline"], message);
     assert.ok(calls.some((types) => types.includes("scenario")), message);
     assert.ok(!calls.some((types) => types.includes("general")), message);
     if (message.includes("có giao hàng")) {
@@ -168,7 +168,7 @@ test("legacy documents are a bounded fallback only when default sections return 
       productCandidateNames: [], shouldAskProductConfirmation: false };
   });
   const result = await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", message: "Giá tiramisu" });
-  assert.deepEqual(calls[0], ["product", "pricing"]);
+  assert.deepEqual(calls[0], ["product", "pricing", "promotion"]);
   assert.ok(calls[calls.length - 1].includes("general"));
   assert.match(result.contextText, /Giá cũ/);
 });

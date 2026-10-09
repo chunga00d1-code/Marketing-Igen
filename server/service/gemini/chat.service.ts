@@ -15,11 +15,11 @@ import { ACKNOWLEDGEMENT_REPLY, combineChatScenarios, isSimpleAcknowledgement } 
 const ORDER_SESSION_RULES = `
 ORDER SESSION SAFETY - NON-OVERRIDABLE
 
-- A clear new purchase request starts a new order. Treat product, variant, quantity, price, fulfillment method, address, pickup location, requested time and payment from older orders as unknown.
-- Never carry pickup or delivery from an older order into the current order unless the customer states or explicitly confirms it for this order.
+- A clear new purchase or booking request starts a new transaction. Treat transaction details from older orders or bookings as unknown.
+- Follow the company's configured workflow for its actual products or services. Never assume a business sells physical goods.
+- Never carry transaction details from an older order or booking into the current request unless the customer states or explicitly confirms them.
 - A short answer such as "co", "khong", a size or a variant answers only the immediately preceding question. It is not confirmation of the whole order.
-- If pickup versus delivery has not been stated in the current order, ask exactly one short question to determine it before the final summary.
-- A delivery order requires its current delivery address. A pickup order does not require a delivery address, but the customer must explicitly choose pickup for the current order.
+- Ask only for details required by the company's workflow and the current request. Pickup, delivery and shipping addresses apply only to physical goods when relevant; do not demand them for services or digital products.
 - When all required details are available, summarize the current order and ask the customer to reply with an explicit final confirmation such as "xac nhan chot don".
 - Never claim that an order is confirmed, booked, saved or completed before the customer sends that explicit confirmation after the summary.
 `;
@@ -42,7 +42,7 @@ function normalizeWebsiteCategoryText(value: string): string {
     .trim();
 }
 
-function extractWebsiteCategoryLinks(knowledgeText: string) {
+export function extractWebsiteCategoryLinks(knowledgeText: string) {
   const rows: Array<{ name: string; url: string; keywords: string }> = [];
   for (const line of String(knowledgeText || "").split(/\r?\n/)) {
     const rowMatch = line.match(/\bDòng\s+\d+\s*:\s*(.*)/i);
@@ -56,11 +56,11 @@ function extractWebsiteCategoryLinks(knowledgeText: string) {
       if (separatorIndex < 0) continue;
       const label = normalizeWebsiteCategoryText(field.slice(0, separatorIndex));
       const value = field.slice(separatorIndex + 1).trim();
-      if (label === "ten danh muc tren website" || label === "danh muc tren website") {
+      if (["ten danh muc tren website", "danh muc tren website", "ten danh muc", "danh muc", "ten san pham", "ten dich vu", "category", "name"].includes(label)) {
         name = value;
-      } else if (label === "link danh muc chinh xac" || label === "url danh muc chinh xac") {
-        url = value.replace(/[),.;]+$/g, "");
-      } else if (label.startsWith("tu khoa khach") || label.startsWith("tu khoa")) {
+      } else if (["link danh muc chinh xac", "url danh muc chinh xac", "link danh muc", "url danh muc", "url", "link", "duong dan"].includes(label)) {
+        url = value;
+      } else if (label.startsWith("tu khoa") || label === "keywords") {
         keywords = value;
       }
     }
@@ -70,12 +70,15 @@ function extractWebsiteCategoryLinks(knowledgeText: string) {
   return rows;
 }
 
-function findRelevantWebsiteCategoryLink(
+export function findRelevantWebsiteCategoryLink(
   message: string,
   history: any[],
   knowledgeText: string
 ) {
-  const userMessages = history
+  const normalizedCurrentMessage = normalizeWebsiteCategoryText(message);
+  const refersToPreviousTopic = /\b(link|duong dan|xem mau|xem them|cai nay|cai do|loai do|goi do)\b/.test(normalizedCurrentMessage)
+    || /^(?:\d+(?: tuoi| thang| nam| cm| m| kg)?|be trai|be gai|trai|gai|nam|nu|s|m|l|xl|xxl)$/.test(normalizedCurrentMessage);
+  const userMessages = (refersToPreviousTopic ? history.slice(-8) : [])
     .filter((item) => item?.sender === "user" || item?.role === "user" || item?.direction === "inbound")
     .map((item) => String(item?.text || ""))
     .filter(Boolean);
@@ -85,7 +88,7 @@ function findRelevantWebsiteCategoryLink(
     .map((item) => String(item?.text || ""))
     .join("\n");
   const genericWords = new Set([
-    "banh", "mau", "danh", "muc", "tren", "website", "khach", "goi", "y", "loai",
+    "mau", "danh", "muc", "tren", "website", "khach", "goi", "y", "loai",
     "cho", "cua", "toi", "minh", "anh", "chi", "em", "theo", "va", "voi", "nhung",
   ]);
   let best: { name: string; url: string; score: number } | undefined;
@@ -97,7 +100,6 @@ function findRelevantWebsiteCategoryLink(
       const normalized = normalizeWebsiteCategoryText(rawPhrase);
       if (!normalized) continue;
       phrases.add(normalized);
-      if (normalized.startsWith("banh ")) phrases.add(normalized.slice("banh ".length));
       const meaningfulWords = normalized.split(" ").filter((word) => !genericWords.has(word));
       if (meaningfulWords.length >= 2) phrases.add(meaningfulWords.join(" "));
     }
@@ -106,7 +108,7 @@ function findRelevantWebsiteCategoryLink(
       const normalizedMessage = ` ${normalizeWebsiteCategoryText(userMessage)} `;
       for (const phrase of phrases) {
         const words = phrase.split(" ");
-        if (words.length === 1 && words[0].length < 4) continue;
+        if (words.length === 1 && (words[0].length < 2 || genericWords.has(words[0]))) continue;
         if (!normalizedMessage.includes(` ${phrase} `)) continue;
         const score = messageIndex * 100 + words.filter((word) => word.length >= 3).length * 10 + phrase.length;
         if (!best || score > best.score) best = { name: row.name, url: row.url, score };
@@ -114,14 +116,14 @@ function findRelevantWebsiteCategoryLink(
     }
   }
 
-  if (!best || priorAssistantText.includes(best.url)) return undefined;
+  const requestsLink = /\b(link|duong dan)\b/.test(normalizedCurrentMessage);
+  if (!best || (!requestsLink && priorAssistantText.includes(best.url))) return undefined;
   return { name: best.name, url: best.url };
 }
 
 function appendWebsiteCategoryLink(response: string, categoryLink?: { name: string; url: string }) {
   if (!categoryLink || response.includes(categoryLink.url)) return response;
-  const name = categoryLink.name.toLocaleLowerCase("vi-VN");
-  return `${response.trim()}\n\nanh chị tham khảo các mẫu ${name} tại đây nhé:\n${categoryLink.url}`;
+  return `${response.trim()}\n\nTham khảo ${categoryLink.name} tại đây:\n${categoryLink.url}`;
 }
 
 function appendCustomGuidance(
@@ -163,16 +165,19 @@ async function applyAdvancedRules(
   ruleText: unknown,
   context: string,
   responseParts: string[],
-  addressStyle?: unknown
+  addressStyle?: unknown,
+  scenarioText?: unknown
 ): Promise<string[]> {
   const rules = typeof ruleText === "string" ? ruleText.trim() : "";
   const preferredAddressStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
-  if (!rules && !preferredAddressStyle) {
+  const scenario = typeof scenarioText === "string" ? scenarioText.trim() : "";
+  if (!rules && !preferredAddressStyle && !scenario) {
     return responseParts;
   }
 
   const reviewerRules = [
     ORDER_SESSION_RULES,
+    scenario ? `Follow this company's workflow, including conditions for sending links. Remove a proposed link if it is unrelated to the current request or its sending conditions are not met.\n${scenario}` : "",
     preferredAddressStyle
       ? `Khi gọi khách, dùng chính xác “${preferredAddressStyle}”. Cấu hình này ưu tiên hơn cách gọi khách trong rule và prompt mặc định. Không ép thêm lời gọi khách nếu câu trả lời không cần.`
       : "",
@@ -549,15 +554,19 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
       );
 
       response.text = formatHumanLikeChatReply(response.text || "Dạ hiện em chưa có đủ thông tin để trả lời chính xác ạ");
+      const knowledgeText = ragContext?.contextText || "";
+      const alreadyHasKnownLink = extractWebsiteCategoryLinks(knowledgeText).some(category => response.text.includes(category.url));
+      const categoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(message, history, knowledgeText);
+      response.text = appendWebsiteCategoryLink(response.text, categoryLink);
       const [checkedResponse] = await applyAdvancedRules(
         selectedModel,
         advancedRules,
-        JSON.stringify({ message, recentHistory: history.slice(-6), companyKnowledge: ragContext?.contextText }),
+        JSON.stringify({ message, recentHistory: history, companyKnowledge: ragContext?.contextText }),
         [response.text],
-        customerAddressStyle
+        customerAddressStyle,
+        scenarioGuidance
       );
-      const categoryLink = findRelevantWebsiteCategoryLink(message, history, ragContext?.contextText || "");
-      response.text = appendWebsiteCategoryLink(checkedResponse, categoryLink);
+      response.text = checkedResponse;
 
       return {
         text: response.text || "Xin lỗi, tôi chưa thể xử lý yêu cầu lúc này. Vui lòng thử lại.",
@@ -594,7 +603,7 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
     const advancedRules = String(aiConfig?.advancedInstructions || "").trim();
     const customerAddressStyle = String(aiConfig?.customerAddressStyle || "").trim();
     const customerServiceScript = String(aiConfig?.customerServiceScript || "").trim();
-    const scenarioGuidance = String(ragContext?.scenarioContextText || customerServiceScript).trim();
+    const scenarioGuidance = combineChatScenarios(ragContext?.scenarioContextText, customerServiceScript);
     const systemInstruction = `
 Bạn là trợ lý chăm sóc khách hàng của ${companyName}.
 Nhiệm vụ của bạn là phản hồi bình luận công khai (comment) của khách hàng trên bài viết Facebook bằng hai nội dung:
@@ -672,9 +681,10 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
       const [checkedPublicComment, checkedPrivateInbox] = await applyAdvancedRules(
         selectedModel,
         advancedRules,
-        JSON.stringify({ customerMessage: message }),
+        JSON.stringify({ customerMessage: message, companyKnowledge: ragContext?.contextText }),
         [publicComment, privateInbox],
-        customerAddressStyle
+        customerAddressStyle,
+        scenarioGuidance
       );
       publicComment = checkedPublicComment;
       privateInbox = checkedPrivateInbox;
@@ -727,7 +737,7 @@ QUY TẮC TIN NHẮN RIÊNG TƯ (privateInbox):
     const advancedRules = String(aiConfig?.advancedInstructions || "").trim();
     const customerAddressStyle = String(aiConfig?.customerAddressStyle || "").trim();
     const customerServiceScript = String(aiConfig?.customerServiceScript || "").trim();
-    const scenarioGuidance = String(ragContext?.scenarioContextText || customerServiceScript).trim();
+    const scenarioGuidance = combineChatScenarios(ragContext?.scenarioContextText, customerServiceScript);
     if (!process.env.OPENROUTER_API_KEY) {
       if (advancedRules || scenarioGuidance) {
         throw new Error("Cannot apply custom reply guidance because OPENROUTER_API_KEY is not configured.");
@@ -785,7 +795,8 @@ Hãy viết 1 tin nhắn Follow-up ngắn gọn, ấm áp để hỏi thăm và 
         advancedRules,
         conversationExcerpt,
         [replyText],
-        customerAddressStyle
+        customerAddressStyle,
+        scenarioGuidance
       );
       return { text: checkedReply, isMock: false };
     } catch (error) {

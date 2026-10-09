@@ -1478,19 +1478,6 @@ export const geminiController = {
         documentType,
       });
 
-      if (isScenario && companyCode && req.body.appendScenario !== true) {
-        const legacyScenarioFields = {
-          $unset: {
-            "aiAutoReplyConfig.customerServiceScript": 1,
-            "aiAutoReplyConfig.customerServiceScriptFileName": 1,
-          },
-        };
-        await Promise.all([
-          UserModel.updateMany({ companyCode }, legacyScenarioFields),
-          SocialIntegrationModel.updateMany({ companyCode }, legacyScenarioFields),
-        ]);
-      }
-
       await walletService.deductBalance(userId, API_COSTS.GEMINI_FAQ, `Chi phí trích xuất & nạp tài liệu upload (${fileName})`);
 
       return res.status(200).json({
