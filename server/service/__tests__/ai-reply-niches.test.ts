@@ -6,6 +6,7 @@ import { resolveAiReplyScope } from "../../../src/utils/aiReplyScope";
 
 const cakeKnowledge = "Dòng 2: Tên danh mục trên website: Bé gái | Link danh mục chính xác: https://cakes.example/products?category=be-gai | Từ khóa khách có thể dùng (gợi ý): bé gái; con gái";
 const serviceKnowledge = "Dòng 3: Tên dịch vụ: Gói CRM | URL: https://software.example/plans?type=crm&ref=inbox | Từ khóa: CRM; quản lý khách hàng";
+const cakeScenario = "Bé trai: https://cakes.example/products?category=be-trai\nBé gái: https://cakes.example/products?category=be-gai";
 
 test("category links use uploaded names and exact URLs across business niches", () => {
   assert.deepEqual(extractWebsiteCategoryLinks(cakeKnowledge)[0], {
@@ -15,6 +16,32 @@ test("category links use uploaded names and exact URLs across business niches", 
     name: "Gói CRM", url: "https://software.example/plans?type=crm&ref=inbox",
   });
   assert.equal(findRelevantWebsiteCategoryLink("Tư vấn CRM", [], cakeKnowledge), undefined);
+});
+
+test("a request for boy cake samples retrieves and selects a link listed in the consultation scenario", async context => {
+  assert.deepEqual(extractWebsiteCategoryLinks(cakeScenario)[0], {
+    name: "Bé trai", url: "https://cakes.example/products?category=be-trai", keywords: "",
+  });
+  const categoryCalls: string[][] = [];
+  context.mock.method(aiKnowledgeService, "searchRelevantContext", async input => {
+    const categoryLookup = input.topK === 12;
+    if (categoryLookup) categoryCalls.push(input.documentTypes || []);
+    return {
+      contextText: "",
+      items: categoryLookup ? [{ title: "Kịch bản tư vấn", text: cakeScenario }] : [],
+      matches: categoryLookup ? 1 : 0,
+      bestScore: categoryLookup ? 1 : 0,
+      productCandidateNames: [], shouldAskProductConfirmation: false,
+    };
+  });
+  const result = await aiKnowledgeService.prepareChatContext({
+    companyCode: "CAKE", channel: "facebook", pageId: "cake-page", message: "Có mẫu cho bé trai k",
+  });
+  assert.ok(categoryCalls.some(types => types.includes("scenario")));
+  assert.match(result.contextText, /https:\/\/cakes\.example\/products\?category=be-trai/);
+  assert.deepEqual(findRelevantWebsiteCategoryLink("Có mẫu cho bé trai k", [], result.contextText), {
+    name: "Bé trai", url: "https://cakes.example/products?category=be-trai",
+  });
 });
 
 test("a short answer retains the recipient but an unrelated question does not append old links", () => {

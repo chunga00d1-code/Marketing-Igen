@@ -56,7 +56,15 @@ export function extractWebsiteCategoryLinks(knowledgeText: string) {
   const rows: Array<{ name: string; url: string; keywords: string }> = [];
   for (const line of String(knowledgeText || "").split(/\r?\n/)) {
     const rowMatch = line.match(/\bDòng\s+\d+\s*:\s*(.*)/i);
-    if (!rowMatch) continue;
+    if (!rowMatch) {
+      const listedCategory = line.match(/^\s*[-•*]?\s*([^:\n|]{2,80}):\s*(https?:\/\/\S+)/i);
+      if (listedCategory) rows.push({
+        name: listedCategory[1].trim(),
+        url: listedCategory[2].replace(/[.,;]+$/, ""),
+        keywords: "",
+      });
+      continue;
+    }
 
     let name = "";
     let url = "";
@@ -592,7 +600,7 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
       );
 
       response.text = formatHumanLikeChatReply(response.text || "Dạ hiện em chưa có đủ thông tin để trả lời chính xác ạ");
-      const knowledgeText = ragContext?.contextText || "";
+      const knowledgeText = [ragContext?.contextText, ragContext?.scenarioContextText].filter(Boolean).join("\n");
       const alreadyHasKnownLink = extractWebsiteCategoryLinks(knowledgeText).some(category => response.text.includes(category.url));
       const categoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(
         message, history, knowledgeText, false);

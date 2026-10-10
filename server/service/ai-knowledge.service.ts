@@ -887,7 +887,7 @@ export const aiKnowledgeService = {
       params.message,
     ].join("\n").slice(-4000);
     const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) || query !== params.message ||
-      /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
+      /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham|co mau|cho xem mau|xin mau|gui mau)\b/.test(
         normalizeForLookup(categoryLookupQuery)
       );
     const detected = detectRequiredDocumentTypes(query);
@@ -912,7 +912,7 @@ export const aiKnowledgeService = {
         ? this.searchRelevantContext({
             ...scope,
             query: `${categoryLookupQuery}\nDanh mục sản phẩm dịch vụ, link danh mục chính xác, từ khóa khách có thể dùng`,
-            documentTypes: ["product", "service", "general", "faq"],
+            documentTypes: ["product", "service", "general", "faq", "scenario"],
             strictDocumentTypes: true,
             topK: 12,
             maxContextChars: 4500,
@@ -930,8 +930,10 @@ export const aiKnowledgeService = {
     const existingContextText = availableContexts.map((context) => context.contextText).filter(Boolean).join("\n\n---\n\n");
     const categoryLinkItems = ((categoryContext?.items || []) as Array<{ title: string; text: string }>).filter((item) => {
       const normalizedItem = normalizeForLookup(item.text || "");
-      return /\b(ten danh muc|danh muc tren website|ten san pham|ten dich vu|category|name)\b/.test(normalizedItem) &&
-        /\b(link|url|duong dan)\b/.test(normalizedItem) &&
+      const hasStructuredCategory = /\b(ten danh muc|danh muc tren website|ten san pham|ten dich vu|category|name)\b/.test(normalizedItem) &&
+        /\b(link|url|duong dan)\b/.test(normalizedItem);
+      const hasListedCategory = /(?:^|\n)\s*[-•*]?\s*[^:\n]{2,80}:\s*https?:\/\//im.test(item.text || "");
+      return (hasStructuredCategory || hasListedCategory) &&
         /https?:\/\//i.test(item.text || "") &&
         !existingContextText.includes(item.text || "");
     });
