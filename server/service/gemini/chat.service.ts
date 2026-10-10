@@ -114,12 +114,13 @@ export function findRelevantWebsiteCategoryLink(
   let best: { name: string; url: string; score: number } | undefined;
 
   for (const row of extractWebsiteCategoryLinks(knowledgeText)) {
-    const rawPhrases = [row.name, ...row.keywords.split(/[;,]+/)];
+    const rawPhrases = [row.name, ...row.name.split(/[(),;/]+/), ...row.keywords.split(/[;,]+/)];
     const phrases = new Set<string>();
     for (const rawPhrase of rawPhrases) {
       const normalized = normalizeWebsiteCategoryText(rawPhrase);
       if (!normalized) continue;
       phrases.add(normalized);
+      if (normalized.endsWith(" chung")) phrases.add(normalized.slice(0, -" chung".length));
       const meaningfulWords = normalized.split(" ").filter((word) => !genericWords.has(word));
       if (meaningfulWords.length >= 2) phrases.add(meaningfulWords.join(" "));
     }
@@ -130,7 +131,8 @@ export function findRelevantWebsiteCategoryLink(
         const words = phrase.split(" ");
         if (words.length === 1 && (words[0].length < 2 || genericWords.has(words[0]))) continue;
         if (!normalizedMessage.includes(` ${phrase} `)) continue;
-        const score = messageIndex * 100 + words.filter((word) => word.length >= 3).length * 10 + phrase.length;
+        const score = messageIndex * 100 + (phrase === normalizeWebsiteCategoryText(row.name) ? 20 : 0)
+          + words.filter((word) => word.length >= 3).length * 10 + phrase.length;
         if (!best || score > best.score) best = { name: row.name, url: row.url, score };
       }
     }
@@ -144,6 +146,13 @@ export function findRelevantWebsiteCategoryLink(
 function appendWebsiteCategoryLink(response: string, categoryLink?: { name: string; url: string }) {
   if (!categoryLink || response.includes(categoryLink.url)) return response;
   return `${response.trim()}\n\nTham khảo ${categoryLink.name} tại đây:\n${categoryLink.url}`;
+}
+
+function shouldKeepRequestedCategoryLink(message: string, scenario: string): boolean {
+  const request = normalizeWebsiteCategoryText(message);
+  const guidance = normalizeWebsiteCategoryText(scenario);
+  return /\b(mau|xem banh|xem hinh|xem anh)\b/.test(request)
+    && /khach chu dong hoi mau khac.{0,160}gui link danh muc/.test(guidance);
 }
 
 function appendCustomGuidance(
@@ -187,7 +196,8 @@ async function applyAdvancedRules(
   responseParts: string[],
   addressStyle?: unknown,
   scenarioText?: unknown,
-  knowledgeText?: unknown
+  knowledgeText?: unknown,
+  requiredCategoryLink?: { name: string; url: string }
 ): Promise<string[]> {
   const rules = typeof ruleText === "string" ? ruleText.trim() : "";
   const preferredAddressStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
@@ -199,7 +209,8 @@ async function applyAdvancedRules(
 
   const reviewerRules = [
     ORDER_SESSION_RULES,
-    scenario ? `Follow this company's workflow, including conditions for sending links. Remove a proposed link if it is unrelated to the current request or its sending conditions are not met.\n${scenario}` : "",
+    scenario ? `Follow this company's workflow, including conditions for sending links. A rule against unsolicited links while quoting a customer's reference image does not block a link when the customer later explicitly asks for other samples by recipient or occasion and the scenario allows that category link. Remove a proposed link if it is unrelated to the current request or its sending conditions are not met.\n${scenario}` : "",
+    requiredCategoryLink ? `The scenario explicitly allows the customer's new sample request. Keep this exact category URL in the reply: ${requiredCategoryLink.url}` : "",
     preferredAddressStyle
       ? `Khi gọi khách, dùng chính xác “${preferredAddressStyle}”. Cấu hình này ưu tiên hơn cách gọi khách trong rule và prompt mặc định. Không ép thêm lời gọi khách nếu câu trả lời không cần.`
       : "",
@@ -237,7 +248,7 @@ async function applyAdvancedRules(
           "Check every customer-visible response against every supplied business rule.",
           "An explicit customer address setting overrides conflicting customer address instructions in business rules. Business rules override default prompt style. An unspecified setting adds no constraint.",
           "Use companyKnowledge and explicit factual statements in configured business rules or scenarios as sources for company facts such as prices, products, ingredients, fees, policies, availability, timelines, addresses, and URLs. A workflow instruction alone does not prove a fact. Verify every such claim in each proposed reply. Correct contradictions from these sources, remove unsupported specifics, and never treat prior assistant claims as evidence. Customer-provided details in conversationContext may establish the customer's needs, but not company facts.",
-          "If companyKnowledge or configured business rules contains a direct answer to the customer's latest question, keep that answer direct and specific. If the answer is missing, say it cannot be confirmed from the available information; do not invent or promise an action that will happen later.",
+          "If companyKnowledge or configured business rules contains a direct answer to the customer's latest question, keep that answer direct and specific. When a needed detail is missing, acknowledge the customer's request and ask one precise question that can move it forward. For an unverified pickup, delivery, or appointment time, note the requested time and ask for the hour only if it is missing. Never expose internal uncertainty or image analysis in customer-facing text with phrases like 'chưa xác nhận', 'chưa xác định', 'chưa rõ', 'không biết', or 'không xác định được hình dáng'. If the missing fact belongs to the business, do not replace it with a false claim, confirmed availability, a fake handoff, or a promised follow-up without a real action.",
           "Read the full conversationContext to answer the latest customer turn, honor the latest correction (including a changed recipient), and avoid repeating questions already answered. If the customer acknowledges a concrete offer in the previous assistant turn, carry it out using available companyKnowledge; do not reply only with a generic acknowledgement or ask again whether to do it.",
           includeCorrection
             ? "Return JSON with compliant and correctedParts. If all replies comply, set compliant=true and copy every reply unchanged. Otherwise correct every noncompliant reply while preserving meaning and array length. Make the smallest changes needed, preserve grounded facts, natural warm conversational language, and the original voice; do not add canned greetings or questions. Set compliant=true only if every correctedParts item follows every rule and is factually grounded; set false if you cannot make them comply."
@@ -269,6 +280,9 @@ async function applyAdvancedRules(
   }
 
   const correctedParts = firstReview.correctedParts as string[];
+  if (requiredCategoryLink && !correctedParts.some((part) => part.includes(requiredCategoryLink.url))) {
+    correctedParts[0] = appendWebsiteCategoryLink(correctedParts[0], requiredCategoryLink);
+  }
   const finalReview = await review(correctedParts, false);
   if (finalReview.compliant !== true) {
     throw new Error("Business-rule review could not confirm a compliant reply.");
@@ -410,7 +424,9 @@ Khi khách chuyển sang sản phẩm hoặc chủ đề khác, trả lời tr�
 
 Với câu hỏi tiếp nối như "check xong chưa", "loại đó thì sao", "thành phần thế nào", xác định nội dung khách hỏi trước đó rồi trả lời từ tri thức hiện tại; không lặp lại lời hẹn kiểm tra
 
-Nếu thiếu thông tin để chọn đúng sản phẩm hoặc biến thể, hỏi ngắn gọn đúng thông tin còn thiếu. Nếu kho tri thức thực sự chưa có câu trả lời, nói rõ chưa có thông tin để xác nhận, không bịa và không hứa sẽ check rồi tự quay lại khi không có tác vụ thực hiện
+Nếu thiếu thông tin để chọn đúng sản phẩm hoặc biến thể ở câu hỏi tiếp theo, ghi nhận nhu cầu và hỏi ngắn gọn đúng thông tin còn thiếu. Không đưa lời tự đánh giá của AI hoặc lỗi nhận diện ảnh ra cho khách như "em chưa xác nhận", "em chưa rõ", "em chưa biết", "chưa xác định" hay "không xác định được hình dáng bánh". Khi tri thức thiếu thông tin thuộc về doanh nghiệp, không bịa câu trả lời, không giả vờ đã chuyển cho nhân viên và không hứa sẽ tự kiểm tra rồi quay lại nếu không có tác vụ thực hiện
+
+Riêng khi khách hỏi có thể lấy, nhận hoặc giao hàng vào thời điểm chưa được xác nhận, hãy ghi nhận đúng ngày, giờ và cách nhận mà khách đã nói; chỉ hỏi thêm phần còn thiếu. Nếu khách đã nói giờ thì không hỏi lại. Trả lời tự nhiên, không mở đầu bằng "em chưa xác nhận", "chưa xác định" hoặc "em không biết". Ghi nhận yêu cầu không có nghĩa là đã xác nhận làm kịp, chốt đơn, chuyển cho nhân viên hay hứa sẽ tự kiểm tra rồi phản hồi.
 
 TIN NHẮN XÁC NHẬN ĐƠN THUẦN
 
@@ -545,7 +561,7 @@ URL trong tri thức là dữ liệu thực tế của doanh nghiệp. Khi bư�
 
 Không được bỏ link, đổi đường dẫn, tự tạo link hoặc chỉ nói chung chung rằng khách hãy vào website nếu tài liệu đã chỉ rõ URL cần gửi
 
-Chỉ gửi link phù hợp nhất với nhu cầu hiện tại và tuân thủ đúng điều kiện trong kịch bản. Ví dụ, nếu kịch bản quy định khách đã có mẫu thì không gửi link, phải giữ nguyên quy tắc đó
+Chỉ gửi link phù hợp nhất với nhu cầu hiện tại và tuân thủ đúng điều kiện trong kịch bản. Khi đang báo giá mẫu ảnh khách đã gửi, không tự kèm link. Nếu sau đó khách chủ động hỏi xem mẫu khác theo đối tượng hoặc dịp và kịch bản cho phép, đó là yêu cầu mới: gửi đúng link danh mục tương ứng, không lấy việc khách đã gửi ảnh trước đó làm lý do bỏ link
 
 Ưu tiên hiển thị URL thuần, không bọc URL trong cú pháp markdown và không thêm dấu câu liền ngay sau URL
 
@@ -604,6 +620,10 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
       const alreadyHasKnownLink = extractWebsiteCategoryLinks(knowledgeText).some(category => response.text.includes(category.url));
       const categoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(
         message, history, knowledgeText, false);
+      const hasCustomLinkRule = /\b(link|url|website)\b/.test(
+        normalizeWebsiteCategoryText(`${advancedRules} ${customerServiceScript}`));
+      const requiredCategoryLink = categoryLink && !hasCustomLinkRule && shouldKeepRequestedCategoryLink(message, scenarioGuidance)
+        ? categoryLink : undefined;
       response.text = appendWebsiteCategoryLink(response.text, categoryLink);
       const [checkedResponse] = await applyAdvancedRules(
         selectedModel,
@@ -612,7 +632,8 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
         [response.text],
         customerAddressStyle,
         scenarioGuidance,
-        ragContext?.contextText
+        ragContext?.contextText,
+        requiredCategoryLink
       );
       response.text = checkedResponse;
 
