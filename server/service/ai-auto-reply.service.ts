@@ -12,7 +12,7 @@ import { aiKnowledgeService } from "./ai-knowledge.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
-import { analyzeChatImages, splitHistoryAndPendingInboundMessages } from "./chat-image-context";
+import { analyzeChatImages, isImagePriceInquiry, splitHistoryAndPendingInboundMessages } from "./chat-image-context";
 
 // In-memory timeouts map to manage debouncing per conversation.
 // messageKey prevents polling/sync from pushing the same inbound message forever.
@@ -824,6 +824,13 @@ export const aiAutoReplyService = {
               pageId: channel === "facebook" ? resolvedPlatformId : undefined,
               trainingKnowledge: aiConfig.trainingKnowledge,
             });
+            const pricingContextText = imageObservation && isImagePriceInquiry(groupedCustomerMessage)
+              ? await aiKnowledgeService.getFullPricingContext({
+                companyCode,
+                channel,
+                pageId: channel === "facebook" ? resolvedPlatformId : undefined,
+              })
+              : "";
             const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
 
             console.log(
@@ -848,7 +855,9 @@ export const aiAutoReplyService = {
             // Call Gemini Service
             console.log(`[AI AutoReply] 🧠 GEMINI CALL: Đang gửi request tới Gemini cho conversation=${conversationId}...`);
             console.log(`[AI AutoReply] Gemini call: conversationId=${conversationId}, channel=${channel}`);
-            const aiResponse = await geminiService.chat(groupedCustomerMessage, history, aiConfig, { ...effectiveRagContext, imageObservation });
+            const aiResponse = await geminiService.chat(groupedCustomerMessage, history, aiConfig, {
+              ...effectiveRagContext, imageObservation, pricingContextText,
+            });
 
             if (!aiResponse || !aiResponse.text) {
               console.error(`[AI AutoReply] ❌ LỖI API: Không nhận được câu trả lời từ Gemini cho hội thoại: ${conversationId}`);
