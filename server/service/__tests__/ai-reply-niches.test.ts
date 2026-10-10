@@ -7,6 +7,12 @@ import { resolveAiReplyScope } from "../../../src/utils/aiReplyScope";
 const cakeKnowledge = "Dòng 2: Tên danh mục trên website: Bé gái | Link danh mục chính xác: https://cakes.example/products?category=be-gai | Từ khóa khách có thể dùng (gợi ý): bé gái; con gái";
 const serviceKnowledge = "Dòng 3: Tên dịch vụ: Gói CRM | URL: https://software.example/plans?type=crm&ref=inbox | Từ khóa: CRM; quản lý khách hàng";
 const cakeScenario = "Bé trai: https://cakes.example/products?category=be-trai\nBé gái: https://cakes.example/products?category=be-gai";
+const cakeOccasionLinks = [
+  "Bé gái: https://cakes.example/products?category=be-gai",
+  "Sinh nhật chung (không rõ đối tượng cụ thể): https://cakes.example/products?category=sinh-nhat",
+  "Khai trương, tân gia, cất nóc, sự kiện gia đình: https://cakes.example/products?category=su-kien",
+  "Dịp lễ tết (Valentine, 8/3, 20/10, Noel, Trung thu): https://cakes.example/products?category=le-tet",
+].join("\n");
 
 test("category links use uploaded names and exact URLs across business niches", () => {
   assert.deepEqual(extractWebsiteCategoryLinks(cakeKnowledge)[0], {
@@ -42,6 +48,58 @@ test("a request for boy cake samples retrieves and selects a link listed in the 
   assert.deepEqual(findRelevantWebsiteCategoryLink("Có mẫu cho bé trai k", [], result.contextText), {
     name: "Bé trai", url: "https://cakes.example/products?category=be-trai",
   });
+});
+
+test("a new sample request after a photo quote selects the current recipient or occasion", () => {
+  const history = [
+    { sender: "user", text: "[Ảnh bánh mẫu] Bánh này giá sao?" },
+    { sender: "model", text: "Dạ mẫu này tụi em làm được ạ. Size 10cm giá 100k" },
+  ];
+  for (const [message, category] of [
+    ["Có mẫu cho bé gái không?", "be-gai"],
+    ["Có mẫu bánh sinh nhật cho bé gái không?", "be-gai"],
+    ["Có mẫu sinh nhật không?", "sinh-nhat"],
+    ["Cho xem mẫu tân gia", "su-kien"],
+    ["Có mẫu Valentine không?", "le-tet"],
+  ]) {
+    assert.equal(findRelevantWebsiteCategoryLink(message, history, cakeOccasionLinks)?.url,
+      `https://cakes.example/products?category=${category}`, message);
+  }
+  assert.equal(findRelevantWebsiteCategoryLink("Có mẫu cho bé không?", history, cakeOccasionLinks), undefined);
+});
+
+test("a later sample request keeps its exact category URL through business-rule review", async context => {
+  const originalKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  context.after(() => { if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = originalKey; });
+  let callCount = 0;
+  context.mock.method(globalThis, "fetch", async (_url, options) => {
+    const request = JSON.parse(String(options?.body));
+    let content: string;
+    if (callCount === 0) {
+      assert.match(request.messages[0].content, /Nếu sau đó khách chủ động hỏi xem mẫu khác/);
+      content = "Dạ em gửi chị mẫu cho bé gái tham khảo nhé";
+    } else {
+      const review = JSON.parse(request.messages.at(-1).content);
+      assert.match(review.rules, /customer later explicitly asks for other samples/);
+      assert.match(review.customerVisibleResponses[0], /https:\/\/cakes\.example\/products\?category=be-gai/);
+      content = callCount === 1
+        ? JSON.stringify({ compliant: true, correctedParts: ["Dạ em gửi chị mẫu cho bé gái tham khảo nhé"] })
+        : JSON.stringify({ compliant: true });
+    }
+    callCount += 1;
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+  });
+
+  const result = await geminiChatService.chat("Có mẫu cho bé gái không?", [
+    { sender: "user", text: "[Ảnh bánh mẫu] Bánh này giá sao?" },
+    { sender: "model", text: "Dạ mẫu này tụi em làm được ạ. Size 10cm giá 100k" },
+  ], { companyName: "Tiệm bánh" }, {
+    companyCode: "CAKE", contextText: cakeOccasionLinks,
+    scenarioContextText: "Không gửi link khi đang báo giá ảnh khách gửi; nếu khách chủ động hỏi mẫu khác thì gửi link danh mục tương ứng.",
+  });
+  assert.match(result.text, /https:\/\/cakes\.example\/products\?category=be-gai/);
+  assert.equal(callCount, 3);
 });
 
 test("a short answer retains the recipient but an unrelated question does not append old links", () => {
