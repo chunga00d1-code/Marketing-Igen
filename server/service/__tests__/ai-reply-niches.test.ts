@@ -68,6 +68,30 @@ test("a new sample request after a photo quote selects the current recipient or 
   assert.equal(findRelevantWebsiteCategoryLink("Có mẫu cho bé không?", history, cakeOccasionLinks), undefined);
 });
 
+test("a short answer to a purchase question retrieves category documents", async context => {
+  const history = [
+    { sender: "user", text: "Còn nhận làm bánh k" },
+    { sender: "model", text: "Anh chị muốn mua bánh cho ai ạ?" },
+  ];
+  let categoryLookupCount = 0;
+  context.mock.method(aiKnowledgeService, "searchRelevantContext", async input => {
+    const categoryLookup = input.topK === 12;
+    if (categoryLookup) categoryLookupCount++;
+    return {
+      contextText: "",
+      items: categoryLookup ? [{ title: "Danh mục", text: "Gói cho gia đình: https://shop.example/products?category=family" }] : [],
+      matches: categoryLookup ? 1 : 0,
+      bestScore: categoryLookup ? 1 : 0,
+      productCandidateNames: [], shouldAskProductConfirmation: false,
+    };
+  });
+  const result = await aiKnowledgeService.prepareChatContext({
+    companyCode: "CAKE", channel: "facebook", pageId: "cake-page", message: "Cho cha á", history,
+  });
+  assert.equal(categoryLookupCount, 1);
+  assert.match(result.contextText, /https:\/\/shop\.example\/products\?category=family/);
+});
+
 test("a later sample request keeps its exact category URL through business-rule review", async context => {
   const originalKey = process.env.OPENROUTER_API_KEY;
   process.env.OPENROUTER_API_KEY = "test-key";

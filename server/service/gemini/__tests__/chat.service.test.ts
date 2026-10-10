@@ -224,6 +224,24 @@ test("chat preserves a scenario product URL and makes markdown-escaped schemes c
   assert.match(prompt, /khách đã có mẫu thì không gửi link/);
 });
 
+test("a short recipient answer selects a grounded category link despite a reviewer removing it", async context => {
+  const url = "https://cakes.example/products?category=nam-gioi";
+  const knowledge = `Khách chỉ nói chung chung 'bánh sinh nhật': https://cakes.example/products?category=sinh-nhat\nĐàn ông, chồng, bạn trai, nam giới: ${url}`;
+  const rule = "Chỉ gửi link danh mục bánh 1 lần khi xác định được 1 trong 2 thông tin: Cho ai? đối tượng nào hoặc dịp nào";
+  const candidate = "Dạ bánh tặng cha dịp gì ạ?";
+  const requests = mockAI(context, [candidate, JSON.stringify({ sendLink: true, url }), corrected(candidate), verified]);
+  const result = await service.chat("Cho cha á", [
+    { sender: "user", text: "Còn nhận làm bánh k" },
+    { sender: "model", text: "Anh chị muốn mua bánh cho ai ạ?" },
+  ], { ...baseConfig, advancedInstructions: rule }, {
+    contextText: knowledge, scenarioContextText: "Gửi link danh mục khi biết người nhận hoặc dịp tặng",
+  });
+  assert.match(result.text, new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(result.text, /category=sinh-nhat/);
+  assert.match(JSON.stringify(requests[1]), /availableCategories/);
+  assert.match(JSON.stringify(requests[2]), /Keep this exact category URL/);
+});
+
 test("an acknowledgement to a pending category-link offer sends the exact matching URL", async (context) => {
   const url = "https://cakes.example/products?category=be-gai";
   const knowledge = `Dòng 2: Tên danh mục trên website: Bé gái | Link danh mục chính xác: ${url} | Từ khóa khách có thể dùng: bé gái; con gái`;

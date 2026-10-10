@@ -886,7 +886,14 @@ export const aiKnowledgeService = {
       ...history.slice(-8).filter((item) => item.sender === "user").map((item) => item.text),
       params.message,
     ].join("\n").slice(-4000);
+    const recentAssistantQuestion = history.at(-1)?.sender !== "user" ? history.at(-1) : undefined;
+    const shortAnswerToPurchaseQuestion = Boolean(recentAssistantQuestion?.text?.includes("?")) &&
+      normalizeForLookup(params.message).split(" ").length <= 6 &&
+      /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
+        normalizeForLookup(recentAssistantQuestion?.text || "")
+      );
     const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) || query !== params.message ||
+      shortAnswerToPurchaseQuestion ||
       /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham|co mau|cho xem mau|xin mau|gui mau)\b/.test(
         normalizeForLookup(categoryLookupQuery)
       );
@@ -964,7 +971,11 @@ export const aiKnowledgeService = {
     const companyCode = normalizeCompanyCode(params.companyCode);
     if (!companyCode) return "";
     const channel = params.channel || "facebook";
-    const pageFilter = params.pageId
+    const pageFilter: Array<
+      { pageScope: "selected"; pageIds: string } |
+      { pageScope: "all" } |
+      { pageScope: { $exists: false } }
+    > = params.pageId
       ? [{ pageScope: "selected", pageIds: params.pageId }, { pageScope: "all" }, { pageScope: { $exists: false } }]
       : [{ pageScope: "all" }, { pageScope: { $exists: false } }];
     const documents = await AIKnowledgeDocumentModel.find({

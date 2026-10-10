@@ -155,6 +155,44 @@ function shouldKeepRequestedCategoryLink(message: string, scenario: string): boo
     && /khach chu dong hoi mau khac.{0,160}gui link danh muc/.test(guidance);
 }
 
+async function selectCategoryLinkFromContext(
+  model: string,
+  message: string,
+  history: any[],
+  knowledgeText: string,
+  rules: string,
+  scenario: string,
+): Promise<{ name: string; url: string } | undefined> {
+  const categories = [...new Map(extractWebsiteCategoryLinks(knowledgeText)
+    .map((category) => [category.url, category])).values()].slice(0, 20);
+  if (!categories.length || !/\b(link|url|website)\b/.test(normalizeWebsiteCategoryText(`${rules} ${scenario}`))) {
+    return undefined;
+  }
+  try {
+    const decision = await generateText(model, JSON.stringify({
+      customerMessage: message,
+      recentConversation: history.slice(-8),
+      businessRules: rules,
+      scenario,
+      availableCategories: categories,
+    }), {
+      systemInstruction: "Determine whether the business's configured rules or scenario require sending one category link in the reply to the customer's latest message. Interpret short answers using the immediately preceding question. Choose the most specific relevant category from availableCategories, including semantic relationships not stated verbatim. Do not infer a missing recipient or occasion. Send no link when the rule says to wait, a link was already sent under a one-time rule, or no category fits. Return only JSON: {\"sendLink\":boolean,\"url\":string}. The URL must be copied exactly from availableCategories; use an empty string otherwise.",
+      temperature: 0,
+      responseSchema: {
+        type: "object",
+        properties: { sendLink: { type: "boolean" }, url: { type: "string" } },
+        required: ["sendLink", "url"],
+      },
+      maxTokens: 120,
+    });
+    const parsed = safeParseJson(decision.text) as { sendLink?: boolean; url?: string };
+    const selected = parsed.sendLink === true ? categories.find((category) => category.url === parsed.url) : undefined;
+    return selected ? { name: selected.name, url: selected.url } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function appendCustomGuidance(
   baseInstruction: string,
   scenarioText: unknown,
@@ -618,12 +656,25 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
       response.text = formatHumanLikeChatReply(response.text || "Dạ hiện em chưa có đủ thông tin để trả lời chính xác ạ");
       const knowledgeText = [ragContext?.contextText, ragContext?.scenarioContextText].filter(Boolean).join("\n");
       const alreadyHasKnownLink = extractWebsiteCategoryLinks(knowledgeText).some(category => response.text.includes(category.url));
-      const categoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(
+      const exactCategoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(
         message, history, knowledgeText, false);
       const hasCustomLinkRule = /\b(link|url|website)\b/.test(
         normalizeWebsiteCategoryText(`${advancedRules} ${customerServiceScript}`));
-      const requiredCategoryLink = categoryLink && !hasCustomLinkRule && shouldKeepRequestedCategoryLink(message, scenarioGuidance)
-        ? categoryLink : undefined;
+      const oneTimeCategoryRule = /\bchi gui link danh muc\b.{0,80}\b1 lan\b/.test(
+        normalizeWebsiteCategoryText(`${advancedRules} ${customerServiceScript}`));
+      const previousAssistantText = history.filter((item: any) => item?.sender !== "user")
+        .map((item: any) => String(item?.text || "")).join("\n");
+      const alreadySentCategoryLink = extractWebsiteCategoryLinks(knowledgeText)
+        .some((category) => previousAssistantText.includes(category.url));
+      const canSendCategoryLink = !alreadyHasKnownLink && !(oneTimeCategoryRule && alreadySentCategoryLink);
+      const contextualCategoryLink = canSendCategoryLink && !exactCategoryLink && hasCustomLinkRule
+        ? await selectCategoryLinkFromContext(selectedModel, message, history, knowledgeText,
+          `${advancedRules}\n${customerServiceScript}`, scenarioGuidance)
+        : undefined;
+      const categoryLink = canSendCategoryLink ? exactCategoryLink || contextualCategoryLink : undefined;
+      const requiredCategoryLink = contextualCategoryLink ||
+        (categoryLink && !hasCustomLinkRule && shouldKeepRequestedCategoryLink(message, scenarioGuidance)
+          ? categoryLink : undefined);
       response.text = appendWebsiteCategoryLink(response.text, categoryLink);
       const [checkedResponse] = await applyAdvancedRules(
         selectedModel,
