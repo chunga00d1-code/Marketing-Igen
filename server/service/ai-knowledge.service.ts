@@ -954,6 +954,45 @@ export const aiKnowledgeService = {
     });
   },
 
+  async getFullPricingContext(params: {
+    companyCode?: string;
+    channel?: "facebook" | "zalo" | "tiktok";
+    pageId?: string;
+  }): Promise<string> {
+    const companyCode = normalizeCompanyCode(params.companyCode);
+    if (!companyCode) return "";
+    const channel = params.channel || "facebook";
+    const pageFilter = params.pageId
+      ? [{ pageScope: "selected", pageIds: params.pageId }, { pageScope: "all" }, { pageScope: { $exists: false } }]
+      : [{ pageScope: "all" }, { pageScope: { $exists: false } }];
+    const documents = await AIKnowledgeDocumentModel.find({
+      companyCode,
+      status: "active",
+      documentType: { $ne: "scenario" },
+    }).select("_id sourceTitle documentType").sort({ updatedAt: -1 }).lean();
+    const priceDocuments = documents.filter(document => document.documentType === "pricing"
+      || /\b(bang gia|bao gia|price|pricing)\b/.test(normalizeForLookup(document.sourceTitle)));
+    if (!priceDocuments.length) return "";
+    const chunks = await AIKnowledgeChunkModel.find({
+      companyCode,
+      documentId: { $in: priceDocuments.map(document => document._id) },
+      channelScope: { $in: ["all", channel] },
+      purposeScope: { $in: ["all", "sales", "support", "marketing"] },
+      $or: pageFilter,
+    }).select("documentId chunkIndex text").sort({ chunkIndex: 1 }).lean();
+    const byDocument = new Map<string, string[]>();
+    for (const chunk of chunks) {
+      const key = String(chunk.documentId);
+      const list = byDocument.get(key) || [];
+      list.push(chunk.text);
+      byDocument.set(key, list);
+    }
+    return priceDocuments.map(document => {
+      const parts = byDocument.get(String(document._id)) || [];
+      return parts.length ? `[Bảng giá] ${document.sourceTitle}\n${parts.join("\n\n")}` : "";
+    }).filter(Boolean).join("\n\n---\n\n");
+  },
+
   async searchRelevantContext(params: {
     companyCode?: string;
     query: string;
