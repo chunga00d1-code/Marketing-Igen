@@ -886,8 +886,15 @@ export const aiKnowledgeService = {
       ...history.slice(-8).filter((item) => item.sender === "user").map((item) => item.text),
       params.message,
     ].join("\n").slice(-4000);
-    const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) || query !== params.message ||
+    const recentAssistantQuestion = history.at(-1)?.sender !== "user" ? history.at(-1) : undefined;
+    const shortAnswerToPurchaseQuestion = Boolean(recentAssistantQuestion?.text?.includes("?")) &&
+      normalizeForLookup(params.message).split(" ").length <= 6 &&
       /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham)\b/.test(
+        normalizeForLookup(recentAssistantQuestion?.text || "")
+      );
+    const hasPurchaseIntent = isAcknowledgementToAssistantOffer(params.message, history) || query !== params.message ||
+      shortAnswerToPurchaseQuestion ||
+      /\b(dat|mua|san pham|dich vu|danh muc|catalog|catalogue|link|duong dan|xem mau|xem san pham|co mau|cho xem mau|xin mau|gui mau)\b/.test(
         normalizeForLookup(categoryLookupQuery)
       );
     const detected = detectRequiredDocumentTypes(query);
@@ -912,7 +919,7 @@ export const aiKnowledgeService = {
         ? this.searchRelevantContext({
             ...scope,
             query: `${categoryLookupQuery}\nDanh mục sản phẩm dịch vụ, link danh mục chính xác, từ khóa khách có thể dùng`,
-            documentTypes: ["product", "service", "general", "faq"],
+            documentTypes: ["product", "service", "general", "faq", "scenario"],
             strictDocumentTypes: true,
             topK: 12,
             maxContextChars: 4500,
@@ -930,8 +937,10 @@ export const aiKnowledgeService = {
     const existingContextText = availableContexts.map((context) => context.contextText).filter(Boolean).join("\n\n---\n\n");
     const categoryLinkItems = ((categoryContext?.items || []) as Array<{ title: string; text: string }>).filter((item) => {
       const normalizedItem = normalizeForLookup(item.text || "");
-      return /\b(ten danh muc|danh muc tren website|ten san pham|ten dich vu|category|name)\b/.test(normalizedItem) &&
-        /\b(link|url|duong dan)\b/.test(normalizedItem) &&
+      const hasStructuredCategory = /\b(ten danh muc|danh muc tren website|ten san pham|ten dich vu|category|name)\b/.test(normalizedItem) &&
+        /\b(link|url|duong dan)\b/.test(normalizedItem);
+      const hasListedCategory = /(?:^|\n)\s*[-•*]?\s*[^:\n]{2,80}:\s*https?:\/\//im.test(item.text || "");
+      return (hasStructuredCategory || hasListedCategory) &&
         /https?:\/\//i.test(item.text || "") &&
         !existingContextText.includes(item.text || "");
     });
@@ -952,6 +961,49 @@ export const aiKnowledgeService = {
       scenarioContext,
       trainingKnowledge: params.trainingKnowledge,
     });
+  },
+
+  async getFullPricingContext(params: {
+    companyCode?: string;
+    channel?: "facebook" | "zalo" | "tiktok";
+    pageId?: string;
+  }): Promise<string> {
+    const companyCode = normalizeCompanyCode(params.companyCode);
+    if (!companyCode) return "";
+    const channel = params.channel || "facebook";
+    const pageFilter: Array<
+      { pageScope: "selected"; pageIds: string } |
+      { pageScope: "all" } |
+      { pageScope: { $exists: false } }
+    > = params.pageId
+      ? [{ pageScope: "selected", pageIds: params.pageId }, { pageScope: "all" }, { pageScope: { $exists: false } }]
+      : [{ pageScope: "all" }, { pageScope: { $exists: false } }];
+    const documents = await AIKnowledgeDocumentModel.find({
+      companyCode,
+      status: "active",
+      documentType: { $ne: "scenario" },
+    }).select("_id sourceTitle documentType").sort({ updatedAt: -1 }).lean();
+    const priceDocuments = documents.filter(document => document.documentType === "pricing"
+      || /\b(bang gia|bao gia|price|pricing)\b/.test(normalizeForLookup(document.sourceTitle)));
+    if (!priceDocuments.length) return "";
+    const chunks = await AIKnowledgeChunkModel.find({
+      companyCode,
+      documentId: { $in: priceDocuments.map(document => document._id) },
+      channelScope: { $in: ["all", channel] },
+      purposeScope: { $in: ["all", "sales", "support", "marketing"] },
+      $or: pageFilter,
+    }).select("documentId chunkIndex text").sort({ chunkIndex: 1 }).lean();
+    const byDocument = new Map<string, string[]>();
+    for (const chunk of chunks) {
+      const key = String(chunk.documentId);
+      const list = byDocument.get(key) || [];
+      list.push(chunk.text);
+      byDocument.set(key, list);
+    }
+    return priceDocuments.map(document => {
+      const parts = byDocument.get(String(document._id)) || [];
+      return parts.length ? `[Bảng giá] ${document.sourceTitle}\n${parts.join("\n\n")}` : "";
+    }).filter(Boolean).join("\n\n---\n\n");
   },
 
   async searchRelevantContext(params: {

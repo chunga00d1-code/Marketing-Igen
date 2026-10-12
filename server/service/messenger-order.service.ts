@@ -194,9 +194,12 @@ async function extractOrder(transcript: string) {
 async function syncOrder(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order || order.status === "synced") return order;
+  if (order.checkoutFlow === "cake_deposit" && order.depositStatus !== "verified") return order;
   const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
   const config = integration?.orderSheetConfig;
   if (!integration || !config?.enabled) return order;
+  if (order.checkoutFlow === "cake_deposit" && (integration.companyCode !== order.companyCode
+    || integration.username !== order.pageId || !integration.isConnected)) return order;
 
   try {
     const spreadsheetId = config.spreadsheetId || parseGoogleSpreadsheetId(config.spreadsheetUrl);
@@ -236,6 +239,9 @@ async function syncOrder(orderId: string) {
         depositRequired: order.depositRequired,
         depositAmount: order.depositAmount,
         depositStatus: order.depositStatus,
+        depositPercent: order.depositPercent,
+        remainingBalance: order.checkoutSnapshot?.balance,
+        paymentStatus: order.depositStatus === "verified" ? "Đã thanh toán cọc" : undefined,
         receiptUrl: order.receiptUrl,
         receiptReceivedAt: order.receiptReceivedAt,
         paymentCode: order.paymentCode,
@@ -311,6 +317,7 @@ function depositRequestText(
 }
 
 export const messengerOrderService = {
+  syncConfirmedDepositOrder: syncOrder,
   isConfirmationMessage: hasExplicitConfirmation,
 
   async captureConfirmedOrder(pageId: string, conversationId: string, sourceMessageId: string, latestText: string) {
@@ -586,6 +593,13 @@ export const messengerOrderService = {
   async retry(orderId: string, companyCode: string) {
     const order = await MessengerOrderModel.findOne({ orderId, companyCode });
     if (!order) throw new Error("Khong tim thay don Messenger.");
+    if (order.checkoutFlow === "cake_deposit") {
+      if (order.depositStatus !== "verified") throw new Error("Đơn chưa được xác nhận tiền cọc qua webhook.");
+      return MessengerOrderModel.findOneAndUpdate({ _id: order._id }, {
+        $set: { depositSyncAttempts: 0, depositSyncNextAt: new Date() },
+        $unset: { depositSyncCompletedAt: 1 },
+      }, { new: true });
+    }
     if (order.missingFields.length) throw new Error("Don hang con thieu thong tin bat buoc.");
     if (!order.confirmedAt) order.confirmedAt = new Date();
     order.status = "confirmed";

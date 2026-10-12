@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from "mongoose";
+import type { CakeCheckoutSnapshot } from "./cake-checkout.model";
 
 export interface IMessengerOrderItem {
   productCode?: string;
@@ -11,6 +12,15 @@ export interface IMessengerOrderItem {
 }
 
 export interface IMessengerOrder extends Document {
+  checkoutFlow?: "cake_deposit";
+  checkoutSnapshot?: CakeCheckoutSnapshot;
+  paymentRequestStatus?: "active" | "superseded";
+  depositSyncAttempts?: number;
+  depositSyncNextAt?: Date;
+  depositSyncCompletedAt?: Date;
+  depositSyncError?: string;
+  depositSyncLeaseUntil?: Date;
+  depositSyncLeaseToken?: string;
   orderId: string;
   fingerprint: string;
   companyCode: string;
@@ -80,6 +90,15 @@ const MessengerOrderItemSchema = new Schema<IMessengerOrderItem>({
 }, { _id: false });
 
 const MessengerOrderSchema = new Schema<IMessengerOrder>({
+  checkoutFlow: { type: String, enum: ["cake_deposit"] },
+  checkoutSnapshot: { type: Schema.Types.Mixed, immutable: true },
+  paymentRequestStatus: { type: String, enum: ["active", "superseded"] },
+  depositSyncAttempts: { type: Number, default: 0 },
+  depositSyncNextAt: Date,
+  depositSyncCompletedAt: Date,
+  depositSyncError: String,
+  depositSyncLeaseUntil: Date,
+  depositSyncLeaseToken: String,
   orderId: { type: String, required: true, unique: true, index: true },
   fingerprint: { type: String, required: true, unique: true, index: true },
   companyCode: { type: String, required: true, index: true },
@@ -144,6 +163,7 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
 MessengerOrderSchema.index({ companyCode: 1, createdAt: -1 });
 MessengerOrderSchema.index({ integrationId: 1, status: 1, updatedAt: -1 });
 MessengerOrderSchema.index({ conversationId: 1, createdAt: -1 });
+MessengerOrderSchema.index({ checkoutFlow: 1, depositStatus: 1, depositSyncCompletedAt: 1, depositSyncNextAt: 1 });
 MessengerOrderSchema.index(
   { companyCode: 1, paymentCode: 1 },
   { unique: true, partialFilterExpression: { paymentCode: { $type: "string" } } },

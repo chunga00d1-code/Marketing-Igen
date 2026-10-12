@@ -14,6 +14,7 @@ export const ORDER_HEADERS = [
   "Số tiền đặt cọc", "Trạng thái đặt cọc", "Link biên lai thanh toán", "Thời gian nhận biên lai",
   "Mã thanh toán", "Mã giao dịch SePay", "Số tiền SePay", "Thời gian xác nhận SePay",
   "Link ảnh sản phẩm khách chọn", "Thời gian chọn ảnh", "Danh mục sản phẩm",
+  "Tỷ lệ cọc (%)", "Còn lại trả tại quán",
 ];
 
 export const ORDER_ITEM_HEADERS = [
@@ -32,6 +33,8 @@ export interface SheetOrderItem {
 }
 
 export interface SheetOrder {
+  depositPercent?: number;
+  remainingBalance?: number;
   orderId: string;
   createdAt: Date;
   confirmedAt: Date;
@@ -97,6 +100,7 @@ async function accessToken() {
     assertion,
   });
   const response = await fetch(TOKEN_URL, {
+    signal: AbortSignal.timeout(30_000),
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -116,6 +120,7 @@ async function sheetsFetch(path: string, init?: RequestInit) {
   const token = await accessToken();
   const { projectId } = credentials();
   const response = await fetch(`${SHEETS_API}/${path}`, {
+    signal: AbortSignal.timeout(30_000),
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -181,14 +186,19 @@ async function metadata(spreadsheetId: string) {
 
 async function ensureTabs(spreadsheetId: string, tabNames: string[]) {
   const info = await metadata(spreadsheetId) as {
-    sheets?: Array<{ properties?: { title?: string } }>;
+    sheets?: Array<{ properties?: { title?: string; sheetId?: number; gridProperties?: { columnCount?: number } } }>;
   };
   const existing = new Set((info.sheets || []).map((item) => item.properties?.title).filter(Boolean));
   const missing = tabNames.filter((name) => !existing.has(name));
-  if (missing.length) {
+  const resize = (info.sheets || []).filter(sheet => tabNames.includes(sheet.properties?.title || "")
+    && sheet.properties?.sheetId !== undefined && (sheet.properties?.gridProperties?.columnCount || 0) < ORDER_HEADERS.length)
+    .map(sheet => ({ updateSheetProperties: { properties: { sheetId: sheet.properties!.sheetId,
+      gridProperties: { columnCount: ORDER_HEADERS.length } }, fields: "gridProperties.columnCount" } }));
+  if (missing.length || resize.length) {
     await sheetsFetch(`${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
       method: "POST",
-      body: JSON.stringify({ requests: missing.map((title) => ({ addSheet: { properties: { title } } })) }),
+      body: JSON.stringify({ requests: [...missing.map((title) => ({ addSheet: { properties: { title,
+        gridProperties: { columnCount: ORDER_HEADERS.length } } } })), ...resize] }),
     });
   }
 }
@@ -245,12 +255,10 @@ export const googleOrderSheetService = {
 
     const lookupRange = `${a1SheetName(ordersSheetName)}!A:A`;
     const existing = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(lookupRange)}`) as { values?: unknown[][] };
-    if ((existing.values || []).some((row) => String(row?.[0] || "") === order.orderId)) {
-      return { duplicate: true };
-    }
+    const duplicate = (existing.values || []).some((row) => String(row?.[0] || "") === order.orderId);
 
     const itemSummary = order.items.map((item) => `${item.productName}${item.variantSummary ? ` (${item.variantSummary})` : ""} x${item.quantity}`).join("; ");
-    await appendRows(spreadsheetId, ordersSheetName, [[
+    if (!duplicate) await appendRows(spreadsheetId, ordersSheetName, [[
       order.orderId, order.createdAt.toISOString(), order.confirmedAt.toISOString(), "facebook_messenger",
       order.sourceAccount, order.conversationId, order.customerName, order.customerPhone,
       order.deliveryAddress, itemSummary, order.subtotal, order.shippingFee, order.discountAmount,
@@ -261,13 +269,18 @@ export const googleOrderSheetService = {
       order.receiptReceivedAt?.toISOString(), order.paymentCode, order.sepayTransactionId,
       order.sepayTransferAmount, order.sepayVerifiedAt?.toISOString(),
       order.selectedProductImageUrl, order.selectedProductSelectedAt?.toISOString(), order.selectedProductCategory,
+      order.depositPercent, order.remainingBalance,
     ]]);
+    // A previous request may have written Orders but failed before OrderItems.
+    const itemRange = `${a1SheetName(itemsSheetName)}!A:B`;
+    const existingItems = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(itemRange)}`) as { values?: unknown[][] };
+    const written = new Set((existingItems.values || []).filter(row => String(row[0]) === order.orderId).map(row => Number(row[1])));
     await appendRows(spreadsheetId, itemsSheetName, order.items.map((item, index) => [
       order.orderId, index + 1, item.productCode, item.productName, item.variantSummary,
       item.quantity, item.unitPrice, item.lineTotal,
       Object.keys(item.attributes || {}).length ? JSON.stringify(item.attributes) : "",
-    ]));
-    return { duplicate: false };
+    ]).filter(row => !written.has(Number(row[1]))));
+    return { duplicate };
   },
 
   async updatePaymentReceipt(

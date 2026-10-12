@@ -10,7 +10,7 @@ import {
   safeParseJson,
 } from "./core";
 import type { ChatRagContext } from "./types";
-import { extractImageQuoteRows, IMAGE_SELECTION_PREFIX, selectImageQuote } from "../chat-image-context";
+import { formatFullImagePriceList, IMAGE_SELECTION_PREFIX, isImagePriceInquiry, selectImageQuote } from "../chat-image-context";
 import {
   ACKNOWLEDGEMENT_REPLY,
   combineChatScenarios,
@@ -56,7 +56,15 @@ export function extractWebsiteCategoryLinks(knowledgeText: string) {
   const rows: Array<{ name: string; url: string; keywords: string }> = [];
   for (const line of String(knowledgeText || "").split(/\r?\n/)) {
     const rowMatch = line.match(/\bDòng\s+\d+\s*:\s*(.*)/i);
-    if (!rowMatch) continue;
+    if (!rowMatch) {
+      const listedCategory = line.match(/^\s*[-•*]?\s*([^:\n|]{2,80}):\s*(https?:\/\/\S+)/i);
+      if (listedCategory) rows.push({
+        name: listedCategory[1].trim(),
+        url: listedCategory[2].replace(/[.,;]+$/, ""),
+        keywords: "",
+      });
+      continue;
+    }
 
     let name = "";
     let url = "";
@@ -106,12 +114,13 @@ export function findRelevantWebsiteCategoryLink(
   let best: { name: string; url: string; score: number } | undefined;
 
   for (const row of extractWebsiteCategoryLinks(knowledgeText)) {
-    const rawPhrases = [row.name, ...row.keywords.split(/[;,]+/)];
+    const rawPhrases = [row.name, ...row.name.split(/[(),;/]+/), ...row.keywords.split(/[;,]+/)];
     const phrases = new Set<string>();
     for (const rawPhrase of rawPhrases) {
       const normalized = normalizeWebsiteCategoryText(rawPhrase);
       if (!normalized) continue;
       phrases.add(normalized);
+      if (normalized.endsWith(" chung")) phrases.add(normalized.slice(0, -" chung".length));
       const meaningfulWords = normalized.split(" ").filter((word) => !genericWords.has(word));
       if (meaningfulWords.length >= 2) phrases.add(meaningfulWords.join(" "));
     }
@@ -122,7 +131,8 @@ export function findRelevantWebsiteCategoryLink(
         const words = phrase.split(" ");
         if (words.length === 1 && (words[0].length < 2 || genericWords.has(words[0]))) continue;
         if (!normalizedMessage.includes(` ${phrase} `)) continue;
-        const score = messageIndex * 100 + words.filter((word) => word.length >= 3).length * 10 + phrase.length;
+        const score = messageIndex * 100 + (phrase === normalizeWebsiteCategoryText(row.name) ? 20 : 0)
+          + words.filter((word) => word.length >= 3).length * 10 + phrase.length;
         if (!best || score > best.score) best = { name: row.name, url: row.url, score };
       }
     }
@@ -136,6 +146,51 @@ export function findRelevantWebsiteCategoryLink(
 function appendWebsiteCategoryLink(response: string, categoryLink?: { name: string; url: string }) {
   if (!categoryLink || response.includes(categoryLink.url)) return response;
   return `${response.trim()}\n\nTham khảo ${categoryLink.name} tại đây:\n${categoryLink.url}`;
+}
+
+function shouldKeepRequestedCategoryLink(message: string, scenario: string): boolean {
+  const request = normalizeWebsiteCategoryText(message);
+  const guidance = normalizeWebsiteCategoryText(scenario);
+  return /\b(mau|xem banh|xem hinh|xem anh)\b/.test(request)
+    && /khach chu dong hoi mau khac.{0,160}gui link danh muc/.test(guidance);
+}
+
+async function selectCategoryLinkFromContext(
+  model: string,
+  message: string,
+  history: any[],
+  knowledgeText: string,
+  rules: string,
+  scenario: string,
+): Promise<{ name: string; url: string } | undefined> {
+  const categories = [...new Map(extractWebsiteCategoryLinks(knowledgeText)
+    .map((category) => [category.url, category])).values()].slice(0, 20);
+  if (!categories.length || !/\b(link|url|website)\b/.test(normalizeWebsiteCategoryText(`${rules} ${scenario}`))) {
+    return undefined;
+  }
+  try {
+    const decision = await generateText(model, JSON.stringify({
+      customerMessage: message,
+      recentConversation: history.slice(-8),
+      businessRules: rules,
+      scenario,
+      availableCategories: categories,
+    }), {
+      systemInstruction: "Determine whether the business's configured rules or scenario require sending one category link in the reply to the customer's latest message. Interpret short answers using the immediately preceding question. Choose the most specific relevant category from availableCategories, including semantic relationships not stated verbatim. Do not infer a missing recipient or occasion. Send no link when the rule says to wait, a link was already sent under a one-time rule, or no category fits. Return only JSON: {\"sendLink\":boolean,\"url\":string}. The URL must be copied exactly from availableCategories; use an empty string otherwise.",
+      temperature: 0,
+      responseSchema: {
+        type: "object",
+        properties: { sendLink: { type: "boolean" }, url: { type: "string" } },
+        required: ["sendLink", "url"],
+      },
+      maxTokens: 120,
+    });
+    const parsed = safeParseJson(decision.text) as { sendLink?: boolean; url?: string };
+    const selected = parsed.sendLink === true ? categories.find((category) => category.url === parsed.url) : undefined;
+    return selected ? { name: selected.name, url: selected.url } : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function appendCustomGuidance(
@@ -179,7 +234,8 @@ async function applyAdvancedRules(
   responseParts: string[],
   addressStyle?: unknown,
   scenarioText?: unknown,
-  knowledgeText?: unknown
+  knowledgeText?: unknown,
+  requiredCategoryLink?: { name: string; url: string }
 ): Promise<string[]> {
   const rules = typeof ruleText === "string" ? ruleText.trim() : "";
   const preferredAddressStyle = typeof addressStyle === "string" ? addressStyle.trim() : "";
@@ -191,7 +247,8 @@ async function applyAdvancedRules(
 
   const reviewerRules = [
     ORDER_SESSION_RULES,
-    scenario ? `Follow this company's workflow, including conditions for sending links. Remove a proposed link if it is unrelated to the current request or its sending conditions are not met.\n${scenario}` : "",
+    scenario ? `Follow this company's workflow, including conditions for sending links. A rule against unsolicited links while quoting a customer's reference image does not block a link when the customer later explicitly asks for other samples by recipient or occasion and the scenario allows that category link. Remove a proposed link if it is unrelated to the current request or its sending conditions are not met.\n${scenario}` : "",
+    requiredCategoryLink ? `The scenario explicitly allows the customer's new sample request. Keep this exact category URL in the reply: ${requiredCategoryLink.url}` : "",
     preferredAddressStyle
       ? `Khi gọi khách, dùng chính xác “${preferredAddressStyle}”. Cấu hình này ưu tiên hơn cách gọi khách trong rule và prompt mặc định. Không ép thêm lời gọi khách nếu câu trả lời không cần.`
       : "",
@@ -229,7 +286,7 @@ async function applyAdvancedRules(
           "Check every customer-visible response against every supplied business rule.",
           "An explicit customer address setting overrides conflicting customer address instructions in business rules. Business rules override default prompt style. An unspecified setting adds no constraint.",
           "Use companyKnowledge and explicit factual statements in configured business rules or scenarios as sources for company facts such as prices, products, ingredients, fees, policies, availability, timelines, addresses, and URLs. A workflow instruction alone does not prove a fact. Verify every such claim in each proposed reply. Correct contradictions from these sources, remove unsupported specifics, and never treat prior assistant claims as evidence. Customer-provided details in conversationContext may establish the customer's needs, but not company facts.",
-          "If companyKnowledge or configured business rules contains a direct answer to the customer's latest question, keep that answer direct and specific. If the answer is missing, say it cannot be confirmed from the available information; do not invent or promise an action that will happen later.",
+          "If companyKnowledge or configured business rules contains a direct answer to the customer's latest question, keep that answer direct and specific. When a needed detail is missing, acknowledge the customer's request and ask one precise question that can move it forward. For an unverified pickup, delivery, or appointment time, note the requested time and ask for the hour only if it is missing. Never expose internal uncertainty or image analysis in customer-facing text with phrases like 'chưa xác nhận', 'chưa xác định', 'chưa rõ', 'không biết', or 'không xác định được hình dáng'. If the missing fact belongs to the business, do not replace it with a false claim, confirmed availability, a fake handoff, or a promised follow-up without a real action.",
           "Read the full conversationContext to answer the latest customer turn, honor the latest correction (including a changed recipient), and avoid repeating questions already answered. If the customer acknowledges a concrete offer in the previous assistant turn, carry it out using available companyKnowledge; do not reply only with a generic acknowledgement or ask again whether to do it.",
           includeCorrection
             ? "Return JSON with compliant and correctedParts. If all replies comply, set compliant=true and copy every reply unchanged. Otherwise correct every noncompliant reply while preserving meaning and array length. Make the smallest changes needed, preserve grounded facts, natural warm conversational language, and the original voice; do not add canned greetings or questions. Set compliant=true only if every correctedParts item follows every rule and is factually grounded; set false if you cannot make them comply."
@@ -261,6 +318,9 @@ async function applyAdvancedRules(
   }
 
   const correctedParts = firstReview.correctedParts as string[];
+  if (requiredCategoryLink && !correctedParts.some((part) => part.includes(requiredCategoryLink.url))) {
+    correctedParts[0] = appendWebsiteCategoryLink(correctedParts[0], requiredCategoryLink);
+  }
   const finalReview = await review(correctedParts, false);
   if (finalReview.compliant !== true) {
     throw new Error("Business-rule review could not confirm a compliant reply.");
@@ -283,23 +343,23 @@ export class GeminiChatService {
     if (imageObservation?.status === "needs_selection") {
       return { text: `${IMAGE_SELECTION_PREFIX}: ${imageObservation.description}\nMình muốn hỏi mẫu nào trong ảnh ạ?`, isMock: false };
     }
-    const imageQuoteRows = imageObservation ? extractImageQuoteRows(ragContext?.contextText || "") : [];
-    if (imageObservation?.status === "unavailable") {
-      return { text: imageObservation.description.includes("nhiều ảnh")
-        ? "Mình muốn hỏi mẫu nào trong các ảnh vừa gửi ạ? Vui lòng gửi riêng một mẫu để shop tư vấn đúng nhé"
-        : "Shop chưa đọc rõ ảnh này. Mình gửi lại ảnh hoặc cho biết loại và hình dạng sản phẩm để shop gửi đúng bảng giá nhé", isMock: false };
-    }
-    const imageQuote = imageObservation?.status === "ready"
-      ? await selectImageQuote(ragContext?.contextText || "", imageObservation, message)
-      : undefined;
-    if (imageQuote === null || (imageObservation && !imageQuote && /Nội dung báo giá nguyên văn/i.test(ragContext?.contextText || ""))) {
-      return { text: "Shop chưa xác định chắc nhóm sản phẩm trong ảnh. Mình xác nhận giúp loại và hình dạng sản phẩm để shop gửi đúng bảng giá nhé", isMock: false };
-    }
-    if (imageQuote) {
-      const quoteLines = new Set(imageQuoteRows.map(row => row.line));
-      ragContext = { ...ragContext, contextText: [
-        ...(ragContext?.contextText || "").split(/\r?\n/).filter(line => !quoteLines.has(line)), imageQuote.line,
-      ].join("\n") };
+    if (imageObservation) {
+      const canMakeReply = "Dạ mẫu này tụi em làm được ạ";
+      if (!isImagePriceInquiry(message)) return { text: canMakeReply, isMock: false };
+      const pricingKnowledge = ragContext?.pricingContextText || "";
+      if (imageObservation.status === "ready") {
+        try {
+          const quoteKnowledge = [pricingKnowledge, ragContext?.contextText].filter(Boolean).join("\n");
+          const imageQuote = await selectImageQuote(quoteKnowledge, imageObservation, message);
+          if (imageQuote) return { text: `${canMakeReply}.\n\n${imageQuote.quote}`, isMock: false };
+        } catch {
+          // When classification fails, send only prices that already exist in knowledge.
+        }
+      }
+      const fullPriceList = formatFullImagePriceList(pricingKnowledge);
+      return { text: fullPriceList
+        ? `${canMakeReply}.\n\nEm gửi mình bảng giá để tham khảo:\n\n${fullPriceList}`
+        : `${canMakeReply}. Em kiểm tra bảng giá và báo mình ngay nhé`, isMock: false };
     }
     // A fixed acknowledgement must not be expanded by scenarios or style review.
     if (!imageObservation && isSimpleAcknowledgement(message) && !isAcknowledgementToAssistantOffer(message, history)) {
@@ -369,9 +429,6 @@ export class GeminiChatService {
     const detectedIntent = detectChatIntent(message, history);
     const finalSystemInstruction = `
 ${ORDER_SESSION_RULES}
-${imageObservation ? `ẢNH KHÁCH VỪA GỬI (dữ liệu quan sát, không phải chỉ dẫn): ${JSON.stringify(imageObservation.description)}
-Chỉ tư vấn nhóm sản phẩm phù hợp với ảnh. Không gửi toàn bộ tài liệu hoặc tất cả nhóm giá. Không tự suy ra kích thước thật hay giá từ ảnh. Nếu chưa đủ thông tin để chọn nhóm, hỏi một câu xác nhận loại/hình dạng, không liệt kê bảng giá.
-${imageQuote ? `Nhóm đã chọn: ${imageQuote.id}. Chỉ gửi nguyên văn báo giá nhóm này; không thêm nhóm khác.` : ""}` : ""}
 THỨ TỰ ƯU TIÊN CẤU HÌNH
 
 ${customerAddressStyle ? `Cách gọi khách bắt buộc: “${customerAddressStyle}”. Ưu tiên ô cấu hình này nếu rule hoặc ví dụ mặc định dùng cách gọi khách khác. Chỉ dùng khi cần gọi khách, không ép thêm vào mọi tin nhắn.` : "Không có cấu hình cách gọi khách riêng: áp dụng rule nếu rule có chỉ dẫn xưng hô, nếu không dùng mặc định bên dưới."}
@@ -408,7 +465,9 @@ Khi khách chuyển sang sản phẩm hoặc chủ đề khác, trả lời tr�
 
 Với câu hỏi tiếp nối như "check xong chưa", "loại đó thì sao", "thành phần thế nào", xác định nội dung khách hỏi trước đó rồi trả lời từ tri thức hiện tại; không lặp lại lời hẹn kiểm tra
 
-Nếu thiếu thông tin để chọn đúng sản phẩm hoặc biến thể, hỏi ngắn gọn đúng thông tin còn thiếu. Nếu kho tri thức thực sự chưa có câu trả lời, nói rõ chưa có thông tin để xác nhận, không bịa và không hứa sẽ check rồi tự quay lại khi không có tác vụ thực hiện
+Nếu thiếu thông tin để chọn đúng sản phẩm hoặc biến thể ở câu hỏi tiếp theo, ghi nhận nhu cầu và hỏi ngắn gọn đúng thông tin còn thiếu. Không đưa lời tự đánh giá của AI hoặc lỗi nhận diện ảnh ra cho khách như "em chưa xác nhận", "em chưa rõ", "em chưa biết", "chưa xác định" hay "không xác định được hình dáng bánh". Khi tri thức thiếu thông tin thuộc về doanh nghiệp, không bịa câu trả lời, không giả vờ đã chuyển cho nhân viên và không hứa sẽ tự kiểm tra rồi quay lại nếu không có tác vụ thực hiện
+
+Riêng khi khách hỏi có thể lấy, nhận hoặc giao hàng vào thời điểm chưa được xác nhận, hãy ghi nhận đúng ngày, giờ và cách nhận mà khách đã nói; chỉ hỏi thêm phần còn thiếu. Nếu khách đã nói giờ thì không hỏi lại. Trả lời tự nhiên, không mở đầu bằng "em chưa xác nhận", "chưa xác định" hoặc "em không biết". Ghi nhận yêu cầu không có nghĩa là đã xác nhận làm kịp, chốt đơn, chuyển cho nhân viên hay hứa sẽ tự kiểm tra rồi phản hồi.
 
 TIN NHẮN XÁC NHẬN ĐƠN THUẦN
 
@@ -543,7 +602,7 @@ URL trong tri thức là dữ liệu thực tế của doanh nghiệp. Khi bư�
 
 Không được bỏ link, đổi đường dẫn, tự tạo link hoặc chỉ nói chung chung rằng khách hãy vào website nếu tài liệu đã chỉ rõ URL cần gửi
 
-Chỉ gửi link phù hợp nhất với nhu cầu hiện tại và tuân thủ đúng điều kiện trong kịch bản. Ví dụ, nếu kịch bản quy định khách đã có mẫu thì không gửi link, phải giữ nguyên quy tắc đó
+Chỉ gửi link phù hợp nhất với nhu cầu hiện tại và tuân thủ đúng điều kiện trong kịch bản. Khi đang báo giá mẫu ảnh khách đã gửi, không tự kèm link. Nếu sau đó khách chủ động hỏi xem mẫu khác theo đối tượng hoặc dịp và kịch bản cho phép, đó là yêu cầu mới: gửi đúng link danh mục tương ứng, không lấy việc khách đã gửi ảnh trước đó làm lý do bỏ link
 
 Ưu tiên hiển thị URL thuần, không bọc URL trong cú pháp markdown và không thêm dấu câu liền ngay sau URL
 
@@ -582,13 +641,13 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
 
     contents.push({
       role: "user",
-      parts: [{ text: message || (imageObservation ? "[Khách gửi ảnh sản phẩm]" : "") }],
+      parts: [{ text: message }],
     });
 
     try {
       const selectedModel = AI_REPLY_MESSAGE_MODEL;
 
-      const response = imageQuote ? { text: imageQuote.quote } : await generateText(
+      const response = await generateText(
         selectedModel,
         contents,
         {
@@ -597,28 +656,39 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
         }
       );
 
-      if (!imageQuote) response.text = formatHumanLikeChatReply(response.text || "Dạ hiện em chưa có đủ thông tin để trả lời chính xác ạ");
-      const knowledgeText = ragContext?.contextText || "";
+      response.text = formatHumanLikeChatReply(response.text || "Dạ hiện em chưa có đủ thông tin để trả lời chính xác ạ");
+      const knowledgeText = [ragContext?.contextText, ragContext?.scenarioContextText].filter(Boolean).join("\n");
       const alreadyHasKnownLink = extractWebsiteCategoryLinks(knowledgeText).some(category => response.text.includes(category.url));
-      const categoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(
-        imageObservation ? `${message}\n${imageQuote?.name || imageObservation.description}` : message, history, knowledgeText, !!imageObservation);
+      const exactCategoryLink = alreadyHasKnownLink ? undefined : findRelevantWebsiteCategoryLink(
+        message, history, knowledgeText, false);
+      const hasCustomLinkRule = /\b(link|url|website)\b/.test(
+        normalizeWebsiteCategoryText(`${advancedRules} ${customerServiceScript}`));
+      const oneTimeCategoryRule = /\bchi gui link danh muc\b.{0,80}\b1 lan\b/.test(
+        normalizeWebsiteCategoryText(`${advancedRules} ${customerServiceScript}`));
+      const previousAssistantText = history.filter((item: any) => item?.sender !== "user")
+        .map((item: any) => String(item?.text || "")).join("\n");
+      const alreadySentCategoryLink = extractWebsiteCategoryLinks(knowledgeText)
+        .some((category) => previousAssistantText.includes(category.url));
+      const canSendCategoryLink = !alreadyHasKnownLink && !(oneTimeCategoryRule && alreadySentCategoryLink);
+      const contextualCategoryLink = canSendCategoryLink && !exactCategoryLink && hasCustomLinkRule
+        ? await selectCategoryLinkFromContext(selectedModel, message, history, knowledgeText,
+          `${advancedRules}\n${customerServiceScript}`, scenarioGuidance)
+        : undefined;
+      const categoryLink = canSendCategoryLink ? exactCategoryLink || contextualCategoryLink : undefined;
+      const requiredCategoryLink = contextualCategoryLink ||
+        (categoryLink && !hasCustomLinkRule && shouldKeepRequestedCategoryLink(message, scenarioGuidance)
+          ? categoryLink : undefined);
       response.text = appendWebsiteCategoryLink(response.text, categoryLink);
       const [checkedResponse] = await applyAdvancedRules(
         selectedModel,
-        [advancedRules, categoryLink ? `Tài liệu có URL danh mục phù hợp: ${categoryLink.name} — ${categoryLink.url}. Nếu rule/kịch bản cho phép gửi, giữ URL này và sửa lời nói mâu thuẫn như 'chưa có link'. Không tự đặt thêm điều kiện tuổi, chủ đề hoặc ngân sách nếu cấu hình không yêu cầu.` : "",
-          imageObservation ? "Khách vừa gửi ảnh: chỉ gửi bảng giá của đúng một nhóm phù hợp, không liệt kê các nhóm khác. Không suy đoán giá từ ảnh." : "",
-          imageQuote ? `Giữ nguyên đoạn báo giá đã cấu hình cho nhóm ${imageQuote.id}: ${imageQuote.quote}` : ""].filter(Boolean).join("\n"),
-        JSON.stringify({ message, recentHistory: history, imageObservation }),
+        [advancedRules, categoryLink ? `Tài liệu có URL danh mục phù hợp: ${categoryLink.name} — ${categoryLink.url}. Nếu rule/kịch bản cho phép gửi, giữ URL này và sửa lời nói mâu thuẫn như 'chưa có link'. Không tự đặt thêm điều kiện tuổi, chủ đề hoặc ngân sách nếu cấu hình không yêu cầu.` : ""].filter(Boolean).join("\n"),
+        JSON.stringify({ message, recentHistory: history }),
         [response.text],
         customerAddressStyle,
         scenarioGuidance,
-        ragContext?.contextText
+        ragContext?.contextText,
+        requiredCategoryLink
       );
-      // Old assistant turns may contain a previously dumped sheet. Never resend it.
-      if (imageQuote && imageQuoteRows.some(row => row.id !== imageQuote.id
-        && normalizeWebsiteCategoryText(checkedResponse).includes(normalizeWebsiteCategoryText(row.quote)))) {
-        throw new Error("Image quote review included an unrelated price group.");
-      }
       response.text = checkedResponse;
 
       return {
