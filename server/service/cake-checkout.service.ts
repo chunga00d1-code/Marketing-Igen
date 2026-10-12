@@ -10,12 +10,12 @@ import { buildVietQrImageUrl } from "./company-sepay.service";
 import { calculateCakeDeposit, isCakeSummaryConfirmation, isFutureCakePickup, matchesCakeType, normalizeCakeText, parseCakePriceCatalog, resolveCakeChoice, type CakeVariant } from "./cake-price-catalog";
 import { analyzeChatImages, downloadChatImage, type ChatImageObservation } from "./chat-image-context";
 import { cloudinaryService } from "./cloudinary.service";
-import { cakePaidMessage, quoteCakeShipping } from "./cake-shipping";
+import { cakePaidMessage } from "./cake-shipping";
 
 const money = (amount: number) => `${amount.toLocaleString("vi-VN")}đ`;
 const blankDetails: CakeCheckoutDetails = { groupId: "", size: "", height: null, budget: null, packQuantity: null, name: "",
   customerName: "", customerPhone: "", pickupLocation: "", pickupAt: "", inscription: "", decoration: "", quantity: 1, imageUrl: "", deliveryAddress: "",
-  cakeType: "", fulfillmentMethod: "", guestCount: 0 };
+  cakeType: "", fulfillmentMethod: "", deliveryBooking: "", guestCount: 0 };
 
 function shortAddress(value: unknown) {
   return typeof value === "string" && /^[\p{L} /-]{1,40}$/u.test(value.trim()) ? value.trim() : "";
@@ -68,7 +68,8 @@ export function cakeSummary(snapshot: CakeCheckoutSnapshot, customer = "anh ch�
     `Chữ trên bánh: ${d.inscription}`, `Trang trí: ${d.decoration || "Theo ảnh mẫu"}`,
     `${d.fulfillmentMethod === "delivery" ? "Giao đến" : "Nhận tại"}: ${d.fulfillmentMethod === "delivery" ? d.deliveryAddress : d.pickupLocation}`,
     `Ngày giờ nhận: ${d.pickupAt.replace("T", " ")} (giờ Việt Nam)`,
-    ...(d.fulfillmentMethod === "delivery" ? [`Tiền bánh: ${money(snapshot.subtotal ?? snapshot.total)}`, `Phí giao: ${money(snapshot.shippingFee || 0)}`] : []),
+    ...(d.fulfillmentMethod === "delivery" ? [d.deliveryBooking === "customer" ? "Khách tự book xe đến lấy bánh." : d.deliveryBooking === "shop" ? "Khách nhờ tiệm hỗ trợ book xe." : "Giao nhận: khách tự book xe hoặc nhờ tiệm hỗ trợ book.",
+      "Phí vận chuyển khách thanh toán riêng, không nằm trong tiền bánh hoặc tiền cọc."] : []),
     `Tổng tiền: ${money(snapshot.total)}`, `Cọc ${snapshot.depositPercent}% tiền bánh: ${money(snapshot.deposit)}`,
     `Còn lại trả khi nhận bánh: ${money(snapshot.balance)}`,
     `Nếu đúng rồi, ${customer} nhắn "xác nhận chốt đơn" để ${seller} gửi QR cọc nhé. Cần sửa chi tiết nào thì nhắn ${seller} trước khi xác nhận`,
@@ -79,6 +80,7 @@ export function cakePaymentRequest(orderId: string, code: string, snapshot: Cake
   return { text: [`${seller} gửi thông tin đặt cọc cho đơn ${orderId} nhé.`, `Tiền cọc: ${money(snapshot.deposit)} (${snapshot.depositPercent}% tiền bánh)`,
     `Ngân hàng: ${snapshot.bankId}`, `Số tài khoản: ${snapshot.accountNumber}`, `Chủ tài khoản: ${snapshot.accountName}`,
     `Nội dung chuyển khoản: ${code}`, `Còn lại ${money(snapshot.balance)} thanh toán khi nhận bánh.`,
+    ...(snapshot.details.fulfillmentMethod === "delivery" ? ["Phí vận chuyển khách thanh toán riêng, không tính vào khoản chuyển cho tiệm."] : []),
     `${seller} sẽ xác nhận khi nhận được tiền cọc; không cần gửi ảnh biên lai nhé`].join("\n"),
     imageUrl: buildVietQrImageUrl(snapshot.bankId, snapshot.accountNumber, snapshot.accountName, snapshot.deposit, code) };
 }
@@ -99,7 +101,7 @@ async function extractDetails(message: string, previous: CakeCheckoutDetails, tr
       "budget là giá một bánh/một set khách chọn, không phải tổng tiền hoặc tiền cọc. Nếu khách đổi size thì xóa budget cũ; nếu đổi budget thì xóa size/height cũ trừ khi khách yêu cầu đồng thời. Đổi nhóm thì xóa size/height/name cũ nếu khách chưa xác nhận lại.",
       "pickupAt dạng YYYY-MM-DDTHH:mm giờ Việt Nam, giải nghĩa ngày tương đối từ thời gian hiện tại. Thiếu ngày hoặc giờ thì để trống. pickupLocation là nơi khách xác nhận đến nhận, không tự chọn chi nhánh. deliveryAddress lưu địa chỉ khách muốn giao tới; giữ lại khi hỏi chính sách ship, không ghi địa chỉ đó thành chi nhánh nhận.",
       "inscription là chữ viết trên bánh, hoặc 'Không ghi chữ' khi khách nói không cần. decoration là yêu cầu trang trí. imageUrl giữ nguyên, không tự tạo URL.",
-      "fulfillmentMethod là delivery khi khách yêu cầu giao, pickup khi nói đến lấy, còn chưa chọn để trống; chỉ hỏi có ship không không phải chọn delivery. Giữ phương thức khách đã chọn khi hỏi xen ngang. Nếu pickupLocation đã là chi nhánh khách xác nhận nhận thì dùng pickup. Nếu đổi sang pickup, xóa deliveryAddress. Không đặt needsStaff chỉ vì khách hỏi hoặc chọn giao hàng: backend sẽ kiểm tra phí. needsStaff=true cho phụ thu/giảm giá ngoài bảng, nhiều tầng hoặc tạo hình đặc biệt không có trong danh mục (reviewReason=custom). Không tự chốt giá ngoài bảng.",
+      "fulfillmentMethod là delivery khi khách yêu cầu giao hoặc tự book xe, pickup khi nói tự đến lấy, chưa chọn để trống. Chỉ hỏi có ship không không phải chọn delivery. deliveryBooking=customer khi khách tự book, shop khi nhờ tiệm book hộ, còn chưa nói để trống. Giữ phương thức đã chọn khi hỏi xen ngang. pickupLocation chỉ là chi nhánh khách xác nhận. Đổi sang pickup thì xóa deliveryAddress và deliveryBooking. Phí ship do khách chịu và trả riêng, tuyệt đối không là điều kiện chốt tiền bánh/cọc. Không đặt needsStaff chỉ vì hỏi ship, thiếu mức phí hoặc xa ngoài khu vực tính phí. needsStaff=true cho phụ thu bánh/giảm giá ngoài bảng, nhiều tầng hoặc tạo hình đặc biệt không có trong danh mục (reviewReason=custom). Không tự chốt giá bánh ngoài bảng.",
       "switchToPickup=true chỉ khi tin mới nhất nói rõ khách chuyển sang tự đến lấy/nhận tại quán. Không suy ra từ lịch sử trước đó hoặc khi khách nói không thể đến lấy.",
       "customerAddress: cách gọi khách theo rule nếu có, nếu không chỉ dựa vào cách khách tự xưng trong hội thoại (anh/chị/cô/chú/bác), không suy từ tên, ảnh bánh hay người được tặng. sellerAddress: cách tự xưng theo rule; mặc định em. Chỉ trả cụm xưng hô ngắn, không thêm câu.",
       "needsStaff=true nếu đơn gồm nhiều mẫu/size/loại bánh khác nhau; quantity chỉ là số bánh cùng một mẫu, size và loại.",
@@ -118,7 +120,8 @@ async function extractDetails(message: string, previous: CakeCheckoutDetails, tr
   details.imageUrl = previous.imageUrl;
   details.fulfillmentMethod = raw.fulfillmentMethod === "delivery" || raw.fulfillmentMethod === "pickup" ? raw.fulfillmentMethod
     : details.pickupLocation ? "pickup" : "";
-  if (details.fulfillmentMethod === "pickup") details.deliveryAddress = "";
+  details.deliveryBooking = raw.deliveryBooking === "customer" || raw.deliveryBooking === "shop" ? raw.deliveryBooking : "";
+  if (details.fulfillmentMethod === "pickup") { details.deliveryAddress = ""; details.deliveryBooking = ""; }
   details.guestCount = Number.isSafeInteger(raw.guestCount) && Number(raw.guestCount) > 0 ? Number(raw.guestCount) : 0;
   return { details, wantsOrder: raw.wantsOrder === true, needsStaff: raw.needsStaff === true,
     adviceOnly: raw.adviceOnly === true, newOrder: raw.newOrder === true,
@@ -190,11 +193,11 @@ export const cakeCheckoutService = {
       draft.reviewReason === "delivery"
         ? missingDelivery.length
           ? `${customer} cho ${seller} xin thêm ${missingDelivery.join(" và ")} nhé.`
-          : `${seller} chưa xác định được phí giao đến địa chỉ này nên chưa báo tổng tiền chính xác được ạ.`
+          : "Phí vận chuyển mình thanh toán riêng nhé, khoản đặt cọc chỉ tính trên tiền bánh ạ."
         : `Phần yêu cầu thêm này chưa có giá cụ thể nên ${seller} chưa báo tổng tiền chính xác được ạ.`,
       { consultationContext: JSON.stringify({ checkoutState: draft.state, reviewReason: draft.reviewReason,
         details: draft.details, customerAddress: customer, sellerAddress: seller,
-        constraint: "Trả lời trực tiếp với vai trò người bán, theo chính sách giao hàng trong tri thức Page. Không nói chuyển shop, chuyển bộ phận, chờ nhân viên hay mô tả trạng thái nội bộ. Ghi nhận thông tin đã có; hỏi gộp địa chỉ giao và ngày giờ nếu còn thiếu. Nếu khách hỏi giờ làm sao, nêu bước tiếp theo cụ thể dựa trên thông tin còn thiếu. Nếu đã đủ thông tin nhưng tài liệu chưa có phí áp dụng, nói ngắn gọn chưa có mức phí cho địa chỉ này, không hỏi lặp hay hứa sẽ kiểm tra/gọi lại. Không tự cam kết có ship, phí ship, miễn phí hoặc lịch giao ngoài tài liệu. Không tạo QR, nhận cọc hoặc xác nhận hoàn tất đơn giao hàng. Không lặp cảnh báo chưa chuyển tiền và không ép khách tới quán." }) });
+        constraint: "Trả lời trực tiếp theo chính sách trong tri thức Page. Phí vận chuyển khách trả riêng, không cộng vào đơn bánh/cọc, không chặn chốt bánh vì thiếu phí ship. Khách có thể tự book hoặc nhờ tiệm hỗ trợ book, không nói đã book khi chưa có hành động thực tế. Không tự cam kết giá xe/khả năng giao xa. Không nói chuyển shop/bộ phận/nhân viên. Hỏi gộp phần thông tin thật sự còn thiếu, không hỏi lặp hoặc hứa kiểm tra/gọi lại. Không tự tạo QR hay nói đã nhận cọc; backend xử lý việc đó." }) });
     };
     draft.$where = { leaseToken: token };
     const heartbeat = setInterval(() => {
@@ -213,6 +216,20 @@ export const cakeCheckoutService = {
     let pendingUpdate: Awaited<ReturnType<typeof extractDetails>> | undefined;
     try {
       await assertCurrent();
+      // Old unpaid summaries included shipping. Require a new confirmation before reusing their QR.
+      if ((draft.snapshot?.shippingFee || 0) > 0) {
+        const oldOrder = draft.orderId ? await MessengerOrderModel.findOne({ orderId: draft.orderId, companyCode }) : null;
+        if (oldOrder?.depositStatus !== "verified") {
+          if (oldOrder) {
+            const canceled = await MessengerOrderModel.updateOne({ orderId: oldOrder.orderId, companyCode, depositStatus: { $ne: "verified" } },
+              { $set: { paymentRequestStatus: "superseded" } });
+            if (!canceled.modifiedCount) return reply("Đơn đang được đối soát, mình chưa chuyển thêm tiền nhé.");
+          }
+          draft.snapshot = undefined; draft.summarySentAt = undefined; draft.orderId = undefined;
+          draft.replyText = undefined; draft.lastMessageId = undefined; draft.state = "collecting"; draft.revision++;
+          await draft.save();
+        }
+      }
       if (draft.lastMessageId !== messageId && draft.state !== "payment_pending" && !input.imageUrls.length
         && /\b(?:don moi|banh khac|cai khac|mau khac|chon lai)\b|\b(?:hom nay|hnay)\b.*\bmuon dat banh\b/.test(normalizeCakeText(message))
         && !/\b(?:tron|tim|vuong|chu nhat)\b|\d+\s*(?:cm|k)\b/.test(normalizeCakeText(message))) {
@@ -302,7 +319,8 @@ export const cakeCheckoutService = {
             subtotal: snapshot.subtotal ?? snapshot.total, shippingFee: snapshot.shippingFee || 0, discountAmount: 0, totalAmount: snapshot.total,
             fulfillmentMethod: d.fulfillmentMethod || "pickup", fulfillmentLocation: d.fulfillmentMethod === "delivery" ? d.deliveryAddress : d.pickupLocation,
             deliveryAddress: d.fulfillmentMethod === "delivery" ? d.deliveryAddress : undefined, requestedFulfillmentTime: d.pickupAt,
-            customerNote: `${d.inscription}\n${d.decoration}`, selectedProductImageUrl: d.imageUrl,
+            customerNote: [d.inscription, d.decoration, d.fulfillmentMethod === "delivery"
+              ? `${d.deliveryBooking === "customer" ? "Khách tự book xe" : d.deliveryBooking === "shop" ? "Khách nhờ tiệm book hộ" : "Chưa chọn người book xe"}; phí vận chuyển khách trả riêng.` : ""].filter(Boolean).join("\n"), selectedProductImageUrl: d.imageUrl,
             status: "confirmed", confirmedAt: new Date(), depositRequired: true, depositPercent: snapshot.depositPercent,
             depositAmount: snapshot.deposit, depositStatus: "awaiting_receipt", paymentCode: `${snapshot.paymentPrefix}${orderId.replace(/-/g, "").slice(0, 12).toUpperCase()}`,
             checkoutFlow: "cake_deposit", paymentRequestStatus: "active", checkoutSnapshot: snapshot,
@@ -397,15 +415,8 @@ export const cakeCheckoutService = {
         if (!config.qrBankId || !config.qrAccountNumber || !config.qrAccountName) throw new Error("Shop chưa cấu hình đầy đủ tài khoản nhận cọc.");
         const percent = Number(config.depositPercent || 30);
         const amounts = calculateCakeDeposit(choices[0].price, d.quantity, percent);
-        const shipping = quoteCakeShipping(d, context.knowledge, amounts.total);
-        if (!shipping) {
-          draft.reviewReason = "delivery"; draft.replyText = undefined; await draft.save();
-          return consult();
-        }
-        const total = amounts.total + shipping.fee;
-        if (!Number.isSafeInteger(total)) throw new Error("Tổng tiền không hợp lệ.");
-        draft.snapshot = { details: d, variant: choices[0], ...amounts, subtotal: amounts.total, shippingFee: shipping.fee,
-          shippingEvidence: shipping.evidence, total, balance: total - amounts.deposit, depositPercent: percent,
+        draft.snapshot = { details: d, variant: choices[0], ...amounts, subtotal: amounts.total, shippingFee: 0,
+          depositPercent: percent,
           customerAddress: customer, sellerAddress: seller,
           bankId: config.qrBankId, accountNumber: config.qrAccountNumber, accountName: config.qrAccountName,
           paymentPrefix: config.paymentCodePrefix || "DH" };
