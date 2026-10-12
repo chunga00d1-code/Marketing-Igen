@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { buildVietQrImageUrl, companySepayService, verifySepaySignature } from "../company-sepay.service";
+import { buildVietQrImageUrl, companySepayService, sepayPaymentCode, verifySepaySignature } from "../company-sepay.service";
 import { CompanyModel } from "../../model/company.model";
 
 const rawBody = '{"id":92704,"transferAmount":500000}';
 const secret = "company-specific-secret";
 const nowMs = 1_800_000_000_000;
 const timestamp = String(Math.floor(nowMs / 1000));
+
+test("recovers SePay's truncated code from the exact transfer content without accepting conflicting codes", () => {
+  assert.equal(sepayPaymentCode({ code: "DH518", content: "DH518B845D70C1 Q2CXK8RZ/" }, "DH"), "DH518B845D70C1");
+  assert.equal(sepayPaymentCode({ code: "DH518B845D70C1", content: "DH518B845D70C1" }, "DH"), "DH518B845D70C1");
+  assert.equal(sepayPaymentCode({ code: "DH999", content: "DH518B845D70C1" }, "DH"), "");
+  assert.equal(sepayPaymentCode({ code: "DH518", content: "DH518B845D70C1 DH123456ABCDEF" }, "DH"), "");
+});
 
 test("frontend configuration is saved, returned without its secret and preserved on subsequent saves", async t => {
   const previousKey = process.env.SEPAY_CONFIG_ENCRYPTION_KEY;

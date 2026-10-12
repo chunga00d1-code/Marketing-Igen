@@ -77,9 +77,10 @@ export function cakeSummary(snapshot: CakeCheckoutSnapshot, customer = "anh ch�
   ].filter(Boolean).join("\n");
 }
 
-export function cakePaymentRequest(orderId: string, code: string, snapshot: CakeCheckoutSnapshot, seller = "em") {
+export function cakePaymentRequest(orderId: string, code: string, snapshot: CakeCheckoutSnapshot, seller = "em", includeAccountDetails = false) {
   return { text: [`${seller} gửi thông tin đặt cọc cho đơn ${orderId} nhé.`, `Tiền cọc: ${money(snapshot.deposit)} (${snapshot.depositPercent}% tiền bánh)`,
-    `Ngân hàng: ${snapshot.bankId}`, `Số tài khoản: ${snapshot.accountNumber}`, `Chủ tài khoản: ${snapshot.accountName}`,
+    ...(includeAccountDetails ? [`Ngân hàng: ${snapshot.bankId}`, `Số tài khoản: ${snapshot.accountNumber}`, `Chủ tài khoản: ${snapshot.accountName}`]
+      : ["Quét QR bên dưới để chuyển cọc; số tiền và nội dung chuyển khoản đã điền sẵn nhé."]),
     `Nội dung chuyển khoản: ${code}`, `Còn lại ${money(snapshot.balance)} thanh toán khi nhận bánh.`,
     ...(snapshot.details.fulfillmentMethod === "delivery" ? ["Phí vận chuyển khách thanh toán riêng, không tính vào khoản chuyển cho tiệm."] : []),
     `${seller} sẽ xác nhận khi nhận được tiền cọc; không cần gửi ảnh biên lai nhé`].join("\n"),
@@ -351,8 +352,9 @@ export const cakeCheckoutService = {
               consultationContext: JSON.stringify({ details: draft.details, customerAddress: customer, sellerAddress: seller,
                 constraint: "Đơn đang chờ cọc và đã tạo yêu cầu thanh toán. Trả lời ngắn theo tin mới của khách; nếu chỉ đồng ý thì xác nhận ngắn. Không lặp lại thông tin ngân hàng, số tài khoản, mã chuyển khoản, bảng tổng hợp hoặc QR khi khách không yêu cầu gửi lại. Nếu khách nói đã chuyển thì chỉ nói sẽ xác nhận sau khi đối soát, không tự nhận đã nhận tiền." }),
             });
-            const payment = cakePaymentRequest(order.orderId, order.paymentCode, draft.snapshot, seller);
-            return reply(payment.text, { qrUrl: payment.imageUrl });
+            const asksAccount = /\b(?:so tai khoan|stk|thong tin chuyen khoan)\b/.test(paymentText);
+            const payment = cakePaymentRequest(order.orderId, order.paymentCode, draft.snapshot, seller, asksAccount);
+            return reply(payment.text, asksAccount ? {} : { qrUrl: payment.imageUrl });
           }
         }
       }

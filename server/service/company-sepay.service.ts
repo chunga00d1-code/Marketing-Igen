@@ -136,10 +136,17 @@ export function buildVietQrImageUrl(bankId: string, accountNumber: string, accou
 
 export function sepayPaymentCode(payload: SepayPayload, prefix: string) {
   const supplied = String(payload.code || "").trim().toUpperCase();
-  if (supplied) return supplied;
   if (!/^[A-Z0-9]{2,5}$/.test(prefix)) return "";
   const matches = [...String(payload.content || "").toUpperCase().matchAll(new RegExp(`(?:^|[^A-Z0-9])(${prefix}[A-F0-9]{12})(?=$|[^A-Z0-9])`, "g"))];
-  return matches.length === 1 ? matches[0][1] : "";
+  const codes = [...new Set(matches.map(match => match[1]))];
+  if (codes.length > 1) return "";
+  if (codes.length === 1) {
+    // SePay may extract only the leading numeric part (DH518) from our
+    // hexadecimal order code (DH518B845D70C1). Recover only an exact full
+    // code from content and reject conflicting supplied codes.
+    return !supplied || codes[0].startsWith(supplied) ? codes[0] : "";
+  }
+  return supplied;
 }
 
 async function notifyCustomerPayment(orderId: string) {
@@ -314,12 +321,13 @@ export const companySepayService = {
       } catch (error: unknown) {
         if ((error as { code?: number })?.code !== 11000) throw error;
         transaction = await SepayWebhookTransactionModel.findOne({ companyCode: company.code, transactionId });
-        if (!transaction || transaction.status !== "received") {
+        if (!transaction || !["received", "order_not_found"].includes(transaction.status)) {
           console.log("[SePay][DUPLICATE]", JSON.stringify({ companyCode: company.code, transactionId: transactionId.slice(0, 100) }));
           return { duplicate: true };
         }
         // Resume an interrupted request using the authenticated payload originally stored.
         payload = transaction.rawPayload as SepayPayload;
+        transaction.reason = "";
       }
 
       if (String(payload.transferType || "").toLowerCase() !== "in") {
