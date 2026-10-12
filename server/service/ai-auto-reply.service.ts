@@ -12,6 +12,7 @@ import { aiKnowledgeService } from "./ai-knowledge.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { cakeCheckoutService, preservesCakeReplyFacts, splitCakeReply } from "./cake-checkout.service";
+import { cakeCustomerMemory } from "./cake-customer-memory";
 import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import { analyzeChatImages, isImagePriceInquiry, splitHistoryAndPendingInboundMessages } from "./chat-image-context";
 
@@ -816,6 +817,18 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
+            const customerSession = channel === "facebook" && await cakeCheckoutService.isEnabled(resolvedPlatformId)
+              ? await cakeCustomerMemory.prepare({ companyCode, pageId: resolvedPlatformId, conversationId }, latestDbMessage.messageId) : undefined;
+            if (customerSession) {
+              const sessionMessages = await FBMessageModel.find({ conversationId, consultationSessionId: customerSession.sessionId })
+                .sort({ timestamp: -1 }).limit(60).lean();
+              const grouped = splitHistoryAndPendingInboundMessages(sessionMessages.reverse());
+              groupedCustomerMessage = grouped.combinedText || latestDbMessage.text || normalizedIncomingText;
+              pendingImageUrls = grouped.imageUrls;
+              groupedMessageCount = grouped.pendingMessageCount || 1;
+              history = grouped.historyMessages.map(m => ({ sender: m.direction === "inbound" ? "user" : "model", text: m.text || "" }));
+              if (customerSession.ask) { history = []; pendingImageUrls = []; }
+            }
             const imageObservation = await analyzeChatImages(pendingImageUrls, groupedCustomerMessage);
             if (imageObservation) console.log(`[AI AutoReply] Image analysis: count=${pendingImageUrls.length}, status=${imageObservation.status}`);
             const retrievalMessage = imageObservation?.status === "ready"
@@ -864,6 +877,7 @@ export const aiAutoReplyService = {
               companyCode, pageId: resolvedPlatformId, conversationId, messageId: latestDbMessage?.messageId || incomingMessageId,
               message: groupedCustomerMessage, imageUrls: pendingImageUrls, observation: imageObservation,
               customerAddressStyle: aiConfig.customerAddressStyle,
+              session: customerSession,
               businessContext: [aiConfig.advancedInstructions, aiConfig.customerServiceScript,
                 effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
             }) : undefined;
@@ -951,7 +965,7 @@ export const aiAutoReplyService = {
                 } else if (channel === "tiktok") {
                   await tiktokMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai");
                 } else {
-                  await fbMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai", facebookTokenContext);
+                  await fbMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai", facebookTokenContext, customerSession?.sessionId);
                 }
 
                 if (index < messagesToSend.length - 1) {

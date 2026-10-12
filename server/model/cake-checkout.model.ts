@@ -19,6 +19,7 @@ export interface CakeCheckoutSnapshot {
 }
 export interface CakeCheckout {
   companyCode: string; pageId: string; conversationId: string;
+  sessionId?: string;
   state: "collecting" | "awaiting_confirmation" | "payment_pending" | "manual_review";
   revision: number; details?: CakeCheckoutDetails; snapshot?: CakeCheckoutSnapshot;
   summaryText?: string; summarySentAt?: Date; orderId?: string;
@@ -33,6 +34,7 @@ const schema = new Schema<CakeCheckout>({
   state: { type: String, enum: ["collecting", "awaiting_confirmation", "payment_pending", "manual_review"], default: "collecting" },
   revision: { type: Number, default: 0 }, details: Schema.Types.Mixed, snapshot: Schema.Types.Mixed,
   summaryText: String, summarySentAt: Date, orderId: String, lastMessageId: String, replyText: String,
+  sessionId: String,
   leaseUntil: Date, leaseToken: String,
   imageObservation: Schema.Types.Mixed,
   customerAddress: String, sellerAddress: String, reviewReason: String,

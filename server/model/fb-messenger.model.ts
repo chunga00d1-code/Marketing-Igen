@@ -46,6 +46,7 @@ export interface IFBMessage extends Document {
     url: string;
   }>;
   messageId: string;      // ID tin nhắn của Facebook (mid...)
+  consultationSessionId?: string;
   timestamp: Date;
   status: "sent" | "delivered" | "read";
   createdAt: Date;
@@ -114,6 +115,7 @@ const FBMessageSchema: Schema = new Schema(
       }
     ],
     messageId: { type: String, required: true, unique: true },
+    consultationSessionId: { type: String },
     timestamp: { type: Date, required: true },
     status: { type: String, enum: ["sent", "delivered", "read"], default: "sent" },
   },
@@ -121,6 +123,7 @@ const FBMessageSchema: Schema = new Schema(
 );
 
 FBMessageSchema.index({ conversationId: 1, timestamp: -1 });
+FBMessageSchema.index({ conversationId: 1, consultationSessionId: 1, timestamp: -1 });
 
 export const FBConversationModel = mongoose.model<IFBConversation>("FBConversation", FBConversationSchema);
 export const FBMessageModel = mongoose.model<IFBMessage>("FBMessage", FBMessageSchema);
