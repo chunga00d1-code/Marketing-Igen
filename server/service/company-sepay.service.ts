@@ -5,6 +5,7 @@ import { SepayWebhookTransactionModel } from "../model/sepay-webhook-transaction
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
 import { companyTelegramOrderService } from "./company-telegram-order.service";
+import { cakePaidMessage } from "./cake-shipping";
 
 export interface SepayConfigInput {
   enabled?: boolean;
@@ -144,7 +145,7 @@ async function notifyCustomerPayment(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order?.sepayVerifiedAt || order.sepayCustomerNotifiedAt) return;
   const amount = Number(order.sepayTransferAmount || 0).toLocaleString("vi-VN");
-  const message = [
+  const message = order.checkoutFlow === "cake_deposit" && order.checkoutSnapshot ? cakePaidMessage(order.checkoutSnapshot) : [
     `Shop đã nhận được khoản đặt cọc ${amount} đ cho đơn hàng ${order.orderId}.`,
     order.paymentCode ? `Mã thanh toán: ${order.paymentCode}.` : "",
     "Giao dịch đã được xác nhận thành công. Shop sẽ tiếp tục xử lý đơn hàng và thông báo khi có cập nhật mới. Cảm ơn bạn!",
@@ -152,7 +153,9 @@ async function notifyCustomerPayment(orderId: string) {
   try {
     // Dynamic import avoids the Messenger -> order -> SePay service cycle during module initialization.
     const { fbMessengerService } = await import("./fb-messenger.service");
-    await fbMessengerService.sendReply(order.pageId, order.conversationId.toString(), message, "ai",
+    const parts = order.checkoutFlow === "cake_deposit"
+      ? (await import("./cake-checkout.service")).splitCakeReply(message) : [message];
+    for (const part of parts) await fbMessengerService.sendReply(order.pageId, order.conversationId.toString(), part, "ai",
       order.checkoutFlow === "cake_deposit" ? { companyCode: order.companyCode, source: "company" } : undefined);
     await MessengerOrderModel.updateOne(
       { _id: order._id, sepayCustomerNotifiedAt: { $exists: false } },

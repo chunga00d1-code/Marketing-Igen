@@ -6,7 +6,7 @@ import { SocialIntegrationModel } from "../../model/social-integration.model";
 import { FBConversationModel, FBMessageModel } from "../../model/fb-messenger.model";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../../model/ai-knowledge.model";
 import { MessengerOrderModel } from "../../model/messenger-order.model";
-import { cakeCheckoutService, splitCakeReply } from "../cake-checkout.service";
+import { cakeCheckoutService, preservesCakeReplyFacts, splitCakeReply } from "../cake-checkout.service";
 import { cloudinaryService } from "../cloudinary.service";
 import { createCipheriv, createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -16,6 +16,7 @@ import { SepayWebhookTransactionModel } from "../../model/sepay-webhook-transact
 import { companySepayService } from "../company-sepay.service";
 import { processCakeDeposits } from "../cake-deposit-worker";
 import { googleOrderSheetService, type SheetOrder } from "../google-order-sheet.service";
+import { cakePaidMessage } from "../cake-shipping";
 
 function query<T>(value: T) {
   const chain = { lean: async () => value, select: () => chain, sort: () => chain, limit: () => chain };
@@ -23,7 +24,8 @@ function query<T>(value: T) {
 }
 const details = { groupId: "TIM", name: "Bánh trái tim", size: "18", height: 10, budget: 0, packQuantity: 0,
   customerName: "Mai", customerPhone: "0901234567", pickupLocation: "Chi nhánh A", pickupAt: "2099-10-20T17:30",
-  inscription: "Mừng sinh nhật", decoration: "Kem trắng", quantity: 1, imageUrl: "", wantsOrder: true, needsStaff: false };
+  inscription: "Mừng sinh nhật", decoration: "Kem trắng", quantity: 1, imageUrl: "", wantsOrder: true, needsStaff: false,
+  cakeType: "Kem tươi", fulfillmentMethod: "pickup", adviceOnly: false };
 
 function setup(t: TestContext) {
   const config = { enabled: true, depositEnabled: true, depositPercent: 30, qrBankId: "970422",
@@ -136,7 +138,131 @@ test("requests outside the price sheet remain in staff review on a subsequent co
   const result = await s.run("xác nhận chốt đơn", "m2");
   assert.equal(result?.qrUrl, undefined);
   assert.equal(s.state.createdOrders, 0);
-  assert.equal(s.state.aiCalls, 1);
+  assert.equal(s.state.aiCalls, 2, "Re-read the customer's follow-up instead of locking the conversation");
+  assert.ok(result?.consultationContext);
+});
+
+test("contact details are requested together and known fields are not requested again", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { customerName: "", customerPhone: "", customerAddress: "anh", sellerAddress: "em" });
+  const first = await s.run("Anh lấy bánh này", "m1");
+  assert.match(first!.text, /tên người nhận và số điện thoại/);
+  assert.ok(first?.wordingSource && first.consultationContext, "Use conversational wording for collection");
+  s.state.output.customerName = "Khách kiểm thử";
+  const next = await s.run("Tên anh là Khách kiểm thử", "m2");
+  assert.match(next!.text, /số điện thoại/);
+  assert.doesNotMatch(next!.text, /tên người nhận|anh chị/);
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("shipping follow-ups preserve the address and continue consultation without a false handoff", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { needsStaff: false, reviewReason: "delivery", fulfillmentMethod: "delivery", deliveryAddress: "Số 1 Lạc Long Quân", pickupLocation: "", pickupAt: "" });
+  const first = await s.run("Shop có ship không, anh bị đau chân. Số 1 Lạc Long Quân nhé", "m1");
+  assert.match(first!.text, /ngày và giờ/);
+  assert.doesNotMatch(first!.text, /xin.*địa chỉ|chuyển shop|chưa chuyển tiền/);
+  const next = await s.run("Giờ làm sao?", "m2");
+  assert.ok(next?.consultationContext);
+  assert.equal(JSON.parse(next!.consultationContext!).details.deliveryAddress, "Số 1 Lạc Long Quân");
+  assert.equal(next?.qrUrl, undefined);
+  assert.equal(s.state.createdOrders, 0, "Delivery checkout is still unsupported; do not pretend it is complete");
+});
+
+test("known pickup details and inscription produce a summary without more collection questions", async t => {
+  const s = setup(t);
+  const result = await s.run("Mai, 0901234567, lấy Chi nhánh A ngày 20/10/2099 lúc 17:30, ghi Mừng sinh nhật, kem trắng", "m1");
+  assert.equal(result?.isSummary, true);
+  assert.match(result!.text, /Mừng sinh nhật/);
+  assert.doesNotMatch(result!.text, /xin tên|xin số điện thoại|muốn nhận bánh ngày nào/);
+  assert.equal(result?.wordingSource, undefined, "Keep payment summary outside free wording");
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("wording guard rejects changed prices, missing sizes and extra numbers", () => {
+  const source = "Bánh size 14cm, cao 7cm — 180.000đ";
+  assert.equal(preservesCakeReplyFacts(source, "Dạ size 14cm, cao 7cm giá 180.000đ ạ."), true);
+  assert.equal(preservesCakeReplyFacts(source, "Dạ size 14cm, cao 7cm giá 100.000đ ạ."), false);
+  assert.equal(preservesCakeReplyFacts(source, "Dạ giá 180.000đ ạ."), false);
+  assert.equal(preservesCakeReplyFacts(source, `${source}, ship 30.000đ`), false);
+  assert.equal(preservesCakeReplyFacts("14cm 180.000đ; 18cm 270.000đ", "14cm 270.000đ; 18cm 180.000đ"), false);
+});
+
+test("delivery summary freezes fee separately, deposits cake price only and replaces QR after changes", async t => {
+  const s = setup(t);
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text:
+    "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 18cm cao 10cm giá 330k.\n"
+    + "Dòng 3: Khu vực giao: phường thử A | Phí giao (VND): 30000\n"
+    + "Dòng 4: Khu vực giao: phường thử B | Phí giao (VND): 50000" }]));
+  Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryAddress: "1 Đường thử, phường thử A", pickupLocation: "" });
+  const summary = await s.run("Giao đến phường thử A nhé", "m1");
+  assert.equal(summary?.isSummary, true);
+  assert.equal(s.draft.snapshot?.subtotal, 330000);
+  assert.equal(s.draft.snapshot?.shippingFee, 30000);
+  assert.equal(s.draft.snapshot?.total, 360000);
+  assert.equal(s.draft.snapshot?.deposit, 99000);
+  assert.equal(s.draft.snapshot?.balance, 261000);
+  await cakeCheckoutService.markDelivered(summary!);
+  const qr = await s.run("xác nhận chốt đơn", "m2");
+  assert.equal(new URL(qr!.qrUrl!).searchParams.get("amount"), "99000");
+  assert.equal(s.getOrder()?.fulfillmentMethod, "delivery");
+  assert.equal(s.getOrder()?.items[0].lineTotal, 330000);
+  assert.equal(s.getOrder()?.shippingFee, 30000);
+  Object.assign(s.state.output, { deliveryAddress: "2 Đường thử, phường thử B" });
+  const revised = await s.run("Đổi sang địa chỉ phường thử B", "m3");
+  assert.equal(s.getOrder()?.paymentRequestStatus, "superseded");
+  assert.equal(revised?.qrUrl, undefined);
+  assert.equal(s.draft.summarySentAt, undefined);
+  assert.equal(s.draft.snapshot?.total, 380000);
+});
+
+test("unknown shipping fee never becomes a zero-fee order", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryAddress: "1 Đường thử, phường ngoài vùng", pickupLocation: "" });
+  const response = await s.run("Giao tận nơi nhé", "m1");
+  assert.ok(response?.consultationContext);
+  assert.equal(response?.isSummary, undefined);
+  assert.equal(s.draft.snapshot, undefined);
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("a shipping policy question keeps the unpaid QR, but changing the phone invalidates it", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "m1");
+  await cakeCheckoutService.markDelivered(summary!);
+  await s.run("xác nhận chốt đơn", "m2");
+  s.state.output.adviceOnly = true;
+  const advice = await s.run("Shop có ship không?", "m3");
+  assert.ok(advice?.consultationContext);
+  assert.equal(s.getOrder()?.paymentRequestStatus, "active");
+  assert.equal(s.draft.state, "payment_pending");
+  s.state.output.adviceOnly = false;
+  s.state.output.customerPhone = "0900000001";
+  const amended = await s.run("0900000001", "m4");
+  assert.equal(s.getOrder()?.paymentRequestStatus, "superseded");
+  assert.equal(amended?.isSummary, true);
+  assert.equal(amended?.qrUrl, undefined);
+});
+
+test("material selection is mandatory and mousse never uses ordinary cake prices", async t => {
+  const s = setup(t);
+  s.state.output.cakeType = "";
+  const ask = await s.run("Theo ảnh này nhé", "m1");
+  assert.match(ask!.text, /chất bánh/);
+  assert.equal(ask?.isSummary, undefined);
+  s.state.output.cakeType = "Mousse";
+  const mismatch = await s.run("Lấy mousse nhé", "m2");
+  assert.equal(mismatch?.isSummary, undefined);
+  assert.doesNotMatch(mismatch!.text, /330.000/);
+});
+
+test("advice questions remain consultation and do not confirm a suggested size", async t => {
+  const s = setup(t);
+  s.state.output.adviceOnly = true;
+  const result = await s.run("4 đến 5 người thì chọn size nào?", "m1");
+  assert.ok(result?.consultationContext);
+  assert.equal(result?.wordingSource, undefined);
+  assert.equal(result?.isSummary, undefined);
+  assert.equal(s.state.createdOrders, 0);
 });
 
 test("newer inbound messages prevent saving an obsolete summary", async t => {
@@ -183,13 +309,13 @@ test("long summaries fit Messenger while retaining all order information", () =>
   assert.equal(parts.join("").replace(/\n/g, ""), `${"a".repeat(2500)}Tổng tiền: 330.000đCọc: 99.000đ`);
 });
 
-test("complete buyer workflow: incremental details, real Excel price, confirmation, signed deposit and Sheet handoff", async t => {
+for (const delivery of [false, true]) test(`complete buyer workflow (${delivery ? "delivery" : "pickup"}): real Excel price, confirmation, signed deposit and Sheet handoff`, async t => {
   const s = setup(t);
   t.mock.method(Date, "now", () => Date.UTC(2026, 9, 12, 3));
   const workbook = XLSX.read(readFileSync("bao-gia-banh-chuan-hoa.xlsx"), { type: "buffer" });
   const priceText = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets.Gia_chot_don)
     .map((row, index) => `Dòng ${index + 2}: ${Object.entries(row).map(([key, value]) => `${key}: ${value}`).join(" | ")}`).join("\n");
-  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text: priceText }]));
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text: `${priceText}\nDòng 99: Khu vực giao: phường thử A | Phí giao (VND): 30000` }]));
   Object.assign(s.state.output, { groupId: "TRAI_TIM", name: "", size: "", height: 0, budget: 0,
     customerName: "", customerPhone: "", pickupLocation: "", pickupAt: "", inscription: "", decoration: "" });
   const transcript: { customer: string; reply: string }[] = [];
@@ -206,7 +332,10 @@ test("complete buyer workflow: incremental details, real Excel price, confirmati
   assert.match(chosen.text, /tên người nhận/);
   await turn("Mình tên Mai", { customerName: "Mai" });
   await turn("Số điện thoại 0901234567", { customerPhone: "0901234567" });
-  await turn("Mình lấy ở Chi nhánh A", { pickupLocation: "Chi nhánh A" });
+  if (delivery) {
+    Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryAddress: "1 Đường thử, phường thử A" });
+    await turn("Giao đến số 1 Đường thử, phường thử A nhé");
+  } else await turn("Mình lấy ở Chi nhánh A", { pickupLocation: "Chi nhánh A" });
   await turn("17 giờ 30 ngày 14/10/2026", { pickupAt: "2026-10-14T17:30" });
   await turn("Ghi chữ Chúc mừng sinh nhật mẹ", { inscription: "Chúc mừng sinh nhật mẹ" });
   const summary = await turn("Trang trí kem trắng, hoa vàng nhé", { decoration: "Kem trắng, hoa vàng" });
@@ -278,12 +407,19 @@ test("complete buyer workflow: incremental details, real Excel price, confirmati
   assert.equal(order.status, "synced"); assert.ok(order.depositSyncCompletedAt);
   assert.equal(savedRows.length, 1); assert.equal(notificationCount, 1);
   assert.equal(savedRows[0].customerName, "Mai");
-  assert.equal(savedRows[0].totalAmount, 330000);
+  assert.equal(savedRows[0].totalAmount, delivery ? 360000 : 330000);
   assert.equal(savedRows[0].depositAmount, 99000);
-  assert.equal(savedRows[0].remainingBalance, 231000);
+  assert.equal(savedRows[0].remainingBalance, delivery ? 261000 : 231000);
+  assert.equal(savedRows[0].shippingFee, delivery ? 30000 : 0);
+  assert.equal(savedRows[0].fulfillmentMethod, delivery ? "delivery" : "pickup");
   assert.equal(savedRows[0].items[0].unitPrice, 330000);
   assert.match(savedRows[0].items[0].variantSummary!, /18cm cao 10cm/);
   assert.equal(savedRows[0].paymentStatus, "Đã thanh toán cọc");
+  const paidMessage = cakePaidMessage(order.checkoutSnapshot!);
+  assert.match(paidMessage, /99.000đ tiền cọc/);
+  assert.match(paidMessage, /Chúc mừng sinh nhật mẹ/);
+  assert.match(paidMessage, delivery ? /Giao đến: 1 Đường thử/ : /Nhận tại: Chi nhánh A/);
+  assert.doesNotMatch(paidMessage, /đã gửi bếp|đã gọi ship|xác nhận chốt đơn/);
   assert.equal((await companySepayService.processWebhook("fixture-webhook", body, signature, timestamp, payload)).duplicate, true);
   await processCakeDeposits();
   assert.equal(savedRows.length, 1); assert.equal(notificationCount, 1);

@@ -77,6 +77,16 @@ export function parseCakePriceCatalog(text: string): CakeVariant[] {
 }
 
 export type CakeChoice = { groupId: string; size: string; height: number | null; budget: number | null; packQuantity: number | null; name: string };
+export function matchesCakeType(variant: CakeVariant, cakeType: string) {
+  const name = normalizeCakeText(variant.name);
+  const type = normalizeCakeText(cakeType);
+  if (!type) return true;
+  for (const keyword of ["mousse", "tiramisu", "trung muoi", "su singapore"]) {
+    if (type.includes(keyword)) return name.includes(keyword);
+    if (name.includes(keyword)) return false;
+  }
+  return /kem tuoi|kem|tron thuong/.test(type) ? !/set|coc/.test(name) : name.includes(type);
+}
 export function resolveCakeChoice(catalog: CakeVariant[], choice: CakeChoice) {
   if (!choice.groupId) return [];
   return catalog.filter(item => item.groupId === choice.groupId
