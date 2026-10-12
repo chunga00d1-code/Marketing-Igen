@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { MessengerOrderModel } from "../model/messenger-order.model";
 import { messengerOrderService } from "./messenger-order.service";
 import { companySepayService } from "./company-sepay.service";
+import { cakeCustomerMemory } from "./cake-customer-memory";
 
 let running = false;
 let timer: NodeJS.Timeout | undefined;
@@ -30,6 +31,7 @@ export async function processCakeDeposits() {
       heartbeat.unref();
       try {
         // Notify independently so a Sheet outage does not hide a successful deposit.
+        await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
         await companySepayService.notifyCustomerPayment(order.orderId);
         const synced = await messengerOrderService.syncConfirmedDepositOrder(order.orderId);
         if (synced?.status !== "synced") throw new Error(synced?.lastSyncError || "Sheet chưa sẵn sàng để nhận đơn cọc.");

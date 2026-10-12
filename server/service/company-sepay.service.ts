@@ -6,6 +6,7 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
 import { companyTelegramOrderService } from "./company-telegram-order.service";
 import { cakePaidMessage } from "./cake-shipping";
+import { CakeConsultationSessionModel } from "../model/cake-customer-memory.model";
 
 export interface SepayConfigInput {
   enabled?: boolean;
@@ -155,8 +156,12 @@ async function notifyCustomerPayment(orderId: string) {
     const { fbMessengerService } = await import("./fb-messenger.service");
     const parts = order.checkoutFlow === "cake_deposit"
       ? (await import("./cake-checkout.service")).splitCakeReply(message) : [message];
+    const session = order.checkoutFlow === "cake_deposit" ? await CakeConsultationSessionModel.findOne({
+      companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString(), orderId: order.orderId,
+    }).lean() : undefined;
     for (const part of parts) await fbMessengerService.sendReply(order.pageId, order.conversationId.toString(), part, "ai",
-      order.checkoutFlow === "cake_deposit" ? { companyCode: order.companyCode, source: "company" } : undefined);
+      order.checkoutFlow === "cake_deposit" ? { companyCode: order.companyCode, source: "company" } : undefined,
+      order.checkoutFlow === "cake_deposit" ? session?.sessionId || `order-${order.orderId}` : undefined);
     await MessengerOrderModel.updateOne(
       { _id: order._id, sepayCustomerNotifiedAt: { $exists: false } },
       { $set: { sepayCustomerNotifiedAt: new Date(), sepayCustomerNotificationError: "" } },

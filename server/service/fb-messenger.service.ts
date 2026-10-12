@@ -832,6 +832,7 @@ export const fbMessengerService = {
     text: string,
     senderType: "human" | "ai" = "human",
     tokenContext?: FacebookTokenContext,
+    consultationSessionId?: string,
   ) {
     const conversation = await FBConversationModel.findOne({ _id: conversationId, pageId });
     if (!conversation) {
@@ -939,6 +940,7 @@ export const fbMessengerService = {
       const newMsg = await FBMessageModel.findOneAndUpdate(
         { messageId: outboundMessageId },
         {
+          ...(consultationSessionId ? { $set: { consultationSessionId } } : {}),
           $setOnInsert: {
             conversationId: conversation._id,
             senderId: resolvedPageId,

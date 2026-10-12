@@ -6,6 +6,7 @@ import { MessengerOrderModel } from "../../model/messenger-order.model";
 import { messengerOrderService } from "../messenger-order.service";
 import { companySepayService } from "../company-sepay.service";
 import { processCakeDeposits } from "../cake-deposit-worker";
+import { cakeCustomerMemory } from "../cake-customer-memory";
 
 test("Sheet retry repairs missing item rows without appending a second order", async t => {
   const keys = ["GOOGLE_SHEETS_PROJECT_ID", "GOOGLE_SHEETS_SERVICE_ACCOUNT_EMAIL", "GOOGLE_SHEETS_PRIVATE_KEY"];
@@ -48,7 +49,8 @@ test("Sheet retry repairs missing item rows without appending a second order", a
 });
 
 test("deposit worker persists retries and resumes without repeating customer confirmation", async t => {
-  const order = new MessengerOrderModel({ orderId: "cake-1", companyCode: "TEST", depositStatus: "verified", checkoutFlow: "cake_deposit" });
+  t.mock.method(cakeCustomerMemory, "refreshPurchases", async () => undefined);
+  const order = new MessengerOrderModel({ orderId: "cake-1", companyCode: "TEST", conversationId: "507f1f77bcf86cd799439011", depositStatus: "verified", checkoutFlow: "cake_deposit" });
   let available = true;
   let notifications = 0;
   let syncs = 0;

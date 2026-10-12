@@ -17,6 +17,8 @@ import { companySepayService } from "../company-sepay.service";
 import { processCakeDeposits } from "../cake-deposit-worker";
 import { googleOrderSheetService, type SheetOrder } from "../google-order-sheet.service";
 import { cakePaidMessage } from "../cake-shipping";
+import { cakeCustomerMemory } from "../cake-customer-memory";
+import { CakeConsultationSessionModel } from "../../model/cake-customer-memory.model";
 
 function query<T>(value: T) {
   const chain = { lean: async () => value, select: () => chain, sort: () => chain, limit: () => chain };
@@ -28,6 +30,7 @@ const details = { groupId: "TIM", name: "Bánh trái tim", size: "18", height: 1
   cakeType: "Kem tươi", fulfillmentMethod: "pickup", adviceOnly: false };
 
 function setup(t: TestContext) {
+  t.mock.method(cakeCustomerMemory, "refreshPurchases", async () => undefined);
   const config = { enabled: true, depositEnabled: true, depositPercent: 30, qrBankId: "970422",
     qrAccountNumber: "123456789", qrAccountName: "SHOP TEST", accountNumbers: ["123456789"], paymentCodePrefix: "DH" };
   const draft = new CakeCheckoutModel({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV" });
@@ -231,6 +234,17 @@ test("missing shipping rates do not block cake summary or deposit QR", async t =
   assert.match(payment!.text, /Phí vận chuyển khách thanh toán riêng/);
 });
 
+test("an unpaid QR with an elapsed pickup date requires fresh confirmation", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "m1");
+  await cakeCheckoutService.markDelivered(summary!);
+  await s.run("xác nhận chốt đơn", "m2");
+  s.draft.snapshot!.details.pickupAt = "2020-01-01T10:00";
+  const refreshed = await s.run("gửi lại mã cọc", "m3");
+  assert.equal(s.getOrder()?.paymentRequestStatus, "superseded");
+  assert.equal(refreshed?.qrUrl, undefined);
+});
+
 test("old unpaid QR with shipping requires a fresh cake-only summary", async t => {
   const s = setup(t);
   const summary = await s.run("đặt bánh", "m1");
@@ -288,16 +302,61 @@ test("a shipping policy question keeps the unpaid QR, but changing the phone inv
   assert.equal(amended?.qrUrl, undefined);
 });
 
-test("material selection is mandatory and mousse never uses ordinary cake prices", async t => {
+test("optional cake type does not block checkout and mousse never uses ordinary cake prices", async t => {
   const s = setup(t);
   s.state.output.cakeType = "";
   const ask = await s.run("Theo ảnh này nhé", "m1");
-  assert.match(ask!.text, /chất bánh/);
-  assert.equal(ask?.isSummary, undefined);
+  assert.doesNotMatch(ask!.text, /chất bánh/);
+  assert.equal(ask?.isSummary, true);
   s.state.output.cakeType = "Mousse";
   const mismatch = await s.run("Lấy mousse nhé", "m2");
   assert.equal(mismatch?.isSummary, undefined);
   assert.doesNotMatch(mismatch!.text, /330.000/);
+});
+
+test("sample follow-ups retain the photo and available-size questions stay in consultation", async t => {
+  const s = setup(t);
+  s.draft.details = { ...details, imageUrl: "https://res.cloudinary.com/test/image/upload/cake.jpg" };
+  s.draft.imageObservation = { status: "ready", description: "Một bánh trái tim" };
+  s.state.output.cakeType = "";
+  s.state.output.size = "";
+  s.state.output.height = 0;
+  const sizes = await s.run("có những size nào", "m1");
+  assert.ok(sizes?.consultationContext);
+  const context = JSON.parse(sizes!.consultationContext!);
+  assert.equal(context.hasSelectedSample, true);
+  assert.deepEqual(context.catalog.map((v: { price: number }) => v.price), [270000, 330000]);
+  assert.equal(sizes?.isSummary, undefined);
+  assert.doesNotMatch(sizes!.text, /chất bánh|ưng ý thì gửi/);
+  assert.match(sizes!.text, /270.000đ/);
+  assert.match(sizes!.text, /330.000đ/);
+  Object.assign(s.state.output, { newOrder: true, groupId: "" });
+  const reminder = await s.run("ảnh trên hình kìa", "m2");
+  assert.equal(s.draft.details?.imageUrl, "https://res.cloudinary.com/test/image/upload/cake.jpg");
+  assert.equal(s.draft.details?.groupId, "TIM");
+  assert.doesNotMatch(reminder!.text, /đã có mẫu|chất bánh/);
+  assert.equal(s.state.createdOrders, 0);
+  t.diagnostic(`Hỏi size → ${sizes!.text} [chuyển tư vấn với 18cm cao 7cm: 270.000đ; cao 10cm: 330.000đ]`);
+  t.diagnostic(`Nhắc ảnh → ${reminder!.text}`);
+});
+
+test("show customer questions through summary and deposit without requiring cake type", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { cakeType: "", customerName: "", customerPhone: "", inscription: "", pickupAt: "", pickupLocation: "", fulfillmentMethod: "" });
+  const collect = await s.run("Bánh trái tim 18cm cao 10cm nhé", "m1");
+  assert.doesNotMatch(collect!.text, /chất bánh/);
+  assert.match(collect!.text, /tên người nhận/);
+  t.diagnostic(`Chọn size → ${collect!.text}`);
+  Object.assign(s.state.output, { ...details, cakeType: "" });
+  const summary = await s.run("Mai, 0901234567, ghi Mừng sinh nhật, nhận tại chi nhánh A ngày 20/10/2099 lúc 17:30", "m2");
+  assert.equal(summary?.isSummary, true);
+  assert.doesNotMatch(summary!.text, /chất bánh/i);
+  t.diagnostic(`Đủ thông tin → ${summary!.text}`);
+  await cakeCheckoutService.markDelivered(summary!);
+  const qr = await s.run("Xác nhận chốt đơn", "m3");
+  assert.ok(qr?.qrUrl);
+  assert.equal(new URL(qr!.qrUrl!).searchParams.get("amount"), "99000");
+  t.diagnostic(`Xác nhận → ${qr!.text}`);
 });
 
 test("advice questions remain consultation and do not confirm a suggested size", async t => {
@@ -307,6 +366,39 @@ test("advice questions remain consultation and do not confirm a suggested size",
   assert.ok(result?.consultationContext);
   assert.equal(result?.wordingSource, undefined);
   assert.equal(result?.isSummary, undefined);
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("a new session archives the old draft and excludes its cake, image, dates and QR", async t => {
+  const s = setup(t);
+  await s.run("đặt bánh", "m1");
+  s.draft.sessionId = "old-session";
+  s.draft.details!.imageUrl = "https://res.cloudinary.com/test/old-cake.png";
+  const archived: string[] = [];
+  t.mock.method(cakeCustomerMemory, "archive", async (_scope, sessionId) => { archived.push(sessionId); });
+  t.mock.method(cakeCustomerMemory, "learn", async () => undefined);
+  t.mock.method(CakeConsultationSessionModel, "findOne", () => query(null));
+  t.mock.method(FBMessageModel, "find", filter => {
+    assert.equal(filter.consultationSessionId, "new-session"); return query([]);
+  });
+  Object.assign(s.state.output, { groupId: "", name: "", size: "", height: 0, budget: 0,
+    customerName: "", customerPhone: "", pickupLocation: "", pickupAt: "", inscription: "", decoration: "", cakeType: "", fulfillmentMethod: "" });
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    const request = JSON.parse(String(init?.body));
+    const payload = JSON.parse(request.messages[1].content);
+    assert.equal(payload.previous.imageUrl, "");
+    assert.equal(payload.previous.size, "");
+    assert.equal(payload.previous.pickupAt, "");
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(s.state.output) } }] }), { status: 200 });
+  });
+  s.state.latestId = "m2";
+  const result = await cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV", messageId: "m2",
+    message: "Chị muốn đặt bánh", imageUrls: [], session: { sessionId: "new-session", resetDraft: true } });
+  assert.deepEqual(archived, ["old-session", "new-session"]);
+  assert.equal(s.draft.sessionId, "new-session");
+  assert.equal(s.draft.snapshot, undefined);
+  assert.equal(s.draft.details?.imageUrl, "");
+  assert.equal(result?.qrUrl, undefined);
   assert.equal(s.state.createdOrders, 0);
 });
 
