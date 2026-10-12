@@ -132,6 +132,14 @@ export function buildVietQrImageUrl(bankId: string, accountNumber: string, accou
   return `https://img.vietqr.io/image/${encodeURIComponent(bankId)}-${encodeURIComponent(accountNumber)}-compact2.png?${query.toString()}`;
 }
 
+export function sepayPaymentCode(payload: SepayPayload, prefix: string) {
+  const supplied = String(payload.code || "").trim().toUpperCase();
+  if (supplied) return supplied;
+  if (!/^[A-Z0-9]{2,5}$/.test(prefix)) return "";
+  const matches = [...String(payload.content || "").toUpperCase().matchAll(new RegExp(`(?:^|[^A-Z0-9])(${prefix}[A-F0-9]{12})(?=$|[^A-Z0-9])`, "g"))];
+  return matches.length === 1 ? matches[0][1] : "";
+}
+
 async function notifyCustomerPayment(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order?.sepayVerifiedAt || order.sepayCustomerNotifiedAt) return;
@@ -144,7 +152,8 @@ async function notifyCustomerPayment(orderId: string) {
   try {
     // Dynamic import avoids the Messenger -> order -> SePay service cycle during module initialization.
     const { fbMessengerService } = await import("./fb-messenger.service");
-    await fbMessengerService.sendReply(order.pageId, order.conversationId.toString(), message, "ai");
+    await fbMessengerService.sendReply(order.pageId, order.conversationId.toString(), message, "ai",
+      order.checkoutFlow === "cake_deposit" ? { companyCode: order.companyCode, source: "company" } : undefined);
     await MessengerOrderModel.updateOne(
       { _id: order._id, sepayCustomerNotifiedAt: { $exists: false } },
       { $set: { sepayCustomerNotifiedAt: new Date(), sepayCustomerNotificationError: "" } },
@@ -162,6 +171,8 @@ async function notifyCustomerPayment(orderId: string) {
 async function syncVerifiedPayment(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order?.sepayVerifiedAt) return;
+  // Cake deposits are persisted first, then handled by the retryable backend worker.
+  if (order.checkoutFlow === "cake_deposit") return;
   void notifyCustomerPayment(order.orderId);
   const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
   const config = integration?.orderSheetConfig;
@@ -186,6 +197,7 @@ async function syncVerifiedPayment(orderId: string) {
 }
 
 export const companySepayService = {
+  notifyCustomerPayment,
   async getConfig(companyCode: string, baseUrl: string) {
     return publicConfig(await ensureCompany(companyCode), baseUrl);
   },
@@ -262,7 +274,7 @@ export const companySepayService = {
       verifySepaySignature(rawBody, signature, timestamp, decrypt(config.webhookSecretEncrypted));
       const transactionId = String(payload.id ?? "").trim();
       const transferAmount = Number(payload.transferAmount);
-      if (!transactionId || !Number.isFinite(transferAmount) || transferAmount < 0) throw new Error("Dữ liệu giao dịch SePay không hợp lệ.");
+      if (!transactionId || !Number.isSafeInteger(transferAmount) || transferAmount < 0) throw new Error("Dữ liệu giao dịch SePay không hợp lệ.");
 
       if (transactionId === "0") {
         company.set("sepayConfig.lastWebhookAt", new Date());
@@ -290,8 +302,11 @@ export const companySepayService = {
           rawPayload: payload,
         });
       } catch (error: unknown) {
-        if ((error as { code?: number })?.code === 11000) return { duplicate: true };
-        throw error;
+        if ((error as { code?: number })?.code !== 11000) throw error;
+        transaction = await SepayWebhookTransactionModel.findOne({ companyCode: company.code, transactionId });
+        if (!transaction || transaction.status !== "received") return { duplicate: true };
+        // Resume an interrupted request using the authenticated payload originally stored.
+        payload = transaction.rawPayload as SepayPayload;
       }
 
       if (String(payload.transferType || "").toLowerCase() !== "in") {
@@ -301,30 +316,39 @@ export const companySepayService = {
         transaction.status = "ignored";
         transaction.reason = "Số tài khoản không thuộc cấu hình doanh nghiệp.";
       } else {
-        const code = String(payload.code || "").trim().toUpperCase();
+        const code = sepayPaymentCode(payload, config.paymentCodePrefix || "DH");
+        transaction.code = code;
         const order = code ? await MessengerOrderModel.findOne({ companyCode: company.code, paymentCode: code }) : null;
         if (!order) {
           transaction.status = "order_not_found";
           transaction.reason = "Không tìm thấy đơn hàng theo mã thanh toán.";
-        } else if (!order.depositAmount || transferAmount !== order.depositAmount) {
+        } else if (order.checkoutFlow === "cake_deposit" && (order.paymentRequestStatus !== "active"
+          || order.checkoutSnapshot?.accountNumber !== normalizeAccount(payload.accountNumber))) {
+          transaction.status = "ignored";
+          transaction.orderId = order.orderId;
+          transaction.reason = "QR đã hết hiệu lực hoặc tài khoản không khớp đơn đã xác nhận; cần shop đối soát.";
+        } else if (!order.depositAmount || Number(payload.transferAmount) !== order.depositAmount) {
           transaction.status = "amount_mismatch";
           transaction.orderId = order.orderId;
           transaction.reason = `Số tiền nhận ${transferAmount} không khớp tiền cọc ${order.depositAmount || 0}.`;
         } else {
           const verifiedAt = new Date();
           const verification = await MessengerOrderModel.updateOne(
-            { _id: order._id, depositStatus: { $ne: "verified" } },
+            { _id: order._id, depositStatus: { $ne: "verified" },
+              ...(order.checkoutFlow === "cake_deposit" ? { paymentRequestStatus: "active" } : {}) },
             {
               $set: {
                 depositStatus: "verified",
                 sepayTransactionId: transactionId,
-                sepayTransferAmount: transferAmount,
+                sepayTransferAmount: Number(payload.transferAmount),
                 sepayVerifiedAt: verifiedAt,
               },
             },
           );
           transaction.orderId = order.orderId;
-          if (verification.modifiedCount === 1) {
+          const recovered = verification.modifiedCount !== 1
+            ? await MessengerOrderModel.exists({ _id: order._id, sepayTransactionId: transactionId, depositStatus: "verified" }) : false;
+          if (verification.modifiedCount === 1 || recovered) {
             transaction.status = "matched";
             void syncVerifiedPayment(order.orderId);
           } else {

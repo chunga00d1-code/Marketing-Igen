@@ -11,6 +11,7 @@ import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
+import { cakeCheckoutService, splitCakeReply } from "./cake-checkout.service";
 import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import { analyzeChatImages, isImagePriceInquiry, splitHistoryAndPendingInboundMessages } from "./chat-image-context";
 
@@ -18,6 +19,8 @@ import { analyzeChatImages, isImagePriceInquiry, splitHistoryAndPendingInboundMe
 // messageKey prevents polling/sync from pushing the same inbound message forever.
 const pendingReplies = new Map<string, { timeout: NodeJS.Timeout; messageKey: string }>();
 const generatingReplies = new Set<string>();
+// One deferred Facebook turn per conversation; never start it while generation is active.
+const deferredFacebookReplies = new Map<string, { platformId: string; text: string; messageId?: string }>();
 const HUMAN_INTERVENTION_GUARD_ENABLED = true;
 const DEFAULT_MESSAGE_GROUPING_DELAY_MS = 7000;
 const DEFAULT_BUBBLE_DELAY_MS = 2000;
@@ -587,6 +590,8 @@ export const aiAutoReplyService = {
           pendingReplies.delete(conversationId); // Remove from pending list since we are processing it now
 
           if (generatingReplies.has(conversationId)) {
+            if (channel === "facebook") deferredFacebookReplies.set(conversationId,
+              { platformId: resolvedPlatformId, text: normalizedIncomingText, messageId: incomingMessageId });
             console.log(`[AI AutoReply] ⚠️ BỎ QUA: Bỏ qua tự động phản hồi hội thoại ${conversationId} vì đang có tiến trình sinh câu trả lời đang chạy.`);
             await aiKnowledgeService.createReplyLog({
               companyCode: targetCompanyCode,
@@ -811,7 +816,7 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            const imageObservation = await analyzeChatImages(pendingImageUrls);
+            const imageObservation = await analyzeChatImages(pendingImageUrls, groupedCustomerMessage);
             if (imageObservation) console.log(`[AI AutoReply] Image analysis: count=${pendingImageUrls.length}, status=${imageObservation.status}`);
             const retrievalMessage = imageObservation?.status === "ready"
               ? `${groupedCustomerMessage}\nKhách gửi ảnh sản phẩm cần tư vấn: ${imageObservation.description}`
@@ -855,7 +860,13 @@ export const aiAutoReplyService = {
             // Call Gemini Service
             console.log(`[AI AutoReply] 🧠 GEMINI CALL: Đang gửi request tới Gemini cho conversation=${conversationId}...`);
             console.log(`[AI AutoReply] Gemini call: conversationId=${conversationId}, channel=${channel}`);
-            const aiResponse = await geminiService.chat(groupedCustomerMessage, history, aiConfig, {
+            const checkoutReply = channel === "facebook" ? await cakeCheckoutService.process({
+              companyCode, pageId: resolvedPlatformId, conversationId, messageId: latestDbMessage?.messageId || incomingMessageId,
+              message: groupedCustomerMessage, imageUrls: pendingImageUrls, observation: imageObservation,
+              businessContext: [aiConfig.advancedInstructions, aiConfig.customerServiceScript,
+                effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
+            }) : undefined;
+            const aiResponse = checkoutReply || await geminiService.chat(groupedCustomerMessage, history, aiConfig, {
               ...effectiveRagContext, imageObservation, pricingContextText,
             });
 
@@ -883,6 +894,7 @@ export const aiAutoReplyService = {
               if (latestMsg) preSendDirection = latestMsg.direction;
             } else {
               const latestMsg = await FBMessageModel.findOne({ conversationId }).sort({ timestamp: -1 });
+              if (checkoutReply && latestMsg?.messageId !== latestDbMessage?.messageId) return;
               if (latestMsg) preSendDirection = latestMsg.direction;
             }
 
@@ -904,7 +916,7 @@ export const aiAutoReplyService = {
 
             console.log(`[AI AutoReply] Gemini ok: conversationId=${conversationId}, channel=${channel}, replyLength=${aiResponse.text.length}`);
             try {
-              const replyBubbles = splitReplyIntoMessageBubbles(aiResponse.text);
+              const replyBubbles = checkoutReply ? splitCakeReply(aiResponse.text) : splitReplyIntoMessageBubbles(aiResponse.text);
               const fallbackReply = aiResponse.text.trim();
               const messagesToSend = replyBubbles.length > 0 ? replyBubbles : [fallbackReply];
 
@@ -915,6 +927,10 @@ export const aiAutoReplyService = {
               for (let index = 0; index < messagesToSend.length; index += 1) {
                 const bubbleText = messagesToSend[index];
                 if (!bubbleText) continue;
+                if (checkoutReply) {
+                  const inbound = await FBMessageModel.findOne({ conversationId, direction: "inbound" }).sort({ timestamp: -1 });
+                  if (inbound?.messageId !== latestDbMessage?.messageId) return;
+                }
 
                 if (channel === "zalo") {
                   await zaloMessengerService.sendReply(resolvedPlatformId, conversationId, bubbleText, "ai");
@@ -930,6 +946,14 @@ export const aiAutoReplyService = {
                   }
                   await new Promise((resolve) => setTimeout(resolve, getBubbleDelayMs()));
                 }
+              }
+
+              if (checkoutReply) {
+                const inbound = await FBMessageModel.findOne({ conversationId, direction: "inbound" }).sort({ timestamp: -1 });
+                if (inbound?.messageId !== latestDbMessage?.messageId) return;
+                if (checkoutReply.qrUrl) await fbMessengerService.sendImage(resolvedPlatformId, conversationId,
+                  checkoutReply.qrUrl, facebookTokenContext, "[Mã QR đặt cọc]");
+                await cakeCheckoutService.markDelivered(checkoutReply);
               }
 
               await aiKnowledgeService.createReplyLog({
@@ -982,6 +1006,11 @@ export const aiAutoReplyService = {
 
           } finally {
             generatingReplies.delete(conversationId);
+            const deferred = deferredFacebookReplies.get(conversationId);
+            deferredFacebookReplies.delete(conversationId);
+            if (deferred && !pendingReplies.has(conversationId)) {
+              void this.triggerAutoReply("facebook", deferred.platformId, conversationId, deferred.text, deferred.messageId);
+            }
           }
         } catch (err: any) {
           console.error(`[AI AutoReply Timeout Execution] ❌ LỖI NGHIÊM TRỌNG khi thực hiện gửi phản hồi tự động:`, err.message || err);

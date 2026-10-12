@@ -62,3 +62,16 @@ test("expired attachments never call the model without image bytes", async (cont
   assert.equal((await analyzeChatImages(["https://scontent.xx.fbcdn.net/expired.jpg"]))?.status, "unavailable");
   assert.equal(calls, 1);
 });
+
+test("a positional answer reuses only the screenshot awaiting selection", () => {
+  const history = [
+    { direction: "inbound", text: "", attachments: [{ type: "image", url: "https://scontent.xx.fbcdn.net/screen.png" }] },
+    { direction: "outbound", text: "Ảnh có nhiều mẫu: bánh chữ nhật bên trái và hai bánh tròn." },
+    { direction: "outbound", text: "Mình muốn hỏi mẫu nào trong ảnh ạ?" },
+  ];
+  assert.deepEqual(splitHistoryAndPendingInboundMessages([...history, { direction: "inbound", text: "cái bên trái nhé" }]).imageUrls, ["https://scontent.xx.fbcdn.net/screen.png"]);
+  assert.deepEqual(splitHistoryAndPendingInboundMessages([...history, { direction: "inbound", text: "Địa chỉ shop ở đâu?" }]).imageUrls, []);
+  assert.deepEqual(splitHistoryAndPendingInboundMessages([
+    ...history, { direction: "inbound", text: "cái bên trái", attachments: [{ type: "image", url: "https://scontent.xx.fbcdn.net/new.png" }] },
+  ]).imageUrls, ["https://scontent.xx.fbcdn.net/new.png"]);
+});
