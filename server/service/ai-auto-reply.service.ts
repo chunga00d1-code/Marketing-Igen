@@ -988,12 +988,14 @@ export const aiAutoReplyService = {
                 companyCode,
                 channel,
                 conversationId,
-                customerMessage: groupedCustomerMessage,
+                customerMessage: groupedCustomerMessage?.trim() || (pendingImageUrls.length ? "[Khách gửi ảnh]" : "[Tin nhắn không có nội dung văn bản]"),
                 aiResponse: aiResponse.text,
                 contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
                 contextMatches: effectiveRagContext.matches,
                 latencyMs: Date.now() - startedAt,
                 status: "sent",
+              }).catch((logError) => {
+                console.error(`[AI AutoReply] Tin đã gửi thành công nhưng không lưu được log: conversationId=${conversationId}`, logError);
               });
 
               // Cập nhật trạng thái hội thoại sau khi Bot trả lời để theo dõi follow-up
@@ -1028,6 +1030,8 @@ export const aiAutoReplyService = {
                 contextMatches: effectiveRagContext.matches,
                 latencyMs: Date.now() - startedAt,
                 status: "failed",
+              }).catch((logError) => {
+                console.error(`[AI AutoReply] Không lưu được log lỗi gửi tin: conversationId=${conversationId}`, logError);
               });
               throw sendErr;
             }

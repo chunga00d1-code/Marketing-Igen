@@ -38,8 +38,10 @@ test("deposit comes from price, quantity and configured percentage", () => {
   assert.throws(() => calculateCakeDeposit(330000, 1, 101));
 });
 test("confirmation must explicitly approve the summary without changes", () => {
-  assert.equal(isCakeSummaryConfirmation("xác nhận chốt đơn"), true);
-  for (const message of ["ok", "không chốt đơn", "chốt đơn nhưng đổi size 22", "cho mình xin QR"]) {
+  for (const message of ["xác nhận chốt đơn", "xác nhận", "ok", "đúng rồi", "mình đồng ý nhé"]) {
+    assert.equal(isCakeSummaryConfirmation(message), true);
+  }
+  for (const message of ["không chốt đơn", "chốt đơn nhưng đổi size 22", "ok nhưng đổi giờ lấy", "xác nhận chưa?", "cho mình xin QR"]) {
     assert.equal(isCakeSummaryConfirmation(message), false);
   }
 });

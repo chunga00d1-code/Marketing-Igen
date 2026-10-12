@@ -1,12 +1,45 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import test from "node:test";
-import { buildVietQrImageUrl, verifySepaySignature } from "../company-sepay.service";
+import { buildVietQrImageUrl, companySepayService, verifySepaySignature } from "../company-sepay.service";
+import { CompanyModel } from "../../model/company.model";
 
 const rawBody = '{"id":92704,"transferAmount":500000}';
 const secret = "company-specific-secret";
 const nowMs = 1_800_000_000_000;
 const timestamp = String(Math.floor(nowMs / 1000));
+
+test("frontend configuration is saved, returned without its secret and preserved on subsequent saves", async t => {
+  const previousKey = process.env.SEPAY_CONFIG_ENCRYPTION_KEY;
+  process.env.SEPAY_CONFIG_ENCRYPTION_KEY = "test-only-config-key";
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.SEPAY_CONFIG_ENCRYPTION_KEY;
+    else process.env.SEPAY_CONFIG_ENCRYPTION_KEY = previousKey;
+  });
+  const record = new CompanyModel({ code: "TEST", name: "Test", sepayConfig: { webhookId: "fixture-webhook" } });
+  let saved = 0;
+  t.mock.method(record, "save", async () => { saved++; return record; });
+  t.mock.method(CompanyModel, "findOne", (filter: { code: string }) => {
+    assert.equal(filter.code, "TEST");
+    return { select: async () => record };
+  });
+  const result = await companySepayService.updateConfig("TEST", {
+    enabled: true, webhookSecret: "fixture-secret", accountNumbers: ["123456789"],
+    depositEnabled: true, depositPercent: 1, qrBankId: "970422", qrAccountNumber: "123456789", qrAccountName: "TEST SHOP",
+  }, "https://example.test");
+  assert.equal(saved, 1);
+  assert.equal(result.depositPercent, 1);
+  assert.equal(result.hasWebhookSecret, true);
+  assert.equal(result.webhookUrl, "https://example.test/api/v1/webhooks/sepay/fixture-webhook");
+  assert.equal(JSON.stringify(result).includes("fixture-secret"), false);
+  const encrypted = record.sepayConfig?.webhookSecretEncrypted;
+  assert.ok(encrypted?.startsWith("v1."));
+  await companySepayService.updateConfig("TEST", { webhookSecret: "", depositPercent: 30 }, "https://example.test");
+  const loaded = await companySepayService.getConfig("TEST", "https://example.test");
+  assert.equal(saved, 2);
+  assert.equal(loaded.depositPercent, 30);
+  assert.equal(record.sepayConfig?.webhookSecretEncrypted, encrypted);
+});
 
 function signature(body = rawBody) {
   return `sha256=${createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;

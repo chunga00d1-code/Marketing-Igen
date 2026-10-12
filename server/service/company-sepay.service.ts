@@ -166,6 +166,7 @@ async function notifyCustomerPayment(orderId: string) {
       { _id: order._id, sepayCustomerNotifiedAt: { $exists: false } },
       { $set: { sepayCustomerNotifiedAt: new Date(), sepayCustomerNotificationError: "" } },
     );
+    console.log("[SePay][CUSTOMER_NOTIFIED]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId }));
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     await MessengerOrderModel.updateOne(
@@ -280,6 +281,7 @@ export const companySepayService = {
     if (!company || !config?.enabled || !config.webhookSecretEncrypted) throw new Error("Webhook SePay không tồn tại hoặc chưa được bật.");
     try {
       verifySepaySignature(rawBody, signature, timestamp, decrypt(config.webhookSecretEncrypted));
+      console.log("[SePay][SIGNATURE_VERIFIED]", JSON.stringify({ companyCode: company.code }));
       const transactionId = String(payload.id ?? "").trim();
       const transferAmount = Number(payload.transferAmount);
       if (!transactionId || !Number.isSafeInteger(transferAmount) || transferAmount < 0) throw new Error("Dữ liệu giao dịch SePay không hợp lệ.");
@@ -312,7 +314,10 @@ export const companySepayService = {
       } catch (error: unknown) {
         if ((error as { code?: number })?.code !== 11000) throw error;
         transaction = await SepayWebhookTransactionModel.findOne({ companyCode: company.code, transactionId });
-        if (!transaction || transaction.status !== "received") return { duplicate: true };
+        if (!transaction || transaction.status !== "received") {
+          console.log("[SePay][DUPLICATE]", JSON.stringify({ companyCode: company.code, transactionId: transactionId.slice(0, 100) }));
+          return { duplicate: true };
+        }
         // Resume an interrupted request using the authenticated payload originally stored.
         payload = transaction.rawPayload as SepayPayload;
       }
@@ -366,6 +371,17 @@ export const companySepayService = {
         }
       }
       await transaction.save();
+      console.log("[SePay][RECONCILED]", JSON.stringify({
+        companyCode: company.code, transactionId: transactionId.slice(0, 100),
+        status: transaction.status, orderId: transaction.orderId || null,
+        amount: transferAmount, reason: transaction.reason || "",
+      }));
+      if (transaction.status === "matched" && transaction.orderId) {
+        // Wake the leased worker after persisting verification; the periodic tick
+        // still recovers failures or process restarts without parallel sends.
+        void import("./cake-deposit-worker").then(({ processCakeDeposits }) => processCakeDeposits())
+          .catch(error => console.error("[SePay] Không thể kích hoạt xử lý cọc:", error));
+      }
       company.set("sepayConfig.lastWebhookAt", new Date());
       company.set("sepayConfig.lastWebhookStatus", "success");
       company.set("sepayConfig.lastWebhookError", "");
