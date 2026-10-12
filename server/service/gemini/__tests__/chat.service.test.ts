@@ -211,6 +211,17 @@ test("the final independent review can approve a valid correction after an uncer
   assert.equal(requests.length, 3);
 });
 
+test("one bounded repair can recover a rejected reply without bypassing verification", async context => {
+  const answer = "Dạ chị chọn size 14cm giá 180.000đ nhé.";
+  const requests = mockAI(context, [answer, corrected(answer), JSON.stringify({ compliant: false }), corrected(answer), verified]);
+  const result = await service.chat("Cho chị hỏi giá size 14cm", [], { ...baseConfig, customerAddressStyle: "chị" }, {
+    contextText: "Bánh size 14cm giá 180.000đ",
+  });
+  assert.equal(result.text, answer);
+  assert.equal(requests.length, 5);
+  assert.match(requests[1].messages[0].content, /only to the current conversation step/);
+});
+
 test("empty corrected output cannot bypass review via a fallback reply", async (context) => {
   const requests = mockAI(context, ["bạn cần gì?", corrected(" ")]);
   await assert.rejects(
