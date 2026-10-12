@@ -187,42 +187,87 @@ test("wording guard rejects changed prices, missing sizes and extra numbers", ()
   assert.equal(preservesCakeReplyFacts("14cm 180.000đ; 18cm 270.000đ", "14cm 270.000đ; 18cm 180.000đ"), false);
 });
 
-test("delivery summary freezes fee separately, deposits cake price only and replaces QR after changes", async t => {
+test("delivery ignores fee documents and charges cake only, preserving booking preference", async t => {
   const s = setup(t);
   t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text:
     "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 18cm cao 10cm giá 330k.\n"
     + "Dòng 3: Khu vực giao: phường thử A | Phí giao (VND): 30000\n"
     + "Dòng 4: Khu vực giao: phường thử B | Phí giao (VND): 50000" }]));
-  Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryAddress: "1 Đường thử, phường thử A", pickupLocation: "" });
+  Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryBooking: "customer", deliveryAddress: "1 Đường thử, phường thử A", pickupLocation: "" });
   const summary = await s.run("Giao đến phường thử A nhé", "m1");
   assert.equal(summary?.isSummary, true);
   assert.equal(s.draft.snapshot?.subtotal, 330000);
-  assert.equal(s.draft.snapshot?.shippingFee, 30000);
-  assert.equal(s.draft.snapshot?.total, 360000);
+  assert.equal(s.draft.snapshot?.shippingFee, 0);
+  assert.equal(s.draft.snapshot?.total, 330000);
   assert.equal(s.draft.snapshot?.deposit, 99000);
-  assert.equal(s.draft.snapshot?.balance, 261000);
+  assert.equal(s.draft.snapshot?.balance, 231000);
+  assert.match(summary!.text, /Khách tự book xe/);
+  assert.doesNotMatch(summary!.text, /Phí giao:|miễn phí/);
   await cakeCheckoutService.markDelivered(summary!);
   const qr = await s.run("xác nhận chốt đơn", "m2");
   assert.equal(new URL(qr!.qrUrl!).searchParams.get("amount"), "99000");
   assert.equal(s.getOrder()?.fulfillmentMethod, "delivery");
   assert.equal(s.getOrder()?.items[0].lineTotal, 330000);
-  assert.equal(s.getOrder()?.shippingFee, 30000);
+  assert.equal(s.getOrder()?.shippingFee, 0);
+  assert.match(s.getOrder()!.customerNote!, /Khách tự book xe/);
   Object.assign(s.state.output, { deliveryAddress: "2 Đường thử, phường thử B" });
   const revised = await s.run("Đổi sang địa chỉ phường thử B", "m3");
   assert.equal(s.getOrder()?.paymentRequestStatus, "superseded");
   assert.equal(revised?.qrUrl, undefined);
   assert.equal(s.draft.summarySentAt, undefined);
-  assert.equal(s.draft.snapshot?.total, 380000);
+  assert.equal(s.draft.snapshot?.total, 330000);
 });
 
-test("unknown shipping fee never becomes a zero-fee order", async t => {
+test("missing shipping rates do not block cake summary or deposit QR", async t => {
   const s = setup(t);
   Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryAddress: "1 Đường thử, phường ngoài vùng", pickupLocation: "" });
   const response = await s.run("Giao tận nơi nhé", "m1");
-  assert.ok(response?.consultationContext);
-  assert.equal(response?.isSummary, undefined);
-  assert.equal(s.draft.snapshot, undefined);
+  assert.equal(response?.isSummary, true);
+  assert.equal(s.draft.snapshot?.total, 330000);
   assert.equal(s.state.createdOrders, 0);
+  await cakeCheckoutService.markDelivered(response!);
+  const payment = await s.run("xác nhận chốt đơn", "m2");
+  assert.equal(new URL(payment!.qrUrl!).searchParams.get("amount"), "99000");
+  assert.match(payment!.text, /Phí vận chuyển khách thanh toán riêng/);
+});
+
+test("old unpaid QR with shipping requires a fresh cake-only summary", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "m1");
+  await cakeCheckoutService.markDelivered(summary!);
+  await s.run("xác nhận chốt đơn", "m2");
+  Object.assign(s.draft.snapshot!, { shippingFee: 30000, total: 360000, balance: 261000 });
+  const refreshed = await s.run("xác nhận chốt đơn", "m3");
+  assert.equal(s.getOrder()?.paymentRequestStatus, "superseded");
+  assert.equal(refreshed?.isSummary, true);
+  assert.equal(refreshed?.qrUrl, undefined);
+  assert.equal(s.draft.snapshot?.total, 330000);
+  assert.equal(s.draft.snapshot?.balance, 231000);
+});
+
+test("already paid orders retain their historical shipping and totals", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "m1");
+  await cakeCheckoutService.markDelivered(summary!);
+  await s.run("xác nhận chốt đơn", "m2");
+  Object.assign(s.draft.snapshot!, { shippingFee: 30000, total: 360000, balance: 261000 });
+  s.getOrder()!.depositStatus = "verified";
+  const paid = await s.run("đã chuyển cọc", "m3");
+  assert.equal(s.getOrder()?.paymentRequestStatus, "active");
+  assert.equal(s.draft.snapshot?.total, 360000);
+  assert.match(paid!.text, /261.000đ/);
+  assert.equal(paid?.qrUrl, undefined);
+});
+
+test("shop booking preference is saved without adding a shipping charge", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { fulfillmentMethod: "delivery", deliveryBooking: "shop", deliveryAddress: "Địa chỉ thử", pickupLocation: "" });
+  const summary = await s.run("Nhờ tiệm book xe hộ", "m1");
+  assert.match(summary!.text, /nhờ tiệm hỗ trợ book/);
+  await cakeCheckoutService.markDelivered(summary!);
+  await s.run("xác nhận chốt đơn", "m2");
+  assert.match(s.getOrder()!.customerNote!, /nhờ tiệm book hộ/);
+  assert.equal(s.getOrder()?.totalAmount, 330000);
 });
 
 test("a shipping policy question keeps the unpaid QR, but changing the phone invalidates it", async t => {
@@ -407,10 +452,10 @@ for (const delivery of [false, true]) test(`complete buyer workflow (${delivery 
   assert.equal(order.status, "synced"); assert.ok(order.depositSyncCompletedAt);
   assert.equal(savedRows.length, 1); assert.equal(notificationCount, 1);
   assert.equal(savedRows[0].customerName, "Mai");
-  assert.equal(savedRows[0].totalAmount, delivery ? 360000 : 330000);
+  assert.equal(savedRows[0].totalAmount, 330000);
   assert.equal(savedRows[0].depositAmount, 99000);
-  assert.equal(savedRows[0].remainingBalance, delivery ? 261000 : 231000);
-  assert.equal(savedRows[0].shippingFee, delivery ? 30000 : 0);
+  assert.equal(savedRows[0].remainingBalance, 231000);
+  assert.equal(savedRows[0].shippingFee, 0);
   assert.equal(savedRows[0].fulfillmentMethod, delivery ? "delivery" : "pickup");
   assert.equal(savedRows[0].items[0].unitPrice, 330000);
   assert.match(savedRows[0].items[0].variantSummary!, /18cm cao 10cm/);

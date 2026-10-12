@@ -8,6 +8,7 @@ export interface CakeCheckoutDetails extends CakeChoice {
   deliveryAddress?: string;
   cakeType?: string;
   fulfillmentMethod?: "pickup" | "delivery" | "";
+  deliveryBooking?: "customer" | "shop" | "";
   guestCount?: number;
 }
 export interface CakeCheckoutSnapshot {
