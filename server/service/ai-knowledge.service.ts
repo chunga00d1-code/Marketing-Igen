@@ -1821,7 +1821,7 @@ export const aiKnowledgeService = {
       companyCode: normalizeCompanyCode(params.companyCode),
       channel: params.channel,
       conversationId: params.conversationId || "",
-      customerMessage: params.customerMessage,
+      customerMessage: params.customerMessage?.trim() || "[Tin nhắn không có nội dung văn bản]",
       aiResponse: params.aiResponse,
       contextPreview,
       contextMatches: params.contextMatches || 0,

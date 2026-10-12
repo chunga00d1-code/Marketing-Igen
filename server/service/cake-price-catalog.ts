@@ -107,7 +107,9 @@ export function calculateCakeDeposit(unitPrice: number, quantity: number, percen
 }
 
 export function isCakeSummaryConfirmation(text: string) {
-  return /^(?:da\s+)?(?:xac nhan chot don|xac nhan don hang|chot don|dong y chot don)(?:\s+(?:a|nhe|nha))?[.!]*$/.test(normalizeCakeText(text));
+  // Only used after the current order summary has been delivered. Match the whole
+  // reply so an approval followed by a correction cannot create a stale QR.
+  return /^(?:da\s+)?(?:(?:anh|chi|minh|em)\s+)?(?:xac nhan(?: chot don| don hang)?|chot don|dong y(?: chot don)?|dung roi|dung het roi|ok|oke|okay|oki)(?:\s+(?:a|nhe|nha))?[.!]*$/.test(normalizeCakeText(text).replace(/\s+/g, " ").trim());
 }
 
 export function isFutureCakePickup(value: string, now = Date.now()) {

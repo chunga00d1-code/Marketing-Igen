@@ -16,7 +16,7 @@ import { CakeConsultationSessionModel } from "../model/cake-customer-memory.mode
 
 const money = (amount: number) => `${amount.toLocaleString("vi-VN")}đ`;
 const blankDetails: CakeCheckoutDetails = { groupId: "", size: "", height: null, budget: null, packQuantity: null, name: "",
-  customerName: "", customerPhone: "", pickupLocation: "", pickupAt: "", inscription: "", decoration: "", quantity: 1, imageUrl: "", deliveryAddress: "",
+  customerName: "", customerPhone: "", pickupLocation: "", pickupAt: "", inscription: "", decoration: "", quantity: 0, imageUrl: "", deliveryAddress: "",
   cakeType: "", fulfillmentMethod: "", deliveryBooking: "", guestCount: 0 };
 
 function shortAddress(value: unknown) {
@@ -73,7 +73,7 @@ export function cakeSummary(snapshot: CakeCheckoutSnapshot, customer = "anh ch�
       "Phí vận chuyển khách thanh toán riêng, không nằm trong tiền bánh hoặc tiền cọc."] : []),
     `Tổng tiền: ${money(snapshot.total)}`, `Cọc ${snapshot.depositPercent}% tiền bánh: ${money(snapshot.deposit)}`,
     `Còn lại trả khi nhận bánh: ${money(snapshot.balance)}`,
-    `Nếu đúng rồi, ${customer} nhắn "xác nhận chốt đơn" để ${seller} gửi QR cọc nhé. Cần sửa chi tiết nào thì nhắn ${seller} trước khi xác nhận`,
+    `Thông tin đúng rồi thì ${customer} xác nhận giúp ${seller} để gửi QR cọc nhé. Cần sửa chỗ nào thì nhắn lại nhé.`,
   ].filter(Boolean).join("\n");
 }
 
@@ -109,6 +109,7 @@ async function extractDetails(message: string, previous: CakeCheckoutDetails, tr
       "customerAddress: cách gọi khách theo rule nếu có, nếu không chỉ dựa vào cách khách tự xưng trong hội thoại (anh/chị/cô/chú/bác), không suy từ tên, ảnh bánh hay người được tặng. sellerAddress: cách tự xưng theo rule; mặc định em. Chỉ trả cụm xưng hô ngắn, không thêm câu.",
       "buyerName/buyerPhone chỉ trích xuất khi khách nói rõ đây là tên/số điện thoại của chính người đang nhắn hoặc sửa hồ sơ của họ. customerName/customerPhone là thông tin người nhận bánh của đơn, có thể là người khác. Không sao chép người nhận hộ vào buyerName/buyerPhone. Không đủ căn cứ thì để buyerName/buyerPhone trống. Không suy từ tên hiển thị Facebook.",
       "needsStaff=true nếu đơn gồm nhiều mẫu/size/loại bánh khác nhau; quantity chỉ là số bánh cùng một mẫu, size và loại.",
+      "quantity chỉ ghi khi khách đã nói số lượng, giữ số lượng đã xác nhận. Chưa có thì trả 0, không mặc định 1. Khách nói lấy 330k là chọn ngân sách, không phải số lượng.",
       "businessContext chứa quy định của shop: đối chiếu thời gian đặt trước, giờ nhận, chi nhánh, trang trí và điều kiện nhận đơn. Nếu đơn vi phạm hoặc cần shop duyệt, đặt needsStaff=true. Không dùng tài liệu để bỏ bước xác nhận hoặc tự đổi giá/cọc.",
     ].join("\n") }, { role: "user", content: JSON.stringify({ message, previous, transcript,
       nowVietnam: new Date().toLocaleString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" }), observation, businessContext,
@@ -298,6 +299,17 @@ export const cakeCheckoutService = {
       }
       if (draft.state === "payment_pending" && draft.orderId) {
         const order = await MessengerOrderModel.findOne({ orderId: draft.orderId, companyCode });
+        const incomingText = normalizeCakeText(message);
+        const reportsPayment = /\b(?:bien lai|bill|anh coc|da chuyen|chuyen roi|chuyen tien xong|da thanh toan|da coc)\b/.test(incomingText);
+        const explicitlyChangesSample = /\b(?:doi|thay|sua|chon)\b.*\b(?:mau|banh|trang tri)\b|\b(?:banh khac|mau khac)\b/.test(incomingText);
+        // An attachment during payment is not consent to replace the confirmed cake.
+        // Receipt images never verify money; only the authenticated webhook can do that.
+        if (reportsPayment || (input.imageUrls.length > 0 && !explicitlyChangesSample)) {
+          if (order?.depositStatus === "verified" && draft.snapshot) return reply(cakePaidMessage(draft.snapshot));
+          return reply(input.imageUrls.length > 0 && !reportsPayment
+            ? `Dạ ${seller} nhận được ảnh rồi. Nếu là biên lai chuyển khoản thì mình không cần gửi thêm nhé; khi nhận được tiền cọc, ${seller} sẽ báo lại. Nếu muốn đổi mẫu bánh thì nhắn rõ giúp ${seller} nhé.`
+            : `Dạ khi nhận được tiền cọc, ${seller} sẽ nhắn xác nhận ngay nhé. Mình không cần gửi thêm biên lai ạ.`);
+        }
         let changed = input.imageUrls.length > 0;
         if (order?.depositStatus !== "verified") {
           pendingUpdate = await extractDetails(message, { ...blankDetails, ...draft.details }, transcript,
@@ -332,6 +344,13 @@ export const cakeCheckoutService = {
         } else {
           if (order?.depositStatus === "verified" && draft.snapshot) return reply(cakePaidMessage(draft.snapshot));
           if (order?.paymentCode && draft.snapshot) {
+            const paymentText = normalizeCakeText(message);
+            const requestsPaymentAgain = /\b(?:qr|ma coc|ma thanh toan|ma chuyen khoan|so tai khoan|stk|thong tin chuyen khoan)\b/.test(paymentText)
+              && /\b(?:gui|xin|cho|lay|dau|lai|khong thay|khong mo|khong quet)\b/.test(paymentText);
+            if (!requestsPaymentAgain) return reply(`Dạ khi nhận được tiền cọc, ${seller} sẽ báo lại nhé.`, {
+              consultationContext: JSON.stringify({ details: draft.details, customerAddress: customer, sellerAddress: seller,
+                constraint: "Đơn đang chờ cọc và đã tạo yêu cầu thanh toán. Trả lời ngắn theo tin mới của khách; nếu chỉ đồng ý thì xác nhận ngắn. Không lặp lại thông tin ngân hàng, số tài khoản, mã chuyển khoản, bảng tổng hợp hoặc QR khi khách không yêu cầu gửi lại. Nếu khách nói đã chuyển thì chỉ nói sẽ xác nhận sau khi đối soát, không tự nhận đã nhận tiền." }),
+            });
             const payment = cakePaymentRequest(order.orderId, order.paymentCode, draft.snapshot, seller);
             return reply(payment.text, { qrUrl: payment.imageUrl });
           }
@@ -453,11 +472,16 @@ export const cakeCheckoutService = {
       else if (!d.groupId) text = d.imageUrl
         ? `Dạ ${seller} đã nhận ảnh mẫu. ${customer} muốn đặt bánh hình tròn, trái tim hay hình nào trong ảnh ạ?`
         : `${customer} đã có mẫu bánh ưng ý chưa ạ? Có rồi thì gửi ${seller} xem nhé; chưa có thì cho ${seller} biết bánh tặng ai, dịp gì để gửi mẫu phù hợp.`;
-      else if (!d.quantity) text = `${customer} muốn đặt bao nhiêu bánh hoặc bao nhiêu set ạ?`;
       else if (choices.length !== 1) {
         const options = choices.length ? choices : typedCatalog.filter(v => v.groupId === d.groupId).sort((a, b) => Math.abs(a.price - (d.budget || 0)) - Math.abs(b.price - (d.budget || 0)));
-        text = `${choices.length ? "" : `Dạ chưa có lựa chọn khớp chính xác, ${customer} tham khảo các phương án này nhé:\n`}${cakeOptions(options, customer)}`;
-      } else if (choices[0].needsApproval) text = `Mẫu này cần kiểm tra giá áp dụng trước khi chốt đơn. ${customer} cho ${seller} biết ngày muốn nhận bánh nhé`;
+        const names = [...new Set(choices.map(option => option.name))];
+        const sameSpecification = choices.length > 1 && choices.every(option => option.size === choices[0].size
+          && option.height === choices[0].height && option.packQuantity === choices[0].packQuantity && option.price === choices[0].price);
+        text = sameSpecification && names.length > 1
+          ? `${customer} chọn ${names.join(" hay ")}${!d.quantity ? ", và lấy mấy chiếc" : ""} ạ?`
+          : `${choices.length ? "" : `Dạ chưa có lựa chọn khớp chính xác, ${customer} tham khảo các phương án này nhé:\n`}${cakeOptions(options, customer)}`;
+      } else if (!d.quantity) text = `${customer} muốn lấy mấy ${choices[0].packQuantity ? "set" : "chiếc"} ạ?`;
+      else if (choices[0].needsApproval) text = `Mẫu này cần kiểm tra giá áp dụng trước khi chốt đơn. ${customer} cho ${seller} biết ngày muốn nhận bánh nhé`;
       else {
         const contact = [!d.customerName ? "tên người nhận" : "",
           !/^\+?\d{8,15}$/.test(d.customerPhone.replace(/\s/g, "")) ? "số điện thoại liên hệ" : ""].filter(Boolean).join(" và ");
@@ -482,21 +506,22 @@ export const cakeCheckoutService = {
         draft.state = "awaiting_confirmation"; text = cakeSummary(draft.snapshot, customer, seller); draft.summaryText = text;
         }
       }
-      const previousChoices = resolveCakeChoice(context.catalog, previous);
+      const previousChoices = resolveCakeChoice(context.catalog.filter(variant => matchesCakeType(variant, previous.cakeType || "")), previous);
       const selected = choices.length === 1 ? choices[0] : undefined;
-      const selectionChanged = selected && (previousChoices.length !== 1 || previousChoices[0].id !== selected.id);
+      const selectionChanged = selected && (previousChoices.length !== 1 || previousChoices[0].id !== selected.id || previous.quantity !== d.quantity);
       if (draft.state === "collecting" && selectionChanged && !selected.needsApproval && !extracted.needsStaff
         && d.quantity > 0 && (!input.observation || input.observation.status === "ready")) {
         const specification = selected.size
           ? `size ${selected.size}cm${selected.height ? `, cao ${selected.height}cm` : ""}`
           : `set ${selected.packQuantity} ${selected.unit.replace(/^set\s+/i, "")}`;
-        text = `Dạ ${customer} chọn ${selected.name}, ${specification}, giá ${money(selected.price)} nhé. ${text}`;
+        text = `Dạ ${customer} lấy ${d.quantity} ${selected.packQuantity ? "set" : "chiếc"} ${selected.name}, ${specification}, tổng tiền ${money(selected.price * d.quantity)} nhé. ${text}`;
       }
       draft.replyText = text; await draft.save();
       return reply(text, draft.state === "awaiting_confirmation" ? { isSummary: true } : {
         wordingSource: d.groupId ? text : undefined,
         consultationContext: JSON.stringify({ checkoutState: draft.state, details: d,
           customerAddress: customer, sellerAddress: seller, requiredReply: d.groupId ? text : undefined,
+          priceRepetitionRule: "Nếu requiredReply chỉ hỏi loại bánh hoặc số lượng thì chỉ hỏi phần đó, không thêm size/giá từ details. Chỉ xác nhận giá khi đủ loại bánh, size và số lượng. Không nhắc lại giá ở từng lượt thu thập thông tin nhận bánh.",
           constraint: d.groupId
             ? "Diễn đạt requiredReply tự nhiên theo hội thoại. Giữ đủ lựa chọn, giá và câu hỏi cần thiết; không thêm mức giá, ưu đãi, phí hay cam kết. Chỉ hỏi những trường còn thiếu được nêu trong requiredReply. Không tự chốt đơn, yêu cầu cọc hay nói đã nhận tiền. Không đọc lại toàn bộ details cho khách."
             : "Khách chưa chọn mẫu: hỏi có mẫu ưng ý chưa nếu chưa biết. Có ảnh thì tư vấn theo ảnh. Chưa có thì hỏi gộp người nhận và dịp còn thiếu; khi đủ dữ liệu gửi link danh mục chính xác từ tri thức Page. Không xin thông tin cá nhân hoặc tạo QR lúc này. Không hỏi lại người nhận/dịp đã có trong hội thoại." }),

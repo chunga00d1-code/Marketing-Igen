@@ -24,6 +24,7 @@ export async function processCakeDeposits() {
       }, { $set: { depositSyncLeaseToken: token, depositSyncLeaseUntil: new Date(Date.now() + 300_000) },
         $inc: { depositSyncAttempts: 1 } }, { new: true, sort: { sepayVerifiedAt: 1 } });
       if (!order) break;
+      console.log("[CakeDeposit][PROCESSING]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId, attempt: order.depositSyncAttempts }));
       const lease = { _id: order._id, depositSyncLeaseToken: token };
       const heartbeat = setInterval(() => {
         void MessengerOrderModel.updateOne(lease, { $set: { depositSyncLeaseUntil: new Date(Date.now() + 300_000) } }).catch(() => undefined);
@@ -31,13 +32,14 @@ export async function processCakeDeposits() {
       heartbeat.unref();
       try {
         // Notify independently so a Sheet outage does not hide a successful deposit.
-        await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
         await companySepayService.notifyCustomerPayment(order.orderId);
+        await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
         const synced = await messengerOrderService.syncConfirmedDepositOrder(order.orderId);
         if (synced?.status !== "synced") throw new Error(synced?.lastSyncError || "Sheet chưa sẵn sàng để nhận đơn cọc.");
         const current = await MessengerOrderModel.findById(order._id).lean();
         if (!current?.sepayCustomerNotifiedAt) throw new Error(current?.sepayCustomerNotificationError || "Chưa gửi được xác nhận cọc cho khách.");
         await MessengerOrderModel.updateOne(lease, { $set: { depositSyncCompletedAt: new Date(), depositSyncError: "" } });
+        console.log("[CakeDeposit][COMPLETED]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId, customerNotified: true, sheetSynced: true }));
       } catch (error) {
         await MessengerOrderModel.updateOne(lease, { $set: {
           depositSyncError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
