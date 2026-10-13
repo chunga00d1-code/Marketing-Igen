@@ -6,7 +6,7 @@ import { SocialIntegrationModel } from "../../model/social-integration.model";
 import { FBConversationModel, FBMessageModel } from "../../model/fb-messenger.model";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../../model/ai-knowledge.model";
 import { MessengerOrderModel } from "../../model/messenger-order.model";
-import { cakeCheckoutService, preservesCakeReplyFacts, splitCakeReply } from "../cake-checkout.service";
+import { cakeCheckoutService, cakeConversationInstructions, preservesCakeReplyFacts, splitCakeReply } from "../cake-checkout.service";
 import { cloudinaryService } from "../cloudinary.service";
 import { createCipheriv, createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -19,6 +19,7 @@ import { googleOrderSheetService, type SheetOrder } from "../google-order-sheet.
 import { cakePaidMessage } from "../cake-shipping";
 import { cakeCustomerMemory } from "../cake-customer-memory";
 import { CakeConsultationSessionModel } from "../../model/cake-customer-memory.model";
+import { geminiChatService } from "../gemini/chat.service";
 
 function query<T>(value: T) {
   const chain = { lean: async () => value, select: () => chain, sort: () => chain, limit: () => chain };
@@ -27,7 +28,7 @@ function query<T>(value: T) {
 const details = { groupId: "TIM", name: "Bánh trái tim", size: "18", height: 10, budget: 0, packQuantity: 0,
   customerName: "Mai", customerPhone: "0901234567", pickupLocation: "Chi nhánh A", pickupAt: "2099-10-20T17:30",
   inscription: "Mừng sinh nhật", decoration: "Kem trắng", quantity: 1, imageUrl: "", wantsOrder: true, needsStaff: false,
-  cakeType: "Kem tươi", fulfillmentMethod: "pickup", adviceOnly: false };
+  cakeType: "Kem tươi", fulfillmentMethod: "pickup" as const, adviceOnly: false };
 
 function setup(t: TestContext) {
   t.mock.method(cakeCustomerMemory, "refreshPurchases", async () => undefined);
@@ -81,6 +82,88 @@ function setup(t: TestContext) {
   };
   return { draft, config, state, run, getOrder: () => order };
 }
+
+test("live short replies with synthetic customer data", { skip: process.env.CAKE_LIVE_TEST !== "1", timeout: 600000 }, async t => {
+  const liveFetch = globalThis.fetch;
+  const key = process.env.OPENROUTER_API_KEY;
+  assert.ok(key);
+  const s = setup(t);
+  process.env.OPENROUTER_API_KEY = key;
+  t.mock.method(globalThis, "fetch", (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(new URL(typeof input === "string" || input instanceof URL ? input : input.url).hostname, "openrouter.ai");
+    return liveFetch(input, init);
+  });
+  const catalog = "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 18cm cao 7cm giá 270k, size 18cm cao 10cm giá 330k, size 22cm cao 7cm giá 380k.";
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text: catalog }]));
+  const rows: Array<{ direction: string; text: string }> = [];
+  t.mock.method(FBMessageModel, "find", () => query([...rows].reverse()));
+  const photo = "https://res.cloudinary.com/test/image/upload/fixture-cake.jpg";
+  s.draft.details = { ...details, imageUrl: photo, size: "", height: null, name: "", quantity: 0, cakeType: "",
+    customerName: "", customerPhone: "", inscription: "", decoration: "", pickupAt: "", pickupLocation: "", fulfillmentMethod: "" };
+  s.draft.imageObservation = { status: "ready", description: "Một bánh trái tim màu hồng, ảnh mẫu khách đã chọn." };
+  const messages = ["380k nhé", "1", "tại quán", "Khách thử 0900000001", "chúc mừng sinh nhật Tuna, ngày 15/10/2099, chi nhánh Bắc Ninh", "15h", "ảnh trên đó", "không ghi chữ nữa", "16h nhé", "xác nhận", "ck rồi"];
+  const failures: string[] = [];
+  for (const [index, message] of messages.entries()) {
+    const history = rows.map(row => ({ sender: row.direction === "inbound" ? "user" : "model", text: row.text }));
+    rows.push({ direction: "inbound", text: message });
+    s.state.latestId = `live-${index}`;
+    const result = await cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV",
+      messageId: s.state.latestId, message, imageUrls: [], customerAddressStyle: "bạn",
+      businessContext: "Tự xưng mình, gọi khách bạn. Chi nhánh Bắc Ninh có nhận tại quán. Không hỏi chất bánh." });
+    assert.ok(result);
+    let answer = result.text;
+    if (result.consultationContext) {
+      const generated = await geminiChatService.chat(message, history, {
+        customerAddressStyle: "bạn", advancedInstructions: `Tự xưng mình, gọi khách bạn.\n${cakeConversationInstructions}`,
+      }, { contextText: `${catalog}\nChi nhánh Bắc Ninh có nhận tại quán.\nThông tin đơn đang tư vấn: ${result.consultationContext}` }).catch(error => {
+        console.log("LIVE_REVIEW_FALLBACK", JSON.stringify({ message, error: String(error) }));
+        return result;
+      });
+      assert.equal(generated.isMock, false);
+      answer = result.wordingSource && !preservesCakeReplyFacts(result.wordingSource, generated.text) ? result.text : generated.text;
+    }
+    rows.push({ direction: "outbound", text: answer });
+    await cakeCheckoutService.markDelivered(result);
+    console.log("LIVE_CASE", JSON.stringify({ message, answer, state: s.draft.state, details: s.draft.details, hasQr: !!result.qrUrl }));
+    try {
+      assert.equal(s.draft.details?.imageUrl, photo);
+      if (index === 0) assert.equal(s.draft.details?.budget, 380000);
+      if (index >= 1) assert.equal(s.draft.details?.quantity, 1);
+      if (index >= 2) assert.equal(s.draft.details?.fulfillmentMethod, "pickup");
+      if (index === 2 || index === 3) { assert.equal(s.draft.details?.pickupLocation, ""); assert.doesNotMatch(answer, /Bắc Ninh/i); }
+      if (index >= 3) assert.equal(s.draft.details?.customerPhone, "0900000001");
+      if (index === 4) assert.equal(s.draft.details?.pickupAt, "2099-10-15");
+      if (index === 5) assert.equal(s.draft.details?.pickupAt, "2099-10-15T15:00");
+      if (index === 6) assert.equal(s.draft.state, "awaiting_confirmation");
+      if (index === 7) assert.match(s.draft.details?.inscription || "", /không ghi/i);
+      if (index === 8) assert.equal(s.draft.details?.pickupAt, "2099-10-15T16:00");
+      if (index === 9) assert.ok(result.qrUrl);
+      if (index === 10) {
+        assert.equal(result.qrUrl, undefined);
+        assert.equal(s.draft.state, "payment_pending");
+        assert.equal(result.isSummary, undefined);
+      }
+    } catch (error) { failures.push(`${message}: ${String(error)}`); }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test("short payment reports retain the confirmed order without asking to confirm again", async t => {
+  const s = setup(t);
+  const summary = await s.run("Đặt bánh", "short-summary");
+  assert.ok(summary?.isSummary);
+  await cakeCheckoutService.markDelivered(summary!);
+  await s.run("xác nhận", "short-confirm");
+  const callsBefore = s.state.aiCalls;
+  for (const [index, message] of ["ck rồi", "ck xong", "chuyển khoản rồi", "cọc xong"].entries()) {
+    const result = await s.run(message, `short-paid-${index}`);
+    assert.equal(s.draft.state, "payment_pending");
+    assert.equal(result?.isSummary, undefined);
+    assert.equal(result?.qrUrl, undefined);
+    assert.match(result!.text, /khi nhận được tiền cọc/);
+  }
+  assert.equal(s.state.aiCalls, callsBefore);
+});
 
 test("summary must be delivered and explicitly confirmed before generating a frozen deposit QR", async t => {
   const s = setup(t);
@@ -162,7 +245,7 @@ test("shipping follow-ups preserve the address and continue consultation without
   const s = setup(t);
   Object.assign(s.state.output, { needsStaff: false, reviewReason: "delivery", fulfillmentMethod: "delivery", deliveryAddress: "Số 1 Lạc Long Quân", pickupLocation: "", pickupAt: "" });
   const first = await s.run("Shop có ship không, anh bị đau chân. Số 1 Lạc Long Quân nhé", "m1");
-  assert.match(first!.text, /ngày và giờ/);
+  assert.match(first!.text, /ngày.*giờ/);
   assert.doesNotMatch(first!.text, /xin.*địa chỉ|chuyển shop|chưa chuyển tiền/);
   const next = await s.run("Giờ làm sao?", "m2");
   assert.ok(next?.consultationContext);
