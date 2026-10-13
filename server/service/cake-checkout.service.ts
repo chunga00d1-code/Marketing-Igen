@@ -7,7 +7,8 @@ import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../model/ai-kno
 import { MessengerOrderModel } from "../model/messenger-order.model";
 import { generateReplyCompletion } from "./ai-reply-provider";
 import { buildVietQrImageUrl } from "./company-sepay.service";
-import { calculateCakeDeposit, isCakeSummaryConfirmation, isFutureCakePickup, matchesCakeType, normalizeCakeText, parseCakePriceCatalog, resolveCakeChoice, type CakeVariant } from "./cake-price-catalog";
+import { calculateCakeDeposit, isFutureCakePickup, matchesCakeType, normalizeCakeText, parseCakePriceCatalog, resolveCakeChoice, type CakeVariant } from "./cake-price-catalog";
+import { cakeOrderConfirmation, cakeConfirmationTopic, canConfirmCakeOrder, redactCakeConfirmationMessage, type CakeConfirmationDecision } from "./cake-order-confirmation";
 import { analyzeChatImages, downloadChatImage, type ChatImageObservation } from "./chat-image-context";
 import { cloudinaryService } from "./cloudinary.service";
 import { cakePaidMessage } from "./cake-shipping";
@@ -73,7 +74,7 @@ export function cakeSummary(snapshot: CakeCheckoutSnapshot, customer = "anh ch�
     `Khách: ${d.customerName} — SĐT: ${d.customerPhone}`,
     `Bánh: ${v.name}${v.size ? `; size ${v.size}cm` : ""}${v.height ? `; cao ${v.height}cm` : ""}`,
     `Quy cách: ${v.packQuantity} ${v.unit.replace(/^set\s+/i, "")}; số lượng đặt: ${d.quantity} ${v.unit.startsWith("set") ? "set" : "bánh"}; đơn giá: ${money(v.price)}`,
-    d.imageUrl ? `Ảnh mẫu: ${d.imageUrl}` : "",
+    d.imageUrl ? `Mẫu bánh: Theo ảnh ${customer} đã gửi.` : "",
     `Chữ trên bánh: ${d.inscription}`, `Trang trí: ${d.decoration || "Theo ảnh mẫu"}`,
     `${d.fulfillmentMethod === "delivery" ? "Giao đến" : "Nhận tại"}: ${d.fulfillmentMethod === "delivery" ? d.deliveryAddress : d.pickupLocation}`,
     `Ngày giờ nhận: ${d.pickupAt.replace("T", " ")} (giờ Việt Nam)`,
@@ -166,7 +167,7 @@ export const cakeConversationInstructions = [
   "Không nhắc lại giá trong lúc xin thông tin nhận bánh, trừ khi khách hỏi giá hoặc requiredReply có báo giá. Không tự tạo QR, chốt đơn hay xác nhận đã nhận tiền. Không nói đã chuyển cho nhân viên hay hứa đã làm một việc chưa thực hiện.",
 ].join("\n");
 
-export interface CakeCheckoutReply { text: string; isMock: false; qrUrl?: string; draftId: string; revision: number; isSummary?: boolean; consultationContext?: string; wordingSource?: string }
+export interface CakeCheckoutReply { text: string; isMock: false; qrUrl?: string; sampleImageUrl?: string; draftId: string; revision: number; isSummary?: boolean; consultationContext?: string; wordingSource?: string }
 
 // Wording may change; catalogue numbers and URLs must remain exactly as supplied.
 export function preservesCakeReplyFacts(source: string, candidate: string) {
@@ -250,7 +251,8 @@ export const cakeCheckoutService = {
         throw new Error("Hội thoại đã thay đổi; chờ xử lý tin nhắn mới nhất.");
       }
     };
-    const reply = (text: string, extra: Partial<CakeCheckoutReply> = {}): CakeCheckoutReply => ({ text, isMock: false, draftId: String(draft._id), revision: draft.revision, ...extra });
+    const reply = (text: string, extra: Partial<CakeCheckoutReply> = {}): CakeCheckoutReply => ({ text, isMock: false, draftId: String(draft._id), revision: draft.revision,
+      ...(extra.isSummary && draft.snapshot?.details.imageUrl ? { sampleImageUrl: draft.snapshot.details.imageUrl } : {}), ...extra });
     let pendingUpdate: Awaited<ReturnType<typeof extractDetails>> | undefined;
     let deleted = false;
     const archiveDraft = () => ({ state: draft.state, revision: draft.revision, details: draft.details, snapshot: draft.snapshot,
@@ -389,8 +391,44 @@ export const cakeCheckoutService = {
         }
       }
       const priorReviewReason = draft.reviewReason;
+      let confirmationDecision: CakeConfirmationDecision | undefined;
+      if (draft.state === "awaiting_confirmation" && draft.summarySentAt && draft.snapshot && !input.imageUrls.length) {
+        const lastShopText = [...transcriptRows].reverse().find(row => row.direction === "outbound" && row.text?.trim())?.text || "";
+        const isSummaryTurn = lastShopText.trim().length > 40 && !!draft.summaryText?.includes(lastShopText.trim());
+        const topic = cakeConfirmationTopic(lastShopText);
+        const asksDetail = /[?？]|\b(?:cho .* xin|muon .* nao|gui .* giup)\b/.test(normalizeCakeText(lastShopText));
+        confirmationDecision = await cakeOrderConfirmation.classify({
+          message: redactCakeConfirmationMessage(message, draft.details?.customerName || "", draft.details?.customerPhone || ""),
+          lastShopTurn: isSummaryTurn ? "summary" : !lastShopText ? "unknown"
+            : asksDetail ? topic === "other" ? "other_question" : "detail_question"
+            : topic !== "other" ? "detail_acknowledgement" : "unknown",
+          topic, customerAddress: customer, sellerAddress: seller,
+        });
+        await assertCurrent();
+        console.log("[Cake Checkout] Confirmation intent:", JSON.stringify({ draftId: String(draft._id),
+          intent: confirmationDecision.intent, target: confirmationDecision.target, confidence: confirmationDecision.confidence,
+          changesRequested: confirmationDecision.changesRequested }));
+        if (confirmationDecision.intent === "show_summary" && confirmationDecision.confidence === "high") {
+          return reply(cakeSummary(draft.snapshot, customer, seller), { isSummary: true });
+        }
+        if (!canConfirmCakeOrder(confirmationDecision)
+          && !(confirmationDecision.intent === "change_order" && confirmationDecision.confidence === "high")) {
+          const clarification = confirmationDecision.clarification || (confirmationDecision.intent === "acknowledge_detail"
+            ? `Dạ, phần vừa trao đổi ${seller} giữ như vậy nhé.`
+            : `${customer} nói rõ hơn ý vừa nhắn giúp ${seller} nhé?`);
+          draft.lastMessageId = messageId; draft.replyText = undefined;
+          await draft.save();
+          return reply(clarification, {
+            consultationContext: JSON.stringify({ checkoutState: draft.state, confirmationIntent: confirmationDecision.intent,
+              hasSelectedSample: Boolean(draft.details?.imageUrl), customerAddress: customer, sellerAddress: seller,
+              suggestedReply: clarification,
+              constraint: "Trả lời đúng tin khách mới nhất và câu tiệm vừa hỏi trong hội thoại. Nếu khách hỏi thêm, trả lời câu hỏi từ tri thức. Nếu chưa hiểu ý, hỏi đúng một câu ngắn làm rõ đối tượng/chi tiết chưa hiểu. Nếu khách chỉ đồng ý một chi tiết, đáp ngắn về chi tiết đó, không suy đã chốt toàn bộ. Không gửi lại bảng tổng hợp, không nhắc lại dữ liệu cá nhân hay hỏi lại thông tin đã có, không ép khách xác nhận đơn trong mọi tin. Chưa xác nhận toàn bộ đơn nên không tạo QR, không nói đã chốt/nhận tiền." }),
+          });
+        }
+      }
       if (draft.state === "awaiting_confirmation" && draft.summarySentAt && draft.snapshot
-        && !shippingQuestion && isFutureCakePickup(draft.snapshot.details.pickupAt) && isCakeSummaryConfirmation(message)) {
+        && !input.imageUrls.length && !shippingQuestion && isFutureCakePickup(draft.snapshot.details.pickupAt)
+        && confirmationDecision && canConfirmCakeOrder(confirmationDecision)) {
         await assertCurrent();
         const snapshot = draft.snapshot;
         if (!context.config.accountNumbers.includes(snapshot.accountNumber)) return reply(`Thông tin nhận cọc đã thay đổi, ${customer} chờ kiểm tra lại trước khi nhận QR nhé`);
@@ -476,6 +514,27 @@ export const cakeCheckoutService = {
         draft.imageObservation = undefined;
       }
       if (!existing && !extracted.wantsOrder) { deleted = true; await CakeCheckoutModel.deleteOne({ _id: draft._id, leaseToken: token }); return undefined; }
+      const summaryUnchanged = draft.state === "awaiting_confirmation" && draft.summarySentAt && draft.snapshot
+        && !startsNewCake && !extracted.newOrder && !input.imageUrls.length
+        && Object.keys(blankDetails).every(key => {
+          const field = key as keyof CakeCheckoutDetails;
+          const before = previous[field] ?? blankDetails[field];
+          const after = extracted.details[field] ?? blankDetails[field];
+          return typeof before === "string" && typeof after === "string"
+            ? normalizeCakeText(before) === normalizeCakeText(after) : before === after;
+        });
+      if (summaryUnchanged) {
+        const clarification = confirmationDecision?.clarification || `${customer} muốn sửa chi tiết nào, nói rõ hơn giúp ${seller} nhé?`;
+        draft.lastMessageId = messageId;
+        // Do not cache a clarification as a delivered order summary on webhook retries.
+        draft.replyText = undefined;
+        await draft.save();
+        return reply(clarification, {
+          consultationContext: JSON.stringify({ checkoutState: draft.state, details: draft.details,
+            customerAddress: customer, sellerAddress: seller, suggestedReply: clarification,
+            constraint: "Khách đang hỏi thêm hoặc muốn sửa sau bản tổng hợp đơn nhưng chưa xác định được thay đổi. Trả lời trực tiếp câu hỏi từ tri thức, không đọc lại bản tổng hợp, không yêu cầu khai lại thông tin. Nếu chưa hiểu ý thì hỏi rõ đúng chi tiết một câu ngắn, không mặc định thúc khách xác nhận. Chưa có xác nhận hợp lệ nên không tạo QR hoặc nói đã chốt đơn/nhận tiền." }),
+        });
+      }
       if (extracted.details.imageUrl && new URL(extracted.details.imageUrl).hostname !== "res.cloudinary.com") {
         const data = await downloadChatImage(extracted.details.imageUrl);
         const safeCompany = companyCode.replace(/[^a-zA-Z0-9_-]/g, "_");

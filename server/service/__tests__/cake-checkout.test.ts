@@ -20,6 +20,8 @@ import { cakePaidMessage } from "../cake-shipping";
 import { cakeCustomerMemory } from "../cake-customer-memory";
 import { CakeConsultationSessionModel } from "../../model/cake-customer-memory.model";
 import { geminiChatService } from "../gemini/chat.service";
+import { cakeOrderConfirmation, type CakeConfirmationDecision } from "../cake-order-confirmation";
+import { isCakeSummaryConfirmation } from "../cake-price-catalog";
 
 function query<T>(value: T) {
   const chain = { lean: async () => value, select: () => chain, sort: () => chain, limit: () => chain };
@@ -35,7 +37,17 @@ function setup(t: TestContext) {
   const config = { enabled: true, depositEnabled: true, depositPercent: 30, qrBankId: "970422",
     qrAccountNumber: "123456789", qrAccountName: "SHOP TEST", accountNumbers: ["123456789"], paymentCodePrefix: "DH" };
   const draft = new CakeCheckoutModel({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV" });
-  const state = { output: { ...details }, latestId: "m1", aiCalls: 0, createdOrders: 0 };
+  const state = { output: { ...details }, latestId: "m1", aiCalls: 0, createdOrders: 0,
+    confirmationDecision: undefined as CakeConfirmationDecision | undefined,
+    confirmationInputs: [] as Array<Parameters<typeof cakeOrderConfirmation.classify>[0]> };
+  t.mock.method(cakeOrderConfirmation, "classify", async (input: Parameters<typeof cakeOrderConfirmation.classify>[0]) => {
+    state.confirmationInputs.push(input);
+    return state.confirmationDecision || {
+      intent: isCakeSummaryConfirmation(input.message) ? "confirm_order" : "change_order",
+      confidence: "high", target: "whole_order", changesRequested: !isCakeSummaryConfirmation(input.message),
+      evidence: input.message, clarification: "",
+    };
+  });
   let order: InstanceType<typeof MessengerOrderModel> | null = null;
   const originalKey = process.env.OPENROUTER_API_KEY;
   process.env.OPENROUTER_API_KEY = "test-key";
@@ -85,9 +97,11 @@ function setup(t: TestContext) {
 
 test("live short replies with synthetic customer data", { skip: process.env.CAKE_LIVE_TEST !== "1", timeout: 600000 }, async t => {
   const liveFetch = globalThis.fetch;
+  const liveClassify = cakeOrderConfirmation.classify;
   const key = process.env.OPENROUTER_API_KEY;
   assert.ok(key);
   const s = setup(t);
+  t.mock.method(cakeOrderConfirmation, "classify", liveClassify);
   process.env.OPENROUTER_API_KEY = key;
   t.mock.method(globalThis, "fetch", (input: string | URL | Request, init?: RequestInit) => {
     assert.equal(new URL(typeof input === "string" || input instanceof URL ? input : input.url).hostname, "openrouter.ai");
@@ -146,6 +160,84 @@ test("live short replies with synthetic customer data", { skip: process.env.CAKE
     } catch (error) { failures.push(`${message}: ${String(error)}`); }
   }
   assert.deepEqual(failures, []);
+});
+
+test("contextual confirmation decisions gate the frozen order and avoid repeating unchanged summaries", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "context-summary");
+  assert.ok(summary?.isSummary);
+  await cakeCheckoutService.markDelivered(summary!);
+  const originalSnapshot = JSON.stringify(s.draft.snapshot);
+  const originalRevision = s.draft.revision;
+  const cases: Array<{ message: string; decision: CakeConfirmationDecision }> = [
+    { message: "khác chút", decision: { intent: "unclear", confidence: "low", target: "unclear", changesRequested: false,
+      evidence: "khác chút", clarification: "Bạn muốn đổi phần nào của bánh nhỉ?" } },
+    { message: "ok", decision: { intent: "acknowledge_detail", confidence: "high", target: "detail", changesRequested: false,
+      evidence: "ok", clarification: "Vậy mình giữ giờ nhận bánh nhé." } },
+    { message: "cọc bao nhiêu?", decision: { intent: "question", confidence: "high", target: "detail", changesRequested: false,
+      evidence: "cọc bao nhiêu", clarification: "" } },
+    { message: "được", decision: { intent: "confirm_order", confidence: "low", target: "whole_order", changesRequested: false,
+      evidence: "được", clarification: "Bạn đang đồng ý phần nào nhỉ?" } },
+    { message: "ok nhưng đổi giờ", decision: { intent: "confirm_order", confidence: "high", target: "whole_order", changesRequested: true,
+      evidence: "ok", clarification: "Bạn muốn nhận lúc mấy giờ nhỉ?" } },
+  ];
+  for (const [index, item] of cases.entries()) {
+    s.state.confirmationDecision = item.decision;
+    const result = await s.run(item.message, `context-${index}`);
+    assert.equal(result?.isSummary, undefined);
+    assert.equal(result?.qrUrl, undefined);
+    assert.ok(result?.consultationContext);
+    assert.doesNotMatch(result!.text, /Tổng tiền:|SĐT:|xác nhận lại thông tin/);
+    assert.equal(s.draft.state, "awaiting_confirmation");
+    assert.equal(s.draft.revision, originalRevision);
+    assert.equal(JSON.stringify(s.draft.snapshot), originalSnapshot);
+    assert.equal(s.state.createdOrders, 0);
+  }
+  s.state.confirmationDecision = { intent: "confirm_order", confidence: "high", target: "whole_order", changesRequested: false,
+    evidence: "chị lấy như trên nhé", clarification: "" };
+  const confirmed = await s.run("chị lấy như trên nhé", "context-confirm");
+  assert.ok(confirmed?.qrUrl);
+  assert.equal(s.state.createdOrders, 1);
+  assert.equal(s.draft.state, "payment_pending");
+});
+
+test("a contextual approval with a changed time requires a revised summary before QR", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "time-summary");
+  await cakeCheckoutService.markDelivered(summary!);
+  s.state.confirmationDecision = { intent: "change_order", confidence: "high", target: "detail", changesRequested: true,
+    evidence: "16h", clarification: "" };
+  s.state.output.pickupAt = "2099-10-20T16:00";
+  const revised = await s.run("ừ nhưng đổi sang 16h nhé", "time-change");
+  assert.equal(revised?.qrUrl, undefined);
+  assert.equal(revised?.isSummary, true);
+  assert.equal(s.draft.snapshot!.details.pickupAt, "2099-10-20T16:00");
+  assert.equal(s.draft.summarySentAt, undefined);
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("production confirmation context tracks the latest shop topic without sending stored identity", async t => {
+  const s = setup(t);
+  const summary = await s.run("đặt bánh", "topic-summary");
+  await cakeCheckoutService.markDelivered(summary!);
+  let shopText = summary!.text;
+  t.mock.method(FBMessageModel, "find", () => query([{ direction: "outbound", text: shopText }]));
+  s.state.confirmationDecision = { intent: "unclear", confidence: "low", target: "unclear", changesRequested: false,
+    evidence: "cái đó", clarification: "Bạn đang nói phần nào nhỉ?" };
+  await s.run("cái đó", "topic-unclear");
+  assert.equal(s.state.confirmationInputs.at(-1)?.lastShopTurn, "summary");
+  shopText = "Bạn muốn nhận lúc mấy giờ ạ?";
+  s.state.confirmationDecision = { intent: "acknowledge_detail", confidence: "high", target: "detail", changesRequested: false,
+    evidence: "ok", clarification: "" };
+  const result = await s.run("ok", "topic-ack");
+  const sentContext = s.state.confirmationInputs.at(-1)!;
+  assert.equal(sentContext.lastShopTurn, "detail_question");
+  assert.equal(sentContext.topic, "time");
+  assert.doesNotMatch(JSON.stringify(sentContext), /Mai|0901234567|Chi nhánh A|Mừng sinh nhật/);
+  assert.equal(result?.qrUrl, undefined);
+  assert.equal(result?.isSummary, undefined);
+  assert.doesNotMatch(result!.text, /nói rõ hơn|Tổng tiền/);
+  assert.equal(s.draft.state, "awaiting_confirmation");
 });
 
 test("short payment reports retain the confirmed order without asking to confirm again", async t => {
@@ -504,7 +596,7 @@ test("customer can request category links during checkout without approving an o
   assert.equal(s.state.createdOrders, 0);
 });
 
-test("authorized image persistence stores a stable Cloudinary reference in the summary", async t => {
+test("authorized image persistence keeps the URL in order data and sends the sample separately", async t => {
   const s = setup(t);
   const stableUrl = "https://res.cloudinary.com/test/image/upload/cake.png";
   let uploads = 0;
@@ -520,7 +612,9 @@ test("authorized image persistence stores a stable Cloudinary reference in the s
     message: "đặt bánh theo ảnh", imageUrls: ["https://scontent.fbcdn.net/cake.png"], observation: { status: "ready", description: "Bánh trái tim" } });
   assert.equal(uploads, 1);
   assert.equal(s.draft.snapshot!.details.imageUrl, stableUrl);
-  assert.ok(result!.text.includes(stableUrl));
+  assert.ok(!result!.text.includes(stableUrl));
+  assert.match(result!.text, /Mẫu bánh: Theo ảnh/);
+  assert.equal(result!.sampleImageUrl, stableUrl);
 });
 
 test("long summaries fit Messenger while retaining all order information", () => {
