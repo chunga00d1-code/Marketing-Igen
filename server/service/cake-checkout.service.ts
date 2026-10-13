@@ -9,7 +9,8 @@ import { generateReplyCompletion } from "./ai-reply-provider";
 import { buildVietQrImageUrl } from "./company-sepay.service";
 import { calculateCakeDeposit, isFutureCakePickup, matchesCakeType, normalizeCakeText, parseCakePriceCatalog, resolveCakeChoice, type CakeVariant } from "./cake-price-catalog";
 import { cakeOrderConfirmation, cakeConfirmationTopic, canConfirmCakeOrder, redactCakeConfirmationMessage, type CakeConfirmationDecision } from "./cake-order-confirmation";
-import { analyzeChatImages, downloadChatImage, type ChatImageObservation } from "./chat-image-context";
+import { cakeServingCapacityReply, cakeServingRecommendationReply, isCakeServingQuestion, isCakeServingRecommendation, parseCakeServingRules } from "./cake-serving-guidance";
+import { analyzeChatImages, downloadChatImage, isImagePriceInquiry, matchesObservedCakeShape, type ChatImageObservation } from "./chat-image-context";
 import { cloudinaryService } from "./cloudinary.service";
 import { cakePaidMessage } from "./cake-shipping";
 import { cakeCustomerMemory, type CakeSessionContext } from "./cake-customer-memory";
@@ -109,7 +110,7 @@ async function extractDetails(message: string, previous: CakeCheckoutDetails, tr
       "Khách có thể gửi tên, số điện thoại và nhiều thông tin trong cùng một tin: lấy đủ các trường đó. Không lấy mẫu/size/giá của đơn cũ khi khách nói muốn đặt bánh khác hoặc bắt đầu đơn mới.",
       "newOrder=true khi khách bắt đầu đơn mới/chọn bánh khác. Khi đó chỉ giữ tên và điện thoại, xóa lựa chọn bánh cũ, sau đó lấy các chi tiết mới khách vừa nói. cakeType là trường tùy chọn, chỉ lưu loại bánh khách chủ động yêu cầu như mousse, tiramisu, bông lan trứng muối. Không suy loại bánh từ ảnh và không hỏi khách để điền trường này. Tư vấn và chốt theo mẫu, hình dạng, size và bảng giá, không bắt buộc cakeType.",
       "Khách nhắc 'ảnh trên', 'hình trên', 'mẫu này', 'bánh này' là đang tiếp tục mẫu đã gửi, kể cả có lỗi gõ như 'ảnh trên hình kìa'; không phải newOrder. Giữ nhóm bánh và ảnh đang chọn. Hỏi 'có những size nào' là adviceOnly, cần trả lời các size phù hợp trước.",
-      "adviceOnly=true nếu tin mới hỏi chính sách, xin mẫu, hỏi size theo số người hoặc tham khảo giá mà chưa chọn; không biến gợi ý của AI thành lựa chọn khách. guestCount ghi số người nếu khách cung cấp. Có mẫu ảnh thì không hỏi khách đã có mẫu chưa; chưa có mẫu thì hỏi nhu cầu/người nhận/dịp khi chưa biết rồi gửi danh mục từ tài liệu. Khi khách chọn mới được đi tiếp thu thập thông tin chốt.",
+      "adviceOnly=true nếu tin mới hỏi chính sách, xin mẫu, hỏi size theo số người, hỏi size đã chọn đủ mấy người ăn, hoặc tham khảo giá mà chưa chọn. 'Size đó mấy người ăn' hỏi sức chứa của size đã chọn: giữ nguyên size/height, không yêu cầu khách nói số người trước. Không biến gợi ý của AI thành lựa chọn khách. guestCount ghi số người nếu khách cung cấp, giữ số người đã biết khi tin mới không nhắc lại. Có mẫu ảnh thì không hỏi khách đã có mẫu chưa; chưa có mẫu thì hỏi nhu cầu/người nhận/dịp khi chưa biết rồi gửi danh mục từ tài liệu. Khi khách chọn mới được đi tiếp thu thập thông tin chốt.",
       "wantsOrder=true khi khách muốn mua/chọn/đặt/lấy bánh hoặc xác nhận mua. Câu hỏi giá đơn thuần không phải xác nhận mua.",
       "groupId phải thuộc danh mục. Hình dạng bánh có thể lấy từ quan sát ảnh; không suy ra size/chiều cao từ ảnh. Nếu nhiều mẫu thì cần khách chọn mẫu trước.",
       "name chỉ điền tên loại/vị chính xác trong danh mục nếu khách đã chọn; nếu chưa biết để trống. size chỉ chứa số hoặc AxB, không có cm. height, budget, packQuantity chưa biết trả 0.",
@@ -151,7 +152,8 @@ async function extractDetails(message: string, previous: CakeCheckoutDetails, tr
     : details.pickupLocation ? "pickup" : "";
   details.deliveryBooking = raw.deliveryBooking === "customer" || raw.deliveryBooking === "shop" ? raw.deliveryBooking : "";
   if (details.fulfillmentMethod === "pickup") { details.deliveryAddress = ""; details.deliveryBooking = ""; }
-  details.guestCount = Number.isSafeInteger(raw.guestCount) && Number(raw.guestCount) > 0 ? Number(raw.guestCount) : 0;
+  details.guestCount = Number.isSafeInteger(raw.guestCount) && Number(raw.guestCount) > 0 ? Number(raw.guestCount)
+    : raw.newOrder === true ? 0 : previous.guestCount || 0;
   return { details, wantsOrder: raw.wantsOrder === true, needsStaff: raw.needsStaff === true,
     adviceOnly: raw.adviceOnly === true, newOrder: raw.newOrder === true,
     buyerName: typeof raw.buyerName === "string" ? raw.buyerName : "", buyerPhone: typeof raw.buyerPhone === "string" ? raw.buyerPhone : "",
@@ -164,6 +166,7 @@ export const cakeConversationInstructions = [
   "Khách vừa cung cấp thông tin thì dùng ngay để hỏi phần còn thiếu. Không mở mỗi lượt bằng 'đã ghi nhận', 'đã có tên/số điện thoại', hoặc nhắc lại toàn bộ điều khách vừa nói. Có thể hỏi thẳng một câu nối tiếp. Khách đổi ý thì xác nhận ngắn đúng phần thay đổi, không yêu cầu khai lại thông tin khác.",
   "Ví dụ về cách nối câu, không phải dữ liệu đơn: khách nói 'tại quán' thì hỏi chi nhánh nếu chưa biết; khách cho ngày nhưng thiếu giờ thì hỏi 'Khoảng mấy giờ bạn nhận bánh nhỉ?'; khách nói 'ảnh trên đó' khi đã có ảnh thì tiếp tục theo mẫu đã lưu. Điều chỉnh đại từ của ví dụ theo rule, không sao chép nguyên câu.",
   "Chỉ hỏi các thông tin còn thiếu được chỉ ra trong requiredReply, tối đa hai nhóm liên quan, trong một hoặc hai câu ngắn. Không tự thêm câu hỏi 'chất bánh'. Không hỏi lại ảnh, tên, điện thoại hay cách nhận đã lưu trong details. Khách đặt câu hỏi thì trả lời câu hỏi trước, không chỉ thúc khách hoàn tất đơn.",
+  "Khách hỏi 'size đó mấy người ăn' thì trả lời số người phù hợp từ hướng dẫn của Page và size đã chọn, không hỏi ngược khách có bao nhiêu người. Khách cho số người và hỏi nên chọn size nào thì dùng hướng dẫn để gợi ý size/giá có thật trong bảng giá, chưa ghi nhận là khách đã chọn.",
   "pickupLocation rỗng nghĩa là khách chưa chọn chi nhánh. Không chèn tên chi nhánh từ tri thức vào câu hỏi thu thập thông tin hoặc lời xác nhận; hỏi khách muốn lấy ở chi nhánh nào. Chỉ giới thiệu các địa điểm có trong tri thức khi khách hỏi địa chỉ/chi nhánh. Lời shop gợi ý trước đó không phải lựa chọn của khách.",
   "Không nhắc lại giá trong lúc xin thông tin nhận bánh, trừ khi khách hỏi giá hoặc requiredReply có báo giá. Không tự tạo QR, chốt đơn hay xác nhận đã nhận tiền. Không nói đã chuyển cho nhân viên hay hứa đã làm một việc chưa thực hiện.",
 ].join("\n");
@@ -344,6 +347,14 @@ export const cakeCheckoutService = {
             ? `Dạ ${seller} nhận được ảnh rồi. Nếu là biên lai chuyển khoản thì mình không cần gửi thêm nhé; khi nhận được tiền cọc, ${seller} sẽ báo lại. Nếu muốn đổi mẫu bánh thì nhắn rõ giúp ${seller} nhé.`
             : `Dạ khi nhận được tiền cọc, ${seller} sẽ nhắn xác nhận ngay nhé. Mình không cần gửi thêm biên lai ạ.`);
         }
+        if (isCakeServingQuestion(message) && draft.snapshot) {
+          const servingReply = cakeServingCapacityReply([draft.snapshot.variant], parseCakeServingRules(input.businessContext || "", context.knowledge));
+          if (servingReply) return reply(servingReply, { wordingSource: servingReply,
+            consultationContext: JSON.stringify({ checkoutState: draft.state, requiredReply: servingReply,
+              customerAddress: customer, sellerAddress: seller,
+              constraint: "Trả lời trực tiếp số người ăn phù hợp cho size đã chọn. Giữ nguyên số liệu trong requiredReply; không hỏi ngược số người dự kiến, không nhắc lại đơn, không gửi lại QR và không thay đổi trạng thái cọc." }),
+          });
+        }
         let changed = input.imageUrls.length > 0;
         if (order?.depositStatus !== "verified") {
           pendingUpdate = await extractDetails(message, { ...blankDetails, ...draft.details }, transcript,
@@ -414,15 +425,18 @@ export const cakeCheckoutService = {
         }
         if (!canConfirmCakeOrder(confirmationDecision)
           && !(confirmationDecision.intent === "change_order" && confirmationDecision.confidence === "high")) {
-          const clarification = confirmationDecision.clarification || (confirmationDecision.intent === "acknowledge_detail"
+          const servingReply = isCakeServingQuestion(message)
+            ? cakeServingCapacityReply([draft.snapshot.variant], parseCakeServingRules(input.businessContext || "", context.knowledge)) : undefined;
+          const clarification = servingReply || confirmationDecision.clarification || (confirmationDecision.intent === "acknowledge_detail"
             ? `Dạ, phần vừa trao đổi ${seller} giữ như vậy nhé.`
             : `${customer} nói rõ hơn ý vừa nhắn giúp ${seller} nhé?`);
           draft.lastMessageId = messageId; draft.replyText = undefined;
           await draft.save();
           return reply(clarification, {
+            wordingSource: servingReply,
             consultationContext: JSON.stringify({ checkoutState: draft.state, confirmationIntent: confirmationDecision.intent,
               hasSelectedSample: Boolean(draft.details?.imageUrl), customerAddress: customer, sellerAddress: seller,
-              suggestedReply: clarification,
+              suggestedReply: clarification, requiredReply: servingReply,
               constraint: "Trả lời đúng tin khách mới nhất và câu tiệm vừa hỏi trong hội thoại. Nếu khách hỏi thêm, trả lời câu hỏi từ tri thức. Nếu chưa hiểu ý, hỏi đúng một câu ngắn làm rõ đối tượng/chi tiết chưa hiểu. Nếu khách chỉ đồng ý một chi tiết, đáp ngắn về chi tiết đó, không suy đã chốt toàn bộ. Không gửi lại bảng tổng hợp, không nhắc lại dữ liệu cá nhân hay hỏi lại thông tin đã có, không ép khách xác nhận đơn trong mọi tin. Chưa xác nhận toàn bộ đơn nên không tạo QR, không nói đã chốt/nhận tiền." }),
           });
         }
@@ -473,7 +487,9 @@ export const cakeCheckoutService = {
         && row.attachments?.filter(a => a.type === "image").length === 1) : undefined;
       previous.imageUrl = inboundImage || previous.imageUrl || (!existing ? (!input.session ? conversation.selectedProductImageUrl : "")
         || lastImageMessage?.attachments.find(a => a.type === "image")?.url : "") || "";
-      const observation = input.observation || (inboundImage ? undefined : draft.imageObservation)
+      const cachedObservation = isImagePriceInquiry(message) && previous.imageUrl && draft.imageObservation?.status === "ready"
+        && !draft.imageObservation.cakeShape ? undefined : draft.imageObservation;
+      const observation = input.observation || (inboundImage ? undefined : cachedObservation)
         || (previous.imageUrl ? await analyzeChatImages([previous.imageUrl], message) : undefined);
       if (observation) draft.imageObservation = observation;
       const extracted = pendingUpdate || await extractDetails(message, previous, transcript, context.catalog, observation, input.businessContext);
@@ -490,18 +506,42 @@ export const cakeCheckoutService = {
         && /\b(?:(?:anh|hinh|mau)\s+(?:tren|nay|do|kia)|banh nay)\b/.test(normalizedMessage);
       const asksAvailableSizes = /\b(?:co\s+(?:nhung\s+)?size\s+nao|size\s+(?:nao|gi)|cac\s+size|nhung\s+size|kich thuoc\s+nao)\b/.test(normalizedMessage)
         && !/\b(?:nguoi|khach|suat)\b/.test(normalizedMessage);
+      const asksServingCapacity = isCakeServingQuestion(message);
+      const asksServingRecommendation = !asksServingCapacity && (isCakeServingRecommendation(message)
+        || (extracted.adviceOnly && extracted.details.guestCount > 0 && /^\d{1,3}$/.test(normalizedMessage)));
+      const explicitSizeOrBudget = /\bsize\s*\d|\bcao\s*\d|\b\d+(?:x\d+)?\s*cm\b|\b(?:lay|chon|dat|gia)\s*\d+(?:[.,]\d+)?\s*(?:k|tr|vnd|d)\b/.test(normalizedMessage);
+      if ((asksServingCapacity || asksServingRecommendation) && !explicitSizeOrBudget) {
+        // The advice may name a size, but only the customer's selection updates the order.
+        extracted.details.size = previous.size; extracted.details.height = previous.height;
+        extracted.details.budget = previous.budget; extracted.details.packQuantity = previous.packQuantity;
+        extracted.details.quantity = previous.quantity;
+        extracted.details.name = extracted.details.groupId === previous.groupId ? previous.name : "";
+      }
       if (refersToCurrentSample) {
         extracted.newOrder = false;
         extracted.details.imageUrl = previous.imageUrl;
         extracted.details.groupId ||= previous.groupId;
         extracted.details.cakeType ||= previous.cakeType;
       }
+      const observedShape = observation?.status === "ready" && observation.shapeConfidence === "high"
+        && observation.cakeShape !== "other" && observation.cakeShape !== "unknown" && !startsNewCake
+        && (input.imageUrls.length > 0 || isImagePriceInquiry(message)) ? observation.cakeShape : undefined;
+      if (observedShape) {
+        const shapeGroups = new Set(context.catalog.filter(variant => matchesObservedCakeShape(variant.shape || variant.name, observedShape))
+          .map(variant => variant.groupId));
+        if (!shapeGroups.has(extracted.details.groupId)) {
+          // A new sample cannot retain a rectangular quote for a round cake (or vice versa).
+          extracted.details.groupId = shapeGroups.size === 1 ? [...shapeGroups][0] : "";
+          extracted.details.name = ""; extracted.details.size = ""; extracted.details.height = null;
+          extracted.details.budget = null; extracted.details.packQuantity = null;
+        }
+      }
       const sampleReminderOnly = refersToCurrentSample && normalizedMessage.split(/\s+/).length <= 8
         && !/\d|\b(?:chot|chon|lay|dat|mua|ghi|giao|nhan)\b/.test(normalizedMessage);
       if (sampleReminderOnly && !inboundImage && draft.state === "awaiting_confirmation" && draft.snapshot && draft.summarySentAt) {
         return reply(`Đúng rồi, mẫu bánh vẫn là ảnh ${customer} đã gửi nhé. Thông tin đơn ở trên đúng rồi thì ${customer} xác nhận giúp ${seller} nhé.`);
       }
-      if (asksAvailableSizes || sampleReminderOnly) extracted.adviceOnly = true;
+      if (asksAvailableSizes || sampleReminderOnly || asksServingCapacity || asksServingRecommendation) extracted.adviceOnly = true;
       if (inboundImage) extracted.details.imageUrl = inboundImage;
       await assertCurrent();
       customer = shortAddress(input.customerAddressStyle) || extracted.customerAddress || draft.customerAddress || customerFromMessage(message) || "anh chị";
@@ -555,23 +595,33 @@ export const cakeCheckoutService = {
       }
       draft.reviewReason = undefined;
       let text = "";
-      const typedCatalog = context.catalog.filter(variant => matchesCakeType(variant, d.cakeType || ""));
+      const typedCatalog = context.catalog.filter(variant => matchesCakeType(variant, d.cakeType || "")
+        && (!observedShape || matchesObservedCakeShape(variant.shape || variant.name, observedShape)));
       const choices = resolveCakeChoice(typedCatalog, d);
       if (extracted.adviceOnly) {
         draft.replyText = undefined;
         await draft.save();
-        const availableSizes = d.groupId ? typedCatalog.filter(variant => variant.groupId === d.groupId) : [];
-        const sizeReply = asksAvailableSizes && availableSizes.length ? cakeOptions(availableSizes, customer) : undefined;
+        const availableSizes = d.groupId ? typedCatalog.filter(variant => variant.groupId === d.groupId) : observedShape ? typedCatalog : [];
+        const servingRules = parseCakeServingRules(input.businessContext || "", context.knowledge);
+        const servingReply = asksServingCapacity
+          ? (d.size || d.budget ? cakeServingCapacityReply(choices, servingRules) : undefined)
+            || (!d.size && !d.budget ? `${customer} đang hỏi size nào để ${seller} tư vấn số người ăn phù hợp nhé?`
+              : `Chưa đối chiếu được số người ăn phù hợp cho size này trong hướng dẫn của tiệm.`)
+          : asksServingRecommendation ? cakeServingRecommendationReply(d.guestCount,
+            typedCatalog.filter(variant => !d.groupId || variant.groupId === d.groupId), servingRules) : undefined;
+        const sizeReply = servingReply || ((asksAvailableSizes || isImagePriceInquiry(message)) && availableSizes.length ? cakeOptions(availableSizes, customer) : undefined);
         return reply(sizeReply || (d.imageUrl ? `Dạ ${seller} đang tư vấn theo mẫu ${customer} vừa gửi nhé.` : `Dạ ${seller} tư vấn thêm để mình chọn bánh nhé.`), {
           wordingSource: sizeReply,
-          consultationContext: JSON.stringify({ details: d, observation, hasSelectedSample: !!d.imageUrl,
+          consultationContext: JSON.stringify({ details: d, observation, hasSelectedSample: !!d.imageUrl, servingRules,
+            questionIntent: asksServingCapacity ? "serving_capacity" : asksServingRecommendation ? "serving_recommendation" : "other",
             requiredReply: sizeReply,
             catalog: typedCatalog.filter(variant => !d.groupId || variant.groupId === d.groupId),
             customerAddress: customer, sellerAddress: seller,
             constraint: "Trả lời trực tiếp câu hỏi mới nhất từ tri thức. Khách hỏi có những size nào thì nêu ngắn gọn các size/giá phù hợp hình dạng đã nhận diện trong danh mục. Không hỏi thành phần hay yêu cầu chọn loại bánh để tiếp tục. Nếu khách chủ động yêu cầu mousse, tiramisu hoặc trứng muối thì dùng đúng bảng giá đó. Nêu rõ tên bánh ứng với giá tham khảo, không tự ghi nhận khách đã chọn. Không suy kích thước thật từ ảnh. Khách nhắc ảnh trên là nhắc mẫu đã gửi: xác nhận đang xem mẫu đó, không hỏi lại đã có mẫu chưa và không gửi link danh mục. Nếu ảnh chưa rõ, hỏi đúng chi tiết chưa rõ. Chỉ hỏi dịp/người nhận khi chưa có mẫu. Không yêu cầu cọc ở bước tư vấn." }),
         });
       }
-      if (input.observation && input.observation.status !== "ready") text = `${customer} chỉ giúp ${seller} mẫu bánh muốn chọn trong ảnh nhé`;
+      if (input.observation?.status === "unavailable") text = `${customer} gửi ảnh rõ phần thân bánh hơn hoặc cho ${seller} biết bánh hình gì nhé?`;
+      else if (input.observation?.status === "needs_selection") text = `${customer} chỉ giúp ${seller} mẫu bánh muốn chọn trong ảnh nhé`;
       else if (ambiguousFulfillment) text = `${customer} muốn đến tiệm lấy hay muốn giao bánh tới địa chỉ của mình ạ?`;
       else if (!d.groupId) text = d.imageUrl
         ? `Dạ ${seller} đã nhận ảnh mẫu. ${customer} muốn đặt bánh hình tròn, trái tim hay hình nào trong ảnh ạ?`

@@ -10,7 +10,7 @@ import {
   safeParseJson,
 } from "./core";
 import type { ChatRagContext } from "./types";
-import { formatFullImagePriceList, IMAGE_SELECTION_PREFIX, isImagePriceInquiry, selectImageQuote } from "../chat-image-context";
+import { IMAGE_SELECTION_PREFIX, isImagePriceInquiry, selectImageQuote } from "../chat-image-context";
 import {
   ACKNOWLEDGEMENT_REPLY,
   combineChatScenarios,
@@ -359,6 +359,9 @@ export class GeminiChatService {
       return { text: `${IMAGE_SELECTION_PREFIX}: ${imageObservation.description}\nMình muốn hỏi mẫu nào trong ảnh ạ?`, isMock: false };
     }
     if (imageObservation) {
+      const customer = typeof aiConfig?.customerAddressStyle === "string" && aiConfig.customerAddressStyle.trim()
+        ? aiConfig.customerAddressStyle.trim() : "bạn";
+      if (imageObservation.status === "unavailable") return { text: `Chưa nhìn rõ hình dạng thân bánh trong ảnh. ${customer} gửi ảnh rõ phần bánh hơn hoặc cho biết bánh hình gì nhé?`, isMock: false };
       const canMakeReply = "Dạ mẫu này tụi em làm được ạ";
       if (!isImagePriceInquiry(message)) return { text: canMakeReply, isMock: false };
       const pricingKnowledge = ragContext?.pricingContextText || "";
@@ -371,10 +374,9 @@ export class GeminiChatService {
           // When classification fails, send only prices that already exist in knowledge.
         }
       }
-      const fullPriceList = formatFullImagePriceList(pricingKnowledge);
-      return { text: fullPriceList
-        ? `${canMakeReply}.\n\nEm gửi mình bảng giá để tham khảo:\n\n${fullPriceList}`
-        : `${canMakeReply}. Em kiểm tra bảng giá và báo mình ngay nhé`, isMock: false };
+      return { text: imageObservation.shapeConfidence === "high"
+        ? `Mẫu này chưa có giá phù hợp trong bảng giá hiện tại. ${customer} muốn đặt size nào để tư vấn tiếp nhé?`
+        : `Chưa đối chiếu được mức giá phù hợp với mẫu này. ${customer} cho biết bánh hình gì nhé?`, isMock: false };
     }
     // A fixed acknowledgement must not be expanded by scenarios or style review.
     if (!imageObservation && isSimpleAcknowledgement(message) && !isAcknowledgementToAssistantOffer(message, history)) {
