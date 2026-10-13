@@ -952,6 +952,23 @@ export const aiAutoReplyService = {
                 `[AI AutoReply] Reply bubbles prepared: conversationId=${conversationId}, channel=${channel}, bubbleCount=${messagesToSend.length}`
               );
 
+              if (channel === "facebook" && checkoutReply?.isSummary && checkoutReply.sampleImageUrl) {
+                const sampleImageUrl = checkoutReply.sampleImageUrl;
+                const [recentMessages, sentSample] = await Promise.all([
+                  FBMessageModel.find({ conversationId }).sort({ timestamp: -1 }).limit(6).lean(),
+                  FBMessageModel.exists({ conversationId, direction: "outbound",
+                    attachments: { $elemMatch: { type: "image", url: sampleImageUrl } } }),
+                ]);
+                const recentCustomerImage = recentMessages.some(message => message.direction === "inbound"
+                  && message.attachments?.some(attachment => attachment.type === "image"));
+                const latestInbound = await FBMessageModel.findOne({ conversationId, direction: "inbound" }).sort({ timestamp: -1 });
+                if (latestInbound?.messageId !== latestDbMessage?.messageId) return;
+                if (!recentCustomerImage && !sentSample) {
+                  await fbMessengerService.sendImage(resolvedPlatformId, conversationId,
+                    sampleImageUrl, facebookTokenContext, "[Ảnh mẫu bánh đã chọn]");
+                }
+              }
+
               for (let index = 0; index < messagesToSend.length; index += 1) {
                 const bubbleText = messagesToSend[index];
                 if (!bubbleText) continue;
