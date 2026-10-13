@@ -446,7 +446,9 @@ test("already paid orders retain their historical shipping and totals", async t 
   const paid = await s.run("đã chuyển cọc", "m3");
   assert.equal(s.getOrder()?.paymentRequestStatus, "active");
   assert.equal(s.draft.snapshot?.total, 360000);
-  assert.match(paid!.text, /261.000đ/);
+  assert.equal(s.draft.snapshot?.balance, 261000);
+  assert.match(paid!.text, /nhận được tiền cọc rồi/);
+  assert.doesNotMatch(paid!.text, /261.000đ|Tổng tiền:|Phí giao/);
   assert.equal(paid?.qrUrl, undefined);
 });
 
@@ -732,9 +734,10 @@ for (const delivery of [false, true]) test(`complete buyer workflow (${delivery 
   assert.match(savedRows[0].items[0].variantSummary!, /18cm cao 10cm/);
   assert.equal(savedRows[0].paymentStatus, "Đã thanh toán cọc");
   const paidMessage = cakePaidMessage(order.checkoutSnapshot!);
-  assert.match(paidMessage, /99.000đ tiền cọc/);
-  assert.match(paidMessage, /Chúc mừng sinh nhật mẹ/);
-  assert.match(paidMessage, delivery ? /Giao đến: 1 Đường thử/ : /Nhận tại: Chi nhánh A/);
+  assert.match(paidMessage, /nhận được tiền cọc rồi/);
+  assert.match(paidMessage, /Cảm ơn/);
+  assert.equal(paidMessage.split("\n").length, 1);
+  assert.doesNotMatch(paidMessage, /https?:\/\/|99.000|Chúc mừng sinh nhật mẹ|Giao đến:|Nhận tại:|Người nhận:|Tổng tiền:/);
   assert.doesNotMatch(paidMessage, /đã gửi bếp|đã gọi ship|xác nhận chốt đơn/);
   assert.equal((await companySepayService.processWebhook("fixture-webhook", body, signature, timestamp, payload)).duplicate, true);
   await processCakeDeposits();
