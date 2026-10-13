@@ -22,6 +22,7 @@ import { CakeConsultationSessionModel } from "../../model/cake-customer-memory.m
 import { geminiChatService } from "../gemini/chat.service";
 import { cakeOrderConfirmation, type CakeConfirmationDecision } from "../cake-order-confirmation";
 import { isCakeSummaryConfirmation } from "../cake-price-catalog";
+import { companyTelegramOrderService } from "../company-telegram-order.service";
 
 function query<T>(value: T) {
   const chain = { lean: async () => value, select: () => chain, sort: () => chain, limit: () => chain };
@@ -34,6 +35,7 @@ const details = { groupId: "TIM", name: "Bánh trái tim", size: "18", height: 1
 
 function setup(t: TestContext) {
   t.mock.method(cakeCustomerMemory, "refreshPurchases", async () => undefined);
+  t.mock.method(companyTelegramOrderService, "notifyMessengerOrder", async () => ({ status: "skipped" as const }));
   const config = { enabled: true, depositEnabled: true, depositPercent: 30, qrBankId: "970422",
     qrAccountNumber: "123456789", qrAccountName: "SHOP TEST", accountNumbers: ["123456789"], paymentCodePrefix: "DH" };
   const draft = new CakeCheckoutModel({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV" });

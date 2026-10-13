@@ -3,6 +3,7 @@ import { MessengerOrderModel } from "../model/messenger-order.model";
 import { messengerOrderService } from "./messenger-order.service";
 import { companySepayService } from "./company-sepay.service";
 import { cakeCustomerMemory } from "./cake-customer-memory";
+import { companyTelegramOrderService } from "./company-telegram-order.service";
 
 let running = false;
 let timer: NodeJS.Timeout | undefined;
@@ -36,10 +37,15 @@ export async function processCakeDeposits() {
         await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
         const synced = await messengerOrderService.syncConfirmedDepositOrder(order.orderId);
         if (synced?.status !== "synced") throw new Error(synced?.lastSyncError || "Sheet chưa sẵn sàng để nhận đơn cọc.");
+        const telegram = await companyTelegramOrderService.notifyMessengerOrder(order.orderId);
+        if (telegram.status === "failed" || telegram.status === "not_ready") {
+          throw new Error(telegram.error || "Chưa gửi được thông báo đơn cọc qua Telegram.");
+        }
         const current = await MessengerOrderModel.findById(order._id).lean();
         if (!current?.sepayCustomerNotifiedAt) throw new Error(current?.sepayCustomerNotificationError || "Chưa gửi được xác nhận cọc cho khách.");
         await MessengerOrderModel.updateOne(lease, { $set: { depositSyncCompletedAt: new Date(), depositSyncError: "" } });
-        console.log("[CakeDeposit][COMPLETED]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId, customerNotified: true, sheetSynced: true }));
+        console.log("[CakeDeposit][COMPLETED]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId,
+          customerNotified: true, sheetSynced: true, telegramStatus: telegram.status }));
       } catch (error) {
         await MessengerOrderModel.updateOne(lease, { $set: {
           depositSyncError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
