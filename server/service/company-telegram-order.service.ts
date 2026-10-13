@@ -14,6 +14,11 @@ export interface TelegramOrderConfigInput {
   messageThreadId?: number | null;
 }
 
+export interface TelegramOrderNotificationResult {
+  status: "sent" | "already_sent" | "skipped" | "not_ready" | "failed";
+  error?: string;
+}
+
 function key() {
   const secret = String(process.env.TELEGRAM_CONFIG_ENCRYPTION_KEY || process.env.JWT_ACCESS_SECRET || "").trim();
   if (!secret) throw new Error("Telegram encryption key is missing.");
@@ -92,7 +97,12 @@ function publicConfig(record: { code: string; name: string; telegramOrderConfig?
 async function sendCompany(companyCode: string, text: string) {
   const record = await findCompany(companyCode);
   const config = record.telegramOrderConfig;
-  if (!config?.enabled || !config.notifyNewOrder || !config.botTokenEncrypted || !config.groupChatId) return false;
+  if (!config?.enabled || config.notifyNewOrder === false) {
+    console.log("[CompanyTelegramOrder][SKIPPED]", JSON.stringify({ companyCode,
+      reason: !config?.enabled ? "notifications_disabled" : "new_order_notifications_disabled" }));
+    return false;
+  }
+  if (!config.botTokenEncrypted || !config.groupChatId) throw new Error("Telegram đã bật nhưng thiếu Bot Token hoặc Group Chat ID.");
   await send(decrypt(config.botTokenEncrypted), config.groupChatId, text, config.messageThreadId || undefined);
   return true;
 }
@@ -157,9 +167,10 @@ export const companyTelegramOrderService = {
     }
   },
 
-  async notifyMessengerOrder(orderId: string) {
+  async notifyMessengerOrder(orderId: string): Promise<TelegramOrderNotificationResult> {
     const order = await MessengerOrderModel.findOne({ orderId });
-    if (!order || order.status !== "synced" || order.telegramNotifiedAt) return;
+    if (!order || order.status !== "synced") return { status: "not_ready" };
+    if (order.telegramNotifiedAt) return { status: "already_sent" };
     const items = order.items.map((item) => {
       const price = item.lineTotal !== undefined ? ` - ${item.lineTotal.toLocaleString("vi-VN")} d` : "";
       return `\u2022 <b>${escapeHtml(item.productName)}</b> x ${item.quantity}${price}`;
@@ -178,12 +189,17 @@ export const companyTelegramOrderService = {
       order.selectedProductCategory ? `Danh mục: ${escapeHtml(order.selectedProductCategory)}` : "",
     ].filter(Boolean).join("\n");
     try {
+      console.log("[CompanyTelegramOrder][SENDING]", JSON.stringify({ companyCode: order.companyCode, orderId }));
       const sent = await sendCompany(order.companyCode, message);
-      if (sent) await MessengerOrderModel.updateOne({ _id: order._id }, { $set: { telegramNotifiedAt: new Date(), telegramNotificationError: "" } });
+      if (!sent) return { status: "skipped" };
+      await MessengerOrderModel.updateOne({ _id: order._id }, { $set: { telegramNotifiedAt: new Date(), telegramNotificationError: "" } });
+      console.log("[CompanyTelegramOrder][SENT]", JSON.stringify({ companyCode: order.companyCode, orderId }));
+      return { status: "sent" };
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
       await MessengerOrderModel.updateOne({ _id: order._id }, { $set: { telegramNotificationError: messageText.slice(0, 1000) } });
-      console.error(`[CompanyTelegramOrder] Failed to notify order ${order.orderId}:`, messageText);
+      console.error("[CompanyTelegramOrder][FAILED]", JSON.stringify({ companyCode: order.companyCode, orderId, error: messageText }));
+      return { status: "failed", error: messageText };
     }
   },
 

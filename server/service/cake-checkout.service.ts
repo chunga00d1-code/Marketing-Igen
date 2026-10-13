@@ -86,11 +86,12 @@ export function cakeSummary(snapshot: CakeCheckoutSnapshot, customer = "anh ch�
   ].filter(Boolean).join("\n");
 }
 
-export function cakePaymentRequest(orderId: string, code: string, snapshot: CakeCheckoutSnapshot, seller = "em", includeAccountDetails = false) {
-  return { text: [`${seller} gửi thông tin đặt cọc cho đơn ${orderId} nhé.`, `Tiền cọc: ${money(snapshot.deposit)} (${snapshot.depositPercent}% tiền bánh)`,
+export function cakePaymentRequest(_orderId: string, code: string, snapshot: CakeCheckoutSnapshot, seller = "em", includeAccountDetails = false) {
+  return { text: [`${seller} gửi ${includeAccountDetails ? "thông tin" : "QR"} đặt cọc bánh nhé.`, `Tiền cọc: ${money(snapshot.deposit)} (${snapshot.depositPercent}% tiền bánh)`,
     ...(includeAccountDetails ? [`Ngân hàng: ${snapshot.bankId}`, `Số tài khoản: ${snapshot.accountNumber}`, `Chủ tài khoản: ${snapshot.accountName}`]
       : ["Quét QR bên dưới để chuyển cọc; số tiền và nội dung chuyển khoản đã điền sẵn nhé."]),
-    `Nội dung chuyển khoản: ${code}`, `Còn lại ${money(snapshot.balance)} thanh toán khi nhận bánh.`,
+    ...(includeAccountDetails ? [`Nội dung chuyển khoản: ${code}`] : []),
+    `Còn lại ${money(snapshot.balance)} thanh toán khi nhận bánh.`,
     ...(snapshot.details.fulfillmentMethod === "delivery" ? ["Phí vận chuyển khách thanh toán riêng, không tính vào khoản chuyển cho tiệm."] : []),
     `${seller} sẽ xác nhận khi nhận được tiền cọc; không cần gửi ảnh biên lai nhé`].join("\n"),
     imageUrl: buildVietQrImageUrl(snapshot.bankId, snapshot.accountNumber, snapshot.accountName, snapshot.deposit, code) };
