@@ -90,9 +90,9 @@ function setup(t: TestContext) {
     if (order && update.$set?.paymentRequestStatus) order.paymentRequestStatus = "superseded";
     return { modifiedCount: 1 };
   });
-  const run = async (message: string, id: string) => {
+  const run = async (message: string, id: string, businessContext?: string) => {
     state.latestId = id;
-    return cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV", messageId: id, message, imageUrls: [] });
+    return cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV", messageId: id, message, imageUrls: [], businessContext });
   };
   return { draft, config, state, run, getOrder: () => order };
 }
@@ -519,6 +519,24 @@ test("sample follow-ups retain the photo and available-size questions stay in co
   t.diagnostic(`Nhắc ảnh → ${reminder!.text}`);
 });
 
+test("photo pricing discards a conflicting cake group and only offers sizes for the observed body shape", async t => {
+  const s = setup(t);
+  s.state.output.adviceOnly = true;
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text:
+    "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 18cm cao 7cm giá 270k, size 18cm cao 10cm giá 330k.\n"
+    + "Dòng 3: Mã nhóm: ROUND | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Size 10cm giá 100k, size 14cm cao 7cm giá 180k." }]));
+  const result = await cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV",
+    messageId: "m1", message: "vậy mẫu gửi này giá bao nhiêu", imageUrls: ["https://res.cloudinary.com/test/image/upload/round-cake.jpg"],
+    observation: { status: "ready", description: "Thân bánh tròn màu vàng, nơ đỏ trên đế chữ nhật.", cakeShape: "round", shapeConfidence: "high" } });
+  assert.equal(s.draft.details?.groupId, "ROUND");
+  assert.equal(s.draft.details?.size, "");
+  assert.match(result!.text, /Bánh tròn/);
+  assert.match(result!.text, /100.000đ/);
+  assert.doesNotMatch(result!.text, /trái tim|270.000đ|330.000đ/);
+  assert.equal(result?.qrUrl, undefined);
+  assert.equal(s.state.createdOrders, 0);
+});
+
 test("show customer questions through summary and deposit without requiring cake type", async t => {
   const s = setup(t);
   Object.assign(s.state.output, { cakeType: "", customerName: "", customerPhone: "", inscription: "", pickupAt: "", pickupLocation: "", fulfillmentMethod: "" });
@@ -546,6 +564,83 @@ test("advice questions remain consultation and do not confirm a suggested size",
   assert.equal(result?.wordingSource, undefined);
   assert.equal(result?.isSummary, undefined);
   assert.equal(s.state.createdOrders, 0);
+});
+
+test("capacity questions answer the configured serving range even when the extractor attempts checkout", async t => {
+  const s = setup(t);
+  s.state.output.adviceOnly = false;
+  const policy = "Có 6 đến 7 người thì bánh 270k. Có 7 đến 8 người thì bánh 330k.";
+  const result = await s.run("Lấy size 18\nCao 10cm\nSize đó mấy người ăn nhỉ", "serving-capacity", policy);
+  assert.match(result!.text, /18cm.*10cm.*7–8 người/);
+  assert.doesNotMatch(result!.text, /330|dự kiến|bao nhiêu người|tên người nhận|số điện thoại/);
+  assert.ok(result?.wordingSource);
+  assert.equal(result?.isSummary, undefined);
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("capacity advice preserves a delivered summary and a pending payment request", async t => {
+  const s = setup(t);
+  const policy = "Có 7 đến 8 người thì bánh 330k.";
+  const summary = await s.run("đặt bánh", "serving-summary", policy);
+  await cakeCheckoutService.markDelivered(summary!);
+  const revision = s.draft.revision;
+  s.state.confirmationDecision = { intent: "question", confidence: "high", target: "detail", changesRequested: false,
+    evidence: "mấy người", clarification: "" };
+  const advice = await s.run("Size đó mấy người ăn nhỉ", "serving-after-summary", policy);
+  assert.match(advice!.text, /7–8 người/);
+  assert.equal(s.draft.state, "awaiting_confirmation");
+  assert.equal(s.draft.revision, revision);
+  assert.equal(advice?.isSummary, undefined);
+  s.state.confirmationDecision = undefined;
+  await s.run("xác nhận", "serving-confirm", policy);
+  const paidAdvice = await s.run("Size này bao nhiêu người ăn", "serving-after-qr", policy);
+  assert.match(paidAdvice!.text, /7–8 người/);
+  assert.equal(paidAdvice?.qrUrl, undefined);
+  assert.equal(s.draft.state, "payment_pending");
+  assert.equal(s.state.createdOrders, 1);
+});
+
+test("guest recommendations never store the suggested size or budget as a customer selection", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { groupId: "TIM", name: "Bánh trái tim", size: "14", height: 7, budget: 180000, guestCount: 5, quantity: 1 });
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text: "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 14cm cao 7cm giá 180k, size 18cm cao 10cm giá 330k." }]));
+  const result = await s.run("5 người thì nên đặt size nào?", "serving-recommend", "4 đến 5 người bánh 180k. 7 đến 8 người bánh 330k.");
+  assert.match(result!.text, /5 người.*size 14cm.*180.000đ/);
+  assert.equal(s.draft.details?.size, ""); assert.equal(s.draft.details?.budget, null);
+  assert.equal(s.state.createdOrders, 0);
+});
+
+test("live serving advice with configurable rules and synthetic order data", {
+  skip: process.env.CAKE_SERVING_LIVE_TEST !== "1", timeout: 180000,
+}, async t => {
+  const liveFetch = globalThis.fetch;
+  const key = process.env.OPENROUTER_API_KEY;
+  assert.ok(key);
+  const s = setup(t); process.env.OPENROUTER_API_KEY = key;
+  t.mock.method(globalThis, "fetch", (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(new URL(typeof input === "string" || input instanceof URL ? input : input.url).hostname, "openrouter.ai");
+    return liveFetch(input, init);
+  });
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text: "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 14cm cao 7cm giá 180k, size 18cm cao 7cm giá 270k, size 18cm cao 10cm giá 330k." }]));
+  const policy = "4 đến 5 người bánh 180k. 6 đến 7 người bánh 270k. 7 đến 8 người bánh 330k.";
+  const style = "Tự xưng mình, gọi khách bạn.";
+  for (const [index, message] of ["Size đó mấy người ăn nhỉ", "5 người thì nên chọn size nào?"].entries()) {
+    s.draft.state = "collecting"; s.draft.snapshot = undefined;
+    s.draft.details = { ...details, name: "", cakeType: "", customerName: "", customerPhone: "", pickupAt: "", pickupLocation: "", inscription: "", decoration: "", quantity: 0,
+      size: index === 0 ? "18" : "", height: index === 0 ? 10 : null, budget: null, guestCount: 0 };
+    const history = [{ sender: "user", text: "Bánh trái tim nhé" }, { sender: "model", text: index === 0 ? "Bạn chọn size 18cm cao 10cm." : "Bạn cần bánh cho khoảng mấy người?" }];
+    const rows = history.map(row => ({ direction: row.sender === "user" ? "inbound" : "outbound", text: row.text }));
+    t.mock.method(FBMessageModel, "find", () => query([...rows].reverse()));
+    const result = await s.run(message, `live-serving-${index}`, `${style}\n${policy}`);
+    assert.ok(result?.wordingSource);
+    const generated = await geminiChatService.chat(message, history, { customerAddressStyle: "bạn",
+      advancedInstructions: `${style}\n${policy}\n${cakeConversationInstructions}` }, { contextText: result.consultationContext });
+    const answer = preservesCakeReplyFacts(result.wordingSource, generated.text) ? generated.text : result.text;
+    console.log("LIVE_SERVING", JSON.stringify({ message, answer, usedFactFallback: answer !== generated.text, details: s.draft.details }));
+    if (index === 0) { assert.match(answer, /7\s*[–-]\s*8\s*người/); assert.doesNotMatch(answer, /dự kiến|bao nhiêu người|330/); }
+    else { assert.match(answer, /14\s*cm/); assert.match(answer, /180[.,]000/); assert.equal(s.draft.details?.size, ""); }
+    assert.equal(result.isSummary, undefined); assert.equal(result.qrUrl, undefined);
+  }
 });
 
 test("a new session archives the old draft and excludes its cake, image, dates and QR", async t => {
