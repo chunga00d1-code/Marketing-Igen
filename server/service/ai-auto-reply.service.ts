@@ -830,7 +830,7 @@ export const aiAutoReplyService = {
               if (customerSession.ask) { history = []; pendingImageUrls = []; }
             }
             const imageObservation = await analyzeChatImages(pendingImageUrls, groupedCustomerMessage);
-            if (imageObservation) console.log(`[AI AutoReply] Image analysis: count=${pendingImageUrls.length}, status=${imageObservation.status}, shape=${imageObservation.cakeShape || "unknown"}, confidence=${imageObservation.shapeConfidence || "unknown"}`);
+            if (imageObservation) console.log(`[AI AutoReply] Image analysis: count=${pendingImageUrls.length}, status=${imageObservation.status}, shape=${imageObservation.cakeShape || "unknown"}, confidence=${imageObservation.shapeConfidence || "unknown"}, reason=${imageObservation.reason || "none"}`);
             const retrievalMessage = imageObservation?.status === "ready"
               ? `${groupedCustomerMessage}\nKhách gửi ảnh sản phẩm cần tư vấn: ${imageObservation.description}`
               : groupedCustomerMessage;

@@ -9,6 +9,7 @@ import { SocialIntegrationModel } from "../model/social-integration.model";
 import { messengerOrderService } from "./messenger-order.service";
 import { companyProductCatalogService } from "./company-product-catalog.service";
 import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
+import { facebookSendRequest } from "./facebook-send-request";
 import {
   FacebookMessengerError,
   createFacebookIntegrationNotFoundError,
@@ -891,7 +892,7 @@ export const fbMessengerService = {
     };
 
     try {
-      const response = await (globalThis as any).fetch(url, {
+      const response = await facebookSendRequest(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -1000,7 +1001,7 @@ export const fbMessengerService = {
     const token = await this.getPageAccessTokenByPageId(resolvedPageId, tokenContext);
     if (!token) throw createFacebookIntegrationNotFoundError();
     const url = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
-    const response = await (globalThis as any).fetch(url, {
+    const response = await facebookSendRequest(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

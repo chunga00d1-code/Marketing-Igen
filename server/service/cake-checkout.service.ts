@@ -10,7 +10,7 @@ import { buildVietQrImageUrl } from "./company-sepay.service";
 import { calculateCakeDeposit, isFutureCakePickup, matchesCakeType, normalizeCakeText, parseCakePriceCatalog, resolveCakeChoice, type CakeVariant } from "./cake-price-catalog";
 import { cakeOrderConfirmation, cakeConfirmationTopic, canConfirmCakeOrder, redactCakeConfirmationMessage, type CakeConfirmationDecision } from "./cake-order-confirmation";
 import { cakeServingCapacityReply, cakeServingRecommendationReply, isCakeServingQuestion, isCakeServingRecommendation, parseCakeServingRules } from "./cake-serving-guidance";
-import { analyzeChatImages, downloadChatImage, isImagePriceInquiry, matchesObservedCakeShape, type ChatImageObservation } from "./chat-image-context";
+import { analyzeChatImages, downloadChatImage, IMAGE_SELECTION_PREFIX, isImagePriceInquiry, matchesObservedCakeShape, type ChatImageObservation } from "./chat-image-context";
 import { cloudinaryService } from "./cloudinary.service";
 import { cakePaidMessage } from "./cake-shipping";
 import { cakeCustomerMemory, type CakeSessionContext } from "./cake-customer-memory";
@@ -482,16 +482,39 @@ export const cakeCheckoutService = {
         ? { ...blankDetails, customerName: draft.details?.customerName || "", customerPhone: draft.details?.customerPhone || "" }
         : { ...blankDetails, ...draft.details };
       if (startsNewCake) draft.imageObservation = undefined;
-      const inboundImage = input.imageUrls.length === 1 ? input.imageUrls[0] : undefined;
+      const inboundImage = input.observation?.selectedImageUrl && input.imageUrls.includes(input.observation.selectedImageUrl)
+        ? input.observation.selectedImageUrl : input.imageUrls.length === 1 ? input.imageUrls[0] : undefined;
       const lastImageMessage = !existing ? [...transcriptRows].reverse().find(row => row.direction === "inbound"
         && row.attachments?.filter(a => a.type === "image").length === 1) : undefined;
       previous.imageUrl = inboundImage || previous.imageUrl || (!existing ? (!input.session ? conversation.selectedProductImageUrl : "")
         || lastImageMessage?.attachments.find(a => a.type === "image")?.url : "") || "";
       const cachedObservation = isImagePriceInquiry(message) && previous.imageUrl && draft.imageObservation?.status === "ready"
         && !draft.imageObservation.cakeShape ? undefined : draft.imageObservation;
-      const observation = input.observation || (inboundImage ? undefined : cachedObservation)
+      let observation = input.observation || (inboundImage ? undefined : cachedObservation)
         || (previous.imageUrl ? await analyzeChatImages([previous.imageUrl], message) : undefined);
+      if (!input.imageUrls.length && previous.imageUrl && !previous.groupId && observation?.status === "unavailable") {
+        const confirmation = normalizeCakeText(message).match(/^(?:(?:da|la|banh|hinh|mau)\s+)*(trai tim|tim|tron|vuong|chu nhat)(?:\s+(?:nha|nhe|a|do|day|nhi))*$/);
+        const confirmedShape = confirmation ? ({ "trai tim": "heart", tim: "heart", tron: "round", vuong: "square", "chu nhat": "rectangle" } as const)[confirmation[1] as "trai tim" | "tim" | "tron" | "vuong" | "chu nhat"] : undefined;
+        if (confirmedShape) observation = { status: "ready", cakeShape: confirmedShape, shapeConfidence: "high",
+          selectedImageUrl: previous.imageUrl, description: `Khách đã xác nhận hình dạng thân bánh: ${confirmation![1]}.` };
+      }
       if (observation) draft.imageObservation = observation;
+      // An unreadable new photo must never reach advice using the previous cake's prices.
+      // Keep this before extraction and before the adviceOnly branch.
+      if (observation && observation.status !== "ready" && (input.imageUrls.length > 0 || isImagePriceInquiry(message))) {
+        const clarification = observation.status === "needs_selection"
+          ? `${IMAGE_SELECTION_PREFIX}: ${observation.description}\n${customer} muốn hỏi mẫu nào nhé?`
+          : observation.reason === "download_failed" || observation.reason === "analysis_failed"
+            ? `Ảnh chưa mở được ở phía ${seller}. ${customer} gửi lại ảnh giúp ${seller} nhé?`
+            : `Mẫu này ${customer} xác nhận giúp ${seller} phần bánh hình tròn, trái tim hay hình khác nhé?`;
+        if (input.imageUrls.length) {
+          draft.details = { ...previous, imageUrl: inboundImage || "", groupId: "", name: "", size: "", height: null, budget: null, packQuantity: null };
+          draft.state = "collecting"; draft.snapshot = undefined; draft.summarySentAt = undefined; draft.revision++;
+        }
+        draft.lastMessageId = messageId; draft.replyText = undefined;
+        await draft.save();
+        return reply(clarification);
+      }
       const extracted = pendingUpdate || await extractDetails(message, previous, transcript, context.catalog, observation, input.businessContext);
       const normalizedMessage = normalizeCakeText(message);
       const ambiguousFulfillment = /^(?:den tan noi|toi tan noi)(?: nhe| nha| a)?$/.test(normalizedMessage);
@@ -524,8 +547,8 @@ export const cakeCheckoutService = {
         extracted.details.cakeType ||= previous.cakeType;
       }
       const observedShape = observation?.status === "ready" && observation.shapeConfidence === "high"
-        && observation.cakeShape !== "other" && observation.cakeShape !== "unknown" && !startsNewCake
-        && (input.imageUrls.length > 0 || isImagePriceInquiry(message)) ? observation.cakeShape : undefined;
+        && observation.cakeShape !== "other" && observation.cakeShape !== "unknown"
+        && previous.imageUrl ? observation.cakeShape : undefined;
       if (observedShape) {
         const shapeGroups = new Set(context.catalog.filter(variant => matchesObservedCakeShape(variant.shape || variant.name, observedShape))
           .map(variant => variant.groupId));
