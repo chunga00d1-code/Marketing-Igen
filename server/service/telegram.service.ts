@@ -1455,6 +1455,7 @@ export const telegramService = {
           errStr.includes("ETIMEDOUT") ||
           errStr.includes("fetch failed") ||
           errStr.includes("timeout") ||
+          errStr === "Aborted" ||
           err?.name === "AbortError" ||
           err?.code === "ETIMEDOUT";
 

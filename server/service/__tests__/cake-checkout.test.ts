@@ -537,6 +537,51 @@ test("photo pricing discards a conflicting cake group and only offers sizes for 
   assert.equal(s.state.createdOrders, 0);
 });
 
+test("an unreadable new sample cannot quote the previous cake through the advice branch", async t => {
+  const s = setup(t);
+  s.draft.details = { ...details, imageUrl: "https://res.cloudinary.com/test/image/upload/old.jpg" };
+  s.state.output.adviceOnly = true;
+  const result = await cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV", messageId: "m1",
+    message: "bánh này thì sao nhỉ giá bao nhiêu", imageUrls: ["https://res.cloudinary.com/test/image/upload/new.jpg"],
+    observation: { status: "unavailable", cakeShape: "unknown", shapeConfidence: "low", reason: "uncertain_shape", description: "Chưa rõ hình dạng" } });
+  assert.match(result!.text, /xác nhận.*hình tròn, trái tim/);
+  assert.doesNotMatch(result!.text, /270|330|bảng giá/);
+  assert.equal(result?.consultationContext, undefined);
+  assert.equal(result?.qrUrl, undefined);
+  assert.equal(s.draft.details?.groupId, "");
+  assert.equal(s.draft.details?.imageUrl, "https://res.cloudinary.com/test/image/upload/new.jpg");
+  assert.equal(s.state.aiCalls, 0);
+  assert.equal(s.state.createdOrders, 0);
+  const confirmation = await s.run("trái tim nha", "m2");
+  assert.equal(s.draft.imageObservation?.cakeShape, "heart");
+  assert.equal(s.draft.details?.groupId, "TIM");
+  assert.doesNotMatch(confirmation!.text, /xác nhận.*hình tròn, trái tim/);
+  const price = await s.run("giá bao nhiêu", "m3");
+  assert.match(price!.text, /270.000đ|330.000đ/);
+  assert.doesNotMatch(price!.text, /xác nhận.*hình tròn, trái tim/);
+});
+
+test("a new heart sample overrides round extraction and retains its shape on later size advice", async t => {
+  const s = setup(t);
+  Object.assign(s.state.output, { groupId: "ROUND", name: "Bánh tròn", cakeType: "", adviceOnly: true });
+  t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text:
+    "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Size 18cm cao 7cm giá 270k, size 18cm cao 10cm giá 330k.\n"
+    + "Dòng 3: Mã nhóm: ROUND | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Size 10cm giá 100k." }]));
+  const imageUrl = "https://res.cloudinary.com/test/image/upload/heart.jpg";
+  const result = await cakeCheckoutService.process({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV", messageId: "m1",
+    message: "bánh khác này giá bao nhiêu", imageUrls: [imageUrl, "https://res.cloudinary.com/test/image/upload/repeated.jpg"],
+    observation: { status: "ready", cakeShape: "heart", shapeConfidence: "high", description: "Thân bánh trái tim", selectedImageUrl: imageUrl } });
+  assert.equal(s.draft.details?.groupId, "TIM");
+  assert.equal(s.draft.details?.imageUrl, imageUrl);
+  assert.match(result!.text, /Bánh trái tim/);
+  assert.doesNotMatch(result!.text, /Bánh tròn|100.000/);
+  const followup = await s.run("có những size nào", "m2");
+  assert.equal(s.draft.details?.groupId, "TIM");
+  assert.match(followup!.text, /Bánh trái tim/);
+  assert.doesNotMatch(followup!.text, /Bánh tròn|100.000/);
+  assert.equal(s.state.createdOrders, 0);
+});
+
 test("show customer questions through summary and deposit without requiring cake type", async t => {
   const s = setup(t);
   Object.assign(s.state.output, { cakeType: "", customerName: "", customerPhone: "", inscription: "", pickupAt: "", pickupLocation: "", fulfillmentMethod: "" });
