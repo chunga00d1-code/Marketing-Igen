@@ -86,7 +86,7 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
       }
       if (action === "template") {
         await socialIntegrationService.initializeOrderSheet(integrationId);
-        toast.success("Đã tạo/cập nhật hai tab Orders và OrderItems.");
+        toast.success("Đã tạo/cập nhật tab đơn hàng với 12 cột.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể cập nhật Google Sheet.");
@@ -127,20 +127,15 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
         placeholder="https://docs.google.com/spreadsheets/d/..."
         className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
       />
-      <div className="grid grid-cols-2 gap-2">
+      <div>
         <input
           value={config.ordersSheetName}
           onChange={(event) => setConfig((current) => ({ ...current, ordersSheetName: event.target.value }))}
           placeholder="Orders"
-          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
-        />
-        <input
-          value={config.itemsSheetName}
-          onChange={(event) => setConfig((current) => ({ ...current, itemsSheetName: event.target.value }))}
-          placeholder="OrderItems"
-          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
+          className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
         />
       </div>
+      <p className="text-[10px] leading-4 text-gray-500">Nếu tab cũ có mẫu nhiều cột, dữ liệu sẽ được chuyển sang tab “12 cột”. Tab cũ được giữ làm bản sao ẩn.</p>
       <div className="space-y-2 rounded-lg border border-blue-100 bg-white p-2.5">
         <div className="flex items-center justify-between gap-3">
           <div>
