@@ -87,18 +87,6 @@ export interface CompanyTelegramOrderConfig {
   lastTestError: string;
 }
 
-export interface CompanyOrderAutomationConfig {
-  companyCode: string;
-  companyName: string;
-  enabled: boolean;
-  webhookUrl: string;
-  hasWebhookSecret: boolean;
-  updatedAt: string | Date | null;
-  lastDeliveryAt: string | Date | null;
-  lastDeliveryStatus: "success" | "failed" | "untested";
-  lastDeliveryError: string;
-}
-
 export interface CompanySepayConfig {
   companyCode: string;
   companyName: string;

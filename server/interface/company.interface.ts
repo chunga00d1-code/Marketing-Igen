@@ -54,16 +54,6 @@ export interface ICompanyProductCatalogConfig {
 
 export type ICompanyCakeCatalogConfig = ICompanyProductCatalogConfig;
 
-export interface ICompanyOrderAutomationConfig {
-  enabled: boolean;
-  webhookUrl: string;
-  webhookSecretEncrypted: string;
-  updatedAt?: Date | null;
-  lastDeliveryAt?: Date | null;
-  lastDeliveryStatus?: "success" | "failed" | "untested";
-  lastDeliveryError?: string;
-}
-
 export interface ICompany extends Document {
   code: string;
   name: string;
@@ -75,5 +65,4 @@ export interface ICompany extends Document {
   sepayConfig?: ICompanySepayConfig;
   productCatalogConfig?: ICompanyProductCatalogConfig;
   cakeCatalogConfig?: ICompanyCakeCatalogConfig;
-  orderAutomationConfig?: ICompanyOrderAutomationConfig;
 }

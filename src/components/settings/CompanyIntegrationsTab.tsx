@@ -11,7 +11,6 @@ import OrderSheetConfigCard from "./OrderSheetConfigCard";
 import TelegramOrderConfigCard from "./TelegramOrderConfigCard";
 import SepayConfigCard from "./SepayConfigCard";
 import ProductCatalogConfigCard from "./ProductCatalogConfigCard";
-import OrderAutomationConfigCard from "./OrderAutomationConfigCard";
 
 interface CompanyIntegrationsTabProps {
   userProfile: any;
@@ -693,7 +692,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
   return (
     <div className="space-y-6">
-      <OrderAutomationConfigCard userProfile={userProfile} />
       <TelegramOrderConfigCard userProfile={userProfile} />
       <SepayConfigCard userProfile={userProfile} />
       <ProductCatalogConfigCard userProfile={userProfile} />

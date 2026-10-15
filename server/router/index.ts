@@ -36,8 +36,6 @@ import { companyTelegramOrderRouter } from "./company-telegram-order.router";
 import { companySepayRouter } from "./company-sepay.router";
 import { companyCakeCatalogRouter } from "./company-cake-catalog.router";
 import { companyProductCatalogRouter } from "./company-product-catalog.router";
-import { orderAutomationRouter } from "./order-automation.router";
-import { companyOrderAutomationRouter } from "./company-order-automation.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -106,8 +104,6 @@ apiRouter.use("/company-telegram-order", companyTelegramOrderRouter);
 apiRouter.use(companySepayRouter);
 apiRouter.use("/company-cake-catalog", companyCakeCatalogRouter);
 apiRouter.use("/company-product-catalog", companyProductCatalogRouter);
-apiRouter.use("/automation/n8n", orderAutomationRouter);
-apiRouter.use("/company-order-automation", companyOrderAutomationRouter);
 
 apiRouter.use("/professional", professionalRouter);
 

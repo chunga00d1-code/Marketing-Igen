@@ -1035,14 +1035,7 @@ export const zaloMessengerService = {
       console.log(`[Zalo Service Webhook] Đã lưu tin nhắn mới thành công từ Zalo User: ${senderId}`);
 
       // Kích hoạt AI Auto-Reply Bot bất đồng bộ
-      aiAutoReplyService.triggerAutoReply(
-        "zalo",
-        oaId,
-        conversation._id.toString(),
-        text,
-        messageId,
-        attachments.map((attachment: { url?: string }) => attachment.url || "").filter(Boolean),
-      );
+      aiAutoReplyService.triggerAutoReply("zalo", oaId, conversation._id.toString(), text, messageId);
     }
   }
 };

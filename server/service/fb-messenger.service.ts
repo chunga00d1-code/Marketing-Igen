@@ -760,14 +760,7 @@ export const fbMessengerService = {
         `[FB Service processIncomingMessage] TRIGGER AI: conversationId=${conversationId}, ` +
         `pageId=${resolvedPageId}, textLength=${text.length}`
       );
-      aiAutoReplyService.triggerAutoReply(
-        "facebook",
-        resolvedPageId,
-        conversationId,
-        text,
-        messageId,
-        attachments.map((attachment: { url?: string }) => attachment.url || "").filter(Boolean),
-      );
+      aiAutoReplyService.triggerAutoReply("facebook", resolvedPageId, conversationId, text, messageId);
     };
     void handleOrderMessage();
   },
