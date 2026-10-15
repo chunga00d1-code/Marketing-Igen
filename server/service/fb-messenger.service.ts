@@ -676,10 +676,11 @@ export const fbMessengerService = {
     const conversationId = conversation._id.toString();
     const handleOrderMessage = async () => {
       try {
-        const { cakeCheckoutService } = await import("./cake-checkout.service");
-        const cakeCheckoutEnabled = await cakeCheckoutService.isEnabled(resolvedPageId);
-        const cakeCheckoutActive = await cakeCheckoutService.isActive(resolvedPageId, conversationId);
-        const receiptOrder = cakeCheckoutActive ? null : await messengerOrderService.capturePaymentReceipt(
+        const { chatOrderFlowRegistry } = await import("./chat-ordering/registry");
+        const orderFlow = await chatOrderFlowRegistry.resolveForPage(resolvedPageId);
+        const orderFlowEnabled = await orderFlow.isEnabled(resolvedPageId);
+        const orderFlowActive = await orderFlow.isActive(resolvedPageId, conversationId);
+        const receiptOrder = orderFlowActive ? null : await messengerOrderService.capturePaymentReceipt(
           resolvedPageId,
           conversationId,
           messageId,
@@ -696,7 +697,7 @@ export const fbMessengerService = {
           return;
         }
 
-        const productSelection = cakeCheckoutActive ? null : await messengerOrderService.captureProductSelection(
+        const productSelection = orderFlowActive ? null : await messengerOrderService.captureProductSelection(
           resolvedPageId,
           conversationId,
           messageId,
@@ -708,7 +709,7 @@ export const fbMessengerService = {
           return;
         }
 
-        if (!cakeCheckoutEnabled && !cakeCheckoutActive && messengerOrderService.isConfirmationMessage(text)) {
+        if (!orderFlowEnabled && !orderFlowActive && messengerOrderService.isConfirmationMessage(text)) {
           const order = await messengerOrderService.captureConfirmedOrder(resolvedPageId, conversationId, messageId, text);
           if (order) {
             const depositRequest = await messengerOrderService.getDepositRequest(order.orderId);
@@ -728,7 +729,7 @@ export const fbMessengerService = {
           }
         }
 
-        if (text && !cakeCheckoutActive) {
+        if (text && !orderFlowActive) {
           const suggestions = await companyProductCatalogService.findSuggestionsForPage(resolvedPageId, text);
           if (suggestions?.images.length) {
             let sentCount = 0;

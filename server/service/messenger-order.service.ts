@@ -194,7 +194,9 @@ async function extractOrder(transcript: string) {
 async function syncOrder(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order || order.status === "synced") return order;
-  if (order.checkoutFlow === "cake_deposit" && order.depositStatus !== "verified") return order;
+  const verifiedDeposit = order.depositRequired && order.depositStatus === "verified";
+  const waivedDeposit = !order.depositRequired && order.depositStatus === "not_required";
+  if (order.checkoutFlow === "cake_deposit" && !verifiedDeposit && !waivedDeposit) return order;
   const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
   const config = integration?.orderSheetConfig;
   if (!integration || !config?.enabled) return order;
@@ -594,7 +596,10 @@ export const messengerOrderService = {
     const order = await MessengerOrderModel.findOne({ orderId, companyCode });
     if (!order) throw new Error("Khong tim thay don Messenger.");
     if (order.checkoutFlow === "cake_deposit") {
-      if (order.depositStatus !== "verified") throw new Error("Đơn chưa được xác nhận tiền cọc qua webhook.");
+      const waivedDeposit = !order.depositRequired && order.depositStatus === "not_required";
+      if (!waivedDeposit && !(order.depositRequired && order.depositStatus === "verified")) {
+        throw new Error("Đơn chưa được xác nhận tiền cọc qua webhook hoặc không thuộc diện miễn cọc.");
+      }
       return MessengerOrderModel.findOneAndUpdate({ _id: order._id }, {
         $set: { depositSyncAttempts: 0, depositSyncNextAt: new Date() },
         $unset: { depositSyncCompletedAt: 1 },
