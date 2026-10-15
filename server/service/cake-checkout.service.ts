@@ -13,7 +13,7 @@ import { cakeServingCapacityReply, cakeServingRecommendationReply, isCakeServing
 import { analyzeChatImages, downloadChatImage, IMAGE_SELECTION_PREFIX, isImagePriceInquiry, matchesObservedCakeShape, type ChatImageObservation } from "./chat-image-context";
 import { cloudinaryService } from "./cloudinary.service";
 import { cakePaidMessage } from "./cake-shipping";
-import { cakeCustomerMemory, type CakeSessionContext } from "./cake-customer-memory";
+import { cakeCustomerMemory, CUSTOMER_SESSION_MS, type CakeSessionContext } from "./cake-customer-memory";
 import { CakeConsultationSessionModel } from "../model/cake-customer-memory.model";
 
 const money = (amount: number) => `${amount.toLocaleString("vi-VN")}đ`;
@@ -213,8 +213,23 @@ export const cakeCheckoutService = {
     if (!conversation) return undefined;
     const existing = await CakeCheckoutModel.findOne(scope);
     const context = await loadContext(companyCode, pageId);
-    if (!context) return existing ? { text: "Thông tin nhận cọc đang cần kiểm tra lại. Vui lòng chờ xác nhận trước khi chuyển tiền theo QR cũ nhé",
-      isMock: false, draftId: String(existing._id), revision: existing.revision } : undefined;
+    if (!context) {
+      if (!existing) return undefined;
+      const lastProcessedMessage = existing.lastMessageId
+        ? await FBMessageModel.findOne({ conversationId, messageId: existing.lastMessageId, direction: "inbound" }).select("timestamp").lean()
+        : null;
+      const updatedAt = existing.get("updatedAt");
+      const lastActivityAt = lastProcessedMessage?.timestamp || (updatedAt instanceof Date ? updatedAt : undefined);
+      const normalizedMessage = normalizeCakeText(message);
+      const paymentOrOldOrderFollowup = /\b(?:qr|coc|chuyen khoan|chuyen tien|thanh toan|bien lai|da coc|ma don|don cu|don truoc)\b/.test(normalizedMessage);
+      const expiredDraft = lastActivityAt instanceof Date
+        && Date.now() - lastActivityAt.getTime() >= CUSTOMER_SESSION_MS;
+      if (expiredDraft && !paymentOrOldOrderFollowup) return undefined;
+      const checkoutRelated = /\b(?:qr|coc|dat|mua|banh|don|chuyen khoan|chuyen tien|thanh toan|xac nhan)\b/.test(normalizedMessage);
+      if (!checkoutRelated) return undefined;
+      return { text: "Thông tin nhận cọc đang cần kiểm tra lại. Vui lòng chờ xác nhận trước khi chuyển tiền theo QR cũ nhé",
+        isMock: false, draftId: String(existing._id), revision: existing.revision };
+    }
     const transcriptRows = await FBMessageModel.find({ conversationId, ...(input.session ? { consultationSessionId: input.session.sessionId } : {}) }).sort({ timestamp: -1 }).limit(24).lean();
     transcriptRows.reverse();
     const transcript = transcriptRows.map(row => `${row.direction === "inbound" ? "KHÁCH" : "SHOP"}: ${row.text || "[ảnh]"}`).join("\n").slice(-14000);

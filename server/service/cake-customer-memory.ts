@@ -7,7 +7,7 @@ import { CakeCheckoutModel } from "../model/cake-checkout.model";
 import { MessengerOrderModel } from "../model/messenger-order.model";
 import { normalizeCakeText } from "./cake-price-catalog";
 
-export const CUSTOMER_SESSION_MS = 24 * 60 * 60 * 1000;
+export const CUSTOMER_SESSION_MS = 12 * 60 * 60 * 1000;
 export function pendingSessionInput(rows: { timestamp: Date; messageId: string; text: string }[], lastProcessedId?: string) {
   let start = 0;
   for (let i = 1; i < rows.length; i++) if (rows[i].timestamp.getTime() - rows[i - 1].timestamp.getTime() >= CUSTOMER_SESSION_MS) start = i;
