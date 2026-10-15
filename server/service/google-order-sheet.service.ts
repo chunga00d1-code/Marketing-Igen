@@ -402,7 +402,12 @@ export const googleOrderSheetService = {
     const column = columnLetters(statusColumnIndex + 1);
     const statusRange = `${a1SheetName(sheetName)}!${column}${rowNumber}:${column}${rowNumber}`;
     const statusResult = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(statusRange)}`) as { values?: unknown[][] };
-    const status = String(statusResult.values?.[0]?.[0] || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500);
+    const status = [...String(statusResult.values?.[0]?.[0] || "")]
+      .map(character => {
+        const codePoint = character.codePointAt(0) || 0;
+        return codePoint <= 0x1f || codePoint === 0x7f ? " " : character;
+      })
+      .join("").trim().slice(0, 500);
     return { status, hasStatusColumn: true };
   },
 
