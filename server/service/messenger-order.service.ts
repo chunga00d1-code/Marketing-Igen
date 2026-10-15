@@ -358,15 +358,11 @@ export const messengerOrderService = {
     const clean = cleanExtractedOrder(extracted);
     const confirmed = clean.missingFields.length === 0;
     const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
-    const companyDepositEnabled = company?.sepayConfig?.depositEnabled === true;
-    const legacyDepositEnabled = integration.orderSheetConfig.depositEnabled === true
-      && Boolean(String(integration.orderSheetConfig.depositInstructions || "").trim());
+    const companyDepositEnabled = company?.sepayConfig?.enabled === true && company.sepayConfig.depositEnabled === true;
     const configuredDepositPercent = Math.min(100, Math.max(1, Number(
-      companyDepositEnabled
-        ? company?.sepayConfig?.depositPercent || 30
-        : integration.orderSheetConfig.depositPercent || 30,
+      company?.sepayConfig?.depositPercent || 30,
     )));
-    const depositRequired = confirmed && (companyDepositEnabled || legacyDepositEnabled);
+    const depositRequired = confirmed && companyDepositEnabled;
     const fingerprint = createHash("sha256")
       .update(JSON.stringify({ conversationId, ...clean }))
       .digest("hex");
@@ -429,15 +425,17 @@ export const messengerOrderService = {
   async getDepositRequest(orderId: string) {
     const order = await MessengerOrderModel.findOne({ orderId });
     if (!order || !order.depositRequired || order.depositStatus !== "awaiting_receipt" || order.depositRequestedAt) return null;
-    const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
-    const instructions = String(integration?.orderSheetConfig?.depositInstructions || "").trim();
     const company = await CompanyModel.findOne({ code: order.companyCode }).lean();
-    const companyDepositEnabled = company?.sepayConfig?.depositEnabled === true;
-    const legacyDepositEnabled = integration?.orderSheetConfig?.depositEnabled === true && Boolean(instructions);
-    if (!companyDepositEnabled && !legacyDepositEnabled) return null;
-    const percent = order.depositPercent
-      || (companyDepositEnabled ? company?.sepayConfig?.depositPercent : integration?.orderSheetConfig?.depositPercent)
-      || 30;
+    const config = company?.sepayConfig;
+    if (!config?.enabled || !config.depositEnabled) return null;
+    const percent = order.depositPercent || config.depositPercent || 30;
+    // Existing orders retain their saved amount and percentage; bank details come from the company.
+    if (!config.qrBankId || !config.qrAccountNumber || !config.qrAccountName) return null;
+    const instructions = [
+      `Ngân hàng: ${config.qrBankId}`,
+      `Số tài khoản: ${config.qrAccountNumber}`,
+      `Chủ tài khoản: ${config.qrAccountName}`,
+    ].join("\n");
     const paymentQr = await companySepayService.getPaymentQr(order.companyCode, order.depositAmount, order.paymentCode);
     return depositRequestText(order.orderId, percent, order.depositAmount, instructions, order.paymentCode, paymentQr);
   },
