@@ -387,7 +387,7 @@ export const companySepayService = {
       if (transaction.status === "matched" && transaction.orderId) {
         // Wake the leased worker after persisting verification; the periodic tick
         // still recovers failures or process restarts without parallel sends.
-        void import("./cake-deposit-worker").then(({ processCakeDeposits }) => processCakeDeposits())
+        void import("./cake-deposit-worker").then(({ wakeCakeDepositWorker }) => wakeCakeDepositWorker())
           .catch(error => console.error("[SePay] Không thể kích hoạt xử lý cọc:", error));
       }
       company.set("sepayConfig.lastWebhookAt", new Date());

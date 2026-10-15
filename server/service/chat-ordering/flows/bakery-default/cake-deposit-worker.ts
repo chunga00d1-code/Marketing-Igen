@@ -40,16 +40,21 @@ export async function processCakeDeposits() {
         if (requiresDeposit) {
           // Notify independently so a Sheet outage does not hide a successful deposit.
           await companySepayService.notifyCustomerPayment(order.orderId);
-          await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
         }
+        // Keep returning-customer history current for both deposited and waived orders.
+        // A memory refresh failure must not block delivery of a confirmed order to the shop.
+        await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() })
+          .catch(error => console.error(`[CakeDeposit] Không thể cập nhật lịch sử mua hàng cho ${order.orderId}:`, error));
         const synced = await messengerOrderService.syncConfirmedDepositOrder(order.orderId);
         if (synced?.status !== "synced") throw new Error(synced?.lastSyncError || "Sheet chưa sẵn sàng để nhận đơn cọc.");
         const telegram = await companyTelegramOrderService.notifyMessengerOrder(order.orderId);
         if (telegram.status === "failed" || telegram.status === "not_ready") {
           throw new Error(telegram.error || "Chưa gửi được thông báo đơn cọc qua Telegram.");
         }
-        const current = await MessengerOrderModel.findById(order._id).lean();
-        if (requiresDeposit && !current?.sepayCustomerNotifiedAt) throw new Error(current?.sepayCustomerNotificationError || "Chưa gửi được xác nhận cọc cho khách.");
+        if (requiresDeposit) {
+          const current = await MessengerOrderModel.findById(order._id).lean();
+          if (!current?.sepayCustomerNotifiedAt) throw new Error(current?.sepayCustomerNotificationError || "Chưa gửi được xác nhận cọc cho khách.");
+        }
         await MessengerOrderModel.updateOne(lease, { $set: { depositSyncCompletedAt: new Date(), depositSyncError: "" } });
         console.log("[CakeDeposit][COMPLETED]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId,
           customerNotified: requiresDeposit, sheetSynced: true, telegramStatus: telegram.status }));
@@ -69,8 +74,13 @@ export async function processCakeDeposits() {
 
 export function startCakeDepositWorker() {
   if (timer) return;
-  const tick = () => { void processCakeDeposits().catch(error => console.error("[CakeDeposit] Worker:", error)); };
+  const tick = () => wakeCakeDepositWorker();
   timer = setInterval(tick, 15_000);
   timer.unref();
   tick();
+}
+
+/** Wake the leased worker after a new eligible order or a manual retry. */
+export function wakeCakeDepositWorker() {
+  void processCakeDeposits().catch(error => console.error("[CakeDeposit] Worker:", error));
 }

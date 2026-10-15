@@ -22,6 +22,7 @@ test("Sheet writes only the requested columns and finds the same order on retry 
   const compactRows: unknown[][] = [];
   const updates: Array<{ range: string; values: unknown[][] }> = [];
   const batchRequests: Array<Record<string, unknown>> = [];
+  const sheetHeaders = new Map<string, string[]>();
   let legacyMode = false;
   t.mock.method(globalThis, "fetch", async (input, init) => {
     const url = decodeURIComponent(String(input));
@@ -35,6 +36,8 @@ test("Sheet writes only the requested columns and finds the same order on retry 
     else if (url.endsWith("'Orders - 12 cột'!A1:L1")) response = { values: [ORDER_HEADERS] };
     else if (url.endsWith("'Orders - 12 cột'!M:M")) response = { values: [["Mã đơn hàng"], ...compactRows.map(row => [row[12]])] };
     else if (url.endsWith("'Orders'!M:M")) response = { values: [["Mã đơn hàng"], ...orderRows.map(row => [row[12]])] };
+    else if (url.endsWith("'Orders'!1:1")) response = { values: [sheetHeaders.get("Orders") || []] };
+    else if (url.endsWith("'Orders - 12 cột'!1:1")) response = { values: [sheetHeaders.get("Orders - 12 cột") || []] };
     else if (url.endsWith("'Orders'!A:A")) response = { values: [["Mã đơn hàng"], ["legacy-1"]] };
     else if (url.endsWith("'Orders'!A1:AK")) {
       const header = Array(37).fill(""); header[0] = "Mã đơn hàng"; header[6] = "Tên khách hàng"; header[13] = "Tổng thanh toán";
@@ -48,7 +51,26 @@ test("Sheet writes only the requested columns and finds the same order on retry 
     else if (url.includes(":append") && url.includes("'Orders - 12 cột'")) compactRows.push(...body.values!);
     else if (url.includes(":append") && url.includes("'Orders'")) orderRows.push(...body.values!);
     else if (url.includes(":batchUpdate")) batchRequests.push(...(body.requests || []));
-    else if (init?.method === "PUT" && body.range?.includes("'Orders'!")) updates.push({ range: body.range, values: body.values! });
+    else if (init?.method === "PUT" && body.range?.includes("'Orders'!")) {
+      updates.push({ range: body.range, values: body.values! });
+      const match = body.range.match(/'([^']+)'!([A-Z]+)1:([A-Z]+)1/);
+      if (match) {
+        const headers = sheetHeaders.get(match[1]) || [];
+        const startIndex = match[2].split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+        (body.values?.[0] || []).forEach((value, index) => { headers[startIndex + index] = String(value || ""); });
+        sheetHeaders.set(match[1], headers);
+      }
+    }
+    else if (init?.method === "PUT" && body.range?.includes("'Orders - 12 cột'!")) {
+      updates.push({ range: body.range, values: body.values! });
+      const match = body.range.match(/'([^']+)'!([A-Z]+)1:([A-Z]+)1/);
+      if (match) {
+        const headers = sheetHeaders.get(match[1]) || [];
+        const startIndex = match[2].split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
+        (body.values?.[0] || []).forEach((value, index) => { headers[startIndex + index] = String(value || ""); });
+        sheetHeaders.set(match[1], headers);
+      }
+    }
     return new Response(JSON.stringify(response), { status: 200 });
   });
   const order: SheetOrder = { orderId: "cake-1", createdAt: new Date(), confirmedAt: new Date(), sourceAccount: "Page", conversationId: "conv",
@@ -58,11 +80,11 @@ test("Sheet writes only the requested columns and finds the same order on retry 
   assert.equal((await googleOrderSheetService.appendOrder("sheet", "Orders", "OrderItems", order)).duplicate, false);
   assert.equal((await googleOrderSheetService.appendOrder("sheet", "Orders", "OrderItems", order)).duplicate, true);
   assert.equal(orderRows.length, 1);
-  assert.deepEqual(orderRows[0], ["Mai", "0901234567", "Bánh trái tim x1", "20 cm", "", 330000, "", "Không", 99000, "", "", 231000, "cake-1"]);
+  assert.deepEqual(orderRows[0], ["Mai", "0901234567", "Bánh trái tim x1", "20 cm", "", 330000, "", "Không", 99000, "", "", 231000, "cake-1", ""]);
   await googleOrderSheetService.updatePaymentReceipt("sheet", "Orders", "cake-1", { depositAmount: 99000, receiptUrl: "https://example.com/receipt", receiptReceivedAt: new Date() });
   await googleOrderSheetService.updateProductSelection("sheet", "Orders", "cake-1", { imageUrl: "https://example.com/cake", selectedAt: new Date(), categoryName: "Bánh" });
   await googleOrderSheetService.updateSepayPayment("sheet", "Orders", "cake-1", { transactionId: "tx", transferAmount: 99000, verifiedAt: new Date() });
-  assert.deepEqual(updates.map(update => update.range), ["'Orders'!A1:M1", "'Orders'!A1:M1", "'Orders'!H2:J2", "'Orders'!K2:K2", "'Orders'!I2:I2"]);
+  assert.deepEqual(updates.map(update => update.range), ["'Orders'!A1:M1", "'Orders'!N1:N1", "'Orders'!A1:M1", "'Orders'!H2:J2", "'Orders'!K2:K2", "'Orders'!I2:I2"]);
   legacyMode = true;
   updates.length = 0;
   await googleOrderSheetService.updatePaymentReceipt("sheet", "Orders", "legacy-1", { depositAmount: 99000, receiptUrl: "https://example.com/old", receiptReceivedAt: new Date() });
@@ -82,12 +104,16 @@ test("Sheet writes only the requested columns and finds the same order on retry 
 test("deposit worker persists retries and resumes without repeating customer confirmation", async t => {
   t.mock.method(cakeCustomerMemory, "refreshPurchases", async () => undefined);
   t.mock.method(companyTelegramOrderService, "notifyMessengerOrder", async () => ({ status: "skipped" as const }));
-  const order = new MessengerOrderModel({ orderId: "cake-1", companyCode: "TEST", conversationId: "507f1f77bcf86cd799439011", depositStatus: "verified", checkoutFlow: "cake_deposit" });
+  const order = new MessengerOrderModel({ orderId: "cake-1", companyCode: "TEST", conversationId: "507f1f77bcf86cd799439011",
+    depositRequired: true, depositStatus: "verified", checkoutFlow: "cake_deposit" });
   let available = true;
   let notifications = 0;
   let syncs = 0;
   t.mock.method(MessengerOrderModel, "findOneAndUpdate", async (filter: Record<string, unknown>) => {
-    assert.equal(filter.depositStatus, "verified");
+    assert.deepEqual(filter.$or, [
+      { depositRequired: true, depositStatus: "verified" },
+      { depositRequired: false, depositStatus: "not_required" },
+    ]);
     assert.equal(filter.checkoutFlow, "cake_deposit");
     assert.deepEqual(filter.depositSyncAttempts, { $lt: 8 });
     if (!available) return null;
@@ -119,9 +145,53 @@ test("deposit worker persists retries and resumes without repeating customer con
   assert.equal(syncs, 2);
 });
 
+test("deposit worker sends confirmed no-deposit cake orders to the Sheet and shop", async t => {
+  const order = new MessengerOrderModel({ orderId: "cake-no-deposit", companyCode: "TEST",
+    conversationId: "507f1f77bcf86cd799439011", depositRequired: false, depositStatus: "not_required", checkoutFlow: "cake_deposit" });
+  let available = true;
+  let customerNotifications = 0;
+  let purchaseRefreshes = 0;
+  let sheetSyncs = 0;
+  let telegramNotifications = 0;
+  t.mock.method(cakeCustomerMemory, "refreshPurchases", async () => { purchaseRefreshes++; });
+  t.mock.method(companySepayService, "notifyCustomerPayment", async () => { customerNotifications++; });
+  t.mock.method(companyTelegramOrderService, "notifyMessengerOrder", async () => {
+    telegramNotifications++;
+    return { status: "skipped" as const };
+  });
+  t.mock.method(MessengerOrderModel, "findOneAndUpdate", async (filter: Record<string, unknown>) => {
+    assert.deepEqual(filter.$or, [
+      { depositRequired: true, depositStatus: "verified" },
+      { depositRequired: false, depositStatus: "not_required" },
+    ]);
+    if (!available) return null;
+    available = false;
+    order.depositSyncAttempts = (order.depositSyncAttempts || 0) + 1;
+    return order;
+  });
+  t.mock.method(MessengerOrderModel, "updateOne", async (filter: Record<string, unknown>, update: { $set?: Record<string, unknown> }) => {
+    assert.ok(filter.depositSyncLeaseToken);
+    if (update.$set) order.set(update.$set);
+    return { modifiedCount: 1 };
+  });
+  t.mock.method(messengerOrderService, "syncConfirmedDepositOrder", async () => {
+    sheetSyncs++;
+    order.status = "synced";
+    return order;
+  });
+
+  await processCakeDeposits();
+
+  assert.ok(order.depositSyncCompletedAt);
+  assert.equal(customerNotifications, 0, "A no-deposit order does not send a payment confirmation");
+  assert.equal(purchaseRefreshes, 1);
+  assert.equal(sheetSyncs, 1);
+  assert.equal(telegramNotifications, 1);
+});
+
 test("a verified cake deposit retries Telegram without sending the customer confirmation or Sheet rows twice", async t => {
   const order = new MessengerOrderModel({ orderId: "cake-telegram", companyCode: "TEST", conversationId: "507f1f77bcf86cd799439011",
-    depositStatus: "verified", checkoutFlow: "cake_deposit" });
+    depositRequired: true, depositStatus: "verified", checkoutFlow: "cake_deposit" });
   let available = true;
   let customerNotifications = 0;
   let sheetAppends = 0;

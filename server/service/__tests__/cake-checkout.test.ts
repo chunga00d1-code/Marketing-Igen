@@ -81,6 +81,7 @@ function setup(t: TestContext) {
   });
   t.mock.method(draft, "save", async () => draft);
   t.mock.method(MessengerOrderModel, "findOne", async () => order);
+  t.mock.method(MessengerOrderModel, "findOneAndUpdate", async () => null);
   t.mock.method(MessengerOrderModel, "create", async (value: Record<string, unknown>) => {
     state.createdOrders++;
     order = new MessengerOrderModel(value);
@@ -281,6 +282,25 @@ test("summary must be delivered and explicitly confirmed before generating a fro
   const again = await s.run("xác nhận chốt đơn", "m3");
   assert.equal(again?.qrUrl, payment?.qrUrl);
   assert.equal(s.state.createdOrders, 1);
+});
+
+test("cake ordering remains available when the shop has disabled deposits", async t => {
+  const s = setup(t);
+  s.config.depositEnabled = false;
+  const summary = await s.run("Đặt bánh trái tim 18cm cao 10cm", "no-deposit-summary");
+  assert.equal(summary?.isSummary, true);
+  assert.equal(s.draft.snapshot?.deposit, 0);
+  assert.match(summary!.text, /Đơn này không yêu cầu đặt cọc/);
+  await cakeCheckoutService.markDelivered(summary!);
+
+  const confirmation = await s.run("xác nhận chốt đơn", "no-deposit-confirm");
+
+  assert.equal(s.state.createdOrders, 1);
+  assert.equal(confirmation?.qrUrl, undefined);
+  assert.match(confirmation!.text, /đơn bánh đã được xác nhận/i);
+  assert.doesNotMatch(confirmation!.text, /khách quen/);
+  assert.equal(s.getOrder()?.depositRequired, false);
+  assert.equal(s.getOrder()?.depositStatus, "not_required");
 });
 
 test("ambiguous size or unmatched price asks the customer and cannot create a QR", async t => {
