@@ -68,6 +68,19 @@ const CompanyProductCatalogConfigSchema = new Schema(
   { _id: false },
 );
 
+const CompanyOrderAutomationConfigSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    webhookUrl: { type: String, default: "", trim: true, maxlength: 2000 },
+    webhookSecretEncrypted: { type: String, default: "", select: false },
+    updatedAt: { type: Date, default: null },
+    lastDeliveryAt: { type: Date, default: null },
+    lastDeliveryStatus: { type: String, enum: ["success", "failed", "untested"], default: "untested" },
+    lastDeliveryError: { type: String, default: "", maxlength: 1000 },
+  },
+  { _id: false },
+);
+
 const CompanySchema = new Schema<ICompany>({
   code: { type: String, required: true, unique: true, index: true, uppercase: true },
   name: { type: String, required: true },
@@ -79,6 +92,7 @@ const CompanySchema = new Schema<ICompany>({
   sepayConfig: { type: CompanySepayConfigSchema, default: () => ({}) },
   productCatalogConfig: { type: CompanyProductCatalogConfigSchema, default: () => ({}) },
   cakeCatalogConfig: { type: CompanyProductCatalogConfigSchema, default: () => ({}) },
+  orderAutomationConfig: { type: CompanyOrderAutomationConfigSchema, default: () => ({}) },
 });
 
 CompanySchema.index({ "sepayConfig.webhookId": 1 }, { unique: true, sparse: true });

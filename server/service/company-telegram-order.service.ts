@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { ICRMTicket } from "../interface/crm-ticket.interface";
 import { ICompanyTelegramOrderConfig } from "../interface/company.interface";
 import { CompanyModel } from "../model/company.model";
+import { CakeOrderAutomationModel } from "../model/cake-order-automation.model";
 import { MessengerOrderModel } from "../model/messenger-order.model";
 
 const API = "https://api.telegram.org";
@@ -94,10 +95,10 @@ function publicConfig(record: { code: string; name: string; telegramOrderConfig?
   };
 }
 
-async function sendCompany(companyCode: string, text: string) {
+async function sendCompany(companyCode: string, text: string, ignoreNewOrderSetting = false) {
   const record = await findCompany(companyCode);
   const config = record.telegramOrderConfig;
-  if (!config?.enabled || config.notifyNewOrder === false) {
+  if (!config?.enabled || (!ignoreNewOrderSetting && config.notifyNewOrder === false)) {
     console.log("[CompanyTelegramOrder][SKIPPED]", JSON.stringify({ companyCode,
       reason: !config?.enabled ? "notifications_disabled" : "new_order_notifications_disabled" }));
     return false;
@@ -203,6 +204,97 @@ export const companyTelegramOrderService = {
       await MessengerOrderModel.updateOne({ _id: order._id }, { $set: { telegramNotificationError: messageText.slice(0, 1000) } });
       console.error("[CompanyTelegramOrder][FAILED]", JSON.stringify({ companyCode: order.companyCode, orderId, error: messageText }));
       return { status: "failed", error: messageText };
+    }
+  },
+
+  async notifyCakeAutomationProduction(orderId: string) {
+    const order = await CakeOrderAutomationModel.findOne({ orderId });
+    if (!order || order.status !== "CONFIRMED") return { status: "not_ready" as const };
+    if (order.productionNotificationStatus === "sent") return { status: "already_sent" as const };
+    if (order.productionNotificationStatus === "sending") return { status: "in_progress" as const };
+    if (order.productionNotificationStatus === "failed") return { status: "failed" as const, error: order.productionNotificationError };
+
+    const claimed = await CakeOrderAutomationModel.findOneAndUpdate(
+      {
+        _id: order._id,
+        status: "CONFIRMED",
+        $or: [
+          { productionNotificationStatus: { $exists: false } },
+          { productionNotificationStatus: { $in: ["not_requested", "skipped"] } },
+        ],
+      },
+      { $set: { productionNotificationStatus: "sending", productionNotificationError: "" } },
+      { new: true },
+    );
+    if (!claimed) {
+      const latest = await CakeOrderAutomationModel.findById(order._id).lean();
+      if (latest?.productionNotificationStatus === "sent") return { status: "already_sent" as const };
+      if (latest?.productionNotificationStatus === "failed") {
+        return { status: "failed" as const, error: latest.productionNotificationError || "Không thể gửi thông báo cho bếp." };
+      }
+      return { status: "in_progress" as const };
+    }
+
+    const message = [
+      "🎂 <b>ĐƠN BÁNH ĐÃ XÁC NHẬN - SẴN SÀNG CHUYỂN BẾP</b>",
+      `Mã đơn: <code>${escapeHtml(order.orderId)}</code>`,
+      `Khách hàng: <b>${escapeHtml(order.customerName || "Chưa cung cấp")}</b>`,
+      `Điện thoại: <code>${escapeHtml(order.customerPhone || "Chưa cung cấp")}</code>`,
+      `Loại bánh: ${escapeHtml(order.cakeType || "Chưa chọn")}; size ${escapeHtml(order.sizeLabel || "")}; ${Number(order.totalAmount || 0).toLocaleString("vi-VN")} đ`,
+      `Ngày nhận: ${escapeHtml(order.pickupDate || "")}, ${escapeHtml(order.pickupTime || "")}`,
+      order.fulfillmentMethod === "delivery" ? `Địa chỉ giao: ${escapeHtml(order.deliveryAddress || "Chưa cung cấp")}` : "Khách nhận tại tiệm",
+      order.depositRequired ? `Tiền cọc: ${Number(order.depositAmount || 0).toLocaleString("vi-VN")} đ (đã xác minh)` : "Đặt cọc: Không yêu cầu",
+      order.designReferenceUrls.length ? `Ảnh mẫu: ${order.designReferenceUrls.map(escapeHtml).join("\n")}` : "",
+      order.inscription ? `Nội dung trên bánh: ${escapeHtml(order.inscription)}` : "",
+    ].filter(Boolean).join("\n");
+
+    try {
+      const sent = await sendCompany(order.companyCode, message);
+      if (!sent) {
+        await CakeOrderAutomationModel.updateOne(
+          { _id: order._id, productionNotificationStatus: "sending" },
+          { $set: { productionNotificationStatus: "skipped" } },
+        );
+        return { status: "skipped" as const };
+      }
+      await CakeOrderAutomationModel.updateOne(
+        { _id: order._id, productionNotificationStatus: "sending" },
+        { $set: { productionNotificationStatus: "sent", productionNotifiedAt: new Date(), productionNotificationError: "" } },
+      );
+      return { status: "sent" as const };
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      await CakeOrderAutomationModel.updateOne(
+        { _id: order._id, productionNotificationStatus: "sending" },
+        { $set: { productionNotificationStatus: "failed", productionNotificationError: messageText.slice(0, 1000) } },
+      ).catch(() => undefined);
+      console.error("[CompanyTelegramOrder][CAKE_PRODUCTION_FAILED]", JSON.stringify({
+        companyCode: order.companyCode, orderId, error: messageText,
+      }));
+      return { status: "failed" as const, error: messageText };
+    }
+  },
+
+  async notifyCakeAutomationAttention(orderId: string, customerMessage: string) {
+    const order = await CakeOrderAutomationModel.findOne({ orderId, status: "WAITING_DEPOSIT" }).lean();
+    if (!order) return { status: "not_ready" as const };
+    const message = [
+      "⚠️ <b>KHÁCH CẦN NHÂN VIÊN XỬ LÝ ĐƠN ĐANG CHỜ CỌC</b>",
+      `Mã đơn: <code>${escapeHtml(order.orderId)}</code>`,
+      `Khách hàng: <b>${escapeHtml(order.customerName || "Chưa cung cấp")}</b>`,
+      `Điện thoại: <code>${escapeHtml(order.customerPhone || "Chưa cung cấp")}</code>`,
+      `Tin nhắn: ${escapeHtml(customerMessage.slice(0, 1500))}`,
+      "Vui lòng kiểm tra trạng thái thanh toán trước khi sửa hoặc hủy đơn.",
+    ].join("\n");
+    try {
+      const sent = await sendCompany(order.companyCode, message, true);
+      return { status: sent ? "sent" as const : "skipped" as const };
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : String(error);
+      console.error("[CompanyTelegramOrder][CAKE_ATTENTION_FAILED]", JSON.stringify({
+        companyCode: order.companyCode, orderId, error: messageText,
+      }));
+      return { status: "failed" as const, error: messageText };
     }
   },
 

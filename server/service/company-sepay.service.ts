@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { CompanyModel } from "../model/company.model";
 import { MessengerOrderModel } from "../model/messenger-order.model";
+import { CakeOrderAutomationModel } from "../model/cake-order-automation.model";
 import { SepayWebhookTransactionModel } from "../model/sepay-webhook-transaction.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
@@ -340,6 +341,57 @@ export const companySepayService = {
         const code = sepayPaymentCode(payload, config.paymentCodePrefix || "DH");
         transaction.code = code;
         const order = code ? await MessengerOrderModel.findOne({ companyCode: company.code, paymentCode: code }) : null;
+        const automatedOrder = !order && code
+          ? await CakeOrderAutomationModel.findOne({ companyCode: company.code, paymentCode: code })
+          : null;
+        if (automatedOrder) {
+          transaction.orderId = automatedOrder.orderId;
+          if (!automatedOrder.depositAmount || transferAmount !== automatedOrder.depositAmount) {
+            transaction.status = "amount_mismatch";
+            transaction.reason = `Số tiền nhận ${transferAmount} không khớp tiền cọc ${automatedOrder.depositAmount || 0}.`;
+          } else {
+            const verifiedAt = new Date();
+            const verification = await CakeOrderAutomationModel.updateOne(
+              { _id: automatedOrder._id, depositStatus: { $ne: "verified" }, status: "WAITING_DEPOSIT" },
+              {
+                $set: { depositStatus: "verified", status: "CONFIRMED" },
+                $inc: { version: 1 },
+                $push: {
+                  history: {
+                    $each: [{
+                      eventType: "DEPOSIT_VERIFIED",
+                      fromStatus: "WAITING_DEPOSIT",
+                      toStatus: "CONFIRMED",
+                      eventId: `sepay:${transactionId}`,
+                      note: "SePay verified the deposit.",
+                      at: verifiedAt,
+                    }],
+                    $slice: -100,
+                  },
+                },
+              },
+            );
+            if (verification.modifiedCount === 1) {
+              transaction.status = "matched";
+            } else {
+              transaction.status = "ignored";
+              transaction.reason = "Đơn hàng đã được xác nhận đặt cọc trước đó.";
+            }
+            void companyTelegramOrderService.notifyCakeAutomationProduction(automatedOrder.orderId)
+              .then(result => {
+                if (result.status === "failed") {
+                  console.error("[SePay] Không thể báo bộ phận bếp về đơn bánh:", result.error);
+                }
+              })
+              .catch(error => console.error("[SePay] Không thể báo bộ phận bếp về đơn bánh:", error));
+          }
+          await transaction.save();
+          company.set("sepayConfig.lastWebhookAt", new Date());
+          company.set("sepayConfig.lastWebhookStatus", "success");
+          company.set("sepayConfig.lastWebhookError", "");
+          await company.save();
+          return { transactionId, status: transaction.status, orderId: transaction.orderId || null };
+        }
         if (!order) {
           transaction.status = "order_not_found";
           transaction.reason = "Không tìm thấy đơn hàng theo mã thanh toán.";

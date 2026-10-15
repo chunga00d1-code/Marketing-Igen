@@ -9,6 +9,7 @@ import { zaloMessengerService } from "./zalo-messenger.service";
 import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.service";
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
+import { orderAutomationBridgeService } from "./order-automation-bridge.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { chatOrderFlowRegistry } from "./chat-ordering/registry";
@@ -402,7 +403,14 @@ export const aiAutoReplyService = {
   /**
    * Triggers the AI auto-reply process. Debounces incoming messages to wait for the customer to finish typing.
    */
-  async triggerAutoReply(channel: "facebook" | "zalo" | "tiktok", platformId: string, conversationId: string, incomingText: string, incomingMessageId?: string) {
+  async triggerAutoReply(
+    channel: "facebook" | "zalo" | "tiktok",
+    platformId: string,
+    conversationId: string,
+    incomingText: string,
+    incomingMessageId?: string,
+    attachmentUrls: string[] = [],
+  ) {
     try {
       const resolvedPlatformId = String(platformId).trim();
       const normalizedIncomingText = normalizeIncomingText(incomingText);
@@ -469,6 +477,22 @@ export const aiAutoReplyService = {
 
       user = selectedUser;
       aiConfig = resolvedAiConfig || selectedUser?.aiAutoReplyConfig || companyIntegrations[0]?.aiAutoReplyConfig || null;
+
+      if (normalizedIncomingText || attachmentUrls.length) {
+        const delegatedToN8n = await orderAutomationBridgeService.forwardInbound({
+          companyCode: targetCompanyCode || user?.companyCode || "",
+          channel,
+          accountId: resolvedPlatformId,
+          conversationId,
+          messageId: incomingMessageId,
+          text: normalizedIncomingText,
+          attachmentUrls,
+        });
+        if (delegatedToN8n) {
+          console.log(`[AI AutoReply] Đã giao hội thoại ${conversationId} cho workflow đơn bánh n8n.`);
+          return;
+        }
+      }
 
       if (aiConfig && aiConfig.enabled === false && aiConfig.disabledAt) {
         const disabledTime = new Date(aiConfig.disabledAt).getTime();
