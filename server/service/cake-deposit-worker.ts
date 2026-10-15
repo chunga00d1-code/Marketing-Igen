@@ -16,7 +16,11 @@ export async function processCakeDeposits() {
     for (let count = 0; count < 10; count++) {
       const token = randomUUID();
       const order = await MessengerOrderModel.findOneAndUpdate({
-        checkoutFlow: "cake_deposit", depositStatus: "verified", depositSyncCompletedAt: { $exists: false },
+        checkoutFlow: "cake_deposit", depositSyncCompletedAt: { $exists: false },
+        $or: [
+          { depositRequired: true, depositStatus: "verified" },
+          { depositRequired: false, depositStatus: "not_required" },
+        ],
         depositSyncAttempts: { $lt: 8 },
         $and: [
           { $or: [{ depositSyncNextAt: { $exists: false } }, { depositSyncNextAt: { $lte: new Date() } }] },
@@ -32,9 +36,12 @@ export async function processCakeDeposits() {
       }, 30_000);
       heartbeat.unref();
       try {
-        // Notify independently so a Sheet outage does not hide a successful deposit.
-        await companySepayService.notifyCustomerPayment(order.orderId);
-        await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
+        const requiresDeposit = order.depositRequired && order.depositStatus === "verified";
+        if (requiresDeposit) {
+          // Notify independently so a Sheet outage does not hide a successful deposit.
+          await companySepayService.notifyCustomerPayment(order.orderId);
+          await cakeCustomerMemory.refreshPurchases({ companyCode: order.companyCode, pageId: order.pageId, conversationId: order.conversationId.toString() });
+        }
         const synced = await messengerOrderService.syncConfirmedDepositOrder(order.orderId);
         if (synced?.status !== "synced") throw new Error(synced?.lastSyncError || "Sheet chưa sẵn sàng để nhận đơn cọc.");
         const telegram = await companyTelegramOrderService.notifyMessengerOrder(order.orderId);
@@ -42,10 +49,10 @@ export async function processCakeDeposits() {
           throw new Error(telegram.error || "Chưa gửi được thông báo đơn cọc qua Telegram.");
         }
         const current = await MessengerOrderModel.findById(order._id).lean();
-        if (!current?.sepayCustomerNotifiedAt) throw new Error(current?.sepayCustomerNotificationError || "Chưa gửi được xác nhận cọc cho khách.");
+        if (requiresDeposit && !current?.sepayCustomerNotifiedAt) throw new Error(current?.sepayCustomerNotificationError || "Chưa gửi được xác nhận cọc cho khách.");
         await MessengerOrderModel.updateOne(lease, { $set: { depositSyncCompletedAt: new Date(), depositSyncError: "" } });
         console.log("[CakeDeposit][COMPLETED]", JSON.stringify({ companyCode: order.companyCode, orderId: order.orderId,
-          customerNotified: true, sheetSynced: true, telegramStatus: telegram.status }));
+          customerNotified: requiresDeposit, sheetSynced: true, telegramStatus: telegram.status }));
       } catch (error) {
         await MessengerOrderModel.updateOne(lease, { $set: {
           depositSyncError: (error instanceof Error ? error.message : String(error)).slice(0, 1000),

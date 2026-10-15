@@ -38,6 +38,7 @@ export interface IMessengerOrder extends Document {
   totalAmount?: number;
   paymentMethod?: string;
   depositRequired: boolean;
+  depositWaiverReason?: "returning_customer" | "customer_requested";
   depositPercent?: number;
   depositAmount?: number;
   depositStatus: "not_required" | "awaiting_receipt" | "receipt_received" | "verified";
@@ -116,6 +117,7 @@ const MessengerOrderSchema = new Schema<IMessengerOrder>({
   totalAmount: { type: Number, min: 0 },
   paymentMethod: { type: String, default: "", trim: true },
   depositRequired: { type: Boolean, default: false },
+  depositWaiverReason: { type: String, enum: ["returning_customer", "customer_requested"] },
   depositPercent: { type: Number, min: 1, max: 100 },
   depositAmount: { type: Number, min: 0 },
   depositStatus: {

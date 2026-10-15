@@ -20,7 +20,8 @@ export function pendingSessionInput(rows: { timestamp: Date; messageId: string; 
 type Scope = { companyCode: string; pageId: string; conversationId: string };
 export interface CakeSessionContext {
   sessionId: string; resetDraft: boolean; ask?: string;
-  order?: { orderId: string; checkoutSnapshot?: unknown; depositStatus: string; paymentCode?: string };
+  returningCustomer?: boolean;
+  order?: { orderId: string; checkoutSnapshot?: unknown; depositStatus: string; depositRequired: boolean; paymentCode?: string };
   reference?: unknown;
 }
 
@@ -91,10 +92,11 @@ export const cakeCustomerMemory = {
     let selected: typeof orders[number] | undefined;
     let reference: unknown;
     const explicitOrder = orders.find(order => [order.orderId, order.paymentCode].some(code => code && (pending.message || latest.text).toUpperCase().includes(code.toUpperCase())));
-    if (explicitOrder && explicitOrder.depositStatus !== "verified" && explicitOrder.paymentRequestStatus !== "active") {
+    const isNoDepositOrder = (order: typeof orders[number]) => order.depositRequired === false && order.depositStatus === "not_required";
+    if (explicitOrder && !isNoDepositOrder(explicitOrder) && explicitOrder.depositStatus !== "verified" && explicitOrder.paymentRequestStatus !== "active") {
       ask = "Yêu cầu cọc của mã đơn này đã dừng rồi ạ. Mình muốn tiếp tục đặt bánh theo mẫu nào để em xác nhận lại thông tin nhé?";
     } else if (explicitOrder || decision.action === "old") {
-      const eligible = orders.filter(order => order.depositStatus === "verified" || order.paymentRequestStatus === "active");
+      const eligible = orders.filter(order => isNoDepositOrder(order) || order.depositStatus === "verified" || order.paymentRequestStatus === "active");
       selected = explicitOrder || (eligible.length === 1 ? eligible[0] : undefined);
       if (!selected && !eligible.length && currentDraft?.sessionId && !currentDraft.orderId) sessionId = currentDraft.sessionId;
       else if (!selected) ask = eligible.length ? `Mình muốn hỏi đơn nào ạ?\n${eligible.slice(0, 5).map(order => `${order.paymentCode || order.orderId} — nhận ${order.requestedFulfillmentTime || "chưa xác định"}`).join("\n")}`
@@ -132,7 +134,9 @@ export const cakeCustomerMemory = {
       timestamp: { $gte: windowStart || latest.timestamp, $lte: latest.timestamp } }, { $set: { consultationSessionId: sessionId } });
     // Persisted buyer identity stays in the backend; never expose it to AI context builders.
     return { sessionId, resetDraft, ask,
-      order: selected ? { orderId: selected.orderId, checkoutSnapshot: selected.checkoutSnapshot, depositStatus: selected.depositStatus, paymentCode: selected.paymentCode } : undefined,
+      returningCustomer: memory.purchaseCount > 0,
+      order: selected ? { orderId: selected.orderId, checkoutSnapshot: selected.checkoutSnapshot, depositStatus: selected.depositStatus,
+        depositRequired: selected.depositRequired, paymentCode: selected.paymentCode } : undefined,
       reference };
   },
 
