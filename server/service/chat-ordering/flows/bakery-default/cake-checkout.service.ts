@@ -66,8 +66,18 @@ async function loadContext(companyCode: string, pageId: string) {
   const integration = await SocialIntegrationModel.findOne({ platform: "Facebook", username: pageId, companyCode, isConnected: true,
     "orderSheetConfig.enabled": true }).lean();
   const company = await CompanyModel.findOne({ code: companyCode }).lean();
-  const config = company?.sepayConfig;
-  if (!integration || !config?.enabled || !config.depositEnabled) return null;
+  const sepayConfig = company?.sepayConfig;
+  const config = {
+    enabled: Boolean(sepayConfig?.enabled),
+    depositEnabled: Boolean(sepayConfig?.depositEnabled),
+    depositPercent: Number(sepayConfig?.depositPercent || 30),
+    accountNumbers: Array.isArray(sepayConfig?.accountNumbers) ? sepayConfig.accountNumbers : [],
+    paymentCodePrefix: String(sepayConfig?.paymentCodePrefix || "DH"),
+    qrBankId: String(sepayConfig?.qrBankId || ""),
+    qrAccountNumber: String(sepayConfig?.qrAccountNumber || ""),
+    qrAccountName: String(sepayConfig?.qrAccountName || ""),
+  };
+  if (!integration) return null;
   const pageFilter = { $or: [{ pageScope: "all" as const }, { pageScope: { $exists: false } }, { pageScope: "selected" as const, pageIds: pageId }] };
   const scope = { companyCode, channelScope: { $in: ["all", "facebook"] as const }, purposeScope: { $in: ["all", "sales"] as const }, ...pageFilter };
   const documents = await AIKnowledgeDocumentModel.find({ ...scope, status: "active" }).select("_id version").lean();
@@ -586,8 +596,12 @@ export const cakeCheckoutService = {
         const paymentTiming = snapshot.details.fulfillmentMethod === "delivery" ? "trước khi giao bánh" : "khi nhận bánh";
         const confirmation = snapshot.depositWaiverReason === "customer_requested"
           ? `Dạ đơn bánh đã được xác nhận theo lựa chọn không đặt cọc. Mình thanh toán ${money(snapshot.total)} ${paymentTiming} nhé.`
-          : `Dạ đơn bánh đã được xác nhận. Khách quen được miễn đặt cọc; mình thanh toán ${money(snapshot.total)} ${paymentTiming} nhé.`;
+          : snapshot.depositWaiverReason === "returning_customer"
+            ? `Dạ đơn bánh đã được xác nhận. Khách quen được miễn đặt cọc; mình thanh toán ${money(snapshot.total)} ${paymentTiming} nhé.`
+            : `Dạ đơn bánh đã được xác nhận. Mình thanh toán ${money(snapshot.total)} ${paymentTiming} nhé.`;
         draft.lastMessageId = messageId; draft.replyText = confirmation; await draft.save();
+        void import("../../../cake-deposit-worker").then(({ wakeCakeDepositWorker }) => wakeCakeDepositWorker())
+          .catch(error => console.error("[Cake Checkout] Không thể kích hoạt đồng bộ đơn không cọc:", error));
         return reply(confirmation);
       }
       const startsNewCake = /\b(?:don moi|banh khac|cai khac|mau khac)\b/.test(normalizeCakeText(message));
@@ -806,10 +820,9 @@ export const cakeCheckoutService = {
         const config = context.config;
         const returningCustomer = input.session?.returningCustomer === true;
         const customerRequestedWaiver = draft.noDepositRequested === true;
-        const waiveDeposit = customerRequestedWaiver || returningCustomer;
-        if (!waiveDeposit && (!config.qrBankId || !config.qrAccountNumber || !config.qrAccountName)) {
-          throw new Error("Shop chưa cấu hình đầy đủ tài khoản nhận cọc.");
-        }
+        const canRequireDeposit = config.enabled && config.depositEnabled && Boolean(config.qrBankId
+          && config.qrAccountNumber && config.qrAccountName && config.accountNumbers.includes(config.qrAccountNumber));
+        const waiveDeposit = customerRequestedWaiver || returningCustomer || !canRequireDeposit;
         const configuredPercent = Number(config.depositPercent || 30);
         const calculatedAmounts = calculateCakeDeposit(choices[0].price, d.quantity, waiveDeposit ? 1 : configuredPercent);
         const percent = waiveDeposit ? 0 : configuredPercent;
@@ -818,7 +831,8 @@ export const cakeCheckoutService = {
           : calculatedAmounts;
         draft.snapshot = { details: d, variant: choices[0], ...amounts, subtotal: amounts.total, shippingFee: 0,
           depositPercent: percent,
-          ...(waiveDeposit ? { depositWaiverReason: customerRequestedWaiver ? "customer_requested" as const : "returning_customer" as const } : {}),
+          ...(customerRequestedWaiver ? { depositWaiverReason: "customer_requested" as const }
+            : returningCustomer && canRequireDeposit ? { depositWaiverReason: "returning_customer" as const } : {}),
           customerAddress: customer, sellerAddress: seller,
           bankId: config.qrBankId || "", accountNumber: config.qrAccountNumber || "", accountName: config.qrAccountName || "",
           paymentPrefix: config.paymentCodePrefix || "DH" };

@@ -600,10 +600,13 @@ export const messengerOrderService = {
       if (!waivedDeposit && !(order.depositRequired && order.depositStatus === "verified")) {
         throw new Error("Đơn chưa được xác nhận tiền cọc qua webhook hoặc không thuộc diện miễn cọc.");
       }
-      return MessengerOrderModel.findOneAndUpdate({ _id: order._id }, {
-        $set: { depositSyncAttempts: 0, depositSyncNextAt: new Date() },
+      const retriedOrder = await MessengerOrderModel.findOneAndUpdate({ _id: order._id }, {
+        $set: { depositSyncAttempts: 0, depositSyncNextAt: new Date(), depositSyncError: "" },
         $unset: { depositSyncCompletedAt: 1 },
       }, { new: true });
+      void import("./cake-deposit-worker").then(({ wakeCakeDepositWorker }) => wakeCakeDepositWorker())
+        .catch(error => console.error("[Messenger Order] Không thể kích hoạt thử lại đơn bánh:", error));
+      return retriedOrder;
     }
     if (order.missingFields.length) throw new Error("Don hang con thieu thong tin bat buoc.");
     if (!order.confirmedAt) order.confirmedAt = new Date();

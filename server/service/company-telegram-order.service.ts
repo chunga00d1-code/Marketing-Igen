@@ -183,7 +183,8 @@ export const companyTelegramOrderService = {
       order.deliveryAddress ? `\u0110\u1ecba ch\u1ec9: ${escapeHtml(order.deliveryAddress)}` : "",
       items,
       order.checkoutFlow === "cake_deposit" && !order.depositRequired && order.depositStatus === "not_required"
-        ? `Đặt cọc: Không yêu cầu; ${order.depositWaiverReason === "customer_requested" ? "khách đề nghị không cọc" : "khách quen"}; ${escapeHtml(order.paymentMethod || "Thanh toán khi nhận bánh")}`
+        ? `Đặt cọc: Không yêu cầu; ${order.depositWaiverReason === "customer_requested" ? "khách đề nghị không cọc"
+          : order.depositWaiverReason === "returning_customer" ? "khách quen" : "cửa hàng không yêu cầu cọc"}; ${escapeHtml(order.paymentMethod || "Thanh toán khi nhận bánh")}`
         : "",
       `T\u1ed5ng ti\u1ec1n: <b>${Number(order.totalAmount || 0).toLocaleString("vi-VN")} \u0111</b>`,
       (order.selectedProductImageUrl || order.selectedCakeImageUrl)
