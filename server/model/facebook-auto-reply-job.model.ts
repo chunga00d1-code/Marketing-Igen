@@ -6,6 +6,7 @@ export interface IFacebookAutoReplyJob extends Document {
   channel: "facebook";
   conversationId: mongoose.Types.ObjectId;
   pageId: string;
+  companyCode?: string;
   messageId: string;
   messageTimestamp: Date;
   messageCreatedAt: Date;
@@ -16,6 +17,7 @@ export interface IFacebookAutoReplyJob extends Document {
   leaseToken?: string;
   leaseUntil?: Date;
   deliveryStartedAt?: Date;
+  failureNotifiedAt?: Date;
   lastError?: string;
   completedAt?: Date;
   createdAt: Date;
@@ -26,6 +28,7 @@ const FacebookAutoReplyJobSchema = new Schema<IFacebookAutoReplyJob>({
   channel: { type: String, enum: ["facebook"], default: "facebook", required: true },
   conversationId: { type: Schema.Types.ObjectId, ref: "FBConversation", required: true },
   pageId: { type: String, required: true, trim: true },
+  companyCode: { type: String, trim: true },
   messageId: { type: String, required: true, trim: true },
   messageTimestamp: { type: Date, required: true, index: true },
   messageCreatedAt: { type: Date, required: true },
@@ -36,6 +39,7 @@ const FacebookAutoReplyJobSchema = new Schema<IFacebookAutoReplyJob>({
   leaseToken: { type: String },
   leaseUntil: { type: Date },
   deliveryStartedAt: { type: Date },
+  failureNotifiedAt: { type: Date },
   lastError: { type: String, default: "" },
   completedAt: { type: Date },
 }, { timestamps: true });

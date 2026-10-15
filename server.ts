@@ -232,7 +232,7 @@ async function startServer() {
   // Kết nối cơ sở dữ liệu MongoDB
   await connectDB();
   startCakeDepositWorker();
-  startFacebookAutoReplyQueueWorker();
+  await startFacebookAutoReplyQueueWorker();
 
   // Khởi động hàng đợi xử lý Remotion
   remotionQueueService.initWorker();
