@@ -7,7 +7,7 @@ export const zaloMessengerService = {
   /**
    * Lay danh sach cuoc hoi thoai cua Zalo OA da lien ket
    */
-  async getConversations(options?: { limit?: number; skip?: number }): Promise<ZaloMessengerRecord[]> {
+  async getConversations(options?: { limit?: number; skip?: number; accountId?: string }): Promise<ZaloMessengerRecord[]> {
     console.log("[FE Zalo Service] Bat dau goi API getConversations...");
     const params = new URLSearchParams();
     if (options?.limit !== undefined) {
@@ -16,6 +16,7 @@ export const zaloMessengerService = {
     if (options?.skip !== undefined) {
       params.set("skip", String(options.skip));
     }
+    if (options?.accountId) params.set("accountId", options.accountId);
     const query = params.toString() ? `?${params.toString()}` : "";
     const res = await fetch(`/api/v1/zalo/conversations${query}`, {
       headers: {
@@ -37,7 +38,7 @@ export const zaloMessengerService = {
   /**
    * Lay lich su tin nhan cua mot cuoc hoi thoai cu the
    */
-  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean }): Promise<{ data: ZaloMessengerRecord[]; pagination: ZaloMessengerPagination }> {
+  async getMessages(conversationId: string, options?: { limit?: number; before?: string; sync?: boolean; accountId?: string }): Promise<{ data: ZaloMessengerRecord[]; pagination: ZaloMessengerPagination }> {
     const params = new URLSearchParams();
     params.set("limit", String(options?.limit || 20));
     if (options?.before) {
@@ -46,6 +47,7 @@ export const zaloMessengerService = {
     if (options?.sync) {
       params.set("sync", "1");
     }
+    if (options?.accountId) params.set("accountId", options.accountId);
     console.log(`[FE Zalo Service] Bat dau goi API getMessages cho conversation: ${conversationId}...`);
     const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/messages?${params.toString()}`, {
       headers: {
@@ -70,9 +72,10 @@ export const zaloMessengerService = {
   /**
    * Danh dau da doc cuoc hoi thoai qua Zalo OA
    */
-  async markRead(conversationId: string): Promise<ZaloMessengerRecord | null> {
+  async markRead(conversationId: string, accountId?: string): Promise<ZaloMessengerRecord | null> {
     console.log(`[FE Zalo Service] Bat dau goi API markRead cho conversation ${conversationId}...`);
-    const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/mark-read`, {
+    const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+    const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/mark-read${query}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${getAccessToken()}`,
@@ -89,9 +92,10 @@ export const zaloMessengerService = {
     return result.data;
   },
 
-  async resumeAI(conversationId: string): Promise<ZaloMessengerRecord | null> {
+  async resumeAI(conversationId: string, accountId?: string): Promise<ZaloMessengerRecord | null> {
     console.log(`[FE Zalo Service] Bat dau goi API resumeAI cho conversation ${conversationId}...`);
-    const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/resume-ai`, {
+    const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+    const res = await fetch(`/api/v1/zalo/conversations/${conversationId}/resume-ai${query}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${getAccessToken()}`,
@@ -108,7 +112,7 @@ export const zaloMessengerService = {
     return result.data;
   },
 
-  async sendReply(conversationId: string, text: string): Promise<ZaloMessengerRecord | null> {
+  async sendReply(conversationId: string, text: string, accountId?: string): Promise<ZaloMessengerRecord | null> {
     console.log(`[FE Zalo Service] Bat dau goi API sendReply toi conversation ${conversationId}. Noi dung: "${text}"`);
     const res = await fetch("/api/v1/zalo/reply", {
       method: "POST",
@@ -116,7 +120,7 @@ export const zaloMessengerService = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${getAccessToken()}`,
       },
-      body: JSON.stringify({ conversationId, recipientId: conversationId, text }),
+      body: JSON.stringify({ conversationId, recipientId: conversationId, text, accountId }),
     });
 
     if (!res.ok) {

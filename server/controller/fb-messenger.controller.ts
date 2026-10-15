@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { Request, Response } from "express";
 import { fbMessengerService, type FacebookTokenContext } from "../service/fb-messenger.service";
 import { FacebookMessengerError } from "../service/fb-messenger-error";
@@ -55,6 +56,9 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
         tokenContext: { companyCode, userId, source: "company" },
       };
     }
+
+    // An explicit but inaccessible Page must never fall through to another Page.
+    return { isConnected: false };
   }
 
   // Fallback: original logic
@@ -87,6 +91,41 @@ async function getFacebookPageConfig(userId: string, requestedPageId?: string): 
 
   console.warn(`[FB Config] Khong tim thay Facebook integration hoat dong cho user=${dbUser.email}, company=${dbUser.companyCode}`);
   return { isConnected: false };
+}
+
+async function verifyFacebookWebhookSignature(req: Request) {
+  const rawBody = (req as Request & { rawBody?: string }).rawBody;
+  const signature = req.get("x-hub-signature-256") || "";
+  const signatureMatch = /^sha256=([a-f0-9]{64})$/i.exec(signature);
+  const pageIds = Array.isArray(req.body?.entry)
+    ? req.body.entry.map((entry: any) => String(entry?.id || "").trim()).filter(Boolean)
+    : [];
+
+  if (!rawBody || !signatureMatch || pageIds.length === 0) return false;
+
+  const [companySecrets, personalSecrets] = await Promise.all([
+    SocialIntegrationModel.distinct("appSecret", {
+      platform: "Facebook",
+      isConnected: true,
+      username: { $in: pageIds },
+    }),
+    UserModel.distinct("facebookIntegration.appSecret", {
+      "facebookIntegration.isConnected": true,
+      "facebookIntegration.pageId": { $in: pageIds },
+    }),
+  ]);
+  const secrets = Array.from(new Set([
+    ...companySecrets,
+    ...personalSecrets,
+    process.env.FB_APP_SECRET || "",
+  ].filter((secret): secret is string => typeof secret === "string" && !!secret)));
+  if (secrets.length === 0) return false;
+
+  const suppliedDigest = Buffer.from(signatureMatch[1], "hex");
+  return secrets.some((secret) => {
+    const expectedDigest = createHmac("sha256", secret).update(rawBody).digest();
+    return suppliedDigest.length === expectedDigest.length && timingSafeEqual(suppliedDigest, expectedDigest);
+  });
 }
 
 
@@ -122,6 +161,10 @@ export const fbMessengerController = {
       const body = req.body;
       const entryCount = Array.isArray(body?.entry) ? body.entry.length : 0;
       console.log(`[Facebook Webhook Event] Nhan webhook object=${body?.object || "unknown"}, entries=${entryCount}`);
+
+      if (!(await verifyFacebookWebhookSignature(req))) {
+        return res.status(401).send("INVALID_SIGNATURE");
+      }
       
       // Phản hồi nhanh chóng cho Meta để tránh timeout
       res.status(200).send("EVENT_RECEIVED");

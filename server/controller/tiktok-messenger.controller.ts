@@ -4,10 +4,31 @@ import { tiktokMessengerService } from "../service/tiktok-messenger.service";
 import { UserModel } from "../model/user.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 
-async function getTikTokConfig(userId: string): Promise<{ isConnected: boolean; businessAccountId?: string }> {
+async function getTikTokConfig(userId: string, requestedAccountId?: string): Promise<{ isConnected: boolean; businessAccountId?: string }> {
   const dbUser = await UserModel.findById(userId).lean();
   if (!dbUser) {
     console.warn(`[TikTok Config] Không tìm thấy user với userId=${userId}`);
+    return { isConnected: false };
+  }
+
+  const cleanRequestedAccountId = requestedAccountId ? String(requestedAccountId).trim() : "";
+  if (cleanRequestedAccountId) {
+    const requestedCompanyIntegration = dbUser.companyCode
+      ? await SocialIntegrationModel.findOne({
+          companyCode: dbUser.companyCode,
+          platform: "TikTok",
+          username: cleanRequestedAccountId,
+          isConnected: true,
+        }).select("username").lean()
+      : null;
+    if (requestedCompanyIntegration) {
+      return { isConnected: true, businessAccountId: cleanRequestedAccountId };
+    }
+
+    const userTiktok = (dbUser as any).tiktokIntegration;
+    if (userTiktok?.isConnected && userTiktok.username === cleanRequestedAccountId) {
+      return { isConnected: true, businessAccountId: cleanRequestedAccountId };
+    }
     return { isConnected: false };
   }
 
@@ -90,7 +111,8 @@ export const tiktokMessengerController = {
         return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      const { isConnected, businessAccountId } = await getTikTokConfig(userId);
+      const requestedAccountId = typeof req.query.accountId === "string" ? req.query.accountId : undefined;
+      const { isConnected, businessAccountId } = await getTikTokConfig(userId, requestedAccountId);
       if (!isConnected || !businessAccountId) {
         return res.status(200).json({ success: true, data: [] });
       }
@@ -122,7 +144,8 @@ export const tiktokMessengerController = {
         return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      const { isConnected, businessAccountId } = await getTikTokConfig(userId);
+      const requestedAccountId = typeof req.query.accountId === "string" ? req.query.accountId : undefined;
+      const { isConnected, businessAccountId } = await getTikTokConfig(userId, requestedAccountId);
 
       if (!isConnected || !businessAccountId) {
         return res.status(403).json({ success: false, message: "Bạn chưa cấu hình tích hợp TikTok." });
@@ -153,7 +176,8 @@ export const tiktokMessengerController = {
         return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      const { isConnected, businessAccountId } = await getTikTokConfig(userId);
+      const requestedAccountId = typeof req.query.accountId === "string" ? req.query.accountId : undefined;
+      const { isConnected, businessAccountId } = await getTikTokConfig(userId, requestedAccountId);
 
       if (!isConnected || !businessAccountId) {
         return res.status(403).json({ success: false, message: "Bạn chưa cấu hình tích hợp TikTok." });
@@ -187,7 +211,8 @@ export const tiktokMessengerController = {
         return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      const { isConnected, businessAccountId } = await getTikTokConfig(userId);
+      const requestedAccountId = typeof req.query.accountId === "string" ? req.query.accountId : undefined;
+      const { isConnected, businessAccountId } = await getTikTokConfig(userId, requestedAccountId);
 
       if (!isConnected || !businessAccountId) {
         return res.status(403).json({ success: false, message: "Bạn chưa cấu hình tích hợp TikTok." });
@@ -223,7 +248,8 @@ export const tiktokMessengerController = {
         return res.status(401).json({ success: false, message: "Người dùng chưa đăng nhập." });
       }
 
-      const { isConnected, businessAccountId } = await getTikTokConfig(userId);
+      const requestedAccountId = typeof req.body.accountId === "string" ? req.body.accountId : undefined;
+      const { isConnected, businessAccountId } = await getTikTokConfig(userId, requestedAccountId);
 
       if (!isConnected || !businessAccountId) {
         return res.status(403).json({ success: false, message: "Bạn chưa cấu hình tích hợp TikTok." });

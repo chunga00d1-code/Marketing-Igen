@@ -33,6 +33,7 @@ export interface CustomerInbox {
   status: "online" | "offline";
   tags: string[];
   channel?: "facebook" | "zalo" | "tiktok";
+  accountId?: string;
   aiPausedUntil?: string | null;
   pageId?: string;
   lastMessageAt?: Date;

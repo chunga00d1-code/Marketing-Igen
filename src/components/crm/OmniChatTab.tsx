@@ -205,7 +205,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     }
 
     return () => clearInterval(interval);
-  }, [activeCustomer?.id, activeCustomer?.aiPausedUntil]);
+  }, [activeCustomer?.id, activeCustomer?.channel, activeCustomer?.accountId, activeCustomer?.aiPausedUntil]);
 
   const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -530,7 +530,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   useEffect(() => {
     previousMessageCountRef.current = 0;
     previousFirstMessageIdRef.current = null;
-  }, [activeCustomer?.id]);
+  }, [activeCustomer?.id, activeCustomer?.channel, activeCustomer?.accountId]);
 
   // Auto-scroll when new messages arrive or conversation loaded
   useEffect(() => {
@@ -731,12 +731,12 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                   return matchesSearch && matchesChannel;
                 })
                 .map((cust) => {
-                  const isActive = activeCustomer?.id === cust.id;
+                  const isActive = activeCustomer?.id === cust.id && activeCustomer.channel === cust.channel && activeCustomer.accountId === cust.accountId;
                   const hasHotTag = cust.tags.includes("Khách Nóng");
 
                   return (
                     <div
-                      key={cust.id}
+                      key={`${cust.channel || ""}:${cust.accountId || ""}:${cust.id}`}
                       onClick={() => handleSelectCustomer(cust)}
                       className={`p-4 flex items-start gap-3.5 cursor-pointer transition-all duration-250 text-left relative group border-b border-slate-100/50 ${isActive
                         ? "bg-blue-50/40 border-l-4 border-blue-600 shadow-xs"

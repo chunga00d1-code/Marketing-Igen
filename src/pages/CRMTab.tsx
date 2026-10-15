@@ -8,7 +8,7 @@ import { fbMessengerService } from "../services/fbMessengerService";
 import { zaloMessengerService } from "../services/zaloMessengerService";
 import { tiktokMessengerService } from "../services/tiktokMessengerService";
 import { getAccessToken } from "../services/authService";
-import { socketService } from "../services/socketService";
+import { socketService, type MessengerScope } from "../services/socketService";
 import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
 import { resolveAiReplyScope } from "../utils/aiReplyScope";
@@ -21,6 +21,17 @@ function getCustomerInitials(customerName: string) {
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
   return initials || "KH";
+}
+
+function isSameInboxIdentity(
+  left: Pick<CustomerInbox, "id" | "channel" | "accountId"> | null | undefined,
+  right: Pick<CustomerInbox, "id" | "channel" | "accountId"> | null | undefined,
+) {
+  return !!left && !!right && left.id === right.id && left.channel === right.channel && left.accountId === right.accountId;
+}
+
+function getInboxIdentityKey(customer: Pick<CustomerInbox, "id" | "channel" | "accountId">) {
+  return JSON.stringify([customer.channel || "", customer.accountId || "", customer.id]);
 }
 
 // Lazy-loaded subcomponents
@@ -536,7 +547,7 @@ export default function CRMTab() {
     conversationId: string,
     mode: "replace" | "prepend" = "replace",
     channel?: "facebook" | "zalo" | "tiktok",
-    options?: { syncChannel?: boolean }
+    options?: { syncChannel?: boolean; accountId?: string }
   ) => {
 
 
@@ -546,6 +557,13 @@ export default function CRMTab() {
     }
 
     const targetChannel = channel || activeCustomer?.channel || "facebook";
+    const targetAccountId = options?.accountId || (
+      targetChannel === "facebook"
+        ? selectedFacebookPageId
+        : targetChannel === "zalo"
+          ? selectedZaloAccountId
+          : selectedTiktokAccountId
+    );
 
     try {
       let result;
@@ -556,15 +574,15 @@ export default function CRMTab() {
         };
       } else {
         result = targetChannel === "zalo"
-          ? await zaloMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
+          ? await zaloMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, accountId: targetAccountId })
           : targetChannel === "tiktok"
-            ? await tiktokMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel })
-            : await fbMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, pageId: selectedFacebookPageId });
+            ? await tiktokMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, accountId: targetAccountId })
+            : await fbMessengerService.getMessages(conversationId, { limit: 20, before, sync: !!options?.syncChannel, pageId: targetAccountId });
       }
 
       // NgÄƒn cháº·n race-condition khi ngÆ°á» i dÃ¹ng chuyá»ƒn Ä‘á»•i khÃ¡ch hÃ ng nhanh
       // conversationId o day la Mongo _id cua conversation trong DB, khong phai PSID/UID cua khach.
-      if (activeCustomerRef.current?.id !== conversationId) {
+      if (!isSameInboxIdentity(activeCustomerRef.current, { id: conversationId, channel: targetChannel, accountId: targetAccountId })) {
         console.log(`[FE CRMTab] Race-condition detected: Bỏ qua kết quả load tin nhắn của khách hàng cũ (${conversationId}).`);
         return;
       }
@@ -654,7 +672,7 @@ export default function CRMTab() {
       let fbConvs: RawInboxConversation[] = [];
       let zaloConvs: RawInboxConversation[] = [];
 
-      if (isFbConnected) {
+      if (isFbConnected && selectedFacebookPageId) {
         const isMockFb = selectedFacebookPageId === "igen_marketing_demo" || selectedFacebookPageId?.includes("mock");
         if (isMockFb) {
           fbConvs = [];
@@ -674,13 +692,14 @@ export default function CRMTab() {
       }
       if (requestVersion !== inboxFetchVersionRef.current) return;
 
-      if (isZaloConnected) {
+      if (isZaloConnected && selectedZaloAccountId) {
         const isMockZalo = selectedZaloAccountId === "igen_zalo_demo" || selectedZaloAccountId?.includes("mock");
         if (isMockZalo) {
           zaloConvs = [];
         } else {
           try {
             zaloConvs = await zaloMessengerService.getConversations({
+              accountId: selectedZaloAccountId,
               limit,
               skip: currentSkip
             });
@@ -693,9 +712,10 @@ export default function CRMTab() {
       if (requestVersion !== inboxFetchVersionRef.current) return;
 
       let tiktokConvs: RawInboxConversation[] = [];
-      if (isTiktokConnected) {
+      if (isTiktokConnected && selectedTiktokAccountId) {
         try {
           tiktokConvs = await tiktokMessengerService.getConversations({
+            accountId: selectedTiktokAccountId,
             limit,
             skip: currentSkip
           });
@@ -718,6 +738,7 @@ export default function CRMTab() {
         status: "offline",
         tags: c.tags || [],
         channel: "facebook",
+        accountId: selectedFacebookPageId,
         lastMessageAt: new Date(c.lastMessageAt || Date.now()),
         aiPausedUntil: c.aiPausedUntil || null
       }));
@@ -735,6 +756,7 @@ export default function CRMTab() {
         status: "offline",
         tags: c.tags || [],
         channel: "zalo",
+        accountId: selectedZaloAccountId,
         lastMessageAt: new Date(c.lastMessageAt || Date.now()),
         aiPausedUntil: c.aiPausedUntil || null
       }));
@@ -752,6 +774,7 @@ export default function CRMTab() {
         status: "offline",
         tags: c.tags || [],
         channel: "tiktok",
+        accountId: selectedTiktokAccountId,
         lastMessageAt: new Date(c.lastMessageAt || Date.now()),
         aiPausedUntil: c.aiPausedUntil || null
       }));
@@ -765,11 +788,11 @@ export default function CRMTab() {
       setInboxCustomers((prev) => {
         if (requestVersion !== inboxFetchVersionRef.current) return prev;
         const baseList = (isLoadMore && !isReset) ? prev : [];
-        const existingIds = new Set(baseList.map((x) => x.id));
-        const filteredNew = fetchedList.filter((x) => !existingIds.has(x.id));
+        const existingIds = new Set(baseList.map(getInboxIdentityKey));
+        const filteredNew = fetchedList.filter((x) => !existingIds.has(getInboxIdentityKey(x)));
 
         const combined = [...baseList, ...filteredNew].map((c) => {
-          if (activeCustomerRef.current && c.id === activeCustomerRef.current.id) {
+          if (isSameInboxIdentity(c, activeCustomerRef.current)) {
             return { ...c, unreadCount: 0 };
           }
           return c;
@@ -780,7 +803,7 @@ export default function CRMTab() {
         if (combined.length > 0) {
           setActiveCustomer((prevActive) => {
             if (prevActive && !forceSelectFirst) {
-              const found = combined.find((x) => x.id === prevActive.id);
+              const found = combined.find((x) => isSameInboxIdentity(x, prevActive));
               return found || combined[0];
             }
             return combined[0];
@@ -829,12 +852,25 @@ export default function CRMTab() {
     };
   }, []);
 
+  useEffect(() => {
+    const scopes: MessengerScope[] = [];
+    if (subTab === "OMNI-INBOX CHAT") {
+      if (selectedFacebookPageId) scopes.push({ channel: "facebook", accountId: selectedFacebookPageId });
+      if (selectedZaloAccountId) scopes.push({ channel: "zalo", accountId: selectedZaloAccountId });
+      if (selectedTiktokAccountId) scopes.push({ channel: "tiktok", accountId: selectedTiktokAccountId });
+    }
+    socketService.setMessengerScopes(scopes);
+    return () => socketService.setMessengerScopes([]);
+  }, [subTab, selectedFacebookPageId, selectedZaloAccountId, selectedTiktokAccountId]);
+
   // Handle Socket.IO realtime events
   useEffect(() => {
     if (subTab !== "OMNI-INBOX CHAT" || (!isFbConnected && !isZaloConnected && !isTiktokConnected)) return;
 
     const handleNewMessage = async (data: {
       message: RawInboxMessage;
+      channel?: "facebook" | "zalo" | "tiktok";
+      accountId?: string;
       conversation?: {
         _id?: string;
         aiPausedUntil?: string | null;
@@ -843,13 +879,20 @@ export default function CRMTab() {
       };
     }) => {
       console.log("[FE CRMTab] socket new_message event received:", data);
+      const { channel, accountId } = data;
+      const isSelectedScope =
+        (channel === "facebook" && accountId === selectedFacebookPageId) ||
+        (channel === "zalo" && accountId === selectedZaloAccountId) ||
+        (channel === "tiktok" && accountId === selectedTiktokAccountId);
+      if (!isSelectedScope) return;
+
       const { message, conversation } = data;
       const activeCust = activeCustomerRef.current;
 
       if (conversation) {
         setInboxCustomers((prev) =>
           prev.map((c) =>
-            c.id === conversation._id
+            c.id === conversation._id && c.channel === channel && c.accountId === accountId
               ? {
                 ...c,
                 aiPausedUntil: conversation.aiPausedUntil || null,
@@ -863,7 +906,7 @@ export default function CRMTab() {
           )
         );
 
-        if (activeCust && activeCust.id === conversation._id) {
+        if (isSameInboxIdentity(activeCust, { id: conversation._id || "", channel, accountId })) {
           setActiveCustomer((prev) =>
             prev
               ? {
@@ -878,28 +921,22 @@ export default function CRMTab() {
       if (activeCust) {
         const activeId = activeCust.id?.toString();
         const msgConvId = (typeof message.conversationId === "object" && message.conversationId ? (message.conversationId as Record<string, string>)._id : message.conversationId)?.toString();
-        const activeRecipientId = activeCust.recipientId?.toString();
-        const msgSenderId = message.senderId?.toString();
-        const msgRecipientId = message.recipientId?.toString();
-
         console.log("[FE CRMTab] Comparing active customer & new message:", {
-          activeCustomer: { id: activeId, recipientId: activeRecipientId, name: activeCust.name },
-          message: { conversationId: msgConvId, senderId: msgSenderId, recipientId: msgRecipientId }
+          activeCustomer: { id: activeId, channel: activeCust.channel, accountId: activeCust.accountId, name: activeCust.name },
+          message: { conversationId: msgConvId, channel, accountId }
         });
 
-        const isMatch = (activeId && msgConvId && activeId === msgConvId) ||
-          (activeRecipientId && msgSenderId && activeRecipientId === msgSenderId) ||
-          (activeRecipientId && msgRecipientId && activeRecipientId === msgRecipientId);
+        const isMatch = !!msgConvId && isSameInboxIdentity(activeCust, { id: msgConvId, channel, accountId });
 
         if (isMatch) {
           console.log("[FE CRMTab] Match found! Appending message to current chat view.");
 
-          if (activeCust.channel === "zalo") {
-            zaloMessengerService.markRead(activeId).catch(() => { });
-          } else if (activeCust.channel === "tiktok") {
-            tiktokMessengerService.markRead(activeId).catch(() => { });
+          if (channel === "zalo") {
+            zaloMessengerService.markRead(activeId, accountId).catch(() => { });
+          } else if (channel === "tiktok") {
+            tiktokMessengerService.markRead(activeId, accountId).catch(() => { });
           } else {
-            fbMessengerService.markRead(activeId).catch(() => { });
+            fbMessengerService.markRead(activeId, accountId).catch(() => { });
           }
 
           const mapped = mapFbMessages([message])[0];
@@ -929,15 +966,24 @@ export default function CRMTab() {
 
     const handleConversationUpdated = async (conversation: {
       _id?: string;
+      channel?: "facebook" | "zalo" | "tiktok";
+      accountId?: string;
       aiPausedUntil?: string | null;
       lastMessageText?: string;
       lastMessageAt?: string;
     }) => {
       console.log("[FE CRMTab] socket conversation_updated event received:", conversation);
+      const { channel, accountId } = conversation;
+      const isSelectedScope =
+        (channel === "facebook" && accountId === selectedFacebookPageId) ||
+        (channel === "zalo" && accountId === selectedZaloAccountId) ||
+        (channel === "tiktok" && accountId === selectedTiktokAccountId);
+      if (!isSelectedScope) return;
+
       if (conversation?._id) {
         setInboxCustomers((prev) =>
           prev.map((c) =>
-            c.id === conversation._id
+            c.id === conversation._id && c.channel === channel && c.accountId === accountId
               ? {
                 ...c,
                 aiPausedUntil: conversation.aiPausedUntil || null,
@@ -952,7 +998,7 @@ export default function CRMTab() {
         );
 
         const activeCust = activeCustomerRef.current;
-        if (activeCust && activeCust.id === conversation._id) {
+        if (isSameInboxIdentity(activeCust, { id: conversation._id || "", channel, accountId })) {
           setActiveCustomer((prev) =>
             prev
               ? {
@@ -1020,20 +1066,20 @@ export default function CRMTab() {
       if (socketConnectedRef.current) return;
       console.log(`[FE CRMTab] Fallback polling lịch sử tin nhắn cho conversation ID: ${activeCustomer.id}...`);
       try {
-        await loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true });
+        await loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true, accountId: activeCustomer.accountId });
       } catch (err) {
         console.error("[FE CRMTab] Lỗi khi tải tin nhắn:", err);
       }
     };
 
-    loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true }).catch((err) => {
+    loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true, accountId: activeCustomer.accountId }).catch((err) => {
       console.error("[FE CRMTab] Lỗi khi tải lịch sử tin nhắn ban đầu:", err);
     });
     const interval = setInterval(fetchMessages, 60000);
 
     const handleVisibility = () => {
       if (!document.hidden) {
-        loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true }).catch((err) => {
+        loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true, accountId: activeCustomer.accountId }).catch((err) => {
           console.error("[FE CRMTab] Lỗi khi đồng bộ tin nhắn sau khi quay lại tab:", err);
         });
       }
@@ -1045,31 +1091,32 @@ export default function CRMTab() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [subTab, activeCustomer?.id]);
+  }, [subTab, activeCustomer?.id, activeCustomer?.channel, activeCustomer?.accountId]);
 
   // Xóa sách lịch sử chat cũ ngay khi chuyển khách hàng để tránh hiển thị nhầm lẫn
   useEffect(() => {
     setChatHistory([]);
-  }, [activeCustomer?.id]);
+  }, [activeCustomer?.id, activeCustomer?.channel, activeCustomer?.accountId]);
 
   const handleSelectCustomer = (cust: CustomerInbox) => {
-    if (activeCustomerRef.current?.id === cust.id) {
+    if (isSameInboxIdentity(activeCustomerRef.current, cust)) {
       console.log("[FE CRMTab] Khách hàng đã được chọn sẵn, bỏ qua.");
       return;
     }
     console.log("[FE CRMTab] Nhân viên chọn khách hàng từ danh sách:", cust);
+    activeCustomerRef.current = cust;
     setActiveCustomer(cust);
     setChatHistory([]); // Xóa sạch lịch sử chat cũ ngay lập tức để tránh hiển thị nhầm lẫn
 
     // Đặt unreadCount của khách hàng này về 0 ngay lập tức trong local state
     setInboxCustomers((prev) =>
-      prev.map((c) => (c.id === cust.id ? { ...c, unreadCount: 0 } : c))
+      prev.map((c) => c.id === cust.id && c.channel === cust.channel && c.accountId === cust.accountId ? { ...c, unreadCount: 0 } : c)
     );
     const markReadPromise = cust.channel === "zalo"
-      ? zaloMessengerService.markRead(cust.id)
+      ? zaloMessengerService.markRead(cust.id, cust.accountId)
       : cust.channel === "tiktok"
-        ? tiktokMessengerService.markRead(cust.id)
-        : fbMessengerService.markRead(cust.id);
+        ? tiktokMessengerService.markRead(cust.id, cust.accountId)
+        : fbMessengerService.markRead(cust.id, cust.accountId);
     markReadPromise.catch((err) => {
       console.error("[FE CRMTab] Khong the mark-read khi mo conversation:", err);
     });
@@ -1078,7 +1125,7 @@ export default function CRMTab() {
   const handleLoadOlderMessages = async () => {
     if (!activeCustomer || !chatPagination.hasMore || chatPagination.loadingMore) return;
     try {
-      await loadConversationMessages(activeCustomer.id, "prepend", activeCustomer.channel);
+      await loadConversationMessages(activeCustomer.id, "prepend", activeCustomer.channel, { accountId: activeCustomer.accountId });
     } catch (err) {
       console.error("[FE CRMTab] Lỗi khi tải thêm tin nhắn cũ:", err);
       toast.error("Không thể tải thêm tin nhắn cũ.");
@@ -1156,7 +1203,7 @@ export default function CRMTab() {
     if (!newLeadName.trim()) return;
 
     const val = parseFloat(newLeadValue) || 0;
-    const selectedCust = inboxCustomers.find(c => c.id === selectedInboxCustId);
+    const selectedCust = inboxCustomers.find(c => getInboxIdentityKey(c) === selectedInboxCustId);
     const avatarIcon = getCustomerInitials(selectedCust?.name || newLeadName);
 
     const newLead: Omit<ExtendedLeadCard, "id"> = {
@@ -1277,16 +1324,20 @@ export default function CRMTab() {
   const handleResumeAI = async (conversationId: string, channel: "facebook" | "zalo" | "tiktok") => {
     try {
       if (channel === "zalo") {
-        await zaloMessengerService.resumeAI(conversationId);
+        const customer = inboxCustomers.find((item) => item.id === conversationId && item.channel === channel);
+        await zaloMessengerService.resumeAI(conversationId, customer?.accountId);
       } else if (channel === "tiktok") {
-        await tiktokMessengerService.resumeAI(conversationId);
+        const customer = inboxCustomers.find((item) => item.id === conversationId && item.channel === channel);
+        await tiktokMessengerService.resumeAI(conversationId, customer?.accountId);
       } else {
-        await fbMessengerService.resumeAI(conversationId, selectedFacebookPageId);
+        const customer = inboxCustomers.find((item) => item.id === conversationId && item.channel === channel);
+        await fbMessengerService.resumeAI(conversationId, customer?.accountId || selectedFacebookPageId);
       }
 
-      setActiveCustomer((prev) => prev && prev.id === conversationId ? { ...prev, aiPausedUntil: null } : prev);
+      const targetCustomer = inboxCustomers.find((item) => item.id === conversationId && item.channel === channel);
+      setActiveCustomer((prev) => prev && prev.id === conversationId && prev.channel === channel && prev.accountId === targetCustomer?.accountId ? { ...prev, aiPausedUntil: null } : prev);
       setInboxCustomers((prev) =>
-        prev.map((c) => (c.id === conversationId ? { ...c, aiPausedUntil: null } : c))
+        prev.map((c) => c.id === conversationId && c.channel === channel && c.accountId === targetCustomer?.accountId ? { ...c, aiPausedUntil: null } : c)
       );
 
       toast.success("Đã kích hoạt lại AI phản hồi cuộc hội thoại này thành công!");
@@ -1314,10 +1365,8 @@ export default function CRMTab() {
 
     // Cáº­p nháº­t tráº¡ng thÃ¡i táº¡m dá»«ng AI 5 phÃºt cho cuá»™c há»™i thoáº¡i nÃ y trÃªn giao diá»‡n láº­p tá»©c
     const pausedUntil = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    setActiveCustomer((prev) => prev ? { ...prev, aiPausedUntil: pausedUntil } : null);
-    setInboxCustomers((prev) =>
-      prev.map((c) => (c.id === activeCustomer.id ? { ...c, aiPausedUntil: pausedUntil } : c))
-    );
+    setActiveCustomer((prev) => isSameInboxIdentity(prev, activeCustomer) ? { ...prev, aiPausedUntil: pausedUntil } : prev);
+    setInboxCustomers((prev) => prev.map((c) => isSameInboxIdentity(c, activeCustomer) ? { ...c, aiPausedUntil: pausedUntil } : c));
 
 
 
@@ -1326,7 +1375,7 @@ export default function CRMTab() {
         // Giáº£ láº­p gá»­i tin nháº¯n thÃ nh cÃ´ng qua Mock Conversation
         setInboxCustomers((prev) =>
           prev.map((c) =>
-            c.id === activeCustomer.id
+            isSameInboxIdentity(c, activeCustomer)
               ? {
                 ...c,
                 lastMessage: msgText,
@@ -1357,12 +1406,12 @@ export default function CRMTab() {
             timestamp: new Date(),
           };
 
-          setChatHistory((prev) => [...prev, newInboundMsg]);
+          setChatHistory((prev) => isSameInboxIdentity(activeCustomerRef.current, activeCustomer) ? [...prev, newInboundMsg] : prev);
 
           // Cáº­p nháº­t tin nháº¯n cuá»‘i cÃ¹ng trong danh sÃ¡ch chat
           setInboxCustomers((prev) =>
             prev.map((c) =>
-              c.id === activeCustomer.id
+              isSameInboxIdentity(c, activeCustomer)
                 ? {
                   ...c,
                   lastMessage: customerReply,
@@ -1374,9 +1423,9 @@ export default function CRMTab() {
         }, 1500);
 
       } else if (activeCustomer.channel === "zalo") {
-        await zaloMessengerService.sendReply(activeCustomer.id, msgText);
+        await zaloMessengerService.sendReply(activeCustomer.id, msgText, activeCustomer.accountId);
       } else if (activeCustomer.channel === "tiktok") {
-        await tiktokMessengerService.sendReply(activeCustomer.id, msgText);
+        await tiktokMessengerService.sendReply(activeCustomer.id, msgText, activeCustomer.accountId);
       } else {
         await fbMessengerService.sendReply(activeCustomer.id, msgText, selectedFacebookPageId);
       }
@@ -1386,11 +1435,11 @@ export default function CRMTab() {
       toast.error(msg);
       // Revert optimistic updates
       setChatHistory((prev) => prev.filter((h) => h.id !== userMsg.id));
-      setActiveCustomer((prev) => prev ? { ...prev, aiPausedUntil: activeCustomer.aiPausedUntil } : null);
+      setActiveCustomer((prev) => isSameInboxIdentity(prev, activeCustomer) ? { ...prev, aiPausedUntil: activeCustomer.aiPausedUntil } : prev);
       setInboxCustomers((prev) =>
-        prev.map((c) => (c.id === activeCustomer.id ? { ...c, aiPausedUntil: activeCustomer.aiPausedUntil } : c))
+        prev.map((c) => isSameInboxIdentity(c, activeCustomer) ? { ...c, aiPausedUntil: activeCustomer.aiPausedUntil } : c)
       );
-      loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true }).catch((reloadErr) => {
+      loadConversationMessages(activeCustomer.id, "replace", activeCustomer.channel, { syncChannel: true, accountId: activeCustomer.accountId }).catch((reloadErr) => {
         console.error("[FE CRMTab] Lỗi đồng bộ lại lịch sử sau khi gửi thất bại:", reloadErr);
       });
     }
@@ -1432,7 +1481,7 @@ export default function CRMTab() {
   // Sync active Customer status tags when leads change
   useEffect(() => {
     if (!activeCustomer) return;
-    const updatedActive = inboxCustomers.find(c => c.id === activeCustomer.id);
+    const updatedActive = inboxCustomers.find(c => isSameInboxIdentity(c, activeCustomer));
     if (updatedActive && updatedActive !== activeCustomer) {
       setActiveCustomer(updatedActive);
     }
@@ -1704,7 +1753,7 @@ export default function CRMTab() {
                   onChange={(e) => {
                     const val = e.target.value;
                     setSelectedInboxCustId(val);
-                    const found = inboxCustomers.find(c => c.id === val);
+                    const found = inboxCustomers.find(c => getInboxIdentityKey(c) === val);
                     if (found) {
                       setNewLeadName(found.name);
                       setNewLeadCompany(found.channel === "zalo" ? "Khách hàng từ Zalo" : "Khách hàng từ Facebook");
@@ -1716,7 +1765,7 @@ export default function CRMTab() {
                 >
                   <option value="">-- Chọn khách hàng từ hội thoại chat --</option>
                   {inboxCustomers.map(c => (
-                    <option key={c.id} value={c.id}>
+                    <option key={getInboxIdentityKey(c)} value={getInboxIdentityKey(c)}>
                       {c.name} ({c.channel === "zalo" ? "Zalo" : "Facebook"})
                     </option>
                   ))}
