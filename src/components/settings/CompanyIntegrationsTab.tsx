@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Building2, Plus, Save, Terminal, Key, Eye, EyeOff, Lock,
-  Trash2, FileEdit, CheckCircle, Copy, Globe, RefreshCw
+  Trash2, FileEdit, CheckCircle, Copy, Globe, RefreshCw, X, Search
 } from "lucide-react";
 import { toast } from "../../pages/Toast";
 import { socialIntegrationService, SocialIntegration } from "../../services/socialIntegrationService";
@@ -10,7 +10,6 @@ import { getAccessToken } from "../../services/authService";
 import OrderSheetConfigCard from "./OrderSheetConfigCard";
 import TelegramOrderConfigCard from "./TelegramOrderConfigCard";
 import SepayConfigCard from "./SepayConfigCard";
-import ProductCatalogConfigCard from "./ProductCatalogConfigCard";
 
 interface CompanyIntegrationsTabProps {
   userProfile: any;
@@ -23,6 +22,25 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
   const [submittingIntegration, setSubmittingIntegration] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingIntegrationId, setEditingIntegrationId] = useState<string | null>(null);
+  const [showAccounts, setShowAccounts] = useState(false);
+  const [accountSearch, setAccountSearch] = useState("");
+  const accountsDialogRef = useRef<HTMLDialogElement>(null);
+  const integrationFormRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const dialog = accountsDialogRef.current;
+    if (!showAccounts || !dialog) return;
+    dialog.showModal();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showAccounts]);
+
+  const matchesAccount = (...values: (string | undefined)[]) => values.some(value =>
+    (value || "").toLocaleLowerCase("vi").includes(accountSearch.trim().toLocaleLowerCase("vi")));
   const [loadingFacebookDiagnostics, setLoadingFacebookDiagnostics] = useState(false);
   const [facebookDiagnostics, setFacebookDiagnostics] = useState<any | null>(null);
   const [loadingZaloDiagnostics, setLoadingZaloDiagnostics] = useState(false);
@@ -694,7 +712,6 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
     <div className="space-y-6">
       <TelegramOrderConfigCard userProfile={userProfile} />
       <SepayConfigCard userProfile={userProfile} />
-      <ProductCatalogConfigCard userProfile={userProfile} />
       <div className="bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 border-b border-gray-100 pb-4">
           <div className="text-left">
@@ -721,7 +738,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
         <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
           {/* Left: Form to Add/Edit Integration */}
-          <div className="xl:col-span-2 bg-gray-50/50 border border-gray-150 rounded-2xl p-5 space-y-4">
+          <div ref={integrationFormRef} tabIndex={-1} className="xl:col-span-2 bg-gray-50/50 border border-gray-150 rounded-2xl p-5 space-y-4">
             <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider text-left">
               {editingIntegrationId ? "Chỉnh sửa tài khoản" : "Thêm tài khoản liên kết"}
             </h4>
@@ -1193,6 +1210,18 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
           {/* Right: List of Connected Accounts */}
           <div className="xl:col-span-3 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5 text-left">
+              <div>
+                <h4 className="text-sm font-bold text-gray-800">Tài khoản mạng xã hội</h4>
+                <p className="mt-1 text-sm text-gray-600">
+                  {companyIntegrations.length} tài khoản doanh nghiệp · {memberIntegrations.length} tài khoản cá nhân
+                </p>
+              </div>
+              <button type="button" onClick={() => { setAccountSearch(""); setShowAccounts(true); }}
+                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
+                <Globe className="h-4 w-4" /> Xem danh sách tài khoản
+              </button>
+            </div>
             <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 text-left">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -1293,6 +1322,26 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
               )}
             </div>
 
+            <dialog ref={accountsDialogRef} aria-labelledby="company-accounts-title"
+              onCancel={() => setShowAccounts(false)}
+              className="fixed inset-0 m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-6xl overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 shadow-2xl backdrop:bg-slate-950/50 open:flex open:flex-col">
+              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-gray-200 px-4 py-4 sm:px-6">
+                <div>
+                  <h3 id="company-accounts-title" className="text-lg font-bold text-gray-900">Danh sách tài khoản mạng xã hội</h3>
+                  <p className="mt-1 text-sm text-gray-500">Quản lý tài khoản doanh nghiệp và xem tài khoản của thành viên.</p>
+                </div>
+                <button type="button" aria-label="Đóng danh sách tài khoản" onClick={() => setShowAccounts(false)}
+                  className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="min-h-0 space-y-4 overflow-y-auto p-4 sm:p-6">
+                <label className="flex items-center gap-2 rounded-xl border border-gray-300 px-3 py-2.5 focus-within:border-indigo-500">
+                  <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                  <input type="search" value={accountSearch} onChange={event => setAccountSearch(event.target.value)}
+                    aria-label="Tìm tài khoản" placeholder="Tìm theo tên, nền tảng, ID hoặc thành viên..."
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+                </label>
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
                 Danh sách tài khoản ({companyIntegrations.length})
@@ -1320,14 +1369,18 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                 <Globe className="h-8 w-8 text-gray-300 mb-1" />
                 <p className="text-xs font-bold text-gray-600">Chưa có liên kết doanh nghiệp nào</p>
                 <p className="text-[10px] text-gray-400 max-w-xs">
-                  Điền thông tin ở biểu mẫu bên trái để liên kết tài khoản đầu tiên phục vụ đăng bài viết marketing.
+                  Đóng danh sách và dùng biểu mẫu thêm tài khoản để liên kết tài khoản đầu tiên phục vụ đăng bài viết marketing.
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[500px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {!companyIntegrations.some(item => matchesAccount(item.displayName, item.username, item.platform, item.createdBy)) && (
+                  <p className="col-span-full py-6 text-center text-sm text-gray-500">Không có tài khoản doanh nghiệp phù hợp.</p>
+                )}
                 {companyIntegrations.map((item) => (
                   <div
                     key={item._id}
+                    style={matchesAccount(item.displayName, item.username, item.platform, item.createdBy) ? undefined : { display: "none" }}
                     className={`border rounded-2xl p-4 bg-white shadow-2xs flex flex-col justify-between gap-4 transition-all hover:shadow-xs ${editingIntegrationId === item._id ? "border-indigo-500 ring-2 ring-indigo-500/10" : "border-gray-200"}`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -1338,10 +1391,10 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                           {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
                         </div>
                         <div className="text-left min-w-0 flex-1">
-                          <h5 className="text-xs font-bold text-gray-800 truncate" title={item.displayName}>
+                          <h5 className="text-sm font-bold text-gray-800 break-words" title={item.displayName}>
                             {item.displayName}
                           </h5>
-                          <p className="text-[10px] text-gray-500 truncate mt-0.5" title={item.platform === "TikTok" ? `@${item.username || "n/a"}` : item.username || "n/a"}>
+                          <p className="text-xs text-gray-500 break-all mt-0.5" title={item.platform === "TikTok" ? `@${item.username || "n/a"}` : item.username || "n/a"}>
                             {item.platform === "TikTok" ? `@${item.username || "n/a"}` : item.username || "n/a"}
                           </p>
                         </div>
@@ -1353,7 +1406,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     </div>
 
                     {/* Details details */}
-                    <div className="bg-gray-50/70 border border-gray-150/60 rounded-xl p-2.5 text-left text-[10px] space-y-1.5 font-mono text-gray-600">
+                    <div className="bg-gray-50/70 border border-gray-150/60 rounded-xl p-3 text-left text-xs space-y-2 font-mono text-gray-600">
                       {item.platform === "TikTok" && (
                         <div className="flex justify-between items-center gap-2">
                           <span className="text-gray-400 shrink-0">Chế độ:</span>
@@ -1422,7 +1475,14 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     {/* Actions */}
                     <div className="flex gap-2 pt-2 border-t border-gray-100 mt-1">
                       <button
-                        onClick={() => handleEditCompanyIntegration(item)}
+                        onClick={() => {
+                          handleEditCompanyIntegration(item);
+                          setShowAccounts(false);
+                          requestAnimationFrame(() => {
+                            integrationFormRef.current?.focus({ preventScroll: true });
+                            integrationFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          });
+                        }}
                         className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 rounded-xl text-[10px] font-bold transition-all cursor-pointer"
                       >
                         <FileEdit className="h-3.5 w-3.5" /> Sửa
@@ -1470,10 +1530,14 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {!memberIntegrations.some(item => matchesAccount(item.displayName, item.username, item.platform, item.userName, item.email)) && (
+                    <p className="col-span-full py-6 text-center text-sm text-gray-500">Không có tài khoản thành viên phù hợp.</p>
+                  )}
                   {memberIntegrations.map((item, idx) => (
                     <div
                       key={`${item.userId}-${item.platform}-${idx}`}
+                      style={matchesAccount(item.displayName, item.username, item.platform, item.userName, item.email) ? undefined : { display: "none" }}
                       className="border border-gray-200 rounded-2xl p-4 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between gap-3"
                     >
                       <div className="flex items-start justify-between gap-2 min-w-0">
@@ -1483,10 +1547,10 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                             {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
                           </div>
                           <div className="text-left min-w-0">
-                            <h5 className="text-xs font-bold text-gray-800 truncate" title={item.displayName}>
+                            <h5 className="text-sm font-bold text-gray-800 break-words" title={item.displayName}>
                               {item.displayName}
                             </h5>
-                            <p className="text-[10px] text-gray-500 truncate">
+                            <p className="text-xs text-gray-500 break-all">
                               {item.platform === "TikTok" ? `@${item.username || "n/a"}` : item.username || "n/a"}
                             </p>
                           </div>
@@ -1496,14 +1560,14 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                         </span>
                       </div>
 
-                      <div className="bg-slate-50/50 border border-gray-150 rounded-xl p-2.5 text-left text-[10px] space-y-1 font-mono text-gray-500">
+                      <div className="bg-slate-50/50 border border-gray-150 rounded-xl p-3 text-left text-xs space-y-2 font-mono text-gray-500">
                         <div className="flex justify-between gap-2">
                           <span className="text-gray-400">Thành viên:</span>
-                          <span className="font-bold text-slate-700 truncate max-w-[130px]">{item.userName}</span>
+                          <span className="min-w-0 break-words text-right font-bold text-slate-700">{item.userName}</span>
                         </div>
                         <div className="flex justify-between gap-2">
                           <span className="text-gray-400">Email:</span>
-                          <span className="text-slate-600 truncate max-w-[150px]" title={item.email}>{item.email}</span>
+                          <span className="min-w-0 break-all text-right text-slate-600" title={item.email}>{item.email}</span>
                         </div>
                       </div>
                     </div>
@@ -1511,6 +1575,8 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                 </div>
               )}
             </div>
+              </div>
+            </dialog>
           </div>
         </div>
       </div>
