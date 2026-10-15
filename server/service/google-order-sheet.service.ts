@@ -9,6 +9,7 @@ export const ORDER_HEADERS = [
   "Địa điểm nhận hàng", "Yêu cầu đặt cọc", "Số tiền đặt cọc",
   "Link biên lai thanh toán", "Link ảnh sản phẩm khách chọn", "Còn lại trả tại quán",
 ];
+const ORDER_STATUS_HEADER = "Trạng thái đơn hàng";
 
 // The order ID is kept in a hidden column so retries and later updates find the same row.
 const ORDER_ID_COLUMN = "M";
@@ -187,14 +188,14 @@ async function ensureTabs(spreadsheetId: string, tabNames: string[]) {
   const existing = new Set((info.sheets || []).map((item) => item.properties?.title).filter(Boolean));
   const missing = tabNames.filter((name) => !existing.has(name));
   const resize = (info.sheets || []).filter(sheet => tabNames.includes(sheet.properties?.title || "")
-    && sheet.properties?.sheetId !== undefined && (sheet.properties?.gridProperties?.columnCount || 0) < ORDER_HEADERS.length + 1)
+    && sheet.properties?.sheetId !== undefined && (sheet.properties?.gridProperties?.columnCount || 0) < ORDER_HEADERS.length + 2)
     .map(sheet => ({ updateSheetProperties: { properties: { sheetId: sheet.properties!.sheetId,
-      gridProperties: { columnCount: ORDER_HEADERS.length + 1 } }, fields: "gridProperties.columnCount" } }));
+      gridProperties: { columnCount: ORDER_HEADERS.length + 2 } }, fields: "gridProperties.columnCount" } }));
   if (missing.length || resize.length) {
     await sheetsFetch(`${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
       method: "POST",
       body: JSON.stringify({ requests: [...missing.map((title) => ({ addSheet: { properties: { title,
-        gridProperties: { columnCount: ORDER_HEADERS.length + 1 } } } })), ...resize] }),
+        gridProperties: { columnCount: ORDER_HEADERS.length + 2 } } } })), ...resize] }),
     });
   }
 }
@@ -315,6 +316,25 @@ async function writeHeader(spreadsheetId: string, sheetName: string, headers: st
   });
 }
 
+async function ensureOrderStatusColumn(spreadsheetId: string, sheetName: string) {
+  const headerRange = `${a1SheetName(sheetName)}!1:1`;
+  const headerResult = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(headerRange)}`) as { values?: unknown[][] };
+  const headers = headerResult.values?.[0] || [];
+  let columnIndex = headers.findIndex((value, index) => index > ORDER_HEADERS.length
+    && String(value || "").trim() === ORDER_STATUS_HEADER);
+  if (columnIndex >= 0) return columnIndex;
+
+  columnIndex = headers.findIndex((value, index) => index > ORDER_HEADERS.length && !String(value || "").trim());
+  if (columnIndex < 0) columnIndex = Math.max(headers.length, ORDER_HEADERS.length + 1);
+  const column = columnLetters(columnIndex + 1);
+  const range = `${a1SheetName(sheetName)}!${column}1:${column}1`;
+  await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, {
+    method: "PUT",
+    body: JSON.stringify({ range, majorDimension: "ROWS", values: [[ORDER_STATUS_HEADER]] }),
+  });
+  return columnIndex;
+}
+
 async function appendRows(spreadsheetId: string, sheetName: string, rows: unknown[][]) {
   if (!rows.length) return;
   const width = Math.max(...rows.map((row) => row.length), 1);
@@ -346,6 +366,7 @@ export const googleOrderSheetService = {
     const ordersSheetName = await ordersTab(spreadsheetId, ordersName);
     await ensureTabs(spreadsheetId, [ordersSheetName]);
     await writeHeader(spreadsheetId, ordersSheetName, [...ORDER_HEADERS, "Mã đơn hàng"]);
+    await ensureOrderStatusColumn(spreadsheetId, ordersSheetName);
     await hideOrderIdColumn(spreadsheetId, ordersSheetName);
     await migrateLegacyOrders(spreadsheetId, safeSheetName(ordersName, "Orders"), ordersSheetName,
       safeSheetName(_itemsName, "OrderItems"));
@@ -360,14 +381,29 @@ export const googleOrderSheetService = {
 
     const itemSummary = order.items.map((item) => `${item.productName} x${item.quantity}`).join("; ");
     const sizeSummary = order.items.map(itemSize).filter(Boolean).join("; ");
-    if (!duplicate) await appendRows(spreadsheetId, ordersSheetName, [[
+    const row: unknown[] = [
       order.customerName, order.customerPhone, itemSummary, sizeSummary,
       order.requestedFulfillmentTime, order.totalAmount,
       order.fulfillmentLocation || order.deliveryAddress, order.depositRequired ? "Có" : "Không",
       order.depositAmount, order.receiptUrl, order.selectedProductImageUrl,
       order.remainingBalance, order.orderId,
-    ]]);
+    ];
+    const statusColumnIndex = await ensureOrderStatusColumn(spreadsheetId, ordersSheetName);
+    while (row.length <= statusColumnIndex) row.push("");
+    row[statusColumnIndex] = order.orderStatus || "";
+    if (!duplicate) await appendRows(spreadsheetId, ordersSheetName, [row]);
     return { duplicate };
+  },
+
+  async getOrderStatus(spreadsheetId: string, ordersName: string, orderId: string) {
+    const { sheetName, rowNumber } = await findOrderRow(spreadsheetId, ordersName, orderId,
+      "Không tìm thấy đơn hàng trong Google Sheet để tra cứu trạng thái.");
+    const statusColumnIndex = await ensureOrderStatusColumn(spreadsheetId, sheetName);
+    const column = columnLetters(statusColumnIndex + 1);
+    const statusRange = `${a1SheetName(sheetName)}!${column}${rowNumber}:${column}${rowNumber}`;
+    const statusResult = await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(statusRange)}`) as { values?: unknown[][] };
+    const status = String(statusResult.values?.[0]?.[0] || "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 500);
+    return { status, hasStatusColumn: true };
   },
 
   async updatePaymentReceipt(
