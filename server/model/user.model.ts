@@ -54,6 +54,7 @@ export const AiAutoReplyConfigSchema = new Schema(
   {
     enabled: { type: Boolean, default: true },
     commentReplyEnabled: { type: Boolean, default: true },
+    imageReplyEnabled: { type: Boolean, default: false },
     autoClassify: { type: Boolean, default: true },
     autoCloseDeal: { type: Boolean, default: false },
     autoFeedback: { type: Boolean, default: false },

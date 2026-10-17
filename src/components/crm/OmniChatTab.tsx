@@ -282,6 +282,19 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   const [loadingAIHealth, setLoadingAIHealth] = useState(false);
   const [testQuestion, setTestQuestion] = useState("Phí ship và chính sách bảo hành bên mình như thế nào?");
   const [testReply, setTestReply] = useState<any | null>(null);
+  const [testImages, setTestImages] = useState<Array<{ name: string; dataUrl: string }>>([]);
+  const [readingTestImages, setReadingTestImages] = useState(false);
+  const testRequestIdRef = useRef(0);
+  const testScopeRef = useRef("");
+  const testScope = configScopeKey + ":" + (activeCustomer?.id || "");
+  testScopeRef.current = testScope;
+  useEffect(() => {
+    testRequestIdRef.current += 1;
+    setTestReply(null);
+    setTestImages([]);
+    setReadingTestImages(false);
+    setTestingAI(false);
+  }, [testScope]);
   const [testingAI, setTestingAI] = useState(false);
   const [aiReplyLogs, setAIReplyLogs] = useState<any[]>([]);
   const knowledgeDocuments = Array.isArray(knowledgeHealth?.documents) ? knowledgeHealth.documents : [];
@@ -305,11 +318,39 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     }
   };
 
-  const handleTestAIReply = async () => {
-    if (!testQuestion.trim()) {
-      toast.error("Vui lòng nhập câu hỏi mẫu để test AI.");
+  const handleAddTestImages = async (files: File[]) => {
+    if (!files.length) return;
+    if (files.length + testImages.length > 3 || files.some(file =>
+      !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) || file.size > 8 * 1024 * 1024)) {
+      toast.error("Chọn tối đa 3 ảnh JPG, PNG, WebP hoặc GIF, mỗi ảnh không quá 8 MB.");
       return;
     }
+    const submittedScope = testScopeRef.current;
+    const submittedGeneration = testRequestIdRef.current;
+    setReadingTestImages(true);
+    try {
+      const loaded = await Promise.all(files.map(file => new Promise<{ name: string; dataUrl: string }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: file.name, dataUrl: String(reader.result) });
+        reader.onerror = () => reject(new Error("Không đọc được ảnh đã chọn."));
+        reader.readAsDataURL(file);
+      })));
+      if (submittedScope === testScopeRef.current && submittedGeneration === testRequestIdRef.current) {
+        setTestImages(previous => [...previous, ...loaded].slice(0, 3));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không đọc được ảnh.");
+    } finally {
+      if (submittedScope === testScopeRef.current && submittedGeneration === testRequestIdRef.current) setReadingTestImages(false);
+    }
+  };
+
+  const handleTestAIReply = async () => {
+    if (!testQuestion.trim() && !testImages.length) {
+      toast.error("Vui lòng nhập câu hỏi mẫu hoặc chọn ảnh để test AI.");
+      return;
+    }
+    const requestId = ++testRequestIdRef.current;
     setTestingAI(true);
     try {
       const channel = activeCustomer?.channel || (activeChannel === "all" ? "facebook" : activeChannel);
@@ -319,14 +360,16 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         platformId: (channel === "facebook"
           ? activeCustomer?.pageId || selectedFacebookPageId
           : channel === "zalo" ? selectedZaloAccountId : selectedTiktokAccountId) || undefined,
+        images: testImages.map(image => image.dataUrl),
       });
+      if (requestId !== testRequestIdRef.current) return;
       setTestReply(result);
       await refreshAIHealth();
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Không thể tạo câu trả lời thử.");
+      if (requestId === testRequestIdRef.current) toast.error(err.message || "Không thể tạo câu trả lời thử.");
     } finally {
-      setTestingAI(false);
+      if (requestId === testRequestIdRef.current) setTestingAI(false);
     }
   };
 
@@ -1209,6 +1252,10 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           refreshAIHealth={refreshAIHealth}
           testQuestion={testQuestion}
           setTestQuestion={setTestQuestion}
+          testImages={testImages}
+          readingTestImages={readingTestImages}
+          handleAddTestImages={handleAddTestImages}
+          handleRemoveTestImage={index => setTestImages(images => images.filter((_, imageIndex) => imageIndex !== index))}
           testReply={testReply}
           testingAI={testingAI}
           handleTestAIReply={handleTestAIReply}

@@ -387,6 +387,42 @@ test("wording guard rejects changed prices, missing sizes and extra numbers", ()
   assert.equal(preservesCakeReplyFacts("14cm 180.000đ; 18cm 270.000đ", "14cm 270.000đ; 18cm 180.000đ"), false);
 });
 
+test("order preview extracts choices and checks the catalogue without saving, uploading or creating payment", async t => {
+  const s = setup(t);
+  t.mock.method(CakeCheckoutModel, "findOne", () => query(s.draft));
+  const save = t.mock.method(s.draft, "save", async () => { throw new Error("Preview cannot save"); });
+  const create = t.mock.method(MessengerOrderModel, "create", async () => { throw new Error("Preview cannot create an order"); });
+  const lease = t.mock.method(CakeCheckoutModel, "findOneAndUpdate", async () => { throw new Error("Preview cannot acquire a write lease"); });
+  const upload = t.mock.method(cloudinaryService, "uploadMediaBuffer", async () => { throw new Error("Preview cannot upload images"); });
+  const before = JSON.stringify(s.draft.toObject());
+  const result = await cakeCheckoutService.preview({ companyCode: "TEST", pageId: "PAGE", conversationId: "CONV",
+    messageId: "preview", message: "Lấy size 18 cao 10", imageUrls: [], visualMode: true });
+  assert.equal(result?.dryRun, true);
+  assert.equal(result?.requiresConfirmation, true);
+  assert.equal(result?.matchedVariants[0]?.price, 330000);
+  assert.equal(JSON.stringify(s.draft.toObject()), before);
+  for (const mock of [save, create, lease, upload]) assert.equal(mock.mock.callCount(), 0);
+});
+
+test("a readable new design with unknown shape does not inherit a previous price group", async t => {
+  const s = setup(t);
+  s.draft.details = { ...details, imageUrl: "https://res.cloudinary.com/test/old.jpg" };
+  s.state.output = { ...details, adviceOnly: true };
+  const photo = "https://res.cloudinary.com/test/new.jpg";
+  const result = await cakeCheckoutService.process({
+    companyCode: "TEST", pageId: "PAGE", conversationId: "CONV", messageId: "m1",
+    message: "Chỗ này thay bằng ảnh giúp em", imageUrls: [photo], visualMode: true,
+    observation: { status: "ready", description: "Mẫu trắng và vùng đánh dấu, chưa xác định hình dạng",
+      cakeShape: "unknown", shapeConfidence: "low", selectedImageUrl: photo,
+      visualContext: { version: 1, readable: true, needsSelection: false, selectedImageId: "new", summary: "Mẫu mới",
+        facts: [], customerRequests: [{ detail: "Thay vùng đánh dấu bằng ảnh", sourceMessageId: "m1" }], uncertainties: ["Hình dạng"] } },
+  });
+  assert.ok(result?.consultationContext);
+  assert.equal(s.draft.details?.groupId, "");
+  assert.doesNotMatch(result!.text, /330|270|hình tròn, trái tim/);
+  assert.equal(s.state.createdOrders, 0);
+});
+
 test("delivery ignores fee documents and charges cake only, preserving booking preference", async t => {
   const s = setup(t);
   t.mock.method(AIKnowledgeChunkModel, "find", () => query([{ text:

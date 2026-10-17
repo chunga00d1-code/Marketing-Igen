@@ -327,6 +327,7 @@ export default function CRMTab() {
   const [aiConfig, setAIConfig] = useState<AIChatConfig>({
     enabled: true,
     commentReplyEnabled: true,
+    imageReplyEnabled: false,
     autoClassify: true,
     autoCloseDeal: true,
     autoFeedback: true,
@@ -361,6 +362,7 @@ export default function CRMTab() {
       setAIConfig({
         enabled: config.enabled ?? true,
         commentReplyEnabled: config.commentReplyEnabled ?? true,
+        imageReplyEnabled: config.imageReplyEnabled ?? false,
         autoClassify: true,
         autoCloseDeal: true,
         autoFeedback: true,
@@ -384,6 +386,7 @@ export default function CRMTab() {
       setAIConfig({
         enabled: fallbackConfig?.enabled ?? true,
         commentReplyEnabled: fallbackConfig?.commentReplyEnabled ?? true,
+        imageReplyEnabled: fallbackConfig?.imageReplyEnabled ?? false,
         autoClassify: true,
         autoCloseDeal: true,
         autoFeedback: true,

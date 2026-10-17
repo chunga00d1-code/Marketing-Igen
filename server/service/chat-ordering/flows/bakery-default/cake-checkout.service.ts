@@ -15,6 +15,7 @@ import { cloudinaryService } from "../../../cloudinary.service";
 import { cakePaidMessage } from "./cake-shipping";
 import { cakeCustomerMemory, CUSTOMER_SESSION_MS, type CakeSessionContext } from "./cake-customer-memory";
 import { CakeConsultationSessionModel } from "../../../../model/cake-customer-memory.model";
+import type { ChatOrderFlowInput, ChatOrderFlowPreview } from "../../core/types";
 
 const money = (amount: number) => `${amount.toLocaleString("vi-VN")}đ`;
 const blankDetails: CakeCheckoutDetails = { groupId: "", size: "", height: null, budget: null, packQuantity: null, name: "",
@@ -122,8 +123,9 @@ export function cakePaymentRequest(_orderId: string, code: string, snapshot: Cak
     imageUrl: buildVietQrImageUrl(snapshot.bankId, snapshot.accountNumber, snapshot.accountName, snapshot.deposit, code) };
 }
 
-async function extractDetails(message: string, previous: CakeCheckoutDetails, transcript: string, catalog: CakeVariant[], observation?: ChatImageObservation, businessContext?: string) {
+async function extractDetails(message: string, previous: CakeCheckoutDetails, transcript: string, catalog: CakeVariant[], observation?: ChatImageObservation, businessContext?: string, deadlineAt?: number) {
   const result = await generateReplyCompletion({ temperature: 0, maxTokens: 2000, jsonMode: true, strictJsonSchema: true,
+    deadlineAt, maxRetries: deadlineAt === undefined ? undefined : 1,
     responseSchema: { ...blankDetails, height: 0, budget: 0, packQuantity: 0, wantsOrder: false, needsStaff: false,
       reviewReason: "", customerAddress: "", sellerAddress: "", switchToPickup: false, adviceOnly: false, newOrder: false,
       buyerName: "", buyerPhone: "", clearFields: "" },
@@ -137,6 +139,8 @@ async function extractDetails(message: string, previous: CakeCheckoutDetails, tr
       "adviceOnly=true nếu tin mới hỏi chính sách, xin mẫu, hỏi size theo số người, hỏi size đã chọn đủ mấy người ăn, hoặc tham khảo giá mà chưa chọn. 'Size đó mấy người ăn' hỏi sức chứa của size đã chọn: giữ nguyên size/height, không yêu cầu khách nói số người trước. Không biến gợi ý của AI thành lựa chọn khách. guestCount ghi số người nếu khách cung cấp, giữ số người đã biết khi tin mới không nhắc lại. Có mẫu ảnh thì không hỏi khách đã có mẫu chưa; chưa có mẫu thì hỏi nhu cầu/người nhận/dịp khi chưa biết rồi gửi danh mục từ tài liệu. Khi khách chọn mới được đi tiếp thu thập thông tin chốt.",
       "wantsOrder=true khi khách muốn mua/chọn/đặt/lấy bánh hoặc xác nhận mua. Câu hỏi giá đơn thuần không phải xác nhận mua.",
       "groupId phải thuộc danh mục. Hình dạng bánh có thể lấy từ quan sát ảnh; không suy ra size/chiều cao từ ảnh. Nếu nhiều mẫu thì cần khách chọn mẫu trước.",
+      "observation.visualContext tách facts của ảnh mẫu khỏi customerRequests từ tin khách. Chỉ cập nhật theo customerRequests và tin khách thật. Không lấy số tuổi, chữ hay kích thước nhìn thấy trên mẫu thành lựa chọn khách. Thuộc tính ảnh chưa rõ không cản tư vấn trang trí; chỉ hỏi khi thuộc tính đó cần để chọn đúng sản phẩm hoặc tính giá.",
+      "sourceText trong customerRequests là nguyên văn yêu cầu khách được backend giữ lại. Ưu tiên nguyên văn nếu detail/value do AI diễn giải làm mất ý thay, đổi, bỏ hoặc thêm trang trí. Không tự biến yêu cầu thay một chi tiết thành làm y nguyên cả mẫu; nếu còn mơ hồ thì giữ phần đã rõ và hỏi đúng chi tiết thiếu.",
       "name chỉ điền tên loại/vị chính xác trong danh mục nếu khách đã chọn; nếu chưa biết để trống. size chỉ chứa số hoặc AxB, không có cm. height, budget, packQuantity chưa biết trả 0.",
       "budget là giá một bánh/một set khách chọn, không phải tổng tiền hoặc tiền cọc. Nếu khách đổi size thì xóa budget cũ; nếu đổi budget thì xóa size/height cũ trừ khi khách yêu cầu đồng thời. Đổi nhóm thì xóa size/height/name cũ nếu khách chưa xác nhận lại.",
       "pickupAt dạng YYYY-MM-DDTHH:mm giờ Việt Nam, giải nghĩa ngày tương đối từ thời gian hiện tại. Nếu đã có ngày nhưng thiếu giờ, giữ YYYY-MM-DD, không xóa ngày và không tự điền giờ. Tin sau chỉ nói giờ thì ghép với ngày đã lưu. Khách nói 'ngày 15' thì giải nghĩa theo tháng hiện tại nếu còn ở tương lai; nếu mơ hồ thì hỏi lại tháng. pickupLocation là nơi khách xác nhận đến nhận, không tự chọn chi nhánh. deliveryAddress lưu địa chỉ khách muốn giao tới; giữ lại khi hỏi chính sách ship, không ghi địa chỉ đó thành chi nhánh nhận.",
@@ -220,6 +224,45 @@ export function splitCakeReply(text: string) {
 }
 
 export const cakeCheckoutService = {
+  async preview(input: ChatOrderFlowInput): Promise<ChatOrderFlowPreview | undefined> {
+    const scope = { companyCode: input.companyCode, pageId: input.pageId, conversationId: input.conversationId };
+    const conversation = await FBConversationModel.findOne({ _id: input.conversationId, pageId: input.pageId }).lean();
+    if (!conversation) return undefined;
+    const context = await loadContext(input.companyCode, input.pageId);
+    if (!context) return undefined;
+    const draft = await CakeCheckoutModel.findOne({ ...scope, ...(input.session ? { sessionId: input.session.sessionId } : {}) }).lean();
+    const rows = await FBMessageModel.find({ conversationId: input.conversationId,
+      ...(input.session ? { consultationSessionId: input.session.sessionId } : {}) }).sort({ timestamp: -1 }).limit(24).lean();
+    const transcript = rows.reverse().map(row => `${row.direction === "inbound" ? "KHÁCH" : "SHOP"}: ${row.text || "[ảnh]"}`).join("\n");
+    const previous = { ...blankDetails, ...draft?.details };
+    const freshUnknownSample = Boolean(input.observation?.visualContext && input.observation.shapeConfidence !== "high"
+      && (input.freshImage || (input.observation.selectedImageUrl && input.observation.selectedImageUrl !== previous.imageUrl)));
+    previous.imageUrl = input.observation?.selectedImageUrl || previous.imageUrl;
+    const extracted = await extractDetails(input.message, previous, transcript, context.catalog, input.observation, input.businessContext, input.replyDeadlineAt);
+    const shape = input.observation?.shapeConfidence === "high" && input.observation.cakeShape
+      && !["unknown", "other"].includes(input.observation.cakeShape) ? input.observation.cakeShape : undefined;
+    const catalog = context.catalog.filter(variant => matchesCakeType(variant, extracted.details.cakeType || "")
+      && (!shape || matchesObservedCakeShape(variant.shape || variant.name, shape)));
+    const validGroups = new Set(catalog.map(variant => variant.groupId));
+    if (!validGroups.has(extracted.details.groupId)) extracted.details.groupId = shape && validGroups.size === 1 ? [...validGroups][0] : "";
+    if (freshUnknownSample) {
+      extracted.details.groupId = ""; extracted.details.name = ""; extracted.details.size = "";
+      extracted.details.height = null; extracted.details.budget = null; extracted.details.packQuantity = null;
+    }
+    const matched = resolveCakeChoice(catalog, extracted.details);
+    const requiredReply = isImagePriceInquiry(input.message) && extracted.details.groupId && matched.length
+      ? cakeOptions(matched, shortAddress(input.customerAddressStyle) || "mình") : undefined;
+    return {
+      dryRun: true, currentState: draft?.state || "collecting",
+      proposedDetails: { ...extracted.details },
+      matchedVariants: matched.map(({ id, name, size, price }) => ({ id, name, size, price })),
+      requiresConfirmation: true,
+      wordingSource: requiredReply,
+      consultationContext: JSON.stringify({ dryRun: true, proposedDetails: extracted.details,
+        observation: input.observation, catalog: extracted.details.groupId ? catalog.filter(variant => variant.groupId === extracted.details.groupId) : [],
+        requiredReply, constraint: "Đây là mô phỏng tư vấn, đề xuất chưa được lưu hay xác nhận. Trả lời yêu cầu hiện tại theo dữ kiện ảnh và tri thức; nếu có requiredReply thì giữ nguyên các size/giá đã đối chiếu. Không khẳng định đã tạo/chốt/sửa đơn hoặc gửi QR. Nếu thiếu căn cứ chọn nhóm giá thì chỉ hỏi đúng chi tiết còn thiếu; không lấy giá của nhóm khác." }),
+    };
+  },
   async isActive(pageId: string, conversationId: string) {
     return !!await CakeCheckoutModel.exists({ pageId, conversationId });
   },
@@ -228,7 +271,7 @@ export const cakeCheckoutService = {
     return !!(integration?.companyCode && await loadContext(integration.companyCode, pageId));
   },
   async process(input: { companyCode: string; pageId: string; conversationId: string; messageId: string; message: string;
-    imageUrls: string[]; observation?: ChatImageObservation; businessContext?: string; customerAddressStyle?: string; session?: CakeSessionContext }): Promise<CakeCheckoutReply | undefined> {
+    imageUrls: string[]; observation?: ChatImageObservation; visualMode?: boolean; replyDeadlineAt?: number; businessContext?: string; customerAddressStyle?: string; session?: CakeSessionContext }): Promise<CakeCheckoutReply | undefined> {
     const { companyCode, pageId, conversationId, messageId, message } = input;
     const scope = { companyCode, pageId, conversationId };
     if (input.session?.ask) return { text: input.session.ask, isMock: false, draftId: "", revision: 0 };
@@ -468,7 +511,7 @@ export const cakeCheckoutService = {
         let changed = input.imageUrls.length > 0;
         if (order?.depositStatus !== "verified") {
           pendingUpdate = await extractDetails(message, { ...blankDetails, ...draft.details }, transcript,
-            context.catalog, input.observation || draft.imageObservation, input.businessContext);
+            context.catalog, input.observation || draft.imageObservation, input.businessContext, input.replyDeadlineAt);
           await assertCurrent();
           changed ||= pendingUpdate.newOrder || Object.keys(blankDetails).some(key => {
             if (key === "guestCount" || key === "imageUrl") return false;
@@ -611,6 +654,8 @@ export const cakeCheckoutService = {
       if (startsNewCake) draft.imageObservation = undefined;
       const inboundImage = input.observation?.selectedImageUrl && input.imageUrls.includes(input.observation.selectedImageUrl)
         ? input.observation.selectedImageUrl : input.imageUrls.length === 1 ? input.imageUrls[0] : undefined;
+      const newUnclassifiedSample = Boolean(input.visualMode && input.observation?.visualContext && inboundImage
+        && inboundImage !== previous.imageUrl && input.observation.shapeConfidence !== "high");
       const lastImageMessage = !existing ? [...transcriptRows].reverse().find(row => row.direction === "inbound"
         && row.attachments?.filter(a => a.type === "image").length === 1) : undefined;
       previous.imageUrl = inboundImage || previous.imageUrl || (!existing ? (!input.session ? conversation.selectedProductImageUrl : "")
@@ -618,7 +663,7 @@ export const cakeCheckoutService = {
       const cachedObservation = isImagePriceInquiry(message) && previous.imageUrl && draft.imageObservation?.status === "ready"
         && !draft.imageObservation.cakeShape ? undefined : draft.imageObservation;
       let observation = input.observation || (inboundImage ? undefined : cachedObservation)
-        || (previous.imageUrl ? await analyzeChatImages([previous.imageUrl], message) : undefined);
+        || (!input.visualMode && previous.imageUrl ? await analyzeChatImages([previous.imageUrl], message) : undefined);
       if (!input.imageUrls.length && previous.imageUrl && !previous.groupId && observation?.status === "unavailable") {
         const confirmation = normalizeCakeText(message).match(/^(?:(?:da|la|banh|hinh|mau)\s+)*(trai tim|tim|tron|vuong|chu nhat)(?:\s+(?:nha|nhe|a|do|day|nhi))*$/);
         const confirmedShape = confirmation ? ({ "trai tim": "heart", tim: "heart", tron: "round", vuong: "square", "chu nhat": "rectangle" } as const)[confirmation[1] as "trai tim" | "tim" | "tron" | "vuong" | "chu nhat"] : undefined;
@@ -642,7 +687,16 @@ export const cakeCheckoutService = {
         await draft.save();
         return reply(clarification);
       }
-      const extracted = pendingUpdate || await extractDetails(message, previous, transcript, context.catalog, observation, input.businessContext);
+      const extracted = pendingUpdate || await extractDetails(message, previous, transcript, context.catalog, observation, input.businessContext, input.replyDeadlineAt);
+      if (newUnclassifiedSample) {
+        // A readable new design is useful for consultation but cannot inherit the old sample's price group.
+        extracted.details.groupId = "";
+        extracted.details.name = "";
+        extracted.details.size = "";
+        extracted.details.height = null;
+        extracted.details.budget = null;
+        extracted.details.packQuantity = null;
+      }
       const normalizedMessage = normalizeCakeText(message);
       const ambiguousFulfillment = /^(?:den tan noi|toi tan noi)(?: nhe| nha| a)?$/.test(normalizedMessage);
       if (ambiguousFulfillment) {

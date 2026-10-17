@@ -41,6 +41,7 @@ export function AiCommentReplyManager({
   const [localConfig, setLocalConfig] = useState<AIChatConfig>({
     enabled: false,
     commentReplyEnabled: false,
+    imageReplyEnabled: false,
     autoClassify: true,
     autoCloseDeal: false,
     autoFeedback: false,
@@ -148,6 +149,7 @@ export function AiCommentReplyManager({
             setLocalConfig({
               enabled: config.enabled ?? false,
               commentReplyEnabled: config.commentReplyEnabled ?? false,
+              imageReplyEnabled: config.imageReplyEnabled ?? false,
               autoClassify: true,
               autoCloseDeal: true,
               autoFeedback: true,
@@ -175,6 +177,7 @@ export function AiCommentReplyManager({
         setLocalConfig({
           enabled: fallbackConfig?.enabled ?? false,
           commentReplyEnabled: fallbackConfig?.commentReplyEnabled ?? false,
+          imageReplyEnabled: fallbackConfig?.imageReplyEnabled ?? false,
           autoClassify: true,
           autoCloseDeal: true,
           autoFeedback: true,

@@ -1,4 +1,4 @@
-export type ChatContextMessage = { sender: string; text: string };
+export type ChatContextMessage = { sender: string; text: string; messageId?: string };
 
 function normalize(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")

@@ -6,6 +6,8 @@
  * Hỗ trợ: chat completions (text + vision), image generation.
  */
 
+import { beginChatAiAttempt } from "./chat-ai-trace";
+
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 function getApiKey(): string {
@@ -44,6 +46,7 @@ export interface OpenRouterChatParams {
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
+  deadlineAt?: number;
   /** Return JSON object (response_format: json_object) */
   jsonMode?: boolean;
   /** Optional JSON schema — injected into system prompt as instruction */
@@ -71,6 +74,7 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
     maxRetries = 4,
     maxTokens,
     timeoutMs = 45_000,
+    deadlineAt,
     reasoning,
   } = params;
   const apiKey = getApiKey();
@@ -129,15 +133,22 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
   let delay = 1000;
   let strictSchemaActive = body.response_format?.type === "json_schema";
   const totalAttempts = maxRetries + (strictSchemaActive ? 1 : 0);
+  const hasImagePayload = messages.some(message =>
+    message.role === "user" && Array.isArray(message.content) && message.content.some(part => part.type === "image_url"));
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+    const remainingMs = deadlineAt === undefined ? undefined : deadlineAt - Date.now();
+    if (remainingMs !== undefined && remainingMs <= 0) throw new Error("[OpenRouter] Reply deadline exceeded");
+    const finishAttempt = beginChatAiAttempt(mappedModel, hasImagePayload);
+    let succeeded = false;
     try {
       const startTime = Date.now();
       console.log(`[OpenRouter] POST /chat/completions | model=${mappedModel} | attempt=${attempt}`);
 
       const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
         method: "POST",
-        signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+        signal: timeoutMs || remainingMs !== undefined
+          ? AbortSignal.timeout(Math.max(1, Math.min(timeoutMs || Infinity, remainingMs ?? Infinity))) : undefined,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
@@ -158,9 +169,10 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
         const publicMessage =
           response.status === 402
             ? "Dịch vụ AI đang tạm thời không khả dụng. Vui lòng thử lại sau."
-            : `OpenRouter API lỗi ${response.status}: ${errText}`;
+            : hasImagePayload ? `OpenRouter image request failed (HTTP ${response.status}).`
+              : `OpenRouter API lỗi ${response.status}: ${errText}`;
         const err = new Error(publicMessage) as any;
-        err.providerMessage = errText;
+        err.providerMessage = hasImagePayload ? "[Image request error redacted]" : errText;
         err.status = response.status;
         const retryAfterSeconds = Number(response.headers.get("retry-after"));
         if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
@@ -176,11 +188,20 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
         const emptyError = new Error("OpenRouter returned an empty completion.") as any;
         emptyError.status = 502;
         emptyError.providerCode = "EMPTY_COMPLETION";
+        emptyError.finishReason = String(data.choices?.[0]?.finish_reason || "unknown").slice(0, 40);
+        emptyError.completionTokens = data.usage?.completion_tokens;
+        emptyError.reasoningTokens = data.usage?.completion_tokens_details?.reasoning_tokens;
+        console.warn("[OpenRouter] Empty completion:", JSON.stringify({
+          model: mappedModel, finishReason: emptyError.finishReason,
+          completionTokens: emptyError.completionTokens, reasoningTokens: emptyError.reasoningTokens,
+        }));
         throw emptyError;
       }
       console.log(`[OpenRouter] Success | model=${data.model || mappedModel} | ${elapsed}ms | len=${text.length}`);
+      succeeded = true;
       return { text };
     } catch (error: any) {
+      finishAttempt(false);
       lastError = error;
       const status = error?.status ?? 0;
       const msg = error?.message || String(error);
@@ -192,12 +213,15 @@ export async function openrouterChat(params: OpenRouterChatParams): Promise<{ te
 
       if (isRetryable && attempt < totalAttempts) {
         const retryDelay = Math.max(delay, Number(error?.retryAfterMs) || 0);
+        if (deadlineAt !== undefined && Date.now() + retryDelay >= deadlineAt) break;
         console.warn(`[OpenRouter] Attempt ${attempt} failed, retrying in ${retryDelay}ms... Error: ${msg}`);
         await new Promise((r) => setTimeout(r, retryDelay));
         delay *= 2;
       } else {
         break;
       }
+    } finally {
+      finishAttempt(succeeded);
     }
   }
 

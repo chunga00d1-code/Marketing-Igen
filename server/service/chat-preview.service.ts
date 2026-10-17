@@ -3,9 +3,10 @@ import { ZaloConversationModel, ZaloMessageModel } from "../model/zalo-messenger
 import { TikTokConversationModel, TikTokMessageModel } from "../model/tiktok-messenger.model";
 import { UserModel } from "../model/user.model";
 import type { ChatContextMessage } from "./chat-context";
+import type { ChatSourceMessage } from "./chat-reply-context.service";
 
 type Channel = "facebook" | "zalo" | "tiktok";
-type PreviewConfig = { model?: string; trainingKnowledge?: string; [key: string]: unknown };
+type PreviewConfig = { model?: string; trainingKnowledge?: string; imageReplyEnabled?: boolean; [key: string]: unknown };
 type OwnerResolver = (channel: Channel, platformId: string) => Promise<{
   companyCode: string;
   aiConfig: PreviewConfig | null;
@@ -22,6 +23,7 @@ export async function prepareChatPreview(input: {
   channel: Channel;
   conversationId?: string;
   platformId?: string;
+  withImages?: boolean;
 }, resolveOwner: OwnerResolver) {
   const { channel, conversationId } = input;
   let platformId = input.platformId;
@@ -54,17 +56,26 @@ export async function prepareChatPreview(input: {
   }
 
   let history: ChatContextMessage[] = [];
+  let sourceMessages: ChatSourceMessage[] = [];
+  let sessionId: string | undefined;
   if (conversationId) {
     const filter = { conversationId };
+    const visualHistory = aiConfig.imageReplyEnabled === true || input.withImages === true;
+    const limit = visualHistory ? 60 : 15;
     const messages = channel === "facebook"
-      ? await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(15).lean()
+      ? await FBMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit).lean()
       : channel === "zalo"
-        ? await ZaloMessageModel.find(filter).sort({ timestamp: -1 }).limit(15).lean()
-        : await TikTokMessageModel.find(filter).sort({ timestamp: -1 }).limit(15).lean();
-    history = messages.reverse().map((message) => ({
+        ? await ZaloMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit).lean()
+        : await TikTokMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit).lean();
+    sourceMessages = messages.reverse();
+    sessionId = channel === "facebook" && visualHistory
+      ? [...sourceMessages].reverse().find(message => message.direction === "inbound")?.consultationSessionId : undefined;
+    if (sessionId) sourceMessages = sourceMessages.filter(message => message.consultationSessionId === sessionId);
+    history = sourceMessages.map((message) => ({
       sender: message.direction === "inbound" ? "user" : "model",
       text: message.text || "",
+      ...(visualHistory ? { messageId: message.messageId } : {}),
     }));
   }
-  return { aiConfig, history, channel, pageId: channel === "facebook" ? platformId : undefined };
+  return { aiConfig, history, channel, sourceMessages, sessionId, platformId, pageId: channel === "facebook" ? platformId : undefined };
 }

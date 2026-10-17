@@ -364,6 +364,27 @@ export async function buildOpenRouterMessages(
     msgs.push({ role: "user", content: String(contents) });
   }
 
+  // Config images also belong to the newest user turn when history uses contents[].
+  if (Array.isArray(contents) && images?.length) {
+    const latestUser = [...msgs].reverse().find(message => message.role === "user");
+    if (latestUser?.role === "user") {
+      const parts: OpenRouterContentPart[] = typeof latestUser.content === "string"
+        ? [{ type: "text", text: latestUser.content }] : [...latestUser.content];
+      for (const source of images) {
+        let dataUrl = source;
+        if (!source.startsWith("data:")) {
+          const downloaded = await fetchImageAsBase64(source);
+          if (!downloaded) throw new Error("Unable to load a required image");
+          dataUrl = `data:${downloaded.mimeType};base64,${downloaded.data}`;
+        }
+        if (!parts.some(part => part.type === "image_url" && part.image_url.url === dataUrl)) {
+          parts.push({ type: "image_url", image_url: { url: dataUrl } });
+        }
+      }
+      latestUser.content = parts;
+    }
+  }
+
   return msgs;
 }
 
@@ -382,7 +403,9 @@ export async function generateText(
   );
 
   const displayModel = mapModelName(modelId);
-  console.log(`[generateText] Calling OpenRouter | model=${displayModel} | msgs=${messages.length} | hasSchema=${!!config?.responseSchema} | hasImages=${!!(config?.images?.length)}`);
+  const hasImages = messages.some(message => message.role === "user" && Array.isArray(message.content)
+    && message.content.some(part => part.type === "image_url"));
+  console.log(`[generateText] Calling OpenRouter | model=${displayModel} | msgs=${messages.length} | hasSchema=${!!config?.responseSchema} | hasImages=${hasImages}`);
 
   try {
     const res = await openrouterChat({
@@ -393,7 +416,9 @@ export async function generateText(
       responseSchema: config?.responseSchema,
       maxRetries: config?.maxRetries,
       timeoutMs: config?.timeoutMs,
+      deadlineAt: config?.deadlineAt,
       maxTokens: config?.maxTokens,
+      reasoning: config?.reasoning,
     });
 
     if (needsJson) {
@@ -402,6 +427,8 @@ export async function generateText(
 
     return res;
   } catch (error: any) {
+    // A text fallback must not silently answer a visual question without vision support.
+    if (hasImages && config?.allowImageFallback === false) throw error;
     const fallbackModel = modelId === AI_REPLY_PRIMARY_MODEL
       ? AI_REPLY_FALLBACK_MODEL
       : config?.fallbackModel || process.env.FALLBACK_MODEL || AI_REPLY_FALLBACK_MODEL;
@@ -416,7 +443,9 @@ export async function generateText(
         responseSchema: config?.responseSchema,
         maxRetries: config?.fallbackMaxRetries ?? config?.maxRetries,
         timeoutMs: config?.fallbackTimeoutMs ?? config?.timeoutMs,
+        deadlineAt: config?.deadlineAt,
         maxTokens: config?.maxTokens,
+        reasoning: config?.reasoning,
       });
 
       if (needsJson) {

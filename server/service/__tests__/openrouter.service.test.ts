@@ -72,3 +72,21 @@ test("uses strict JSON Schema and downgrades once when a provider rejects it", a
   assert.equal(strictFormat.json_schema?.schema?.additionalProperties, false);
   assert.deepEqual(requestBodies[1].response_format, { type: "json_object" });
 });
+
+test("empty completions retain safe token diagnostics without treating reasoning as a reply", async t => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  t.after(() => { if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey; });
+  t.mock.method(globalThis, "fetch", async () => Response.json({
+    choices: [{ finish_reason: "length", message: { content: "", reasoning: "Internal reasoning must not become the customer reply" } }],
+    usage: { completion_tokens: 1200, completion_tokens_details: { reasoning_tokens: 1200 } },
+  }));
+  await assert.rejects(openrouterChat({ model: "openai/gpt-6-luna", messages: [{ role: "user", content: "Check reply" }], maxRetries: 1 }), error => {
+    const detail = error as Error & { finishReason?: string; completionTokens?: number; reasoningTokens?: number };
+    assert.equal(detail.message, "OpenRouter returned an empty completion.");
+    assert.equal(detail.finishReason, "length");
+    assert.equal(detail.completionTokens, 1200);
+    assert.equal(detail.reasoningTokens, 1200);
+    return true;
+  });
+});
