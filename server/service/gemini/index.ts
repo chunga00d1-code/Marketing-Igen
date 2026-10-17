@@ -63,6 +63,7 @@ export const geminiService = {
 
   // Chat CRM & Auto-Reply
   chat: geminiChatService.chat.bind(geminiChatService),
+  reviewReply: geminiChatService.reviewReply.bind(geminiChatService),
   chatComment: geminiChatService.chatComment.bind(geminiChatService),
   generateFollowUpMessage: geminiChatService.generateFollowUpMessage.bind(geminiChatService),
   convertDocToFAQ: geminiChatService.convertDocToFAQ.bind(geminiChatService),

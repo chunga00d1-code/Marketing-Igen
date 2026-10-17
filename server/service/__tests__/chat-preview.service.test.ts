@@ -73,3 +73,21 @@ test("deleted conversation fails without resolving an unrelated account", async 
     throw new Error("Must not resolve missing conversation");
   }), { status: 404 });
 });
+
+test("multimodal preview retains source photos and limits history to the active consultation session", async t => {
+  t.mock.method(FBConversationModel, "findById", () => ({ select: () => ({ lean: async () => ({ pageId: "PAGE" }) }) }));
+  t.mock.method(FBMessageModel, "find", () => ({ sort: () => ({ limit: (limit: number) => {
+    assert.equal(limit, 60);
+    return { lean: async () => [
+      { messageId: "latest", direction: "inbound", text: "size nhỏ nhất", consultationSessionId: "new" },
+      { messageId: "photo", direction: "inbound", text: "", consultationSessionId: "new", attachments: [{ type: "image", url: "https://scontent.fbcdn.net/new" }] },
+      { messageId: "old", direction: "inbound", text: "đơn trước", consultationSessionId: "old" },
+    ] };
+  } }) }));
+  const preview = await prepareChatPreview({
+    userId: "user", companyCode: "SHOP", channel: "facebook", conversationId: "CONV",
+  }, async () => ({ companyCode: "SHOP", aiConfig: { imageReplyEnabled: true } }));
+  assert.equal(preview.sessionId, "new");
+  assert.deepEqual(preview.sourceMessages.map(message => message.messageId), ["photo", "latest"]);
+  assert.equal(preview.sourceMessages[0].attachments?.[0].url, "https://scontent.fbcdn.net/new");
+});

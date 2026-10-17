@@ -102,6 +102,7 @@ const updateProfileSchema = {
     aiAutoReplyConfig: Joi.object({
       enabled: Joi.boolean().required(),
       commentReplyEnabled: Joi.boolean().optional(),
+      imageReplyEnabled: Joi.boolean().optional(),
       autoClassify: Joi.boolean().optional(),
       autoCloseDeal: Joi.boolean().optional(),
       autoFeedback: Joi.boolean().optional(),

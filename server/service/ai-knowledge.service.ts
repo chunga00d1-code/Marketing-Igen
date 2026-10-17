@@ -1815,6 +1815,7 @@ export const aiKnowledgeService = {
     contextMatches?: number;
     latencyMs?: number;
     status?: "sent" | "failed" | "preview";
+    visualDiagnostics?: import("../model/ai-reply-log.model").IAIReplyLog["visualDiagnostics"];
   }) {
     const contextPreview = normalizeText(params.contextText || "").slice(0, 1200);
     return AIReplyLogModel.create({
@@ -1828,6 +1829,7 @@ export const aiKnowledgeService = {
       mode: contextPreview ? "trained" : "default",
       latencyMs: params.latencyMs || 0,
       status: params.status || "sent",
+      visualDiagnostics: params.visualDiagnostics,
     });
   },
 

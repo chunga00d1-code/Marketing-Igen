@@ -53,47 +53,46 @@ test("image quotes send only the selected group's configured prices", async (con
   assert.doesNotMatch(result.text, /65k/);
 });
 
-test("an unreadable image with a price question returns the complete grouped price list", async (context) => {
+test("an unreadable image asks for the missing shape without quoting unrelated price groups", async (context) => {
   const requests = mockAI(context, []);
   const result = await service.chat("Giá sao?", [], baseConfig, {
     imageObservation: { status: "unavailable", description: "Chưa đọc được ảnh" },
     pricingContextText: "Dòng 2: Mã nhóm: TRON | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Bánh tròn 65k.\nDòng 3: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Bánh trái tim 180k.",
   });
-  assert.match(result.text, /mẫu này tụi em làm được/);
-  assert.match(result.text, /Bánh tròn 65k/);
-  assert.match(result.text, /Bánh trái tim 180k/);
-  assert.doesNotMatch(result.text, /chưa đọc|gửi lại ảnh/);
+  assert.match(result.text, /hình gì|hình dạng/);
+  assert.doesNotMatch(result.text, /65k|180k|tụi em làm được/);
   assert.equal(requests.length, 0);
 });
 
-test("an image without a price question only confirms the sample can be made", async (context) => {
-  const requests = mockAI(context, []);
-  const result = await service.chat("Mẫu này shop làm được không?", [], baseConfig, {
+test("a non-price image request uses the description to answer the actual customer question", async (context) => {
+  const answer = "Mình gửi em ảnh muốn thay vào vùng đánh dấu nhé";
+  const requests = mockAI(context, [answer]);
+  const result = await service.chat("Thay chỗ đánh dấu bằng ảnh giúp em", [], baseConfig, {
     imageObservation: { status: "ready", description: "Một bánh hình tròn" },
   });
-  assert.equal(result.text, "Dạ mẫu này tụi em làm được ạ");
-  assert.equal(requests.length, 0);
+  assert.equal(result.text, answer);
+  assert.equal(requests.length, 1);
+  assert.match(JSON.stringify(requests[0]), /Một bánh hình tròn/);
 });
 
-test("ambiguous images and unknown group IDs return every configured price group", async (context) => {
+test("an ambiguous image and unknown group ID do not borrow another group's price", async (context) => {
   mockAI(context, [JSON.stringify({ groupId: "UNKNOWN" })]);
   const result = await service.chat("Bao nhiêu?", [], baseConfig, {
     imageObservation: { status: "ready", description: "Chưa rõ hình dạng." },
     pricingContextText: "Dòng 2: Mã nhóm: TRON | Nhóm bánh: Bánh tròn | Nội dung báo giá nguyên văn: Bánh tròn size 5cm giá 65k.",
   });
-  assert.match(result.text, /Bánh tròn size 5cm giá 65k/);
-  assert.doesNotMatch(result.text, /cho em biết loại sản phẩm/);
+  assert.match(result.text, /hình gì|hình dạng/);
+  assert.doesNotMatch(result.text, /65k/);
 });
 
-test("a round cake with an uncertain price group receives the full price list", async (context) => {
+test("a round cake cannot receive prices from an unmatched heart group", async (context) => {
   mockAI(context, [JSON.stringify({ groupId: "UNKNOWN" })]);
   const result = await service.chat("Giá sao?", [], baseConfig, {
     imageObservation: { status: "ready", description: "Một bánh kem hình tròn, trang trí màu hồng." },
     pricingContextText: "Dòng 2: Mã nhóm: TIM | Nhóm bánh: Bánh trái tim | Nội dung báo giá nguyên văn: Bánh trái tim 180k.",
   });
-  assert.match(result.text, /mẫu này tụi em làm được/);
-  assert.match(result.text, /Bánh trái tim 180k/);
-  assert.doesNotMatch(result.text, /hình dạng sản phẩm|chưa xác định/);
+  assert.match(result.text, /hình gì|hình dạng/);
+  assert.doesNotMatch(result.text, /180k|tụi em làm được/);
 });
 
 test("image quotes ignore old price lists in conversation history", async (context) => {

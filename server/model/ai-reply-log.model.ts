@@ -15,6 +15,18 @@ export interface IAIReplyLog extends Document {
   status: "sent" | "failed" | "preview";
   feedback?: "good" | "bad" | "needs_fix";
   feedbackNote?: string;
+  visualDiagnostics?: {
+    mode: "legacy" | "multimodal";
+    imageCount: number;
+    hasMemory: boolean;
+    imageSizes: Array<{ width: number; height: number }>;
+    failure: string;
+    requestCount?: number;
+    imageRequestCount?: number;
+    providerDurationMs?: number;
+    failedRequestCount?: number;
+    models?: string[];
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +47,7 @@ const AIReplyLogSchema = new Schema<IAIReplyLog>(
     status: { type: String, enum: ["sent", "failed", "preview"], default: "sent", index: true },
     feedback: { type: String, enum: ["good", "bad", "needs_fix"], default: undefined },
     feedbackNote: { type: String, default: "" },
+    visualDiagnostics: { type: Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true }
 );

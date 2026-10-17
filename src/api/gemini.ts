@@ -318,6 +318,7 @@ export const geminiApi = {
     channel: "facebook" | "zalo" | "tiktok";
     conversationId?: string;
     platformId?: string;
+    images?: string[];
   }): Promise<any> {
     const response = await fetch("/api/v1/gemini/test-reply", {
       method: "POST",

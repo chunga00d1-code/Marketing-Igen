@@ -56,7 +56,7 @@ test("image analysis downloads the attachment and sends actual image bytes to th
   const observation = await analyzeChatImages(["https://scontent.xx.fbcdn.net/cake.jpg"]);
   assert.equal(observation?.cakeShape, "heart");
   assert.equal(observation?.selectedImageUrl, "https://scontent.xx.fbcdn.net/cake.jpg");
-  assert.equal(modelCalls, 2);
+  assert.equal(modelCalls, 1);
 });
 
 test("expired attachments never call the model without image bytes", async (context) => {
@@ -64,6 +64,40 @@ test("expired attachments never call the model without image bytes", async (cont
   context.mock.method(globalThis, "fetch", async () => { calls++; return new Response("expired", { status: 403 }); });
   assert.equal((await analyzeChatImages(["https://scontent.xx.fbcdn.net/expired.jpg"]))?.status, "unavailable");
   assert.equal(calls, 1);
+});
+
+test("the legacy image reader cannot fall back to a text model when its vision request fails", async context => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  context.after(() => { if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey; });
+  const models: string[] = [];
+  context.mock.method(globalThis, "fetch", async (url, init) => {
+    if (String(url).includes("fbcdn.net")) return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } });
+    models.push(JSON.parse(String(init?.body)).model);
+    return new Response("Vision request rejected", { status: 400 });
+  });
+  const result = await analyzeChatImages(["https://scontent.fbcdn.net/cake.jpg"]);
+  assert.equal(result?.reason, "analysis_failed");
+  assert.equal(models.length, 1);
+});
+
+test("the legacy price shape check also stops before a text fallback", async context => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  context.after(() => { if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey; });
+  const models: string[] = [];
+  context.mock.method(globalThis, "fetch", async (url, init) => {
+    if (String(url).includes("fbcdn.net")) return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } });
+    models.push(JSON.parse(String(init?.body)).model);
+    if (models.length > 1) return new Response("Vision request rejected", { status: 400 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+      readable: true, needsSelection: false, productType: "cake", cakeShape: "round", shapeConfidence: "high", description: "Bánh tròn trắng",
+    }) } }] }), { headers: { "content-type": "application/json" } });
+  });
+  const result = await analyzeChatImages(["https://scontent.fbcdn.net/cake.jpg"], "Giá bao nhiêu?");
+  assert.equal(result?.reason, "analysis_failed");
+  assert.equal(models.length, 2);
+  assert.equal(new Set(models).size, 1);
 });
 
 test("a positional answer reuses only the screenshot awaiting selection", () => {
@@ -146,7 +180,7 @@ test("repeated uploads with different URLs analyze one sample and select its exa
   assert.equal(observation?.status, "ready");
   assert.equal(observation?.cakeShape, "heart");
   assert.equal(observation?.selectedImageUrl, "https://scontent.xx.fbcdn.net/repeated.jpg");
-  assert.equal(modelCalls, 2);
+  assert.equal(modelCalls, 1);
 });
 
 test("two independent visual passes must agree before a cake shape can be priced", async t => {

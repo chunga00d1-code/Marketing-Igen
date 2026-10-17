@@ -42,6 +42,7 @@ export interface CustomerInbox {
 export interface AIChatConfig {
   enabled: boolean;
   commentReplyEnabled?: boolean;
+  imageReplyEnabled?: boolean;
   autoClassify: boolean;
   autoCloseDeal: boolean;
   autoFeedback: boolean;

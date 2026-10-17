@@ -42,6 +42,7 @@ export const bakeryDefaultFlow: ChatOrderFlow = {
     });
     return reply ? { ...reply, qrImageAltText: "[Mã QR đặt cọc]" } : undefined;
   },
+  preview: input => cakeCheckoutService.preview(input),
   markDelivered: reply => cakeCheckoutService.markDelivered(reply as CakeCheckoutReply),
   conversationInstructions: cakeConversationInstructions,
   consultationInstructions: [

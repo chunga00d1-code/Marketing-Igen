@@ -26,6 +26,7 @@ const chatSchema = {
       .required(),
     aiConfig: Joi.object({
       enabled: Joi.boolean().required(),
+      imageReplyEnabled: Joi.boolean().optional(),
       autoClassify: Joi.boolean().required(),
       autoCloseDeal: Joi.boolean().required(),
       autoFeedback: Joi.boolean().required(),
@@ -330,12 +331,15 @@ const syncDriveSchema = {
 
 const testReplySchema = {
   body: Joi.object({
-    message: Joi.string().required(),
+    message: Joi.string().allow("").default(""),
+    images: Joi.array().items(Joi.string().max(11_184_850)
+      .pattern(/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/)).max(3).optional(),
     aiConfig: Joi.object().optional(),
     channel: Joi.string().valid("facebook", "zalo", "tiktok").optional(),
     conversationId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
     platformId: Joi.string().max(200).optional(),
-  }),
+  }).custom((value, helpers) => value.message.trim() || value.images?.length
+    ? value : helpers.message({ custom: "Vui lòng nhập câu hỏi hoặc chọn ảnh để kiểm định AI." })),
 };
 
 const feedbackSchema = {

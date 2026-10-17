@@ -42,6 +42,7 @@ export interface ICanvaIntegration { connected:boolean; accessToken?:string; ref
 export interface IAiAutoReplyConfig {
   enabled: boolean;
   commentReplyEnabled?: boolean;
+  imageReplyEnabled?: boolean;
   autoClassify: boolean;
   autoCloseDeal: boolean;
   autoFeedback: boolean;
