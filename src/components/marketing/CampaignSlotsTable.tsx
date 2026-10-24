@@ -66,10 +66,10 @@ function getFunnelStage(slotOrObjective: string | { objective?: string; funnelSt
   }
 
   if (stage === 'TOFU') {
-    return { label: 'TOFU: Nhận biết', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+    return { label: 'TOFU: Nhận biết', color: 'bg-blue-50 text-blue-700 border-blue-200' };
   }
   if (stage === 'BOFU') {
-    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
   }
   if (stage === 'MOFU') {
     return { label: 'MOFU: Cân nhắc', color: 'bg-amber-50 text-amber-700 border-amber-150' };
@@ -84,7 +84,7 @@ function getFunnelStage(slotOrObjective: string | { objective?: string; funnelSt
     obj.includes('nhận biết') ||
     obj.includes('thương hiệu')
   ) {
-    return { label: 'TOFU: Nhận biết', color: 'bg-blue-50 text-blue-700 border-blue-150' };
+    return { label: 'TOFU: Nhận biết', color: 'bg-blue-50 text-blue-700 border-blue-200' };
   }
   if (
     obj.includes('chuyển đổi') ||
@@ -99,7 +99,7 @@ function getFunnelStage(slotOrObjective: string | { objective?: string; funnelSt
     obj.includes('conversion') ||
     obj.includes('khách hàng tiềm năng')
   ) {
-    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-150' };
+    return { label: 'BOFU: Chuyển đổi', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
   }
   return { label: 'MOFU: Cân nhắc', color: 'bg-amber-50 text-amber-700 border-amber-150' };
 }
@@ -528,7 +528,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
       </div>
 
       {showCustomPrepare && (
-        <div className="bg-slate-50 border border-slate-250/70 rounded-xl p-3 flex flex-wrap items-end gap-3.5 animate-in fade-in slide-in-from-top-1 duration-200 select-none">
+        <div className="bg-slate-50 border border-sky-100 rounded-xl p-3 flex flex-wrap items-end gap-3.5 animate-in fade-in slide-in-from-top-1 duration-200 select-none">
           <div className="flex flex-col gap-1">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Từ ngày</span>
             <input
@@ -654,17 +654,17 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
         )
       )}
 
-      <div className="border border-slate-150 rounded-xl overflow-hidden bg-white shadow-xs">
+      <div className="border border-sky-100 rounded-xl overflow-hidden bg-white shadow-xs">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-550/5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-150 select-none">
+              <tr className="bg-slate-550/5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-sky-100 select-none">
                 <th className="px-4 py-3 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={isAllOnPageSelected}
                     onChange={handleToggleSelectAllOnPage}
-                    className="rounded border-slate-350 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5"
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer h-3.5 w-3.5"
                   />
                 </th>
                 <th className="px-4 py-3">Slot #</th>
