@@ -410,3 +410,28 @@ code, kbd, samp, pre {
   outline: 2px solid #00ADFC;
   outline-offset: 2px;
 }
+
+/* Campaign detail keeps a light type scale, including AI Markdown and nested panels. */
+.campaign-detail-modal,
+.campaign-detail-modal * {
+  font-weight: 400 !important;
+}
+
+.campaign-detail-modal .clean-markdown-view :is(strong, b) {
+  color: inherit;
+}
+
+.campaign-detail-modal .clean-markdown-view :is(h3, h4, h5) {
+  color: #007fb8;
+}
+
+.campaign-detail-modal .clean-markdown-view h4 > span,
+.campaign-detail-modal .clean-markdown-view li > span {
+  background-color: #00adfc;
+  color: #fff;
+}
+
+.campaign-detail-modal .clean-markdown-view code {
+  background-color: #f0f9ff;
+  color: #007fb8;
+}

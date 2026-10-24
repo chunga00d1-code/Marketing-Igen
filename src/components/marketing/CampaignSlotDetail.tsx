@@ -325,7 +325,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
 
   return (
     <div className="w-full lg:w-[450px] lg:shrink-0 border border-slate-200 rounded-2xl bg-slate-50/20 p-5 flex flex-col space-y-4 max-h-[75vh] overflow-y-auto transition-all duration-300">
-      <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+      <div className="flex items-center justify-between border-b border-sky-100 pb-3">
         <div>
           <h4 className="text-sm font-bold text-slate-800">{activeSlot.platform === 'TikTok' ? 'Xem trước & duyệt video TikTok' : 'Duyệt & Biên tập nội dung'}</h4>
           <p className="text-[10px] text-slate-400 font-semibold font-mono mt-0.5">
@@ -723,7 +723,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
               </div>
 
               {/* AI Prompts and Outline Info */}
-              <div className="pt-3 border-t border-slate-150 space-y-2.5 bg-slate-50/50 p-3 rounded-xl">
+              <div className="pt-3 border-t border-sky-100 space-y-2.5 bg-slate-50/50 p-3 rounded-xl">
                 {activeSlot.content.mediaPrompt && (
                   <div>
                     <span className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider font-mono">Ý tưởng hình ảnh (Media Prompt)</span>
@@ -772,7 +772,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center bg-white border border-slate-150 rounded-2xl p-5 shadow-2xs">
+        <div className="flex flex-col items-center justify-center py-16 text-center bg-white border border-sky-100 rounded-2xl p-5 shadow-2xs">
           <Image size={24} className="text-slate-355 mb-2 animate-pulse" />
           <span className="text-[11px] text-slate-500 font-bold">Chưa tạo nội dung chi tiết</span>
           <p className="text-[10px] text-slate-450 mt-1 max-w-[220px] leading-relaxed">Hệ thống sẽ tự động sinh nội dung hoàn chỉnh gần thời điểm đăng bài.</p>
@@ -833,7 +833,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
             {aiLogTab === 'research' && (
               <div className="space-y-3.5">
                 {parsedEvidence ? (
-                  <div className="rounded-xl border border-teal-150 bg-white p-3.5 text-xs text-slate-700 leading-relaxed shadow-3xs space-y-3">
+                  <div className="rounded-xl border border-teal-200 bg-white p-3.5 text-xs text-slate-700 leading-relaxed shadow-3xs space-y-3">
                     <div>
                       <span className="block text-[10px] font-bold text-teal-600 uppercase tracking-wide mb-1.5 font-mono">Bối cảnh tổng hợp từ web:</span>
                       <div className="bg-teal-50/30 p-2.5 rounded-lg border border-teal-50">
@@ -885,7 +885,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
                   <div className="space-y-2">
                     <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Tài liệu tham khảo thu thập ({activeSlot.researchAnalysis.evidence.length}):</span>
                     {activeSlot.researchAnalysis.evidence.map((ev, idx) => (
-                      <div key={idx} className="rounded-xl border border-slate-150 bg-white p-3 space-y-1.5 shadow-3xs text-xs">
+                      <div key={idx} className="rounded-xl border border-sky-100 bg-white p-3 space-y-1.5 shadow-3xs text-xs">
                         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5">
                           <span className="font-bold text-slate-800 truncate flex items-center gap-1 max-w-[200px]" title={ev.title || ev.sourceUrl}>
                             {ev.source === 'facebook' ? <Facebook size={13} className="shrink-0 text-blue-600" /> : ev.source === 'tiktok' ? <Music2 size={13} className="shrink-0 text-slate-900" /> : <Globe2 size={13} className="shrink-0 text-red-600" />} {ev.title || 'Bài viết tham khảo'}
@@ -905,7 +905,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
             {aiLogTab === 'visual' && (
               <div className="space-y-3">
                 {activeSlot.visualAnalysis ? (
-                  <div className="rounded-xl border border-violet-150 bg-white p-4 shadow-3xs text-xs space-y-3.5">
+                  <div className="rounded-xl border border-violet-200 bg-white p-4 shadow-3xs text-xs space-y-3.5">
                     {activeSlot.visualAnalysis.summary && (
                       <div>
                         <strong className="block text-[10px] font-bold text-violet-650 uppercase tracking-wide mb-1 font-mono">Ý tưởng mô tả:</strong>
@@ -950,7 +950,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
                   {activeSlot.ingestedMedia && activeSlot.ingestedMedia.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {activeSlot.ingestedMedia.map((media, idx) => (
-                        <div key={idx} className="relative group aspect-square rounded-lg border border-slate-150 bg-slate-950 overflow-hidden flex items-center justify-center">
+                        <div key={idx} className="relative group aspect-square rounded-lg border border-sky-100 bg-slate-950 overflow-hidden flex items-center justify-center">
                           <img src={media.url} alt={`Ingested Media ${idx + 1}`} className="w-full h-full object-cover" />
                           <a 
                             href={media.url} 
@@ -981,7 +981,7 @@ export const CampaignSlotDetail: React.FC<CampaignSlotDetailProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-emerald-150 bg-emerald-50/30 p-3 text-xs text-emerald-700 font-medium flex items-center gap-1.5">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/30 p-3 text-xs text-emerald-700 font-medium flex items-center gap-1.5">
                     <CircleCheck size={14} />
                     <span>Không ghi nhận lỗi vận hành nào tại thời điểm này.</span>
                   </div>
