@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, Facebook, Loader2, Sparkles, FolderOpen, Globe, Upload, Zap, Plus, X, Check, Rocket, ArrowRight } from 'lucide-react';
+import { CalendarClock, Loader2, Sparkles, FolderOpen, Upload, Zap, Plus, X, Check, Rocket, ArrowRight } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -58,6 +58,7 @@ function addDaysToDateKey(dateKey: string, days: number) {
 
 const toDateInput = (date: Date) => getDateKeyInTimezone(date);
 const CAMPAIGNS_PER_PAGE = 20;
+const CAMPAIGN_RESEARCH_SOURCES = ['google', 'facebook', 'tiktok'];
 
 export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabProps) {
   const today = useMemo(() => toDateInput(new Date()), []);
@@ -74,6 +75,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [customSchedulePage, setCustomSchedulePage] = useState(1);
   const [integrations, setIntegrations] = useState<SocialIntegration[]>([]);
   const [integrationIds, setIntegrationIds] = useState<Partial<Record<'Facebook' | 'TikTok', string>>>({});
+  const manuallySelectedIntegrations = useRef<Partial<Record<'Facebook' | 'TikTok', boolean>>>({});
   const [selectedPlatforms, setSelectedPlatforms] = useState<Array<'Facebook' | 'TikTok'>>(['Facebook']);
   const selectedPlatform = selectedPlatforms[0] || 'Facebook';
   const integrationId = integrationIds[selectedPlatform] || '';
@@ -95,7 +97,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [creationMode, setCreationMode] = useState<'single' | 'campaign' | null>(null);
   const [imageMode, setImageMode] = useState<'ai' | 'order'>('order');
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
-  const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4>(1);
   const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [initialBrief, setInitialBrief] = useState('');
@@ -103,7 +105,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [newConversationSelected, setNewConversationSelected] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; campaignId?: string }>>([]);
   const [chatSending, setChatSending] = useState(false);
-  const [apifySources, setApifySources] = useState<string[]>(['google', 'facebook', 'tiktok']);
   const isSinglePost = creationMode === 'single';
   const isTikTokCampaign = selectedPlatforms.includes('TikTok');
   const isTikTokOnly = selectedPlatforms.length === 1 && selectedPlatforms[0] === 'TikTok';
@@ -235,7 +236,9 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     let active = true;
     void socialIntegrationService.getIntegrations().then((items) => {
       if (!active) return;
-      const connected = items.filter((item) => item.isConnected && (item.platform === 'Facebook' || item.platform === 'TikTok'));
+      const connected = items
+        .filter((item) => item.isConnected && (item.platform === 'Facebook' || item.platform === 'TikTok'))
+        .sort((first, second) => String(first._id || '').localeCompare(String(second._id || '')));
       setIntegrations(connected);
     }).catch(() => {
       if (active) setIntegrations([]);
@@ -247,11 +250,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setIntegrationIds((current) => {
       const next = { ...current };
       for (const platform of selectedPlatforms) {
-        if (next[platform]) continue;
-        const account = integrations.find((item) => item.platform === platform && item._id);
-        if (account?._id) next[platform] = account._id;
+        const accounts = integrations.filter((item) => item.platform === platform && item._id);
+        if (accounts.some((account) => account._id === next[platform])) continue;
+        if (next[platform] === '' && manuallySelectedIntegrations.current[platform]) continue;
+        manuallySelectedIntegrations.current[platform] = false;
+        next[platform] = accounts[0]?._id || '';
       }
-      return next;
+      return selectedPlatforms.every((platform) => next[platform] === current[platform]) ? current : next;
     });
   }, [integrations, selectedPlatforms]);
 
@@ -514,6 +519,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setChatCampaign(null);
     setNewConversationSelected(true);
     setChatMessages([]);
+    manuallySelectedIntegrations.current = {};
+    setIntegrationIds({});
     setPrompt('');
     setInitialBrief('');
     setUploadedDocName('');
@@ -535,7 +542,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     setCustomSchedule({});
     setPublishMode('manual');
     setImageMode('order');
-    setApifySources(['google', 'facebook', 'tiktok']);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -705,7 +711,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         initialVideoUrl: isTikTokOnly && isSinglePost ? uploadedTikTokVideo?.url : undefined,
         images: imagesParam,
         customSchedule: Object.keys(customSchedule).length > 0 ? customSchedule : undefined,
-        apifySources: apifySources.length > 0 ? apifySources : undefined,
+        apifySources: CAMPAIGN_RESEARCH_SOURCES,
       });
       setCampaigns((current) => [result.campaign, ...current]);
       setChatCampaign(result.campaign);
@@ -725,7 +731,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setUploadedImageBase64('');
       setUploadedTikTokVideo(null);
       setImageMode('order');
-      setApifySources(['google', 'facebook', 'tiktok']);
       setCustomSchedule({});
       setShowCustomSchedule(false);
       toast.success(isSinglePost
@@ -776,14 +781,12 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     'Chọn nền tảng truyền thông',
     'Chọn loại nội dung',
     'Chọn nguồn media',
-    'Chọn nguồn AI tra cứu',
     'Lên lịch đăng bài',
   ];
   const setupDescriptions = [
     'Bạn muốn triển khai chiến dịch trên nền tảng nào?',
     'Bạn muốn tạo một bài hay một chuỗi bài?',
     'Bạn muốn chuẩn bị ảnh và video bằng cách nào?',
-    'AI nên tham khảo xu hướng từ nguồn nào?',
     'Chọn thời gian và tài khoản nhận bài đăng.',
   ];
 
@@ -837,7 +840,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           <div>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="mb-2 text-[11px] font-semibold text-blue-600">Bước {setupStep} / 5</p>
+                <p className="mb-2 text-[11px] font-semibold text-blue-600">Bước {setupStep} / 4</p>
                 <h3 className="text-lg font-bold text-slate-900">{setupTitles[setupStep - 1]}</h3>
                 <p className="mt-1 text-sm text-slate-500">{setupDescriptions[setupStep - 1]}</p>
               </div>
@@ -845,12 +848,32 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             </div>
             <div className="mt-5 flex gap-1.5" aria-hidden="true">{setupTitles.map((title, index) => <span key={title} className={`h-1 flex-1 rounded-full ${index < setupStep ? 'bg-blue-600' : 'bg-slate-200'}`} />)}</div>
 
-            {setupStep === 1 && <div className="mt-6 grid grid-cols-3 gap-3">
-              {(['Facebook', 'TikTok'] as const).map((platform) => <button key={platform} type="button" onClick={() => togglePlatform(platform)} className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border p-3 text-sm font-semibold transition ${selectedPlatforms.includes(platform) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}>
-                <img src={platform === 'Facebook' ? '/facebook-logo.svg' : '/tiktok-logo.svg'} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />{platform}
-              </button>)}
-              <div aria-disabled="true" className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-400"><img src="/zalo-logo.svg" alt="" aria-hidden="true" className="h-8 w-8 object-contain grayscale opacity-50" />Zalo</div>
-              <p className="col-span-3 text-xs text-slate-500">Có thể chọn cả Facebook và TikTok cho chiến dịch nhiều bài.</p>
+            {setupStep === 1 && <div className="mt-6 space-y-5">
+              <div className="grid grid-cols-3 gap-3">
+                {(['Facebook', 'TikTok'] as const).map((platform) => <button key={platform} type="button" onClick={() => togglePlatform(platform)} className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border p-3 text-sm font-semibold transition ${selectedPlatforms.includes(platform) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}>
+                  <img src={platform === 'Facebook' ? '/facebook-logo.svg' : '/tiktok-logo.svg'} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />{platform}
+                </button>)}
+                <div aria-disabled="true" className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-400"><img src="/zalo-logo.svg" alt="" aria-hidden="true" className="h-8 w-8 object-contain grayscale opacity-50" />Zalo</div>
+              </div>
+              <p className="text-xs text-slate-500">Có thể chọn cả Facebook và TikTok cho chiến dịch nhiều bài.</p>
+              <div className="space-y-3">
+                {selectedPlatforms.map((platform) => (
+                  <label key={platform} className="block text-sm text-slate-700">
+                    {platform === 'Facebook' ? 'Facebook Page' : 'Kênh TikTok'}
+                    <select
+                      value={integrationIds[platform] || ''}
+                      onChange={(event) => {
+                        manuallySelectedIntegrations.current[platform] = true;
+                        setIntegrationIds((current) => ({ ...current, [platform]: event.target.value }));
+                      }}
+                      className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-blue-500 focus:outline-none"
+                    >
+                      <option value="" disabled={!(platform === 'Facebook' && (userProfile?.facebookIntegration?.isConnected || canUseLocalMockFacebookPage)) && !(platform === 'TikTok' && canUseLocalMockTikTokAccount)}>{platform === 'Facebook' && userProfile?.facebookIntegration?.isConnected ? userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân' : platform === 'Facebook' && canUseLocalMockFacebookPage ? 'Fanpage giả lập (local)' : platform === 'TikTok' && canUseLocalMockTikTokAccount ? 'Tài khoản TikTok giả lập (local)' : 'Chưa có tài khoản được kết nối'}</option>
+                      {integrations.filter((item) => item.platform === platform).map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}
+                    </select>
+                  </label>
+                ))}
+              </div>
             </div>}
 
             {setupStep === 2 && <div className="mt-6 grid grid-cols-2 gap-3">
@@ -863,16 +886,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               <button type="button" onClick={() => setImageMode('order')} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${imageMode === 'order' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><FolderOpen size={26} /><b className="text-sm">Media của bạn</b><span className="text-xs font-normal text-slate-500">Nhập từ Drive hoặc tải lên sau</span></button>
             </div>}
 
-            {setupStep === 4 && <div className="mt-6 space-y-2">
-              {([
-                { id: 'google', label: 'Tìm kiếm Google', icon: Globe },
-                { id: 'facebook', label: 'Bài viết Facebook', icon: Facebook },
-                { id: 'tiktok', label: 'Xu hướng TikTok', icon: Sparkles },
-              ] as const).map((source) => { const Icon = source.icon; const selected = apifySources.includes(source.id); return <button key={source.id} type="button" onClick={() => setApifySources((current) => selected ? (current.length > 1 ? current.filter((item) => item !== source.id) : current) : [...current, source.id])} className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${selected ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}><Icon size={18} /><span className="flex-1">{source.label}</span>{selected ? <Check size={16} /> : <Plus size={16} />}</button>; })}
-              <p className="pt-2 text-xs text-slate-500">Chọn ít nhất một nguồn. Bạn có thể giữ cả ba như mặc định.</p>
-            </div>}
-
-            {setupStep === 5 && <div className="mt-6 max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+            {setupStep === 4 && <div className="mt-6 max-h-[55vh] space-y-4 overflow-y-auto pr-1">
               {isSinglePost ? <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">Một bài sẽ bắt đầu xử lý sau khi bạn xem bản nháp và xác nhận.</p> : <>
                 <div className="grid grid-cols-2 gap-3">
                   <label className="text-xs font-semibold text-slate-700">Bắt đầu<input type="date" min={today} value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
@@ -882,15 +896,14 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 <div><p className="mb-1.5 text-xs font-semibold text-slate-700">Giờ đăng</p><div className="grid grid-cols-2 gap-2">{postingTimes.map((time, index) => <input key={index} type="time" value={time} onChange={(event) => setPostingTimes((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} aria-label={`Giờ đăng bài ${index + 1}`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />)}</div></div>
                 <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" checked={publishMode === 'auto'} onChange={(event) => setPublishMode(event.target.checked ? 'auto' : 'manual')} className="accent-blue-600" /> Tự động đăng sau khi nội dung sẵn sàng</label>
               </>}
-              {selectedPlatforms.map((platform) => <label key={platform} className="block text-xs font-semibold text-slate-700">{platform === 'Facebook' ? 'Facebook Page' : 'Tài khoản TikTok'}<select value={integrationIds[platform] || ''} onChange={(event) => setIntegrationIds((current) => ({ ...current, [platform]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">{platform === 'Facebook' && userProfile?.facebookIntegration?.isConnected ? userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân' : platform === 'Facebook' && canUseLocalMockFacebookPage ? 'Fanpage giả lập (local)' : platform === 'TikTok' && canUseLocalMockTikTokAccount ? 'Tài khoản TikTok giả lập (local)' : 'Chọn tài khoản đã kết nối'}</option>{integrations.filter((item) => item.platform === platform).map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}</select></label>)}
               {isSinglePost && isTikTokCampaign && <div className="rounded-xl border border-slate-200 p-3"><input ref={tiktokVideoInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleTikTokVideoUpload(file); }} /><button type="button" onClick={() => tiktokVideoInputRef.current?.click()} disabled={uploadingTikTokVideo} className="inline-flex items-center gap-2 text-xs font-semibold text-blue-700"><Upload size={16} />{uploadingTikTokVideo ? `Đang tải video ${tiktokUploadProgress}%` : uploadedTikTokVideo ? uploadedTikTokVideo.name : 'Tải video TikTok lên (hoặc nhập sau từ Drive)'}</button></div>}
               <p className="text-xs text-slate-500">{isSinglePost ? '1 bài đăng' : `${totalPosts} bài dự kiến`} · {selectedPlatforms.join(' + ')} · Asia/Bangkok</p>
               <button type="button" onClick={() => { setWizardStep(4); setShowAdvancedSetup(true); }} className="text-xs font-semibold text-blue-700 hover:underline">Tùy chọn lịch chi tiết</button>
             </div>}
 
             <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
-              <button type="button" onClick={() => setupStep === 1 ? closeSetup() : setSetupStep(setupStep === 4 && isTikTokCampaign ? 2 : (setupStep - 1) as 1 | 2 | 3 | 4 | 5)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Quay lại</button>
-              {setupStep < 5 ? <button type="button" onClick={() => { if (setupStep === 2 && !creationMode) return toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.'); setSetupStep(setupStep === 2 && isTikTokCampaign ? 4 : (setupStep + 1) as 1 | 2 | 3 | 4 | 5); }} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Tiếp tục</button> : <button type="button" onClick={handleCreateCampaign} disabled={loading || uploadingTikTokVideo || !dayCount || totalPosts > 450} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">{loading && <Loader2 size={14} className="animate-spin" />}Tạo bản nháp</button>}
+              <button type="button" onClick={() => setupStep === 1 ? closeSetup() : setSetupStep(setupStep === 4 && isTikTokCampaign ? 2 : (setupStep - 1) as 1 | 2 | 3 | 4)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Quay lại</button>
+              {setupStep < 4 ? <button type="button" onClick={() => { if (setupStep === 2 && !creationMode) return toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.'); setSetupStep(setupStep === 2 && isTikTokCampaign ? 4 : (setupStep + 1) as 1 | 2 | 3 | 4); }} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Tiếp tục</button> : <button type="button" onClick={handleCreateCampaign} disabled={loading || uploadingTikTokVideo || !dayCount || totalPosts > 450} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">{loading && <Loader2 size={14} className="animate-spin" />}Tạo bản nháp</button>}
             </div>
           </div>
         )}
@@ -1192,42 +1205,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 </div>
               </div>
 
-              {/* Nguồn nghiên cứu thị trường */}
-              <div>
-                <label className="mb-1 block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Nguồn AI tra cứu xu hướng
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { id: 'google', label: 'Tìm kiếm Google', icon: Globe },
-                    { id: 'facebook', label: 'Bài viết Facebook', icon: Facebook },
-                    { id: 'tiktok', label: 'Xu hướng TikTok', icon: Sparkles }
-                  ].map((source) => {
-                    const isSelected = apifySources.includes(source.id);
-                    const IconComp = source.icon;
-                    return (
-                      <div
-                        key={source.id}
-                        className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border select-none relative opacity-65 cursor-default ${
-                          isSelected
-                            ? 'border-indigo-300 bg-indigo-50/50 text-indigo-950 font-bold'
-                            : 'border-slate-200 bg-white text-slate-400'
-                        }`}
-                      >
-                        <div className={`rounded-lg p-1.5 ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                          <IconComp size={15} />
-                        </div>
-                        <span className="text-xs font-bold text-slate-800">{source.label}</span>
-                        {isSelected && (
-                          <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
-                            <Check size={10} />
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
           )}
 

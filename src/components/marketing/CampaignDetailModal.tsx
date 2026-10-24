@@ -120,7 +120,7 @@ function DetailListPagination({ currentPage, totalPages, totalItems, onChange }:
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs">
-      <span className="font-medium text-slate-500">
+      <span className="text-slate-500">
         Hiển thị {firstItem}–{lastItem} / {totalItems} mục
       </span>
       <div className="flex items-center gap-2">
@@ -128,16 +128,16 @@ function DetailListPagination({ currentPage, totalPages, totalItems, onChange }:
           type="button"
           disabled={currentPage === 1}
           onClick={() => onChange(currentPage - 1)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-650 transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+          className="rounded-lg border border-sky-100 bg-white px-3 py-1.5 text-slate-650 transition hover:bg-sky-50 disabled:pointer-events-none disabled:opacity-50"
         >
           Trước
         </button>
-        <span className="font-medium text-slate-500">Trang {currentPage}/{totalPages}</span>
+        <span className="text-slate-500">Trang {currentPage}/{totalPages}</span>
         <button
           type="button"
           disabled={currentPage === totalPages}
           onClick={() => onChange(currentPage + 1)}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-650 transition hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50"
+          className="rounded-lg border border-sky-100 bg-white px-3 py-1.5 text-slate-650 transition hover:bg-sky-50 disabled:pointer-events-none disabled:opacity-50"
         >
           Sau
         </button>
@@ -338,21 +338,21 @@ export default function CampaignDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300">
-      <div className="relative w-full max-w-7xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 animate-scaleIn">
+      <div className="campaign-detail-modal relative w-full max-w-7xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-sky-100 overflow-hidden transition-all duration-300 animate-scaleIn">
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between border-b border-slate-150 px-6 py-4 bg-slate-50/50 shrink-0">
+        <div className="flex items-center justify-between border-b border-sky-100 px-6 py-4 bg-gradient-to-r from-white via-white to-sky-50/60 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="rounded-lg bg-indigo-50 p-2 text-indigo-600 shrink-0">
+            <div className="rounded-lg bg-sky-50 p-2 text-[#00adfc] shrink-0">
               <CalendarClock size={20} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-extrabold text-slate-850 truncate">
+                <h3 className="text-base text-slate-850 truncate">
                   {loadingDetail ? 'AI đang tổng hợp chiến dịch...' : campaignDetail?.campaign?.title || 'Chi tiết chiến dịch'}
                 </h3>
                 {campaignDetail?.campaign?.companyCode && (
-                  <span className="rounded bg-indigo-50 border border-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700 font-mono shrink-0">
+                  <span className="rounded bg-sky-50 border border-sky-100 px-2 py-0.5 text-[10px] text-sky-700 font-mono shrink-0">
                     {campaignDetail.campaign.companyCode}
                   </span>
                 )}
@@ -373,23 +373,13 @@ export default function CampaignDetailModal({
 
         {/* Modal Navigation Tabs Header */}
         {!loadingDetail && campaignDetail && (
-          <div className="sticky top-0 z-10 shrink-0 border-b border-slate-200 bg-slate-100/90 px-6 pt-2.5 flex items-center gap-1.5 select-none overflow-x-auto whitespace-nowrap scrollbar-none">
-            {/* <button
-              type="button"
-              onClick={() => setActiveMainTab('published_links')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'published_links'
-                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
-                }`}
-            >
-              Link theo dõi bài đăng FB ({publishedSlotsList.length})
-            </button> */}
+          <div className="sticky top-0 z-10 shrink-0 border-b border-sky-100 bg-sky-50/65 px-6 pt-2.5 flex items-center gap-1.5 select-none overflow-x-auto whitespace-nowrap scrollbar-none">
             <button
               type="button"
               onClick={() => setActiveMainTab('research')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'research'
-                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+              className={`px-4 py-2 text-xs rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'research'
+                ? 'bg-[#00adfc] border-[#00adfc] text-white shadow-sm -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-sky-100 hover:text-sky-700'
                 }`}
             >
               Research & Xu hướng ({allResearchEvidence.length})
@@ -397,9 +387,9 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('overall_strategy')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'overall_strategy'
-                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+              className={`px-4 py-2 text-xs rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'overall_strategy'
+                ? 'bg-[#00adfc] border-[#00adfc] text-white shadow-sm -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-sky-100 hover:text-sky-700'
                 }`}
             >
               Chiến lược tổng
@@ -407,9 +397,9 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('content_pillar')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'content_pillar'
-                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+              className={`px-4 py-2 text-xs rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'content_pillar'
+                ? 'bg-[#00adfc] border-[#00adfc] text-white shadow-sm -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-sky-100 hover:text-sky-700'
                 }`}
             >
               Nhóm chủ đề ({campaignDetail.campaign.contentMatrix?.length || campaignDetail.campaign.contentPillars?.length || 0})
@@ -417,9 +407,9 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('content_calendar')}
-              className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'content_calendar'
-                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+              className={`px-4 py-2 text-xs rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'content_calendar'
+                ? 'bg-[#00adfc] border-[#00adfc] text-white shadow-sm -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-sky-100 hover:text-sky-700'
                 }`}
             >
               Lịch nội dung ({totalSlots} bài)
@@ -427,9 +417,9 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={() => setActiveMainTab('asset_orders')}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
-                ? 'bg-teal-600 border-teal-700 text-white shadow-2xs font-extrabold -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-slate-200/60 hover:text-slate-800'
+              className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'asset_orders'
+                ? 'bg-[#00adfc] border-[#00adfc] text-white shadow-sm -mb-px'
+                : 'border-transparent text-slate-600 hover:bg-sky-100 hover:text-sky-700'
                 }`}
             >
               <FolderOpen size={14} /> Yêu cầu ảnh/video
@@ -441,14 +431,14 @@ export default function CampaignDetailModal({
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
           {loadingDetail ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-3">
-              <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-              <span className="text-xs text-slate-500 font-semibold font-mono">AI đang tổng hợp chi tiết chiến dịch...</span>
+              <Loader2 className="h-8 w-8 animate-spin text-[#00adfc]" />
+              <span className="text-xs text-slate-500">AI đang tổng hợp chi tiết chiến dịch...</span>
             </div>
           ) : campaignDetail ? (
             <>
               {activationIssues.length > 0 && (
                 <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-900">
-                  <p className="font-extrabold">Chưa thể khởi chạy chiến dịch. Hãy xử lý các mục sau:</p>
+                  <p>Chưa thể khởi chạy chiến dịch. Hãy xử lý các mục sau:</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5 leading-relaxed">
                     {activationIssues.map((issue, index) => <li key={`${issue.code}-${issue.slotId || index}`}>{issue.message}</li>)}
                   </ul>
@@ -456,7 +446,7 @@ export default function CampaignDetailModal({
               )}
               {operationalIssues.length > 0 && (
                 <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900">
-                  <p className="font-extrabold">Có {operationalIssues.length} bài cần xử lý trước khi có thể đăng:</p>
+                  <p>Có {operationalIssues.length} bài cần xử lý trước khi có thể đăng:</p>
                   <div className="mt-2 space-y-2">
                     {operationalIssues.map(({ slot, message }) => (
                       <button
@@ -468,7 +458,7 @@ export default function CampaignDetailModal({
                         }}
                         className="block w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-left hover:bg-amber-100"
                       >
-                        <span className="font-bold">{slot.platform || 'Kênh đăng'} · {slot.topicBrief}</span>
+                        <span>{slot.platform || 'Kênh đăng'} · {slot.topicBrief}</span>
                         <span className="mt-1 block leading-relaxed text-amber-800">{message}</span>
                       </button>
                     ))}
@@ -478,12 +468,12 @@ export default function CampaignDetailModal({
               {/* TAB 1: LINK THEO DÕI BÀI ĐĂNG FB */}
               {activeMainTab === 'published_links' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                    <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                  <div className="flex items-center justify-between border-b border-sky-100 pb-3">
+                    <h3 className="text-sm text-slate-800 flex items-center gap-2">
                       <span className="flex items-center gap-2"><Pin size={15} />Danh sách bài đăng đã xuất bản thực tế</span>
                     </h3>
-                    <span className="text-xs text-slate-500 font-medium">
-                      Tổng số: <b>{publishedSlotsList.length}</b> bài viết
+                    <span className="text-xs text-slate-500">
+                      Tổng số: {publishedSlotsList.length} bài viết
                     </span>
                   </div>
 
@@ -491,7 +481,7 @@ export default function CampaignDetailModal({
                     <>
                       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+                        <thead className="bg-sky-50/60 text-slate-700 border-b border-sky-100">
                           <tr>
                             <th className="p-3">Thời gian đăng</th>
                             <th className="p-3">Nền tảng</th>
@@ -509,10 +499,10 @@ export default function CampaignDetailModal({
                                   month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
                                 }).format(new Date(slot.scheduledAt))}
                               </td>
-                              <td className="p-3 font-bold text-slate-800">
+                              <td className="p-3 text-slate-800">
                                 {slot.platform || 'Facebook'}
                               </td>
-                              <td className="p-3 text-slate-700 font-medium">
+                              <td className="p-3 text-slate-700">
                                 {slot.pillar}
                               </td>
                               <td className="p-3 max-w-xs truncate text-slate-800">
@@ -524,7 +514,7 @@ export default function CampaignDetailModal({
                                     href={slot.publishedPostUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold hover:bg-indigo-100 transition-all text-xs"
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 hover:bg-sky-100 transition-all text-xs"
                                   >
                                     <span>Xem bài viết</span>
                                     <span className="text-[10px]">↗</span>
@@ -549,7 +539,7 @@ export default function CampaignDetailModal({
                     </>
                   ) : (
                     <div className="text-center py-16 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 space-y-2">
-                      <p className="text-sm font-bold text-slate-600">Chưa có bài viết nào được đăng lên MXH</p>
+                      <p className="text-sm text-slate-600">Chưa có bài viết nào được đăng lên MXH</p>
                       <p className="text-xs text-slate-400">Các bài viết sau khi được duyệt và tự động đăng sẽ xuất hiện tại đây.</p>
                     </div>
                   )}
@@ -561,11 +551,11 @@ export default function CampaignDetailModal({
                 <div className="space-y-6">
                   {/* Research Report text */}
                   {campaignDetail.campaign.researchReport && (
-                    <div className="rounded-xl border border-indigo-150 p-4.5 bg-indigo-50/20 space-y-2">
-                      <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 uppercase tracking-wider font-mono">
+                    <div className="rounded-xl border border-sky-100 p-4.5 bg-sky-50/30 space-y-2">
+                      <span className="flex items-center gap-1.5 text-xs text-sky-700 uppercase tracking-wider">
                         <BarChart3 size={14} />Báo cáo nghiên cứu & Phân tích xu hướng (AI Research Agent)
                       </span>
-                      <div className="border border-indigo-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
+                      <div className="border border-sky-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
                         <CleanMarkdownView content={campaignDetail.campaign.researchReport} />
                       </div>
                     </div>
@@ -573,27 +563,27 @@ export default function CampaignDetailModal({
 
                   {/* Web & Social Research Documents Card */}
                   {(allResearchEvidence.length > 0 || parsedEvidenceSummary?.summary) ? (
-                    <div className="rounded-xl border border-teal-150 bg-teal-50/10 p-5 space-y-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-3">
+                    <div className="rounded-xl border border-sky-100 bg-sky-50/30 p-5 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-100 pb-3">
                         <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1.5 text-teal-800 font-bold text-sm">
+                          <span className="flex items-center gap-1.5 text-sky-700 text-sm">
                             {allResearchEvidence.length > 0 ? <Globe2 size={16} /> : <Lightbulb size={16} />}
                             {allResearchEvidence.length > 0
                               ? 'Tài liệu cào thực tế từ Web, TikTok, Facebook'
                               : 'Phân tích bối cảnh chiến dịch & Thị trường'}
                           </span>
-                          <span className="text-[10px] text-teal-700 bg-teal-100/70 font-bold px-2.5 py-0.5 rounded-full">
+                          <span className="text-[10px] text-sky-700 bg-sky-100/70 px-2.5 py-0.5 rounded-full">
                             {allResearchEvidence.length > 0
                               ? `Thu thập ${allResearchEvidence.length} dữ liệu nguồn`
                               : 'Tự động phân tích từ Tri thức AI'}
                           </span>
                         </div>
-                        <div className="flex gap-2 text-xs font-bold">
+                        <div className="flex gap-2 text-xs">
                           <button
                             type="button"
                             onClick={() => setCampaignResearchTab('summary')}
                             className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${campaignResearchTab === 'summary'
-                              ? 'bg-teal-600 text-white shadow-xs'
+                              ? 'bg-[#00adfc] text-white shadow-xs'
                               : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                               }`}
                           >
@@ -604,7 +594,7 @@ export default function CampaignDetailModal({
                               type="button"
                               onClick={() => setCampaignResearchTab('evidence')}
                               className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${campaignResearchTab === 'evidence'
-                                ? 'bg-teal-600 text-white shadow-xs'
+                                ? 'bg-[#00adfc] text-white shadow-xs'
                                 : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
                                 }`}
                             >
@@ -617,18 +607,18 @@ export default function CampaignDetailModal({
                       {campaignResearchTab === 'summary' ? (
                         <div className="space-y-4 text-xs">
                           {parsedEvidenceSummary?.summary && (
-                            <div className="bg-white border border-teal-100 rounded-xl p-4 leading-relaxed text-slate-750">
-                              <span className="block text-xs font-bold text-teal-700 uppercase tracking-wide mb-2 font-mono">Bối cảnh tổng hợp từ MXH:</span>
+                            <div className="bg-white border border-sky-100 rounded-xl p-4 leading-relaxed text-slate-750">
+                              <span className="block text-xs text-sky-700 uppercase tracking-wide mb-2">Bối cảnh tổng hợp từ MXH:</span>
                               <CleanMarkdownView content={parsedEvidenceSummary.summary} />
                             </div>
                           )}
 
                           {parsedEvidenceSummary?.topKeywords && parsedEvidenceSummary.topKeywords.length > 0 && (
                             <div>
-                              <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 font-mono">Từ khóa nổi bật:</span>
+                              <span className="block text-[10px] text-slate-500 uppercase tracking-wider mb-2">Từ khóa nổi bật:</span>
                               <div className="flex flex-wrap gap-1.5">
                                 {parsedEvidenceSummary.topKeywords.map((kw, i) => (
-                                  <span key={i} className="bg-teal-100/60 text-teal-800 text-xs font-bold px-2.5 py-1 rounded-md border border-teal-200/60">
+                                  <span key={i} className="bg-sky-100/60 text-sky-700 text-xs px-2.5 py-1 rounded-md border border-sky-200/60">
                                     #{kw}
                                   </span>
                                 ))}
@@ -639,7 +629,7 @@ export default function CampaignDetailModal({
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
                             {parsedEvidenceSummary?.angles && parsedEvidenceSummary.angles.length > 0 && (
                               <div className="bg-white border border-slate-200 rounded-xl p-4">
-                                <span className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 font-mono">Góc tiếp cận đề xuất</span>
+                                <span className="block text-xs text-slate-800 uppercase tracking-wider mb-2">Góc tiếp cận đề xuất</span>
                                 <ul className="list-disc pl-4 space-y-1.5 text-slate-700 font-sans leading-relaxed">
                                   {parsedEvidenceSummary.angles.map((ang, i) => (
                                     <li key={i}>{ang}</li>
@@ -649,7 +639,7 @@ export default function CampaignDetailModal({
                             )}
                             {parsedEvidenceSummary?.painPoints && parsedEvidenceSummary.painPoints.length > 0 && (
                               <div className="bg-white border border-slate-200 rounded-xl p-4">
-                                <span className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 font-mono">Vấn đề của khách hàng</span>
+                                <span className="block text-xs text-slate-800 uppercase tracking-wider mb-2">Vấn đề của khách hàng</span>
                                 <ul className="list-disc pl-4 space-y-1.5 text-slate-700 font-sans leading-relaxed">
                                   {parsedEvidenceSummary.painPoints.map((pp, i) => (
                                     <li key={i}>{pp}</li>
@@ -659,7 +649,7 @@ export default function CampaignDetailModal({
                             )}
                             {parsedEvidenceSummary?.facts && parsedEvidenceSummary.facts.length > 0 && (
                               <div className="bg-white border border-slate-200 rounded-xl p-4">
-                                <span className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 font-mono">Thông tin thực tế</span>
+                                <span className="block text-xs text-slate-800 uppercase tracking-wider mb-2">Thông tin thực tế</span>
                                 <ul className="list-disc pl-4 space-y-1.5 text-slate-700 font-sans leading-relaxed">
                                   {parsedEvidenceSummary.facts.map((fact, i) => (
                                     <li key={i}>{fact}</li>
@@ -674,14 +664,11 @@ export default function CampaignDetailModal({
                           {paginatedResearchEvidence.map((ev, i) => (
                             <div key={i} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs">
                               <div className="flex items-start justify-between gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${ev.source === 'facebook' ? 'bg-blue-100 text-blue-800' :
-                                  ev.source === 'tiktok' ? 'bg-zinc-800 text-white' :
-                                    'bg-emerald-100 text-emerald-800'
-                                  }`}>
+                                <span className="rounded bg-sky-100 px-2 py-0.5 text-[10px] text-sky-700">
                                   {ev.source}
                                 </span>
                                 {ev.sourceUrl && (
-                                  <a href={ev.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline text-[11px] font-bold">
+                                  <a href={ev.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline text-[11px]">
                                     Nguồn ↗
                                   </a>
                                 )}
@@ -702,7 +689,7 @@ export default function CampaignDetailModal({
                     </div>
                   ) : (
                     <div className="text-center py-12 bg-slate-50 rounded-2xl border border-slate-200">
-                      <p className="text-xs text-slate-500 font-medium">Chưa có dữ liệu cào nghiên cứu xu hướng.</p>
+                      <p className="text-xs text-slate-500">Chưa có dữ liệu cào nghiên cứu xu hướng.</p>
                     </div>
                   )}
                 </div>
@@ -714,37 +701,37 @@ export default function CampaignDetailModal({
                   {/* Campaign Stats & Config */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Trạng thái</span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Trạng thái</span>
                       <div className="mt-2 flex items-center gap-2">
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${campaignDetail.campaign.status === 'active' ? 'bg-green-100 text-green-800' : campaignDetail.campaign.status === 'paused' ? 'bg-amber-100 text-amber-800' : campaignDetail.campaign.status === 'completed' ? 'bg-emerald-100 text-emerald-800 font-extrabold' : 'bg-slate-200 text-slate-700'}`}>
+                        <span className={`rounded-full px-3 py-1 text-xs uppercase ${campaignDetail.campaign.status === 'active' ? 'bg-green-100 text-green-800' : campaignDetail.campaign.status === 'paused' ? 'bg-amber-100 text-amber-800' : campaignDetail.campaign.status === 'completed' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700'}`}>
                           {statusLabel[campaignDetail.campaign.status] || campaignDetail.campaign.status}
                         </span>
                       </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Sản lượng bài viết</span>
-                      <p className="mt-1.5 text-xs font-bold text-slate-800">
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Sản lượng bài viết</span>
+                      <p className="mt-1.5 text-xs text-slate-800">
                         Đã xuất bản {publishedSlots} / {totalSlots} bài viết
                       </p>
                       <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
                         <div
-                          className="h-full rounded-full bg-indigo-600 transition-all duration-500"
+                          className="h-full rounded-full bg-[#00adfc] transition-all duration-500"
                           style={{ width: `${totalSlots > 0 ? Math.round((publishedSlots / totalSlots) * 100) : 0}%` }}
                         />
                       </div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4.5">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Cấu hình thời gian</span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Cấu hình thời gian</span>
                       <div className="mt-1.5 text-xs text-slate-700 leading-relaxed">
-                        <p><b>Khung giờ đăng:</b> {campaignDetail.campaign.postingTimes.join(', ')}</p>
-                        <p className="mt-0.5"><b>Tần suất:</b> {campaignDetail.campaign.postsPerDay} bài/ngày</p>
+                        <p>Khung giờ đăng: {campaignDetail.campaign.postingTimes.join(', ')}</p>
+                        <p className="mt-0.5">Tần suất: {campaignDetail.campaign.postsPerDay} bài/ngày</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Source Brief */}
                   <div className="rounded-xl border border-slate-200 p-5 bg-white space-y-2">
-                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                    <span className="flex items-center gap-1.5 text-xs text-slate-700 uppercase tracking-wider">
                       <ClipboardList size={14} />Định hướng chiến dịch
                     </span>
                     <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
@@ -759,24 +746,24 @@ export default function CampaignDetailModal({
                 <div className="space-y-6">
                   {/* Content Strategy Matrix Table */}
                   {campaignDetail.campaign.contentMatrix && campaignDetail.campaign.contentMatrix.length > 0 ? (
-                    <div className="rounded-xl border border-indigo-150 bg-indigo-50/10 p-5 space-y-4">
-                      <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
-                        <span className="flex items-center gap-1.5 text-xs font-extrabold text-indigo-900 tracking-wide uppercase font-mono">
+                    <div className="rounded-xl border border-sky-100 bg-sky-50/30 p-5 space-y-4">
+                      <div className="flex items-center justify-between border-b border-sky-100 pb-3">
+                        <span className="flex items-center gap-1.5 text-xs text-sky-700 tracking-wide uppercase">
                           <BarChart3 size={14} />Bảng ma trận chiến lược nội dung
                         </span>
-                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-3 py-1 rounded-full">
+                        <span className="text-[10px] text-sky-700 bg-sky-100 px-3 py-1 rounded-full">
                           Phân bổ: TOFU 20% · MOFU 60% · BOFU 20%
                         </span>
                       </div>
                       <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse border border-indigo-100 bg-white rounded-xl">
+                        <table className="w-full text-left text-xs border-collapse border border-sky-100 bg-white rounded-xl">
                           <thead>
-                            <tr className="border-b border-indigo-150 bg-indigo-50/70 text-[11px] font-extrabold text-indigo-950">
-                              <th className="p-3 border-r border-indigo-100 min-w-[140px]">Trụ cột (Pillar)</th>
-                              <th className="p-3 border-r border-indigo-100 min-w-[160px]">Định hướng</th>
-                              <th className="p-3 border-r border-indigo-100">Góc tiếp cận (Angles)</th>
-                              <th className="p-3 border-r border-indigo-100 text-center w-[80px]">Phễu</th>
-                              <th className="p-3 border-r border-indigo-100 text-center w-[90px]">Tỷ lệ</th>
+                            <tr className="border-b border-sky-100 bg-sky-50/70 text-[11px] text-sky-900">
+                              <th className="p-3 border-r border-sky-100 min-w-[140px]">Trụ cột (Pillar)</th>
+                              <th className="p-3 border-r border-sky-100 min-w-[160px]">Định hướng</th>
+                              <th className="p-3 border-r border-sky-100">Góc tiếp cận (Angles)</th>
+                              <th className="p-3 border-r border-sky-100 text-center w-[80px]">Phễu</th>
+                              <th className="p-3 border-r border-sky-100 text-center w-[90px]">Tỷ lệ</th>
                               <th className="p-3 text-center w-[100px]">Số bài/tháng</th>
                             </tr>
                           </thead>
@@ -791,7 +778,7 @@ export default function CampaignDetailModal({
                               if (angles.length === 0) {
                                 return (
                                   <tr key={pIdx} className="hover:bg-slate-50/60 transition-colors">
-                                    <td className="p-3 font-bold text-slate-800 align-top border-r border-slate-200 bg-rose-50/20">
+                                    <td className="p-3 text-slate-800 align-top border-r border-slate-200 bg-sky-50/40">
                                       {item.pillar}
                                     </td>
                                     <td className="p-3 text-slate-600 align-top border-r border-slate-200 text-[11px]">
@@ -799,8 +786,8 @@ export default function CampaignDetailModal({
                                     </td>
                                     <td className="p-3 text-slate-400 italic border-r border-slate-200">-</td>
                                     <td className="p-3 text-center text-slate-400 italic border-r border-slate-200">-</td>
-                                    <td className="p-3 text-center font-bold text-slate-700 border-r border-slate-200">{item.targetPercentage}%</td>
-                                    <td className="p-3 text-center font-bold text-indigo-700">
+                                    <td className="p-3 text-center text-slate-700 border-r border-slate-200">{item.targetPercentage}%</td>
+                                    <td className="p-3 text-center text-sky-700">
                                       {Math.round((item.targetPercentage / 100) * totalCampaignSlots)} bài
                                     </td>
                                   </tr>
@@ -811,7 +798,7 @@ export default function CampaignDetailModal({
                                   {angles.map((ang, aIdx) => (
                                     <tr key={aIdx} className="hover:bg-slate-50/60 transition-colors">
                                       {aIdx === 0 && (
-                                        <td rowSpan={angles.length} className="p-3 font-bold text-slate-850 align-top border-r border-slate-200 bg-rose-50/30">
+                                        <td rowSpan={angles.length} className="p-3 text-slate-850 align-top border-r border-slate-200 bg-sky-50/40">
                                           {item.pillar}
                                         </td>
                                       )}
@@ -820,11 +807,11 @@ export default function CampaignDetailModal({
                                           {item.direction}
                                         </td>
                                       )}
-                                      <td className="p-3 border-r border-slate-200 text-slate-800 font-medium text-[11.5px]">
+                                      <td className="p-3 border-r border-slate-200 text-slate-800 text-[11.5px]">
                                         {ang.title}
                                       </td>
                                       <td className="p-3 border-r border-slate-200 text-center align-middle">
-                                        <span className={`px-2 py-0.5 rounded text-[9.5px] font-extrabold inline-block ${ang.funnel === 'TOFU'
+                                        <span className={`px-2 py-0.5 rounded text-[9.5px] inline-block ${ang.funnel === 'TOFU'
                                           ? 'bg-blue-100 text-blue-800 border border-blue-200'
                                           : ang.funnel === 'BOFU'
                                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -834,12 +821,12 @@ export default function CampaignDetailModal({
                                         </span>
                                       </td>
                                       {aIdx === 0 && (
-                                        <td rowSpan={angles.length} className="p-3 text-center font-bold text-slate-800 align-middle border-r border-slate-200 bg-slate-50/30">
+                                        <td rowSpan={angles.length} className="p-3 text-center text-slate-800 align-middle border-r border-slate-200 bg-slate-50/30">
                                           {item.targetPercentage}%
                                         </td>
                                       )}
                                       {aIdx === 0 && (
-                                        <td rowSpan={angles.length} className="p-3 text-center font-bold text-indigo-700 align-middle">
+                                        <td rowSpan={angles.length} className="p-3 text-center text-sky-700 align-middle">
                                           {Math.round((item.targetPercentage / 100) * totalCampaignSlots)} bài ({totalDays} ngày)
                                         </td>
                                       )}
@@ -854,18 +841,18 @@ export default function CampaignDetailModal({
                     </div>
                   ) : (
                     <div className="text-center py-12 bg-slate-50 rounded-2xl border border-slate-200">
-                      <p className="text-xs text-slate-500 font-medium">Chưa có thông tin ma trận trụ cột nội dung.</p>
+                      <p className="text-xs text-slate-500">Chưa có thông tin ma trận trụ cột nội dung.</p>
                     </div>
                   )}
 
                   {/* Simple Pillar Chips Fallback */}
                   {campaignDetail.campaign.contentPillars?.length > 0 && (
                     <div className="bg-white border border-slate-200 rounded-xl p-4">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono mb-2.5">Trụ cột nội dung chính</span>
+                      <span className="text-[10px] text-slate-400 uppercase tracking-wider block mb-2.5">Trụ cột nội dung chính</span>
                       <div className="flex flex-wrap gap-2">
                         {campaignDetail.campaign.contentPillars.map((pillar, idx) => (
-                          <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700">
-                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
+                          <span key={idx} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 rounded-lg text-xs text-sky-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#00adfc]" />
                             {pillar}
                           </span>
                         ))}
@@ -880,7 +867,7 @@ export default function CampaignDetailModal({
                 campaignDetail.campaign.status === 'draft' ? (
                   <div className="space-y-4">
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                      <p className="text-xs font-extrabold text-amber-900">Bước duyệt cuối trước khi khởi chạy</p>
+                      <p className="text-xs text-amber-900">Bước duyệt cuối trước khi khởi chạy</p>
                       <p className="mt-1 text-[11px] leading-relaxed text-amber-800">
                         Kiểm tra và chỉnh từng bài: thời gian đăng, nền tảng, tài khoản, chủ đề và loại media. Worker chưa chạy khi chiến dịch còn là bản nháp.
                       </p>
@@ -911,16 +898,16 @@ export default function CampaignDetailModal({
 
                       {/* Real-time Activity Banner */}
                       {campaignDetail.campaign.status === 'active' && !isCampaignAllCompleted && (
-                        <div className="rounded-xl border border-indigo-100 bg-indigo-50/25 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 select-none">
+                        <div className="rounded-xl border border-sky-100 bg-sky-50/50 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 select-none">
                           <div className="flex items-center gap-3">
                             <div className="relative flex h-3 w-3 shrink-0">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-600"></span>
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#00adfc]"></span>
                             </div>
                             <div>
-                              <p className="text-xs font-bold text-slate-800 flex flex-wrap items-center gap-1.5 leading-none">
+                              <p className="text-xs text-slate-800 flex flex-wrap items-center gap-1.5 leading-none">
                                 Chiến dịch đang hoạt động tự động
-                                <span className="text-[9px] font-bold font-mono text-indigo-600 bg-indigo-50 border border-indigo-100/50 px-1.5 py-0.5 rounded animate-pulse">
+                                <span className="text-[9px] font-mono text-sky-700 bg-sky-50 border border-sky-100/50 px-1.5 py-0.5 rounded animate-pulse">
                                   Auto-Polling Live
                                 </span>
                               </p>
@@ -979,10 +966,10 @@ export default function CampaignDetailModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="border-t border-slate-150 px-6 py-4 flex items-center justify-between bg-slate-50/50">
+        <div className="border-t border-sky-100 px-6 py-4 flex items-center justify-between bg-sky-50/30">
           <div>
             {campaignDetail?.campaign?.status === 'draft' && (
-              <span className="text-xs font-semibold text-amber-700">Chưa có worker hoặc lịch đăng nào được kích hoạt.</span>
+              <span className="text-xs text-amber-700">Chưa có worker hoặc lịch đăng nào được kích hoạt.</span>
             )}
             {onRetryAll && campaignDetail?.campaign?.status === 'active' && sortedSlots.some(s => s.status === 'needs_attention' || s.status === 'failed') && (
               <button
@@ -996,7 +983,7 @@ export default function CampaignDetailModal({
                     setRetryingAll(false);
                   }
                 }}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 hover:bg-amber-100 transition cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700 hover:bg-amber-100 transition cursor-pointer disabled:opacity-50"
               >
                 {retryingAll ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                 Thử lại tất cả slot lỗi
@@ -1024,7 +1011,7 @@ export default function CampaignDetailModal({
                     setActivating(false);
                   }
                 }}
-                className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-xs font-extrabold text-white shadow-xs transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#00adfc] px-5 py-2 text-xs text-white shadow-xs transition hover:bg-[#008fcf] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {activating ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                 Xác nhận & khởi chạy
@@ -1033,7 +1020,7 @@ export default function CampaignDetailModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-200 bg-white px-5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition active:scale-98 cursor-pointer"
+              className="rounded-xl border border-sky-100 bg-white px-5 py-2 text-xs text-slate-700 hover:bg-sky-50 transition active:scale-98 cursor-pointer"
             >
               Đóng
             </button>
