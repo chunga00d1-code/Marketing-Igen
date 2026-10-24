@@ -17,12 +17,12 @@ import { marketingService, sanitizeHumanVideoVoiceScript, stripHumanVideoOutline
 
 const VOICE_STYLE_TEMPLATES = [
    { id: 'none', label: 'Tùy chỉnh (Tự nhập)', prompt: '' },
-   { id: 'news', label: '🎙️ BTV thời sự', prompt: 'Đọc dõng dạc, nghiêm túc, rõ ràng và mạch lạc như một biên tập viên truyền hình.' },
-   { id: 'story', label: '🌙 Kể chuyện', prompt: 'Đọc chậm rãi, ấm áp, truyền cảm như đang kể chuyện cho trẻ em nghe.' },
-   { id: 'excited', label: '🎉 Hào hứng', prompt: 'Đọc thật hào hứng, bùng nổ, vui tươi và tràn diện nhiệt huyết.' },
-   { id: 'prof', label: '📊 Chuyên gia', prompt: 'Đọc điềm đạm, tốc độ vừa phải, chuyên nghiệp và đầy tính thuyết phục.' },
-   { id: 'sad', label: '🥀 Sâu lắng', prompt: 'Đọc với giọng trầm buồn, nghẹn ngào, tốc độ chậm rãi thể hiện sự đồng cảm.' },
-   { id: 'urgent', label: '🚨 Khẩn cấp', prompt: 'Đọc dứt khoát, nhanh, âm lượng lớn và tập trung vào sự quan trọng của thông tin.' },
+   { id: 'news', label: 'BTV thời sự', prompt: 'Đọc dõng dạc, nghiêm túc, rõ ràng và mạch lạc như một biên tập viên truyền hình.' },
+   { id: 'story', label: 'Kể chuyện', prompt: 'Đọc chậm rãi, ấm áp, truyền cảm như đang kể chuyện cho trẻ em nghe.' },
+   { id: 'excited', label: 'Hào hứng', prompt: 'Đọc thật hào hứng, bùng nổ, vui tươi và tràn diện nhiệt huyết.' },
+   { id: 'prof', label: 'Chuyên gia', prompt: 'Đọc điềm đạm, tốc độ vừa phải, chuyên nghiệp và đầy tính thuyết phục.' },
+   { id: 'sad', label: 'Sâu lắng', prompt: 'Đọc với giọng trầm buồn, nghẹn ngào, tốc độ chậm rãi thể hiện sự đồng cảm.' },
+   { id: 'urgent', label: 'Khẩn cấp', prompt: 'Đọc dứt khoát, nhanh, âm lượng lớn và tập trung vào sự quan trọng của thông tin.' },
 ];
 
 const ALL_VOICES = [
@@ -1053,7 +1053,7 @@ const getSelectedVoice = () => {
                   {/* Mẫu phong cách đọc */}
                   <div className="flex flex-col gap-2">
                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-slate-700">Mẫu phong cách đọc</label>
+                        <label className="flex items-center gap-1 text-xs font-bold text-slate-700"><Mic size={14} />Mẫu phong cách đọc</label>
                         <select
                            value={VOICE_STYLE_TEMPLATES.find(t => t.prompt === selectedStylePrompt)?.id || 'none'}
                            onChange={(e) => {
@@ -1136,7 +1136,7 @@ const getSelectedVoice = () => {
                      {(isGenerating || isOptimizing) && (
                         <div className="flex flex-col gap-1.5 p-3.5 bg-slate-50 border border-slate-100 rounded-xl animate-pulse">
                            <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 font-mono">
-                              <span>{isOptimizing ? 'AI ĐANG BIÊN SOẠN LẠI VĂN BẢN...' : 'AI ĐANG MÃ HÓA GIỌNG ĐỌC...'}</span>
+                              <span>{isOptimizing ? 'AI đang biên soạn lại văn bản...' : 'AI đang mã hóa giọng đọc...'}</span>
                               <span>{isOptimizing ? optimizeProgress : generateProgress}%</span>
                            </div>
                            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">

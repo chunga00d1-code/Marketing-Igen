@@ -426,6 +426,13 @@ marketingCampaignRouter.post("/:id/sheet/revisions/:revisionId/revert", validate
   params: Joi.object({ id: objectId, revisionId: objectId }),
 }), marketingCampaignController.revertSheetRevision as never);
 marketingCampaignRouter.get("/:id", marketingCampaignController.detail as never);
+marketingCampaignRouter.post("/:id/revise-draft", validateRequest({
+  params: Joi.object({ id: objectId }),
+  body: Joi.object({
+    instruction: Joi.string().trim().min(3).max(3000).required(),
+    expectedRevision: Joi.number().integer().min(0).required(),
+  }),
+}), marketingCampaignController.reviseDraft as never);
 marketingCampaignRouter.post("/:id/retry-all", marketingCampaignController.retryAllSlots as never);
 marketingCampaignRouter.post("/:id/slots/:slotId/retry", marketingCampaignController.retrySlot as never);
 marketingCampaignRouter.post("/:id/tiktok/batch-approve", validateRequest(tiktokBatchApproveSchema), marketingCampaignController.approveTikTokSlots as never);

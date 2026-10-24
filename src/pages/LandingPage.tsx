@@ -367,8 +367,8 @@ export default function LandingPage() {
                   <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
                 </div>
-                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">OMNICHAT INBOX - HỘP THƯ TẬP TRUNG</span>
-                <span className="text-[10px] bg-blue-600 px-2 py-0.5 rounded font-bold">LIVE</span>
+                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">OmniChat Inbox - Hộp thư tập trung</span>
+                <span className="text-[10px] bg-blue-600 px-2 py-0.5 rounded font-bold">Trực tiếp</span>
               </div>
               <div className="flex flex-1 overflow-hidden bg-slate-50/20">
                 {/* Sidebar */}
@@ -422,8 +422,8 @@ export default function LandingPage() {
                   <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
                   <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
                 </div>
-                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">PIPELINE LEAD & NỘI DUNG MARKETING</span>
-                <span className="text-[10px] bg-teal-600 px-2 py-0.5 rounded font-bold">LIVE DATA</span>
+                <span className="text-[10px] font-semibold text-slate-400 tracking-wider">Pipeline lead & nội dung marketing</span>
+                <span className="text-[10px] bg-teal-600 px-2 py-0.5 rounded font-bold">Dữ liệu trực tiếp</span>
               </div>
               <div className="flex-1 p-4 space-y-4 flex flex-col justify-start">
                 <div className="flex items-center justify-between">
@@ -435,10 +435,10 @@ export default function LandingPage() {
                     <thead>
                       <tr className="border-b border-slate-100 text-slate-400 font-bold">
                         <th className="pb-2">MÃ</th>
-                        <th className="pb-2">ĐỐI TƯỢNG</th>
-                        <th className="pb-2">KÊNH</th>
-                        <th className="pb-2">LOẠI</th>
-                        <th className="pb-2 text-right">TRẠNG THÁI</th>
+                        <th className="pb-2">Đối tượng</th>
+                        <th className="pb-2">Kênh</th>
+                        <th className="pb-2">Loại</th>
+                        <th className="pb-2 text-right">Trạng thái</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-[10.5px]">
@@ -459,7 +459,7 @@ export default function LandingPage() {
                       <tr className="text-slate-705">
                         <td className="py-2.5 font-bold">#POST-4712</td>
                         <td className="py-2.5">Nguyễn Thị Mai</td>
-                        <td className="py-2.5"><span className="px-1.5 py-0.5 bg-blue-500 text-white text-[8px] font-bold rounded">Facebook</span></td>
+                        <td className="py-2.5"><span className="px-1.5 py-0.5 bg-[#1877f2] text-white text-[8px] font-bold rounded">Facebook</span></td>
                         <td className="py-2.5 font-semibold">Bài đăng</td>
                         <td className="py-2.5 text-right"><span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-250 text-[8px] font-bold rounded">Chờ duyệt</span></td>
                       </tr>
@@ -764,7 +764,7 @@ export default function LandingPage() {
               <div className="space-y-2 text-slate-500 pt-2 border-t border-slate-900">
                 <div className="flex items-center gap-2">
                   <Globe className="h-3.5 w-3.5 text-slate-600" />
-                  <span><strong>Đơn vị chủ quản:</strong> CÔNG TY CỔ PHẦN CÔNG NGHỆ IGEN</span>
+                  <span><strong>Đơn vị chủ quản:</strong> Công ty Cổ phần Công nghệ iGen</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <MapPin className="h-3.5 w-3.5 text-slate-600 mt-0.5 shrink-0" />
@@ -837,7 +837,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-col md:flex-row items-center justify-between text-slate-500 gap-4 pt-4">
-            <span className="text-left">© {new Date().getFullYear()} CÔNG TY CỔ PHẦN CÔNG NGHỆ IGEN. Tất cả các quyền được bảo hộ. Bản quyền website thuộc về iGen Solutions.</span>
+            <span className="text-left">© {new Date().getFullYear()} Công ty Cổ phần Công nghệ iGen. Tất cả các quyền được bảo hộ. Bản quyền website thuộc về iGen Solutions.</span>
             <div className="flex items-center gap-6">
               <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600" /> Bảo mật SSL mã hóa 256-bit</span>
             </div>

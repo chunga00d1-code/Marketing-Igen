@@ -21,6 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { FaqLearningSuggestionsPanel } from "../components/knowledge/FaqLearningSuggestionsPanel";
+import { KnowledgeDocumentTypeSelect } from "../components/knowledge/KnowledgeDocumentTypeSelect";
 import {
   CompanyKnowledgeDocument,
   CompanyKnowledgeHealth,
@@ -466,7 +467,7 @@ export default function CompanyKnowledgePage() {
 
   async function handleClearAll() {
     const confirmed = window.confirm(
-      "⚠️ CẢNH BÁO NGUY HIỂM:\n\nBạn có chắc chắn muốn XÓA TOÀN BỘ KHO TRI THỨC của doanh nghiệp này?\n\nToàn bộ tài liệu, bảng giá, chính sách và dữ liệu AI tự học sẽ bị xóa vĩnh viễn và không thể khôi phục."
+      "CẢNH BÁO NGUY HIỂM:\n\nBạn có chắc chắn muốn XÓA TOÀN BỘ KHO TRI THỨC của doanh nghiệp này?\n\nToàn bộ tài liệu, bảng giá, chính sách và dữ liệu AI tự học sẽ bị xóa vĩnh viễn và không thể khôi phục."
     );
     if (!confirmed) return;
 
@@ -797,23 +798,22 @@ export default function CompanyKnowledgePage() {
                   </p>
                 </div>
 
-                <label className="mt-4 block text-xs font-semibold text-slate-700">
-                  Mục lưu tài liệu
-                  <select value={documentType} disabled={busy}
-                    onChange={(event) => {
-                      const type = event.target.value as KnowledgeDocumentType;
+                <div className="mt-4 text-xs font-medium text-slate-700">
+                  <span>Mục lưu tài liệu</span>
+                  <KnowledgeDocumentTypeSelect
+                    value={documentType}
+                    disabled={busy}
+                    className="mt-2 max-w-sm"
+                    onChange={(type) => {
                       setDocumentType(type);
                       setSelectedKnowledgeSection(KNOWLEDGE_SECTIONS.find((section) => section.types.includes(type))?.id || "other");
                     }}
-                    className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm sm:max-w-sm">
-                    {KNOWLEDGE_SECTIONS.map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
-                    <optgroup label="Các loại tài liệu khác">
-                      {DOCUMENT_TYPES.filter((type) => !KNOWLEDGE_SECTIONS.some((section) => section.id === type.id)).map((type) => (
-                        <option key={type.id} value={type.id}>{type.label}</option>
-                      ))}
-                    </optgroup>
-                  </select>
-                </label>
+                    groups={[
+                      { options: KNOWLEDGE_SECTIONS.map((section) => ({ id: section.id, label: section.label })) },
+                      { label: "Các loại tài liệu khác", options: DOCUMENT_TYPES.filter((type) => !KNOWLEDGE_SECTIONS.some((section) => section.id === type.id)) },
+                    ]}
+                  />
+                </div>
 
                 <div className="mt-4">
                   <div className="grid max-w-md grid-cols-2 gap-2 rounded-2xl border border-slate-100 bg-slate-50/80 p-1.5">
@@ -821,7 +821,7 @@ export default function CompanyKnowledgePage() {
                       type="button"
                       onClick={() => setImportMethod("file")}
                       className={`inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition select-none ${importMethod === "file"
-                          ? "bg-[#0284c7] text-white shadow-xs"
+                          ? "bg-blue-600 text-white shadow-xs"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
                         }`}
                     >
@@ -832,7 +832,7 @@ export default function CompanyKnowledgePage() {
                       type="button"
                       onClick={() => setImportMethod("drive")}
                       className={`inline-flex items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition select-none ${importMethod === "drive"
-                          ? "bg-[#0284c7] text-white shadow-xs"
+                          ? "bg-blue-600 text-white shadow-xs"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
                         }`}
                     >
@@ -895,7 +895,7 @@ export default function CompanyKnowledgePage() {
                             type="button"
                             onClick={() => void syncDrive()}
                             disabled={busy || !driveLink.trim()}
-                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#2563eb] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:border disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:opacity-100"
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:border disabled:border-slate-300 disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none disabled:opacity-100"
                           >
                             {busy && <LoaderCircle className="h-4 w-4 animate-spin" />}
                             {busy ? "Đang nhập..." : "Nhập"}
@@ -1163,18 +1163,15 @@ export default function CompanyKnowledgePage() {
                       {editingId === document.id && (
                         <div className="border-t border-slate-100 bg-slate-50 px-5 py-4">
                           <div className="grid gap-4 md:grid-cols-2">
-                            <label className="text-xs font-semibold text-slate-700">
-                              Loại tài liệu
-                              <select
+                            <div className="text-xs font-medium text-slate-700">
+                              <span>Loại tài liệu</span>
+                              <KnowledgeDocumentTypeSelect
                                 value={editDocumentType}
-                                onChange={(event) => setEditDocumentType(event.target.value as KnowledgeDocumentType)}
-                                className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-normal"
-                              >
-                                {DOCUMENT_TYPES.map((type) => (
-                                  <option key={type.id} value={type.id}>{type.label}</option>
-                                ))}
-                              </select>
-                            </label>
+                                onChange={setEditDocumentType}
+                                groups={[{ options: DOCUMENT_TYPES }]}
+                                className="mt-2"
+                              />
+                            </div>
                             <ScopePicker
                               label="Nghiệp vụ"
                               options={PURPOSES}

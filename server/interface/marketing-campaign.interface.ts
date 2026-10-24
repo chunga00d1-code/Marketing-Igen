@@ -17,6 +17,9 @@ export interface IMarketingCampaign extends Document {
   createdBy: string;
   title: string;
   sourceBrief: string;
+  chatHistory?: Array<{ role: "user" | "assistant"; text: string; at: Date }>;
+  draftRevision?: number;
+  draftRevisionInProgress?: boolean;
   campaignType: MarketingCampaignType;
   status: MarketingCampaignStatus;
   timezone: string;

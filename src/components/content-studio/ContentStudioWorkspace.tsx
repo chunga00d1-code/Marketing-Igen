@@ -49,7 +49,7 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
             <button
               type="button"
               onClick={() => changeTab('image')}
-              className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all select-none ${activeTab === 'image' ? 'bg-[#0284c7] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100/60 hover:text-slate-900'}`}
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all select-none ${activeTab === 'image' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100/60 hover:text-slate-900'}`}
             >
               <ImageIcon className={`h-4 w-4 ${activeTab === 'image' ? 'text-white' : 'text-slate-500'}`} />
               Tạo hình ảnh
@@ -57,7 +57,7 @@ export function ContentStudioWorkspace({ initialParams, initialTab, onClearParam
             <button
               type="button"
               onClick={() => changeTab('bulk')}
-              className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all select-none ${activeTab === 'bulk' ? 'bg-[#0284c7] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100/60 hover:text-slate-900'}`}
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all select-none ${activeTab === 'bulk' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100/60 hover:text-slate-900'}`}
             >
               <Layers3 className={`h-4 w-4 ${activeTab === 'bulk' ? 'text-white' : 'text-slate-500'}`} />
               Thiết kế hàng loạt

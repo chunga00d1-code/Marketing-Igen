@@ -151,7 +151,7 @@ export default function SepayConfigCard({ userProfile }: { userProfile: UserProf
         </div>
         <label className="block space-y-1 text-[11px] font-semibold text-slate-600">
           Tên chủ tài khoản
-          <input value={qrAccountName} disabled={!canEdit} onChange={(event) => setQrAccountName(event.target.value)} placeholder="NGUYEN VAN A" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs uppercase outline-none focus:border-emerald-500" />
+          <input value={qrAccountName} disabled={!canEdit} onChange={(event) => setQrAccountName(event.target.value)} placeholder="Nguyễn Văn A" className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs uppercase outline-none focus:border-emerald-500" />
         </label>
       </div>
 

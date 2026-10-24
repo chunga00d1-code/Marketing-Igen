@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarClock, FolderOpen, X, Loader2, Play, RotateCcw } from 'lucide-react';
+import { CalendarClock, FolderOpen, X, Loader2, Play, RotateCcw, Pin, BarChart3, Globe2, Lightbulb, ClipboardList } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary, MarketingCampaignRequestError, type CampaignActivationIssue } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
 import { CampaignSlotsTable } from './CampaignSlotsTable';
@@ -442,7 +442,7 @@ export default function CampaignDetailModal({
           {loadingDetail ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-3">
               <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-              <span className="text-xs text-slate-500 font-semibold font-mono">AI ĐANG TỔNG HỢP CHI TIẾT CHIẾN DỊCH...</span>
+              <span className="text-xs text-slate-500 font-semibold font-mono">AI đang tổng hợp chi tiết chiến dịch...</span>
             </div>
           ) : campaignDetail ? (
             <>
@@ -480,7 +480,7 @@ export default function CampaignDetailModal({
                 <div className="space-y-4">
                   <div className="flex items-center justify-between border-b border-slate-150 pb-3">
                     <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                      <span>📌 Danh sách bài đăng đã xuất bản thực tế</span>
+                      <span className="flex items-center gap-2"><Pin size={15} />Danh sách bài đăng đã xuất bản thực tế</span>
                     </h3>
                     <span className="text-xs text-slate-500 font-medium">
                       Tổng số: <b>{publishedSlotsList.length}</b> bài viết
@@ -562,8 +562,8 @@ export default function CampaignDetailModal({
                   {/* Research Report text */}
                   {campaignDetail.campaign.researchReport && (
                     <div className="rounded-xl border border-indigo-150 p-4.5 bg-indigo-50/20 space-y-2">
-                      <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider block font-mono">
-                        📊 Báo cáo nghiên cứu & Phân tích xu hướng (AI Research Agent)
+                      <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-800 uppercase tracking-wider font-mono">
+                        <BarChart3 size={14} />Báo cáo nghiên cứu & Phân tích xu hướng (AI Research Agent)
                       </span>
                       <div className="border border-indigo-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
                         <CleanMarkdownView content={campaignDetail.campaign.researchReport} />
@@ -576,10 +576,11 @@ export default function CampaignDetailModal({
                     <div className="rounded-xl border border-teal-150 bg-teal-50/10 p-5 space-y-4">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-teal-100 pb-3">
                         <div className="flex items-center gap-2">
-                          <span className="text-teal-800 font-bold text-sm">
+                          <span className="flex items-center gap-1.5 text-teal-800 font-bold text-sm">
+                            {allResearchEvidence.length > 0 ? <Globe2 size={16} /> : <Lightbulb size={16} />}
                             {allResearchEvidence.length > 0
-                              ? '🌐 Tài liệu cào thực tế từ Web, TikTok, Facebook'
-                              : '💡 Phân tích bối cảnh chiến dịch & Thị trường'}
+                              ? 'Tài liệu cào thực tế từ Web, TikTok, Facebook'
+                              : 'Phân tích bối cảnh chiến dịch & Thị trường'}
                           </span>
                           <span className="text-[10px] text-teal-700 bg-teal-100/70 font-bold px-2.5 py-0.5 rounded-full">
                             {allResearchEvidence.length > 0
@@ -743,8 +744,8 @@ export default function CampaignDetailModal({
 
                   {/* Source Brief */}
                   <div className="rounded-xl border border-slate-200 p-5 bg-white space-y-2">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block font-mono">
-                      📋 Định hướng chiến dịch
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-slate-700 uppercase tracking-wider font-mono">
+                      <ClipboardList size={14} />Định hướng chiến dịch
                     </span>
                     <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-xl max-h-96 overflow-y-auto">
                       <CleanMarkdownView content={campaignDetail.campaign.sourceBrief} />
@@ -760,8 +761,8 @@ export default function CampaignDetailModal({
                   {campaignDetail.campaign.contentMatrix && campaignDetail.campaign.contentMatrix.length > 0 ? (
                     <div className="rounded-xl border border-indigo-150 bg-indigo-50/10 p-5 space-y-4">
                       <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
-                        <span className="text-xs font-extrabold text-indigo-900 tracking-wide uppercase font-mono">
-                          📊 Bảng ma trận chiến lược nội dung
+                        <span className="flex items-center gap-1.5 text-xs font-extrabold text-indigo-900 tracking-wide uppercase font-mono">
+                          <BarChart3 size={14} />Bảng ma trận chiến lược nội dung
                         </span>
                         <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-3 py-1 rounded-full">
                           Phân bổ: TOFU 20% · MOFU 60% · BOFU 20%

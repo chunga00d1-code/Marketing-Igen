@@ -38,6 +38,17 @@ test("rejects a draft whose schedule is less than fifteen minutes away", () => {
   }), /ít nhất 15 phút/);
 });
 
+test("accepts one reviewed immediate post while retaining media checks", () => {
+  assert.doesNotThrow(() => assertCampaignDraftCanActivate({
+    enabledPlatforms: ["Facebook"], timezone: "Asia/Bangkok", now, publishImmediately: true,
+    slots: [{ status: "planned", scheduledAt: now, platform: "Facebook", mediaType: "image" }],
+  }));
+  assert.throws(() => assertCampaignDraftCanActivate({
+    enabledPlatforms: ["TikTok"], timezone: "Asia/Bangkok", now, publishImmediately: true,
+    slots: [{ status: "planned", scheduledAt: now, platform: "TikTok", mediaType: "image" }],
+  }), /TikTok.*video/);
+});
+
 test("rejects a draft when a slot has already left planning", () => {
   assert.throws(() => assertCampaignDraftCanActivate({
     enabledPlatforms: ["Facebook"],

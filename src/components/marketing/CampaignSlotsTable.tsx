@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { CalendarClock, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCcw, Check, Share2 } from 'lucide-react';
+import { CalendarClock, Loader2, Facebook, ExternalLink, AlertTriangle, RotateCcw, Check, Share2, Building2, Target, Ruler } from 'lucide-react';
 import { CampaignSlot } from './CampaignDetailModal';
 import { MarketingCampaignSummary, marketingCampaignService } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -717,7 +717,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                             </>
                           ) : (
                             <>
-                              <Facebook size={12} className="text-blue-600 shrink-0" />
+                              <Facebook size={12} className="text-[#1877f2] shrink-0" />
                               Facebook
                             </>
                           )}
@@ -726,19 +726,19 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
                       <td className="px-4 py-3.5 max-w-[200px] sm:max-w-[300px] md:max-w-[400px] xl:max-w-[600px]">
                         <div className="flex flex-wrap gap-1.5 mb-1.5 select-none">
                           <span className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[9px] text-indigo-755 font-bold">
-                            🏢 {slot.pillar}
+                            <Building2 className="mr-1 inline h-3 w-3" />{slot.pillar}
                           </span>
                           {(() => {
                             const funnel = getFunnelStage(slot);
                             return (
                               <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${funnel.color}`}>
-                                🎯 {funnel.label}
+                                <Target className="mr-1 inline h-3 w-3" />{funnel.label}
                               </span>
                             );
                           })()}
                           {slot.variant && (
                             <span className="px-1.5 py-0.5 rounded bg-purple-50 border border-purple-100 text-[9px] text-purple-755 font-bold">
-                              📐 Góc tiếp cận: {slot.variant}
+                              <Ruler className="mr-1 inline h-3 w-3" />Góc tiếp cận: {slot.variant}
                             </span>
                           )}
                         </div>

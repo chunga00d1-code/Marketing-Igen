@@ -230,10 +230,10 @@ export function HeyGenVideoPreview({
       : "aspect-[16/9] max-w-[920px]";
 
   const scriptInputTitle = selectedAvatarModel === "Avatar III"
-    ? "KỊCH BẢN PHÁT THANH (AVATAR III)"
+    ? "Kịch bản phát thanh (Avatar III)"
     : usePersonalVoiceMode
-      ? `KỊCH BẢN TEXT-TO-VOICE (${selectedAvatarModel || "HEYGEN"})`
-      : "KỊCH BẢN PHÁT THANH";
+      ? `Kịch bản text-to-voice (${selectedAvatarModel || "HeyGen"})`
+      : "Kịch bản phát thanh";
 
   const scriptInputPlaceholder = usePersonalVoiceMode
     ? "Nhập nội dung văn bản để HeyGen My Voice đọc trực tiếp..."

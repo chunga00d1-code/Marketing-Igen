@@ -11,7 +11,11 @@ import {
   ExternalLink, 
   RefreshCw,
   Loader2,
-  ZoomIn
+  ZoomIn,
+  CalendarDays,
+  Check,
+  AlertTriangle,
+  Music2
 } from "lucide-react";
 import { ContentApprovalCard } from "../../types";
 import { buildFacebookPostUrl } from "../../services/marketingService";
@@ -149,7 +153,7 @@ export function ModerationPipCard({
           )}
           {isFailed && (
             <span className="px-2 py-0.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-md text-[8px] font-bold shrink-0">
-              LỖI SINH
+              Lỗi sinh
             </span>
           )}
         </div>
@@ -293,14 +297,14 @@ export function ModerationPipCard({
               }}
               className="p-1.5 px-3.5 text-white bg-indigo-650 hover:bg-indigo-700 rounded-lg font-bold transition-all flex items-center gap-1.5 text-[10px] cursor-pointer shadow-3xs shadow-indigo-150"
             >
-              <span>{card.status === "draft" ? "Sẵn sàng" : card.status === "pending" ? "Duyệt ✓" : "Lên lịch 📅"}</span>
+              <span className="inline-flex items-center gap-1">{card.status === "draft" ? "Sẵn sàng" : card.status === "pending" ? <><Check size={12} />Duyệt</> : <><CalendarDays size={12} />Lên lịch</>}</span>
               <ArrowRight className="h-2.5 w-2.5" />
             </button>
           )}
 
           {card.status === "scheduled" && (
-            <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-255 text-emerald-800 rounded-md text-[9px] font-bold font-mono">
-              ✓ ĐỒNG BỘ
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-255 text-emerald-800 rounded-md text-[9px] font-bold font-mono">
+              <Check size={11} />Đồng bộ
             </span>
           )}
         </div>
@@ -479,7 +483,7 @@ export function ScheduledCard({
 
       {card.status === "failed" && card.publishError && (
         <div className="flex flex-col gap-1 text-[10px] text-red-750 font-mono bg-red-50 border border-red-200/80 p-3 rounded-xl">
-          <span className="font-extrabold flex items-center gap-1">⚠️ LỖI TỰ ĐỘNG ĐĂNG:</span>
+          <span className="font-extrabold flex items-center gap-1"><AlertTriangle size={12} />Lỗi tự động đăng:</span>
           <span className="leading-relaxed font-sans font-medium text-red-650 line-clamp-2">{formatPublishError(card.publishError)}</span>
         </div>
       )}
@@ -507,7 +511,7 @@ export function ScheduledCard({
           ) : isPublishingTikTok ? (
             <><RefreshCw className="h-3 w-3 animate-spin" /><span>Đang đăng lên TikTok...</span></>
           ) : (
-            <><span className="text-sm font-sans">♪</span><span>Đăng lên TikTok</span></>
+            <><Music2 size={14} /><span>Đăng lên TikTok</span></>
           )}
         </button>
       )}
@@ -539,16 +543,16 @@ export function ScheduledCard({
             <Trash2 className="h-3 w-3" />
           </button>
           {card.status === "failed" ? (
-            <span className="px-2 py-0.5 bg-red-500 text-white border border-red-600 rounded-md text-[8px] font-bold font-mono animate-pulse">
-              ⚠️ LỖI ĐĂNG
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500 text-white border border-red-600 rounded-md text-[8px] font-bold font-mono animate-pulse">
+              <AlertTriangle size={10} />Lỗi đăng
             </span>
           ) : card.status === "processing" ? (
             <span className="px-2 py-0.5 bg-cyan-50 border border-cyan-200 text-cyan-800 rounded-md text-[8px] font-bold font-mono animate-pulse">
-              ĐANG XỬ LÝ
+              Đang xử lý
             </span>
           ) : (
-            <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-md text-[9px] font-bold font-mono">
-              ✓ LỊCH
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-md text-[9px] font-bold font-mono">
+              <Check size={11} />Lịch
             </span>
           )}
         </div>
@@ -586,7 +590,7 @@ export function PublishedCard({ card, tiktokUsername, onDelete, isUserRole, onPr
       
       <div className="flex justify-between items-center gap-2 cursor-pointer" onClick={onOpenDetail}>
         <span className="flex items-center gap-1 px-2.5 py-0.5 bg-green-50 border border-green-200 text-green-700 rounded-md text-[9px] font-mono font-bold tracking-wider shrink-0">
-          <CheckCircle2 className="h-3 w-3 text-green-600" /> ĐÃ ĐĂNG
+          <CheckCircle2 className="h-3 w-3 text-green-600" /> Đã đăng
         </span>
         <span className={`px-2 py-0.5 border rounded-md text-[9px] font-mono font-bold tracking-wider shrink-0 uppercase ${channelStyle}`}>
           {card.channel}

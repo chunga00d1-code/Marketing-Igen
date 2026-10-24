@@ -60,7 +60,7 @@ export const BULK_MARKETING_PRESETS: BulkMarketingPreset[] = [
   },
   {
     id: 'flash-sale', name: 'Flash Sale', description: 'Ưu đãi giới hạn thời gian', accent: '#e11d48', backgroundId: 'sale', canvas: square,
-    layers: [brand(), text('label', 'Nhãn ưu đãi', '⚡ CHỈ HÔM NAY', 7, 16, 42, 8, 3, { color: '#fef08a', fontSize: 32, fontWeight: 900, textTransform: 'uppercase' }), text('headline', 'Tiêu đề', 'FLASH SALE 24H', 7, 27, 54, 15, 3, { fontSize: 78, fontWeight: 900, textTransform: 'uppercase' }), text('price', 'Giá ưu đãi', '299.000đ', 7, 49, 45, 13, 3, { color: '#ffffff', fontSize: 76, fontWeight: 900 }), text('subheadline', 'Thời hạn', 'Kết thúc lúc 23:59 hôm nay', 7, 65, 48, 7, 3, { color: '#ffe4e6', fontSize: 30, fontWeight: 600 }), cta('MUA NGAY'), image('product-image', 'Ảnh sản phẩm', 62, 20, 31, 61, 2)],
+    layers: [brand(), text('label', 'Nhãn ưu đãi', 'CHỈ HÔM NAY', 7, 16, 42, 8, 3, { color: '#fef08a', fontSize: 32, fontWeight: 900, textTransform: 'uppercase' }), text('headline', 'Tiêu đề', 'FLASH SALE 24H', 7, 27, 54, 15, 3, { fontSize: 78, fontWeight: 900, textTransform: 'uppercase' }), text('price', 'Giá ưu đãi', '299.000đ', 7, 49, 45, 13, 3, { color: '#ffffff', fontSize: 76, fontWeight: 900 }), text('subheadline', 'Thời hạn', 'Kết thúc lúc 23:59 hôm nay', 7, 65, 48, 7, 3, { color: '#ffe4e6', fontSize: 30, fontWeight: 600 }), cta('MUA NGAY'), image('product-image', 'Ảnh sản phẩm', 62, 20, 31, 61, 2)],
   },
   {
     id: 'combo-deal', name: 'Ưu đãi combo', description: 'Gói sản phẩm có giá trị cao', accent: '#ea580c', backgroundId: 'luxury', canvas: square,

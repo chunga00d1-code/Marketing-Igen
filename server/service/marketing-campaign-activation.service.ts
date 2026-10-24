@@ -43,11 +43,15 @@ export function collectCampaignDraftActivationIssues(input: {
   enabledPlatforms: MarketingCampaignPlatform[];
   timezone: string;
   now?: Date;
+  publishImmediately?: boolean;
 }): CampaignActivationIssue[] {
   const issues: CampaignActivationIssue[] = [];
   if (input.slots.length === 0) {
     issues.push({ code: "NO_SLOTS", message: "Chiến dịch cần ít nhất một bài đăng trước khi khởi chạy." });
     return issues;
+  }
+  if (input.publishImmediately && input.slots.length !== 1) {
+    issues.push({ code: "SINGLE_POST_COUNT", message: "Bài đăng nhanh chỉ được có một slot." });
   }
 
   const now = input.now || new Date();
@@ -63,7 +67,7 @@ export function collectCampaignDraftActivationIssues(input: {
     if (slot.platform === "TikTok" && !["video", "human-video"].includes(slot.mediaType)) {
       issues.push({ code: "TIKTOK_VIDEO_REQUIRED", slotId, message: `${slotLabel} trên TikTok phải dùng video trước khi khởi chạy chiến dịch.` });
     }
-    if (slot.scheduledAt.getTime() - now.getTime() < MINIMUM_ACTIVATION_LEAD_MS) {
+    if (!input.publishImmediately && slot.scheduledAt.getTime() - now.getTime() < MINIMUM_ACTIVATION_LEAD_MS) {
       issues.push({ code: "SCHEDULE_TOO_SOON", slotId, message: `${slotLabel} lúc ${formatScheduledAt(slot.scheduledAt, input.timezone)} cần cách hiện tại ít nhất 15 phút để worker chuẩn bị nội dung.` });
     }
   }
@@ -75,6 +79,7 @@ export function assertCampaignDraftCanActivate(input: {
   enabledPlatforms: MarketingCampaignPlatform[];
   timezone: string;
   now?: Date;
+  publishImmediately?: boolean;
 }) {
   const issues = collectCampaignDraftActivationIssues(input);
   if (issues.length > 0) throw new CampaignActivationValidationError(issues);

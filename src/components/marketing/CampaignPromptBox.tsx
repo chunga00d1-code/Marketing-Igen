@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paperclip, Image as ImageIcon, FileText, Trash2, X, Loader2 } from 'lucide-react';
+import { Paperclip, Image as ImageIcon, FileText, Trash2, X, Loader2, Send } from 'lucide-react';
 
 interface CampaignPromptBoxProps {
   prompt: string;
@@ -14,6 +14,10 @@ interface CampaignPromptBoxProps {
   handleDocumentUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleRemoveDocument: () => void;
   onClearAll: () => void;
+  onSend?: () => void;
+  sending?: boolean;
+  allowAttachments?: boolean;
+  placeholder?: string;
 }
 
 export default function CampaignPromptBox({
@@ -29,13 +33,17 @@ export default function CampaignPromptBox({
   handleDocumentUpload,
   handleRemoveDocument,
   onClearAll,
+  onSend,
+  sending = false,
+  allowAttachments = true,
+  placeholder = 'Ví dụ: Tạo chiến dịch 7 ngày ra mắt sản phẩm mới, tập trung vào khách hàng 25–35 tuổi, giọng văn gần gũi, mục tiêu tăng inbox...',
 }: CampaignPromptBoxProps) {
   return (
     <div
       className={`relative flex flex-col bg-white border rounded-2xl transition-all overflow-hidden mb-4 ${
         isDragging
-          ? "border-indigo-400 ring-2 ring-indigo-400/20 shadow-md"
-          : "border-gray-200 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-400/15 hover:border-gray-300"
+          ? "border-blue-400 ring-2 ring-blue-400/20 shadow-md"
+          : "border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-400/15 hover:border-gray-300"
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -44,8 +52,14 @@ export default function CampaignPromptBox({
       <textarea
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
+        onKeyDown={(event) => {
+          if (onSend && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            if (prompt.trim() && !sending && !loadingDoc) onSend();
+          }
+        }}
         rows={3}
-        placeholder="Ví dụ: Tạo chiến dịch 7 ngày ra mắt sản phẩm mới, tập trung vào khách hàng 25–35 tuổi, giọng văn gần gũi, mục tiêu tăng inbox..."
+        placeholder={placeholder}
         className="w-full text-left min-h-[80px] p-3 pb-1.5 bg-transparent text-xs outline-none resize-none"
       />
 
@@ -53,11 +67,11 @@ export default function CampaignPromptBox({
       {uploadedDocName && (
         <div className="px-3 pb-1.5">
           <div className="inline-flex items-center gap-2 pl-1.5 pr-1 py-1 bg-slate-50 border border-slate-200 rounded-lg max-w-xs group">
-            <div className="h-7 w-7 rounded-md bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 overflow-hidden">
+            <div className="h-7 w-7 rounded-md bg-blue-50 border border-blue-100 flex items-center justify-center shrink-0 overflow-hidden">
               {uploadedImageBase64 ? (
                 <img src={uploadedImageBase64} alt="Preview" className="h-full w-full object-cover rounded-sm" />
               ) : (
-                <FileText className="h-3.5 w-3.5 text-indigo-600" />
+                <FileText className="h-3.5 w-3.5 text-blue-600" />
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -84,8 +98,8 @@ export default function CampaignPromptBox({
 
       {/* Loading indicator */}
       {loadingDoc && (
-        <div className="flex items-center gap-1.5 px-3.5 pb-1.5 text-indigo-600 text-[10px] font-bold font-mono select-none">
-          <Loader2 className="h-3 w-3 animate-spin text-indigo-600" />
+        <div className="flex items-center gap-1.5 px-3.5 pb-1.5 text-blue-600 text-[10px] font-bold font-mono select-none">
+          <Loader2 className="h-3 w-3 animate-spin text-blue-600" />
           <span>Đang đọc tài liệu để AI phân tích...</span>
         </div>
       )}
@@ -93,8 +107,8 @@ export default function CampaignPromptBox({
       {/* Bottom toolbar with attachment icons */}
       <div className="flex items-center gap-0.5 px-2.5 py-1.5 border-t border-gray-100 bg-gray-50/40">
         {/* Attach document */}
-        <label
-          className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer group relative"
+        {allowAttachments && <label
+          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all cursor-pointer group relative"
           title="Đính kèm tài liệu (PDF, DOCX, TXT, MD, Excel, CSV)"
         >
           <Paperclip className="h-4 w-4" />
@@ -105,11 +119,11 @@ export default function CampaignPromptBox({
             className="hidden"
             disabled={loadingDoc}
           />
-        </label>
+        </label>}
 
         {/* Attach image */}
-        <label
-          className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer group relative"
+        {allowAttachments && <label
+          className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-all cursor-pointer group relative"
           title="Đính kèm ảnh"
         >
           <ImageIcon className="h-4 w-4" />
@@ -120,7 +134,7 @@ export default function CampaignPromptBox({
             className="hidden"
             disabled={loadingDoc}
           />
-        </label>
+        </label>}
 
         <div className="flex-1" />
 
@@ -128,10 +142,23 @@ export default function CampaignPromptBox({
           <button
             type="button"
             onClick={onClearAll}
-            className="text-[10px] font-bold font-mono text-red-600 hover:text-red-750 transition-colors flex items-center gap-1 cursor-pointer bg-red-50 hover:bg-red-100/80 px-2.5 py-1 rounded-md border border-red-200/30"
+            aria-label="Xóa nội dung đã nhập"
+            title="Xóa nội dung đã nhập"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-[#ff1f1f] transition-colors hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500"
           >
-            <Trash2 className="h-3.5 w-3.5" />
-            Xóa tất cả
+            <Trash2 className="h-4.5 w-4.5" />
+          </button>
+        )}
+        {onSend && (
+          <button
+            type="button"
+            onClick={onSend}
+            disabled={!prompt.trim() || sending || loadingDoc}
+            aria-label="Gửi tin nhắn"
+            title="Gửi tin nhắn (Enter)"
+            className="ml-2 flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </button>
         )}
       </div>

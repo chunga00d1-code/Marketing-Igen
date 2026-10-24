@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Building2, Plus, Save, Terminal, Key, Eye, EyeOff, Lock,
-  Trash2, FileEdit, CheckCircle, Copy, Globe, RefreshCw, X, Search
+  Trash2, FileEdit, CheckCircle, Copy, Globe, RefreshCw, X, Search, Music2
 } from "lucide-react";
 import { toast } from "../../pages/Toast";
 import { socialIntegrationService, SocialIntegration } from "../../services/socialIntegrationService";
@@ -341,7 +341,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
         return nextIntegrations;
       });
-      toast.success(`✅ Đã kết nối thành công ${count} Fanpage! Đang cập nhật danh sách...`);
+      toast.success(`Đã kết nối thành công ${count} Fanpage! Đang cập nhật danh sách...`);
     }
     // Backend đã upsert tất cả pages vào DB trong oauthCallback
     // Chỉ cần gọi lại API để lấy danh sách mới nhất và cập nhật UI
@@ -365,7 +365,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
         isConnected: true,
         createdBy: userProfile?.email || "system",
       });
-      toast.success(`✅ Đã kết nối Fanpage "${page.name}" thành công!`);
+      toast.success(`Đã kết nối Fanpage "${page.name}" thành công!`);
       fetchCompanyIntegrations();
     } catch (err: any) {
       console.error("Lỗi lưu Fanpage Facebook:", err);
@@ -1386,9 +1386,9 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         {/* Platform Icon */}
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 font-bold text-sm ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0 font-bold text-sm ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-[#1877f2]" : "bg-[#0068ff]"
                           }`}>
-                          {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
+                          {item.platform === "TikTok" ? <Music2 size={19} /> : item.platform === "Facebook" ? "F" : "Z"}
                         </div>
                         <div className="text-left min-w-0 flex-1">
                           <h5 className="text-sm font-bold text-gray-800 break-words" title={item.displayName}>
@@ -1542,9 +1542,9 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     >
                       <div className="flex items-start justify-between gap-2 min-w-0">
                         <div className="flex gap-2.5 min-w-0">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 font-bold text-xs ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-blue-600" : "bg-[#0068ff]"
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0 font-bold text-xs ${item.platform === "TikTok" ? "bg-black" : item.platform === "Facebook" ? "bg-[#1877f2]" : "bg-[#0068ff]"
                             }`}>
-                            {item.platform === "TikTok" ? "♪" : item.platform === "Facebook" ? "F" : "Z"}
+                            {item.platform === "TikTok" ? <Music2 size={16} /> : item.platform === "Facebook" ? "F" : "Z"}
                           </div>
                           <div className="text-left min-w-0">
                             <h5 className="text-sm font-bold text-gray-800 break-words" title={item.displayName}>

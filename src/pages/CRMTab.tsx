@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
-import { Zap, FileText, DollarSign, MessageSquare } from "lucide-react";
+import { Zap, FileText, DollarSign, MessageSquare, Check } from "lucide-react";
 import { CRMSubTabType, ChatMessage, CustomerInbox, AIChatConfig, ChatPagination } from "../types";
 import { toast } from "./Toast";
 import { crmService, ExtendedLeadCard } from "../services/crmService";
@@ -13,6 +13,7 @@ import { useSubTabRouter } from "../hooks/useSubTabRouter";
 import { socialIntegrationService, SocialIntegration } from "../services/socialIntegrationService";
 import { resolveAiReplyScope } from "../utils/aiReplyScope";
 import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
+import { SocialPlatformIcon } from "../components/crm/SocialPlatformIcon";
 
 function getCustomerInitials(customerName: string) {
   const parts = customerName.trim().split(/\s+/).filter(Boolean);
@@ -1182,7 +1183,7 @@ export default function CRMTab() {
       paymentLink: mockPayment
     });
 
-    const systemMsgText = `✅ [AI AUTOMATION] Đã gửi tự động:
+    const systemMsgText = `[AI AUTOMATION] Đã gửi tự động:
 - Hợp đồng điện tử: ${mockContract}
 - Link thanh toán: ${mockPayment}
 (Trạng thái: Sắp chốt HD - Khách Nóng)`;
@@ -1498,6 +1499,11 @@ export default function CRMTab() {
 
   const activeTiktokAccount = tiktokAccounts.find((a) => a.username === selectedTiktokAccountId);
   const activeTiktokAccountName = activeTiktokAccount?.displayName || "Chọn TikTok";
+  const hasSelectableChannels = facebookPages.length > 0 || zaloAccounts.length > 0 || tiktokAccounts.length > 0;
+
+  useEffect(() => {
+    if (!hasSelectableChannels) setShowUnifiedDropdown(false);
+  }, [hasSelectableChannels]);
 
   return (
     <div className="flex flex-col h-full bg-white overflow-hidden rounded-3xl border border-slate-100 shadow-xl shadow-slate-100/50" id="crm_tab_wrapper">
@@ -1517,7 +1523,7 @@ export default function CRMTab() {
                 key={key}
                 onClick={() => setSubTab(key)}
                 className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none ${isActive
-                    ? "bg-[#0284c7] text-white shadow-xs"
+                    ? "bg-[#00ADFC] text-white shadow-xs"
                     : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   }`}
               >
@@ -1528,7 +1534,7 @@ export default function CRMTab() {
         </div>
 
         {/* Global Social Media Channel Filters */}
-        <div className="flex items-center gap-2 relative">
+        {hasSelectableChannels && <div className="flex items-center gap-2 relative">
           <div className="flex items-center gap-1.5" id="inbox_channel_filters">
             {/* Unified Account Selector Button */}
             <div className="relative">
@@ -1539,9 +1545,9 @@ export default function CRMTab() {
                 className="py-1.5 px-3 rounded-lg bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-xxs text-[10px] font-extrabold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
               >
                 <span className="flex items-center -space-x-1">
-                  <span className="w-3.5 h-3.5 bg-blue-600 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center leading-none ring-1.5 ring-white font-sans shrink-0 shadow-xxs">f</span>
-                  <span className="w-3.5 h-3.5 bg-sky-500 text-white text-[8.5px] font-extrabold rounded-full flex items-center justify-center leading-none ring-1.5 ring-white font-sans shrink-0 shadow-xxs">Z</span>
-                  <span className="w-3.5 h-3.5 bg-black text-white text-[7px] font-extrabold rounded-full flex items-center justify-center leading-none ring-1.5 ring-white font-sans shrink-0 shadow-xxs">T</span>
+                  {facebookPages.length > 0 && <SocialPlatformIcon platform="facebook" className="h-4 w-4 rounded-full bg-white ring-1 ring-white" />}
+                  {zaloAccounts.length > 0 && <SocialPlatformIcon platform="zalo" className="h-4 w-4 rounded-full ring-1 ring-white" />}
+                  {tiktokAccounts.length > 0 && <SocialPlatformIcon platform="tiktok" className="h-4 w-4 rounded-full bg-white ring-1 ring-white" />}
                 </span>
                 <span className="text-[10px] text-slate-800 font-bold max-w-[150px] truncate">
                   {activeChannel === "all" && "Tất cả kênh"}
@@ -1561,7 +1567,7 @@ export default function CRMTab() {
                   <div className="absolute right-0 mt-1.5 w-64 bg-white border border-slate-200/80 rounded-2xl shadow-xl z-50 p-3.5 animate-in fade-in slide-in-from-top-1 duration-150 text-left">
 
                     <div className="flex justify-between items-center pb-2 border-b border-slate-100 mb-3">
-                      <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">
+                      <div className="text-xs font-normal text-black">
                         Chọn tài khoản hiển thị
                       </div>
                       <button
@@ -1569,7 +1575,7 @@ export default function CRMTab() {
                           setActiveChannel("all");
                           setShowUnifiedDropdown(false);
                         }}
-                        className="text-[9px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+                        className="rounded-md bg-[#EAF8FF] px-2 py-0.5 text-xs font-normal text-black transition-colors hover:bg-[#DDF4FF] cursor-pointer"
                       >
                         Hiện tất cả
                       </button>
@@ -1577,10 +1583,10 @@ export default function CRMTab() {
 
                     <div className="space-y-4">
                       {/* Facebook Page Selection */}
-                      {isFbConnected && (
+                      {facebookPages.length > 0 && (
                         <div className="space-y-1">
-                          <label className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-3.5 h-3.5 bg-blue-600 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center leading-none shrink-0 font-sans shadow-xxs">f</span>
+                          <label className="flex items-center gap-1.5 text-xs font-normal text-black">
+                            <SocialPlatformIcon platform="facebook" className="h-4 w-4" />
                             Facebook Page
                           </label>
                           <select
@@ -1592,7 +1598,7 @@ export default function CRMTab() {
                               localStorage.setItem("crm_selected_fb_page_id", nextPageId);
                               setActiveChannel("facebook");
                             }}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-medium bg-slate-50 hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50 text-xs font-normal text-black hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-[#00ADFC]/10 cursor-pointer"
                           >
                             {facebookPages.map((page) => (
                               <option key={page._id} value={page.username}>{page.displayName}</option>
@@ -1602,10 +1608,10 @@ export default function CRMTab() {
                       )}
 
                       {/* Zalo Account Selection */}
-                      {isZaloConnected && (
+                      {zaloAccounts.length > 0 && (
                         <div className="space-y-1">
-                          <label className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-3.5 h-3.5 bg-sky-500 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center leading-none shrink-0 font-sans shadow-xxs">Z</span>
+                          <label className="flex items-center gap-1.5 text-xs font-normal text-black">
+                            <SocialPlatformIcon platform="zalo" className="h-4 w-4" />
                             Zalo Official Account
                           </label>
                           <select
@@ -1615,7 +1621,7 @@ export default function CRMTab() {
                               setSelectedZaloAccountId(e.target.value);
                               setActiveChannel("zalo");
                             }}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-medium bg-slate-50 hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50 text-xs font-normal text-black hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-[#00ADFC]/10 cursor-pointer"
                           >
                             {zaloAccounts.map((acc) => (
                               <option key={acc._id} value={acc.username}>{acc.displayName}</option>
@@ -1625,10 +1631,10 @@ export default function CRMTab() {
                       )}
 
                       {/* TikTok Selection */}
-                      {isTiktokConnected && (
+                      {tiktokAccounts.length > 0 && (
                         <div className="space-y-1">
-                          <label className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-                            <span className="w-3.5 h-3.5 bg-black text-white text-[7px] font-extrabold rounded-full flex items-center justify-center leading-none shrink-0 font-sans shadow-xxs">T</span>
+                          <label className="flex items-center gap-1.5 text-xs font-normal text-black">
+                            <SocialPlatformIcon platform="tiktok" className="h-4 w-4" />
                             TikTok
                           </label>
                           <select
@@ -1638,7 +1644,7 @@ export default function CRMTab() {
                               setSelectedTiktokAccountId(e.target.value);
                               setActiveChannel("tiktok");
                             }}
-                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-medium bg-slate-50 hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 cursor-pointer"
+                            className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg bg-slate-50 text-xs font-normal text-black hover:bg-slate-100/50 transition-colors outline-none focus:bg-white focus:ring-2 focus:ring-[#00ADFC]/10 cursor-pointer"
                           >
                             {tiktokAccounts.map((acc) => (
                               <option key={acc._id} value={acc.username}>{acc.displayName}</option>
@@ -1653,7 +1659,7 @@ export default function CRMTab() {
               )}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
 
       <div className="flex-grow flex-1 overflow-hidden" id="crm_tab_main_content">
@@ -1751,7 +1757,7 @@ export default function CRMTab() {
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Liên kết với khách hàng từ Inbox (Tùy chọn)</label>
                 <select
-                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 cursor-pointer transition-all duration-200"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-[#00ADFC]/10 cursor-pointer transition-all duration-200"
                   value={selectedInboxCustId}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -1781,7 +1787,7 @@ export default function CRMTab() {
                   type="text"
                   placeholder="Ví dụ: Lê Thị B..."
                   required
-                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs focus:bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs focus:bg-white outline-none focus:ring-4 focus:ring-[#00ADFC]/10 focus:border-[#00ADFC] transition-all duration-200"
                   value={newLeadName}
                   onChange={(e) => setNewLeadName(e.target.value)}
                 />
@@ -1792,7 +1798,7 @@ export default function CRMTab() {
                 <input
                   type="text"
                   placeholder="Ví dụ: Công ty TNHH ABC..."
-                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs focus:bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs focus:bg-white outline-none focus:ring-4 focus:ring-[#00ADFC]/10 focus:border-[#00ADFC] transition-all duration-200"
                   value={newLeadCompany}
                   onChange={(e) => setNewLeadCompany(e.target.value)}
                 />
@@ -1803,7 +1809,7 @@ export default function CRMTab() {
                 <input
                   type="number"
                   placeholder="Ví dụ: 15000000"
-                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs font-mono focus:bg-white outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
+                  className="w-full px-3.5 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs font-mono focus:bg-white outline-none focus:ring-4 focus:ring-[#00ADFC]/10 focus:border-[#00ADFC] transition-all duration-200"
                   value={newLeadValue}
                   onChange={(e) => setNewLeadValue(e.target.value)}
                 />
@@ -1813,7 +1819,7 @@ export default function CRMTab() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Mức độ nhiệt độ</label>
                   <select
-                    className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 cursor-pointer transition-all duration-200"
+                    className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-[#00ADFC]/10 cursor-pointer transition-all duration-200"
                     value={newLeadStatus}
                     onChange={(e) => setNewLeadStatus(e.target.value as "cold" | "warm" | "hot")}
                   >
@@ -1826,7 +1832,7 @@ export default function CRMTab() {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Bước xử lý (Tiến độ)</label>
                   <select
-                    className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-blue-500/10 cursor-pointer transition-all duration-200"
+                    className="w-full px-3 py-2.5 border border-slate-200 bg-slate-50/50 rounded-xl text-xs outline-none focus:bg-white focus:ring-4 focus:ring-[#00ADFC]/10 cursor-pointer transition-all duration-200"
                     value={newLeadTouchpoint}
                     onChange={(e) => setNewLeadTouchpoint(e.target.value)}
                   >
@@ -1840,7 +1846,7 @@ export default function CRMTab() {
               <div className="flex gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-3 bg-[#00ADFC] hover:bg-[#008FCF] text-white rounded-xl text-xs font-bold transition-all shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   Lưu cơ hội
                 </button>
@@ -1882,22 +1888,22 @@ export default function CRMTab() {
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-[10px] text-slate-500 truncate">Hợp đồng điện tử:</span>
-                  <a href={automationModal.contractLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 font-bold hover:underline truncate ml-auto">
+                  <a href={automationModal.contractLink} target="_blank" rel="noreferrer" className="text-[10px] text-[#008FCF] font-bold hover:underline truncate ml-auto">
                     {automationModal.contractLink.substring(automationModal.contractLink.lastIndexOf("/") + 1)}
                   </a>
                 </div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-[10px] text-slate-500 truncate">Link thanh toán:</span>
-                  <a href={automationModal.paymentLink} target="_blank" rel="noreferrer" className="text-[10px] text-blue-600 font-bold hover:underline truncate ml-auto">
+                  <a href={automationModal.paymentLink} target="_blank" rel="noreferrer" className="text-[10px] text-[#008FCF] font-bold hover:underline truncate ml-auto">
                     pay.igen-erp.vn/invoice...
                   </a>
                 </div>
               </div>
             </div>
 
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              ✓ Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Hộp thư hội thoại (Omni-Inbox) cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
+            <p className="flex items-start gap-1 text-[10px] leading-relaxed text-slate-400">
+              <Check size={12} className="shrink-0" />Trợ lý iGen AI đã tự động đóng gói hợp đồng, tạo mã thanh toán, và gửi trực tiếp qua Hộp thư hội thoại (Omni-Inbox) cho khách hàng để tối ưu hóa tỷ lệ chốt sales.
             </p>
 
             <div className="flex gap-2.5 mt-2">
@@ -1906,7 +1912,7 @@ export default function CRMTab() {
                   setAutomationModal(null);
                   setSubTab("OMNI-INBOX CHAT");
                 }}
-                className="flex-1 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                className="flex-1 py-3 bg-[#00ADFC] hover:bg-[#008FCF] text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <MessageSquare className="h-4 w-4" />
                 Xem chat

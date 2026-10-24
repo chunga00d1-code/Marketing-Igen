@@ -497,7 +497,7 @@ export default function LongToShortTab() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-gray-400 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">
-                    Trạng thái: {selectedProject.status.toUpperCase()}
+                    Trạng thái: {selectedProject.status}
                   </span>
                   {selectedProject.status === "processing" && (
                     <button
@@ -629,8 +629,8 @@ export default function LongToShortTab() {
 
                                 {/* Metrics duration, timing */}
                                 <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-gray-400 border-t border-gray-50 pt-3">
-                                  <div>THỜI LƯỢNG: <span className="font-bold text-gray-700">{clip.duration}s</span></div>
-                                  <div>TIMECODE: <span className="font-bold text-gray-700">{clip.startTime}s - {clip.endTime}s</span></div>
+                                  <div>Thời lượng: <span className="font-bold text-gray-700">{clip.duration}s</span></div>
+                                  <div>Timecode: <span className="font-bold text-gray-700">{clip.startTime}s - {clip.endTime}s</span></div>
                                 </div>
 
                                 {/* Actions */}
