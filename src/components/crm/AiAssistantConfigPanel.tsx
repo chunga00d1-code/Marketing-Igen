@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
-import { Sliders, Zap, Clock3, FileText, UploadCloud, Trash2 } from "lucide-react";
+import { Sliders, Zap, Clock3, FileText, UploadCloud, Trash2, Lightbulb } from "lucide-react";
 import { AIChatConfig } from "../../types";
 import { KnowledgeCenterSummaryCard } from "../knowledge/KnowledgeCenterSummaryCard";
 
@@ -345,7 +345,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
           </label>
           <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 space-y-1">
             <span className="text-[9.5px] font-bold text-blue-800 flex items-center gap-1">
-              💡 Gợi ý tài liệu huấn luyện tốt nhất:
+              <Lightbulb size={12} />Gợi ý tài liệu huấn luyện tốt nhất:
             </span>
             <ul className="list-disc list-inside text-[8.5px] text-slate-600 space-y-0.5 leading-relaxed">
               <li><b>Tài liệu FAQ</b> (Bộ câu hỏi & đáp án thường gặp)</li>

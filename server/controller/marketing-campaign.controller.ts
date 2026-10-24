@@ -96,6 +96,18 @@ export const marketingCampaignController = {
     }
   },
 
+  async reviseDraft(req: AuthenticatedRequest, res: Response) {
+    try {
+      const { userId, companyCode } = getIdentity(req);
+      const result = await marketingCampaignService.reviseDraft(
+        companyCode, userId, req.params.id, req.body.instruction, req.body.expectedRevision
+      );
+      return res.status(200).json({ status: "success", data: result });
+    } catch (error: unknown) {
+      return res.status(409).json({ status: "error", message: error instanceof Error ? error.message : "Không thể sửa bản nháp chiến dịch." });
+    }
+  },
+
   async list(req: AuthenticatedRequest, res: Response) {
     try {
       const { companyCode } = getIdentity(req);

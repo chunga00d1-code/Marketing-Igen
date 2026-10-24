@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { Search, Zap, Plus } from "lucide-react";
 import { ExtendedLeadCard } from "../../services/crmService";
 import { PipelineCard } from "./PipelineCard";
+import { DashboardFilledIcon } from "../DashboardFilledIcon";
 
 import { CustomerInbox } from "../../types";
 
@@ -161,10 +162,10 @@ export const PipelineTab: React.FC<PipelineTabProps> = ({
         >
           <div className="flex justify-between items-center mb-2 pb-2 border-b border-slate-200/50 shrink-0">
             <div className="text-left">
-              <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">KHÁCH LẠNH</span>
-              <span className="text-[9px] text-slate-400">Chưa xác định rõ nhu cầu</span>
+              <span className="block text-sm font-medium text-slate-700">Khách lạnh</span>
+              <span className="mt-1 block text-xs text-slate-500">Chưa xác định rõ nhu cầu</span>
             </div>
-            <span className="bg-slate-200 text-slate-800 text-[9px] font-bold px-2 py-0.5 rounded-full">
+            <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-200 px-1.5 text-xs font-medium text-slate-800">
               {groupedLeads.cold.length}
             </span>
           </div>
@@ -181,7 +182,10 @@ export const PipelineTab: React.FC<PipelineTabProps> = ({
               />
             ))}
             {groupedLeads.cold.length === 0 && (
-              <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-xs italic font-sans">
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-slate-200 px-4 py-4 text-center text-xs text-slate-500 font-sans">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-[#00ADFC]">
+                  <DashboardFilledIcon name="cold" className="h-5 w-5" />
+                </span>
                 Không có khách hàng
               </div>
             )}
@@ -199,10 +203,10 @@ export const PipelineTab: React.FC<PipelineTabProps> = ({
         >
           <div className="flex justify-between items-center mb-2 pb-2 border-b border-orange-100/50 shrink-0">
             <div className="text-left">
-              <span className="text-[10px] font-bold text-orange-700 uppercase tracking-wider block">KHÁCH ẤM (TIỀM NĂNG)</span>
-              <span className="text-[9px] text-orange-500">Đã tương tác hoặc nhận báo giá</span>
+              <span className="block text-sm font-medium text-orange-700">Khách ấm (tiềm năng)</span>
+              <span className="mt-1 block text-xs text-orange-600">Đã tương tác hoặc nhận báo giá</span>
             </div>
-            <span className="bg-orange-100 text-orange-800 text-[9px] font-bold px-2 py-0.5 rounded-full">
+            <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-orange-100 px-1.5 text-xs font-medium text-orange-800">
               {groupedLeads.warm.length}
             </span>
           </div>
@@ -219,7 +223,10 @@ export const PipelineTab: React.FC<PipelineTabProps> = ({
               />
             ))}
             {groupedLeads.warm.length === 0 && (
-              <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-xs italic font-sans">
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-orange-200 px-4 py-4 text-center text-xs text-slate-500 font-sans">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-50 text-orange-500">
+                  <DashboardFilledIcon name="warm" className="h-5 w-5" />
+                </span>
                 Không có khách hàng
               </div>
             )}
@@ -237,16 +244,16 @@ export const PipelineTab: React.FC<PipelineTabProps> = ({
         >
           <div className="flex justify-between items-center mb-2 pb-2 border-b border-red-100/50 shrink-0">
             <div className="text-left">
-              <span className="text-[10px] font-bold text-red-700 uppercase tracking-wider block flex items-center gap-1.5">
-                KHÁCH NÓNG (SẮP CHỐT)
+              <span className="flex items-center gap-1.5 text-sm font-medium text-red-700">
+                Khách nóng (sắp chốt)
                 <span className="flex h-1.5 w-1.5 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
                 </span>
               </span>
-              <span className="text-[9px] text-red-500">Chuẩn bị ký kết & chốt hợp đồng</span>
+              <span className="mt-1 block text-xs text-red-600">Chuẩn bị ký kết & chốt hợp đồng</span>
             </div>
-            <span className="bg-red-100 text-red-800 text-[9px] font-bold px-2 py-0.5 rounded-full">
+            <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-red-100 px-1.5 text-xs font-medium text-red-800">
               {groupedLeads.hot.length}
             </span>
           </div>
@@ -263,7 +270,10 @@ export const PipelineTab: React.FC<PipelineTabProps> = ({
               />
             ))}
             {groupedLeads.hot.length === 0 && (
-              <div className="border border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 text-xs italic font-sans">
+              <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-rose-200 px-4 py-4 text-center text-xs text-slate-500 font-sans">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-rose-500">
+                  <DashboardFilledIcon name="hot" className="h-5 w-5" />
+                </span>
                 Không có khách hàng
               </div>
             )}

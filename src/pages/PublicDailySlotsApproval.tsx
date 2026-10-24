@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, X, Loader2, Facebook, Calendar, AlertCircle, MessageSquare, Clock } from 'lucide-react';
+import { Check, X, Loader2, Facebook, Calendar, AlertCircle, MessageSquare, Clock, Building2, Target, Ruler, Heart, Zap, Music2, Globe2, ThumbsUp, Share2 } from 'lucide-react';
 import { marketingCampaignService, CampaignSlot, MarketingContent, MarketingCampaignSummary } from '../services/marketingCampaignService';
 import { BRAND_LOGO_PATH, BRAND_NAME } from '../config/brand';
 
@@ -153,7 +153,7 @@ export default function PublicDailySlotsApproval() {
       <div className="min-h-screen bg-[#f6f8fd] text-slate-800 flex flex-col items-center justify-center font-sans">
         <Loader2 className="h-10 w-10 animate-spin text-blue-600 mb-4" />
         <p className="text-sm font-semibold tracking-wider text-slate-500 animate-pulse uppercase">
-          ĐANG TẢI BÀI VIẾT THEO NGÀY...
+          Đang tải bài viết theo ngày...
         </p>
       </div>
     );
@@ -186,7 +186,7 @@ export default function PublicDailySlotsApproval() {
           <img src={BRAND_LOGO_PATH} alt={BRAND_NAME} className="h-9 w-9 rounded-xl border border-slate-200/60 object-cover shadow-md" />
           <div>
             <h1 className="text-sm font-black tracking-wide text-slate-900 uppercase">{BRAND_NAME}</h1>
-            <p className="text-[10px] text-slate-500 font-bold tracking-wider">CỔNG DUYỆT BÀI ĐĂNG HÀNG NGÀY</p>
+            <p className="text-[10px] text-slate-500 font-bold tracking-wider">Cổng duyệt bài đăng hàng ngày</p>
           </div>
         </div>
         <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 px-3.5 py-1.5 rounded-xl">
@@ -254,7 +254,7 @@ export default function PublicDailySlotsApproval() {
                             {isTikTok ? (
                               <TikTokIcon className="h-3 w-3 text-slate-800" />
                             ) : (
-                              <Facebook size={12} className="text-blue-600 fill-blue-500/10" />
+                              <Facebook size={12} className="text-[#1877f2] fill-[#1877f2]/10" />
                             )}
                             {s.platform || 'Facebook'}
                           </span>
@@ -264,19 +264,19 @@ export default function PublicDailySlotsApproval() {
                         </p>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[9px] font-bold text-indigo-755 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
-                            🏢 {s.pillar}
+                            <Building2 size={12} className="mr-1 inline" />{s.pillar}
                           </span>
                           {(() => {
                             const funnel = getFunnelStage(s.objective || '');
                             return (
                               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${funnel.color}`}>
-                                🎯 {funnel.label}
+                                <Target size={12} className="mr-1 inline" />{funnel.label}
                               </span>
                             );
                           })()}
                           {s.variant && (
                             <span className="text-[9px] font-bold text-purple-755 bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded">
-                              📐 {s.variant}
+                              <Ruler size={12} className="mr-1 inline" />{s.variant}
                             </span>
                           )}
                         </div>
@@ -335,15 +335,15 @@ export default function PublicDailySlotsApproval() {
                         <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-rose-500 text-white rounded-full text-[8px] px-1 font-bold shadow-md">+</span>
                       </div>
                       <div className="flex flex-col items-center">
-                        <span className="text-xl">❤️</span>
+                        <Heart size={22} fill="currentColor" />
                         <span className="text-[9px] font-bold">0</span>
                       </div>
                       <div className="flex flex-col items-center">
-                        <span className="text-xl">💬</span>
+                        <MessageSquare size={22} fill="currentColor" />
                         <span className="text-[9px] font-bold">0</span>
                       </div>
                       <div className="flex flex-col items-center">
-                        <span className="text-xl">⚡</span>
+                        <Zap size={22} fill="currentColor" />
                         <span className="text-[9px] font-bold">0</span>
                       </div>
                     </div>
@@ -354,7 +354,7 @@ export default function PublicDailySlotsApproval() {
                         {activeSlot.content?.bodyText}
                       </p>
                       <div className="flex items-center gap-1 mt-2 text-[9px] text-slate-350">
-                        <span>🎵</span>
+                        <Music2 size={12} />
                         <span className="truncate font-mono">Âm thanh nguyên bản - iGen Studio AI</span>
                       </div>
                     </div>
@@ -377,7 +377,7 @@ export default function PublicDailySlotsApproval() {
                             {new Intl.DateTimeFormat('vi-VN', {
                               timeZone: campaign?.timezone || 'Asia/Bangkok',
                               hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'
-                            }).format(new Date(activeSlot.scheduledAt))} · 🌐
+                            }).format(new Date(activeSlot.scheduledAt))} · <Globe2 size={11} />
                           </span>
                         </div>
                       </div>
@@ -402,7 +402,7 @@ export default function PublicDailySlotsApproval() {
 
                     <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 text-[9px] text-slate-450 font-semibold">
                       <div className="flex items-center gap-1">
-                        <span className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white text-[7px] font-bold">👍</span>
+                        <span className="flex items-center justify-center h-4 w-4 rounded-full bg-blue-600 text-white"><ThumbsUp size={10} /></span>
                         <span>0 thích</span>
                       </div>
                       <div className="flex gap-1.5">
@@ -412,9 +412,9 @@ export default function PublicDailySlotsApproval() {
                     </div>
 
                     <div className="px-1 py-0.5 grid grid-cols-3 gap-0.5 text-slate-500 font-bold text-[9px]">
-                      <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1 transition cursor-pointer">👍 Thích</button>
-                      <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1 transition cursor-pointer">💬 Bình luận</button>
-                      <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1 transition cursor-pointer">➡️ Chia sẻ</button>
+                      <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1 transition cursor-pointer"><ThumbsUp size={12} />Thích</button>
+                      <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1 transition cursor-pointer"><MessageSquare size={12} />Bình luận</button>
+                      <button type="button" className="py-2 hover:bg-slate-50 rounded flex items-center justify-center gap-1 transition cursor-pointer"><Share2 size={12} />Chia sẻ</button>
                     </div>
                   </div>
                 )}
@@ -437,7 +437,7 @@ export default function PublicDailySlotsApproval() {
                     <div>
                       <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Trụ cột nội dung (Pillar)</span>
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-[10px] text-indigo-755 font-bold">
-                        🏢 {activeSlot.pillar}
+                        <Building2 size={12} className="mr-1 inline" />{activeSlot.pillar}
                       </span>
                     </div>
 
@@ -447,7 +447,7 @@ export default function PublicDailySlotsApproval() {
                         const funnel = getFunnelStage(activeSlot.objective || '');
                         return (
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[10px] font-bold ${funnel.color}`}>
-                            🎯 {funnel.label}
+                            <Target size={12} className="mr-1 inline" />{funnel.label}
                           </span>
                         );
                       })()}
@@ -457,7 +457,7 @@ export default function PublicDailySlotsApproval() {
                       <div>
                         <span className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider font-mono mb-1">Góc sáng tạo (Creative Angle)</span>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-50 border border-purple-100 text-[10px] text-purple-755 font-bold">
-                          📐 {activeSlot.variant}
+                          <Ruler size={12} className="mr-1 inline" />{activeSlot.variant}
                         </span>
                       </div>
                     )}

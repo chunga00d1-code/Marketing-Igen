@@ -329,7 +329,7 @@ export default function UserAdminTab() {
       .filter(rp => !["user", "manager", "admin", "superadmin"].includes(rp.role))
       .map(rp => ({
         role: rp.role,
-        displayName: `${rp.role.toUpperCase()} (${rp.displayName || rp.role})`,
+        displayName: `${rp.role} (${rp.displayName || rp.role})`,
         level: rp.level
       }));
 
@@ -411,7 +411,7 @@ export default function UserAdminTab() {
 
     try {
       await authService.updateUserRole(targetUid, newRole);
-      toast.success(`Đã cập nhật quyền hạn cho "${targetName}" thành ${newRole.toUpperCase()}!`);
+      toast.success(`Đã cập nhật quyền hạn cho "${targetName}" thành ${newRole}!`);
       // Cập nhật lại list ở client
       setUsersList((prev) =>
         prev.map((u) => {
@@ -1137,7 +1137,7 @@ export default function UserAdminTab() {
                   }),
                   ...customRolesList.map(cr => ({
                     role: cr.role,
-                    displayName: cr.displayName || cr.role.toUpperCase(),
+                    displayName: cr.displayName || cr.role,
                     level: cr.level,
                     permissions: cr.permissions,
                     isDefault: false,
@@ -1152,14 +1152,14 @@ export default function UserAdminTab() {
                         <div className="flex justify-between items-start">
                           <div>
                             <span className="px-2 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-bold font-mono tracking-wider">
-                              LEVEL {userProfile?.role === "superadmin" ? roleInfo.level : roleInfo.level - 1}
+                              Cấp độ {userProfile?.role === "superadmin" ? roleInfo.level : roleInfo.level - 1}
                             </span>
                             <h6 className="font-bold text-slate-800 text-sm mt-1">{roleInfo.displayName}</h6>
                             <span className="text-[10px] text-gray-400 font-mono block">Mã: {roleInfo.role}</span>
                           </div>
                           {roleInfo.isDefault && (
                             <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-150 rounded-sm text-[8px] font-bold font-mono">
-                              MẶC ĐỊNH
+                              Mặc định
                             </span>
                           )}
                         </div>

@@ -4,6 +4,11 @@ import {
   Play,
   RefreshCw,
   Video,
+  Palette,
+  Sparkles,
+  Route,
+  MonitorPlay,
+  Mic,
 } from "lucide-react";
 import type {
   RealEstateMapSceneSnapshot,
@@ -60,8 +65,8 @@ export function RealEstateMapStep3Script({
 
       {/* Tùy chỉnh VFX Style */}
       <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-2.5">
-        <label className="block text-[11px] font-bold text-slate-800">
-          🎨 Phong cách ánh sáng Neon:
+        <label className="flex items-center gap-1 text-[11px] font-bold text-slate-800">
+          <Palette size={13} />Phong cách ánh sáng Neon:
         </label>
         <div className="grid grid-cols-2 gap-1.5">
           {[
@@ -91,8 +96,8 @@ export function RealEstateMapStep3Script({
 
         {/* Các nút bật/tắt VFX Layer */}
         <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
-          <label className="block text-[11px] font-bold text-slate-800">
-            ✨ Hiệu ứng hình ảnh (VFX Layers):
+          <label className="flex items-center gap-1 text-[11px] font-bold text-slate-800">
+            <Sparkles size={13} />Hiệu ứng hình ảnh (VFX Layers):
           </label>
           <div className="grid grid-cols-2 gap-1.5 text-[11px]">
             <button
@@ -116,7 +121,7 @@ export function RealEstateMapStep3Script({
                   : "border-slate-200 bg-white text-slate-600"
               }`}
             >
-              <span>🛣️ Tuyến đường sáng</span>
+              <span className="flex items-center gap-1"><Route size={13} />Tuyến đường sáng</span>
               <span className="text-[10px]">{showAnimatedRoutes ? "Bật" : "Tắt"}</span>
             </button>
           </div>
@@ -165,11 +170,11 @@ export function RealEstateMapStep3Script({
                   <span>Cảnh 0{idx + 1}</span>
                   <span>{scene.startSeconds}s - {scene.endSeconds}s</span>
                 </div>
-                <p className="mt-1 font-semibold text-indigo-900 text-[11px]">
-                  📺 {(scene.onScreenText || []).join(" · ")}
+                <p className="mt-1 flex items-center gap-1 font-semibold text-indigo-900 text-[11px]">
+                  <MonitorPlay size={13} />{(scene.onScreenText || []).join(" · ")}
                 </p>
-                <p className="mt-0.5 text-slate-600 italic text-[11px] leading-relaxed">
-                  🎙️ &quot;{scene.narration}&quot;
+                <p className="mt-0.5 flex items-start gap-1 text-slate-600 italic text-[11px] leading-relaxed">
+                  <Mic size={13} className="shrink-0" />&quot;{scene.narration}&quot;
                 </p>
               </div>
             ))}

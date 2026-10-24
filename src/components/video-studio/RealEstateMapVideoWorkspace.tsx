@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   History,
   Layers,
   MapPin,
+  Clapperboard,
+  Video,
   PanelLeftClose,
   PanelRightClose,
   Plus,
@@ -706,7 +709,7 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
     const markerEl = document.createElement("div");
     markerEl.className =
       "flex h-9 w-9 items-center justify-center rounded-full bg-cyan-500 text-white shadow-2xl ring-4 ring-cyan-200/50 animate-bounce";
-    markerEl.innerHTML = `<span class="text-sm">📍</span>`;
+    markerEl.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>';
 
     markerRef.current = new maplibregl.Marker({ element: markerEl })
       .setLngLat([DEFAULT_LOCATION.lng, DEFAULT_LOCATION.lat])
@@ -773,7 +776,7 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
       const el = document.createElement("div");
       el.className =
         "flex items-center gap-1.5 rounded-full bg-slate-900/90 text-white px-2.5 py-1 text-[11px] font-bold shadow-xl border border-slate-700 backdrop-blur-xs cursor-pointer hover:scale-110 transition-transform";
-      el.innerHTML = `<span>📍</span><span class="truncate max-w-[120px]">${poi.name}</span>`;
+      el.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg><span class="truncate max-w-[120px]">${poi.name}</span>`;
       el.onclick = () => void handleSelectRouteToPoi(poi);
 
       const marker = new maplibregl.Marker({ element: el })
@@ -1074,12 +1077,17 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         {/* Nội dung chi tiết của Tool đang chọn */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              {activeGisTool === "polygon" && "⬡ Vẽ Vùng Đa Giác & Dự Án"}
-              {activeGisTool === "route-ab" && "🛣️ Vẽ Lộ Trình (A ➜ B)"}
-              {activeGisTool === "marker" && "📍 Tiện Ích & Điểm Ghim"}
-              {activeGisTool === "settings" && "⚙️ Kịch Bản & Cài Đặt"}
-              {activeGisTool === "history" && "🎬 Lịch Sử Render Video"}
+            <span className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider">
+              {activeGisTool === "polygon" && <Layers size={14} />}
+              {activeGisTool === "route-ab" && <Route size={14} />}
+              {activeGisTool === "marker" && <MapPin size={14} />}
+              {activeGisTool === "settings" && <Settings size={14} />}
+              {activeGisTool === "history" && <Clapperboard size={14} />}
+              {activeGisTool === "polygon" && "Vẽ Vùng Đa Giác & Dự Án"}
+              {activeGisTool === "route-ab" && <>Vẽ Lộ Trình (A <ArrowRight size={12} /> B)</>}
+              {activeGisTool === "marker" && "Tiện Ích & Điểm Ghim"}
+              {activeGisTool === "settings" && "Kịch Bản & Cài Đặt"}
+              {activeGisTool === "history" && "Lịch Sử Render Video"}
             </span>
             <button
               type="button"
@@ -1206,7 +1214,7 @@ export function RealEstateMapVideoWorkspace({ onBack }: RealEstateMapVideoWorksp
         {isPlaying3DCamera && (
           <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-2xl backdrop-blur-md border border-indigo-400 animate-bounce">
             <span className="flex h-2 w-2 rounded-full bg-white animate-ping" />
-            <span>🎥 Đang mô phỏng chuyển động Camera 3D điện ảnh (Fly-in & Orbit)</span>
+            <Video size={15} /><span>Đang mô phỏng chuyển động Camera 3D điện ảnh (Fly-in & Orbit)</span>
           </div>
         )}
 

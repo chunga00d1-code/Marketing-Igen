@@ -7,6 +7,17 @@ const MarketingCampaignSchema = new Schema<IMarketingCampaign>(
     createdBy: { type: String, required: true, index: true },
     title: { type: String, required: true },
     sourceBrief: { type: String, required: true },
+    chatHistory: {
+      type: [{
+        role: { type: String, enum: ["user", "assistant"], required: true },
+        text: { type: String, required: true },
+        at: { type: Date, default: Date.now },
+        _id: false,
+      }],
+      default: [],
+    },
+    draftRevision: { type: Number, default: 0 },
+    draftRevisionInProgress: { type: Boolean, default: false },
     campaignType: { type: String, enum: ["single", "campaign"], default: "campaign", index: true },
     status: {
       type: String,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle2, Info, Loader2, MessageSquare,
-  Repeat, Scissors, ShieldCheck, Users, X,
+  Repeat, Scissors, ShieldCheck, Users, X, Music,
 } from 'lucide-react';
 import type { CampaignSlot } from './CampaignDetailModal';
 import type { TikTokBatchPublishOptions } from '../../services/marketingCampaignService';
@@ -177,7 +177,7 @@ export default function TikTokBatchApprovalModal({
             <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100"><div className="flex items-start gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{creatorError}</span></div><button type="button" onClick={() => setReloadCreatorKey((value) => value + 1)} className="mt-3 rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-bold hover:bg-red-500/30">Thử lại</button></div>
           ) : creatorInfo ? (
             <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-[#18181c] p-4">
-              {creatorInfo.creatorAvatarUrl ? <img src={creatorInfo.creatorAvatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 font-bold">♪</div>}
+              {creatorInfo.creatorAvatarUrl ? <img src={creatorInfo.creatorAvatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 text-white"><Music size={20} /></div>}
               <div><p className="text-xs text-slate-400">Các video sẽ được đăng vào</p><p className="font-extrabold">{creatorInfo.creatorNickname}</p><p className="text-xs text-slate-400">@{creatorInfo.creatorUsername}</p></div>
             </div>
           ) : null}

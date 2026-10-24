@@ -41,6 +41,8 @@ export interface MarketingCampaignSummary {
   _id: string;
   title: string;
   sourceBrief: string;
+  chatHistory?: Array<{ role: 'user' | 'assistant'; text: string; at: string }>;
+  draftRevision?: number;
   campaignType?: 'single' | 'campaign';
   status: CampaignStatus;
   timezone: string;
@@ -608,6 +610,13 @@ export const marketingCampaignService = {
       campaign: MarketingCampaignSummary;
       preparation: { enqueued: number; deferred: number };
     }>(`/api/v1/marketing-campaigns/${id}/activate`, { method: 'POST' });
+  },
+
+  reviseDraft(id: string, instruction: string, expectedRevision: number) {
+    return request<{ campaign: MarketingCampaignSummary; slots: CampaignSlot[] }>(
+      `/api/v1/marketing-campaigns/${id}/revise-draft`,
+      { method: 'POST', body: JSON.stringify({ instruction, expectedRevision }), signal: AbortSignal.timeout(240_000) }
+    );
   },
 
   lifecycle(id: string, action: 'pause' | 'resume' | 'cancel') {

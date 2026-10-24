@@ -211,7 +211,7 @@ export function ContextMenu({
             <Trash2 className="h-4 w-4 text-rose-500" />
             {hasLayerSelected ? 'Xóa layer' : 'Xóa nền'}
           </span>
-          <kbd className="text-[10px] text-rose-400 font-sans">DELETE</kbd>
+          <kbd className="text-[10px] text-rose-400 font-sans">Delete</kbd>
         </button>
 
         <div className="my-1 border-t border-slate-100" />

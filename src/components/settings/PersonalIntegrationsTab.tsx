@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from "react";
-import { CheckCircle, Send } from "lucide-react";
+import { CheckCircle, Send, ArrowRight } from "lucide-react";
 import { authService } from "../../services/authService";
 import { toast } from "../../pages/Toast";
 
@@ -141,8 +141,8 @@ export default function PersonalIntegrationsTab() {
                   <p className="text-xs font-bold text-slate-800">
                     Mã liên kết của bạn: <span className="font-mono text-sm text-sky-600 bg-sky-50 px-2 py-0.5 rounded border border-sky-100">{telegramStatus.pendingCode}</span>
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-2 leading-relaxed">
-                    👉 Hướng dẫn hoàn tất kết nối:
+                  <p className="mt-2 flex items-center gap-1 text-[10px] leading-relaxed text-slate-500">
+                    <ArrowRight size={12} />Hướng dẫn hoàn tất kết nối:
                   </p>
                   <ol className="list-decimal list-inside mt-1.5 space-y-1 text-[10px] text-slate-600 leading-relaxed">
                     <li>Nhấn vào nút <b>Kết nối trực tiếp trên Telegram</b> bên dưới để mở bot.</li>

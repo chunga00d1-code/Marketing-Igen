@@ -15,6 +15,7 @@ import {
   LoaderCircle,
   ChevronLeft,
   ChevronRight,
+  Link2,
 } from 'lucide-react';
 import type {
   EditorTool,
@@ -707,7 +708,7 @@ export function EditorPanel(props: EditorPanelProps) {
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-bold text-slate-800">{layer.fieldName}</span>
                           {layer.dataBinding && (
-                            <span className="mt-0.5 block truncate text-[10px] font-semibold text-violet-500">🔗 {layer.dataBinding.columnLabel}</span>
+                            <span className="mt-0.5 flex items-center gap-1 truncate text-[10px] font-semibold text-violet-500"><Link2 size={11} />{layer.dataBinding.columnLabel}</span>
                           )}
                         </span>
                       </button>

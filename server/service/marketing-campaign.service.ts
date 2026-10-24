@@ -12,7 +12,7 @@ import { geminiService } from "./gemini.service";
 import { CampaignMatrixGeneratorService } from "./agents/campaign-matrix-generator.service";
 import { CampaignOrchestratorService } from "./agents/campaign-orchestrator.service";
 import { scanAndEnqueueDueSlots } from "./campaign-scheduler.service";
-import { API_COSTS } from "./wallet.service";
+import { API_COSTS, walletService } from "./wallet.service";
 import { listGoogleDriveFolderFiles, getGoogleDriveDirectLink } from "./marketing-campaign-helper";
 import { assertCampaignDraftCanActivate } from "./marketing-campaign-activation.service";
 
@@ -228,7 +228,7 @@ export const marketingCampaignService = {
     });
 
     const minLeadTimeMs = 15 * 60 * 1000;
-    if (!activateImmediately) {
+    if (!activateImmediately && input.campaignType !== "single") {
       const failingSlot = schedule.find((slot) => slot.scheduledAt.getTime() - now.getTime() < minLeadTimeMs);
       if (failingSlot) {
         const formatZonedTime = (date: Date) => {
@@ -349,6 +349,10 @@ export const marketingCampaignService = {
       createdBy,
       title: strategy.campaignTitle,
       sourceBrief: input.sourceBrief,
+      chatHistory: [
+        { role: "user", text: input.sourceBrief, at: now },
+        { role: "assistant", text: "Đã lập kế hoạch chiến dịch. Mở chi tiết để xem các bài dự kiến và nhắn tiếp nếu cần điều chỉnh.", at: now },
+      ],
       campaignType: input.campaignType || "campaign",
       researchReport,
       status: activateImmediately ? "active" : "draft",
@@ -399,7 +403,7 @@ export const marketingCampaignService = {
         // Try to assign matching angle if available
         const matchingAngle = allAngles.find((a) => a.funnel === funnelStage);
 
-        const isPastOrImmediate = activateImmediately || scheduledSlot.scheduledAt.getTime() <= Date.now();
+        const isPastOrImmediate = activateImmediately || input.campaignType === "single" || scheduledSlot.scheduledAt.getTime() <= Date.now();
         const finalScheduledAt = isPastOrImmediate ? new Date() : scheduledSlot.scheduledAt;
         const finalPrepareAt = isPastOrImmediate ? new Date() : scheduledSlot.prepareAt;
         const mediaType = scheduledSlot.platform === "TikTok" && !["video", "human-video"].includes(brief.mediaType)
@@ -670,9 +674,121 @@ export const marketingCampaignService = {
     return campaign;
   },
 
+  async reviseDraft(companyCode: string, createdBy: string, campaignId: string, instruction: string, expectedRevision: number) {
+    if (!mongoose.Types.ObjectId.isValid(campaignId)) throw new Error("ID chiến dịch không hợp lệ.");
+    const campaign = await MarketingCampaignModel.findOne({
+      _id: campaignId, companyCode, createdBy, status: "draft",
+    });
+    if (!campaign) throw new Error("Chỉ người tạo mới có thể sửa bản nháp chiến dịch bằng hội thoại.");
+    if ((campaign.draftRevision || 0) !== expectedRevision) {
+      throw new Error("Kế hoạch đã được cập nhật ở nơi khác. Vui lòng tải lại trước khi sửa tiếp.");
+    }
+    const nextBrief = `${campaign.sourceBrief}\n\nYÊU CẦU ĐIỀU CHỈNH BẢN NHÁP ${expectedRevision + 1}:\n${instruction}`;
+    if (nextBrief.length > 30000) throw new Error("Brief chiến dịch đã đạt giới hạn 30.000 ký tự.");
+
+    const stored = campaign.toObject();
+    const customSchedule = stored.customSchedule instanceof Map
+      ? Object.fromEntries(stored.customSchedule)
+      : stored.customSchedule;
+    const schedule = buildCampaignSchedule({
+      startDate: campaign.startDate,
+      endDate: campaign.endDate,
+      postsPerDay: campaign.postsPerDay,
+      postingTimes: campaign.postingTimes,
+      timezone: campaign.timezone,
+      platforms: campaign.platforms,
+      generationLeadMinutes: campaign.generationLeadMinutes,
+      verificationLeadMinutes: campaign.verificationLeadMinutes,
+      customSchedule,
+      campaignCreatedAt: campaign.createdAt,
+      monthlyPreparationLeadDays: campaign.monthlyPreparationLeadDays,
+    });
+    const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode, status: "planned" });
+    if (slots.length !== schedule.length) throw new Error("Lịch bài đã thay đổi. Vui lòng tải lại chi tiết chiến dịch.");
+    const existingPlan = slots.map((slot) => ({
+      platform: slot.platform, scheduledAt: slot.scheduledAt, pillar: slot.pillar,
+      objective: slot.objective, topicBrief: slot.topicBrief, mediaType: slot.mediaType,
+    }));
+    await walletService.checkBalance(createdBy, API_COSTS.CAMPAIGN_STRATEGY);
+    const strategy = await geminiService.generateScheduledCampaign({
+      prompt: `${nextBrief}\n\nKẾ HOẠCH HIỆN TẠI (chỉ thay đổi phần người dùng yêu cầu):\n${JSON.stringify(existingPlan)}`,
+      startDate: campaign.startDate,
+      endDate: campaign.endDate,
+      postsPerDay: campaign.postsPerDay,
+      postingTimes: campaign.postingTimes,
+      channels: campaign.platforms,
+      customSchedule,
+      researchReport: campaign.researchReport,
+      rules: campaign.rules,
+    });
+    if (strategy.slots.length !== schedule.length) throw new Error("AI trả về lịch bài không đầy đủ.");
+    const slotBySchedule = new Map(slots.map((slot) => [`${slot.scheduledAt.getTime()}:${slot.platform}`, slot]));
+    const updates = schedule.map((scheduled, index) => {
+      const slot = campaign.campaignType === "single" ? slots[index] : slotBySchedule.get(`${scheduled.scheduledAt.getTime()}:${scheduled.platform}`);
+      if (!slot) throw new Error("Lịch bài đã thay đổi. Vui lòng tải lại chi tiết chiến dịch.");
+      const proposal = strategy.slots[index];
+      const mediaType = scheduled.platform === "TikTok" ? "video"
+        : campaign.imageMode === "order" && proposal.mediaType === "text" ? "image" : proposal.mediaType;
+      return {
+        updateOne: {
+          filter: { _id: slot._id, campaignId: campaign._id, companyCode, status: "planned" as const },
+          update: {
+            $set: { pillar: proposal.pillar, objective: proposal.objective, topicBrief: proposal.topicBrief, mediaType },
+            $push: { transitions: { from: "planned" as const, to: "planned" as const, reason: `Draft revised from campaign chat, revision ${expectedRevision + 1}`, at: new Date() } },
+          },
+        },
+      };
+    });
+    const revisionFilter = expectedRevision === 0
+      ? { $or: [{ draftRevision: 0 }, { draftRevision: { $exists: false } }] }
+      : { draftRevision: expectedRevision };
+    const claimed = await MarketingCampaignModel.findOneAndUpdate(
+      { _id: campaign._id, companyCode, createdBy, status: "draft", draftRevisionInProgress: { $ne: true }, ...revisionFilter },
+      { $set: { draftRevisionInProgress: true } },
+      { new: true }
+    );
+    if (!claimed) throw new Error("Kế hoạch đang được sửa hoặc đã thay đổi. Vui lòng tải lại trước khi thử tiếp.");
+    let committed = false;
+    try {
+      await walletService.deductBalance(createdBy, API_COSTS.CAMPAIGN_STRATEGY, "Chi phí điều chỉnh kế hoạch chiến dịch bằng AI", `${campaignId}:draft-revision:${expectedRevision + 1}`);
+      const result = await MarketingCampaignSlotModel.bulkWrite(updates);
+      if (result.modifiedCount !== schedule.length) throw new Error("Một số bài đã thay đổi trong khi sửa kế hoạch.");
+      const revised = await MarketingCampaignModel.findOneAndUpdate(
+        { _id: campaign._id, companyCode, createdBy, status: "draft", draftRevisionInProgress: true, ...revisionFilter },
+        {
+          $set: { title: strategy.campaignTitle, contentPillars: strategy.contentPillars, sourceBrief: nextBrief, draftRevisionInProgress: false },
+          $inc: { draftRevision: 1 },
+          $push: { chatHistory: { $each: [
+            { role: "user", text: instruction, at: new Date() },
+            { role: "assistant", text: "Đã cập nhật bản kế hoạch theo yêu cầu. Mở chi tiết để kiểm tra trước khi khởi chạy.", at: new Date() },
+          ], $slice: -30 } },
+        },
+        { new: true }
+      );
+      if (!revised) throw new Error("Không thể hoàn tất cập nhật bản nháp. Vui lòng thử lại.");
+      committed = true;
+      return { campaign: revised, slots: await MarketingCampaignSlotModel.find({ campaignId, companyCode }).sort({ scheduledAt: 1 }) };
+    } catch (error) {
+      if (!committed) {
+        await MarketingCampaignSlotModel.bulkWrite(slots.map((slot) => ({
+          updateOne: {
+            filter: { _id: slot._id, campaignId: campaign._id, companyCode, status: "planned" as const },
+            update: { $set: { pillar: slot.pillar, objective: slot.objective, topicBrief: slot.topicBrief, mediaType: slot.mediaType } },
+          },
+        }))).catch((restoreError) => console.error("[Marketing Campaign] Unable to restore draft slots after revision failure:", restoreError));
+      }
+      throw error;
+    } finally {
+      await MarketingCampaignModel.updateOne(
+        { _id: campaign._id, companyCode, createdBy, draftRevisionInProgress: true },
+        { $set: { draftRevisionInProgress: false } }
+      );
+    }
+  },
+
   async activate(companyCode: string, campaignId: string) {
     if (!mongoose.Types.ObjectId.isValid(campaignId)) throw new Error("ID chiến dịch không hợp lệ.");
-    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode, status: "draft" });
+    const campaign = await MarketingCampaignModel.findOne({ _id: campaignId, companyCode, status: "draft", draftRevisionInProgress: { $ne: true } });
     if (!campaign) throw new Error("Chỉ bản nháp mới có thể được xác nhận khởi chạy.");
 
     const slots = await MarketingCampaignSlotModel.find({ campaignId, companyCode })
@@ -682,6 +798,7 @@ export const marketingCampaignService = {
       slots,
       enabledPlatforms: campaign.platforms,
       timezone: campaign.timezone,
+      publishImmediately: campaign.campaignType === "single",
     });
 
     await validateIntegrations(
@@ -692,9 +809,17 @@ export const marketingCampaignService = {
       )
     );
 
+    if (campaign.campaignType === "single") {
+      const now = new Date();
+      await MarketingCampaignSlotModel.updateOne(
+        { _id: slots[0]._id, campaignId, companyCode, status: "planned" },
+        { $set: { scheduledAt: now, prepareAt: now, verifyAt: now } }
+      );
+    }
+
     const activatedAt = new Date();
     const activatedCampaign = await MarketingCampaignModel.findOneAndUpdate(
-      { _id: campaignId, companyCode, status: "draft" },
+      { _id: campaignId, companyCode, status: "draft", draftRevisionInProgress: { $ne: true } },
       { $set: { status: "active" } },
       { new: true }
     );

@@ -15,7 +15,7 @@ export function UserAdminTabs({ activeTab, onChange, userProfile }: Props) {
         onClick={() => onChange("users")}
         className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer select-none ${
           activeTab === "users"
-            ? "bg-[#0284c7] text-white shadow-xs"
+            ? "bg-blue-600 text-white shadow-xs"
             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
         }`}
       >
@@ -26,7 +26,7 @@ export function UserAdminTabs({ activeTab, onChange, userProfile }: Props) {
         onClick={() => onChange("roles")}
         className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer select-none ${
           activeTab === "roles"
-            ? "bg-[#0284c7] text-white shadow-xs"
+            ? "bg-blue-600 text-white shadow-xs"
             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
         }`}
       >
@@ -38,7 +38,7 @@ export function UserAdminTabs({ activeTab, onChange, userProfile }: Props) {
           onClick={() => onChange("balance")}
           className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer select-none ${
             activeTab === "balance"
-              ? "bg-[#0284c7] text-white shadow-xs"
+              ? "bg-blue-600 text-white shadow-xs"
               : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
           }`}
         >
