@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
+import { randomUUID } from "node:crypto";
 import { TikTokConversationModel, TikTokMessageModel } from "../model/tiktok-messenger.model";
 import { UserModel } from "../model/user.model";
-import { emitToPage } from "../socket";
+import { emitToMessengerAccount } from "../socket";
 import { aiAutoReplyService } from "./ai-auto-reply.service";
 
 export const tiktokMessengerService = {
@@ -37,14 +38,15 @@ export const tiktokMessengerService = {
       const content = event.content || event.message || event;
       const senderOpenId = content.sender?.open_id || content.open_id || content.from_user_id || content.sender_id || "";
       const messageText = content.text || content.message_text || content.content?.text || "";
-      const messageId = content.msg_id || content.message_id || content.server_message_id || `tt_in_${Date.now()}`;
+      const messageId = content.msg_id || content.message_id || content.server_message_id || `tt_in_${randomUUID()}`;
       const timestamp = content.create_time ? new Date(content.create_time * 1000) : new Date();
       const senderName = content.sender?.display_name || content.sender?.nickname || "Khách hàng TikTok";
       const avatarUrl = content.sender?.avatar_url || content.sender?.avatar || "";
       const conversationId = content.conversation_id || content.conversation_short_id || "";
 
       // Xác định Business Account ID (receiver)
-      const businessAccountId = content.receiver?.open_id || content.to_user_id || content.business_id || "";
+      const businessAccountId = content.receiver?.open_id || content.to_user_id || content.business_id ||
+        event.receiver?.open_id || event.to_user_id || event.business_id || "";
 
       if (!senderOpenId) {
         console.warn("[TikTok Messenger] Không tìm thấy sender open_id trong webhook payload:", JSON.stringify(content).substring(0, 300));
@@ -55,12 +57,27 @@ export const tiktokMessengerService = {
       let resolvedBusinessAccountId = businessAccountId;
       if (!resolvedBusinessAccountId) {
         const { SocialIntegrationModel } = require("../model/social-integration.model");
-        const tiktokIntegration = await SocialIntegrationModel.findOne({
-          platform: "TikTok",
-          isConnected: true
-        }).lean();
-        if (tiktokIntegration) {
-          resolvedBusinessAccountId = tiktokIntegration.username || "";
+        const [companyAccountIds, personalAccountIds] = await Promise.all([
+          SocialIntegrationModel.distinct("username", {
+            platform: "TikTok",
+            isConnected: true,
+            username: { $nin: [null, ""] },
+          }),
+          UserModel.distinct("tiktokIntegration.username", {
+            "tiktokIntegration.isConnected": true,
+            "tiktokIntegration.username": { $nin: [null, ""] },
+          }),
+        ]);
+        const connectedAccountIds = Array.from(new Set(
+          [...companyAccountIds, ...personalAccountIds]
+            .map((accountId) => String(accountId || "").trim())
+            .filter(Boolean),
+        ));
+        if (connectedAccountIds.length === 1) {
+          resolvedBusinessAccountId = connectedAccountIds[0];
+        } else if (connectedAccountIds.length > 1) {
+          console.warn("[TikTok Messenger] Webhook thiếu Business Account ID và có nhiều tài khoản đang kết nối. Bỏ qua để tránh lưu nhầm hội thoại.");
+          return;
         }
       }
 
@@ -70,6 +87,13 @@ export const tiktokMessengerService = {
       }
 
       console.log(`[TikTok Messenger] Xử lý tin nhắn đến: sender=${senderOpenId}, business=${resolvedBusinessAccountId}, msgId=${messageId}, text="${messageText.substring(0, 50)}"`);
+
+      // Ignore provider retries before changing unread counts or conversation state.
+      const existingMsg = await TikTokMessageModel.findOne({ messageId });
+      if (existingMsg) {
+        console.log(`[TikTok Messenger] Tin nhắn đã tồn tại (messageId=${messageId}), bỏ qua.`);
+        return;
+      }
 
       // Tìm hoặc tạo conversation
       let conversation = await TikTokConversationModel.findOne({
@@ -108,13 +132,6 @@ export const tiktokMessengerService = {
         await conversation.save();
       }
 
-      // Kiểm tra trùng lặp tin nhắn
-      const existingMsg = await TikTokMessageModel.findOne({ messageId });
-      if (existingMsg) {
-        console.log(`[TikTok Messenger] Tin nhắn đã tồn tại (messageId=${messageId}), bỏ qua.`);
-        return;
-      }
-
       // Lưu tin nhắn vào DB
       const newMessage = new TikTokMessageModel({
         conversationId: conversation._id,
@@ -132,11 +149,11 @@ export const tiktokMessengerService = {
       console.log(`[TikTok Messenger] Đã lưu tin nhắn inbound: msgId=${messageId}, conversationId=${conversation._id}`);
 
       // Emit Socket.IO để cập nhật realtime cho Frontend
-      emitToPage(resolvedBusinessAccountId, "new_message", {
+      emitToMessengerAccount("tiktok", resolvedBusinessAccountId, "new_message", {
         message: newMessage,
         conversation,
       });
-      emitToPage(resolvedBusinessAccountId, "conversation_updated", conversation);
+      emitToMessengerAccount("tiktok", resolvedBusinessAccountId, "conversation_updated", conversation);
 
       // Trigger AI Auto-Reply nếu có cấu hình
       if (messageText.trim()) {
@@ -255,7 +272,7 @@ export const tiktokMessengerService = {
     if (conversation.unreadCount !== 0) {
       conversation.unreadCount = 0;
       await conversation.save();
-      emitToPage(businessAccountId, "conversation_updated", conversation);
+      emitToMessengerAccount("tiktok", businessAccountId, "conversation_updated", conversation);
     }
 
     return { success: true };
@@ -271,7 +288,7 @@ export const tiktokMessengerService = {
     }
     conversation.aiPausedUntil = undefined;
     await conversation.save();
-    emitToPage(businessAccountId, "conversation_updated", conversation);
+    emitToMessengerAccount("tiktok", businessAccountId, "conversation_updated", conversation);
     return conversation;
   },
 
@@ -300,7 +317,7 @@ export const tiktokMessengerService = {
     const recipientOpenId = conversation.openId;
     console.log(`[TikTok SendReply] businessAccountId=${businessAccountId}, conversationId=${conversationId}, recipientOpenId=${recipientOpenId}, textLength=${text.length}, isMock=${isMock}`);
 
-    const messageId = `tt_out_${Date.now()}`;
+    const messageId = `tt_out_${randomUUID()}`;
     const sentAt = new Date();
     const newMsg = new TikTokMessageModel({
       conversationId: conversation._id,
@@ -315,11 +332,11 @@ export const tiktokMessengerService = {
     });
 
     const emitRealtimeUpdate = () => {
-      emitToPage(businessAccountId, "new_message", {
+      emitToMessengerAccount("tiktok", businessAccountId, "new_message", {
         message: newMsg,
         conversation: conversation
       });
-      emitToPage(businessAccountId, "conversation_updated", conversation);
+      emitToMessengerAccount("tiktok", businessAccountId, "conversation_updated", conversation);
     };
 
     // Gửi thật qua TikTok Business Messaging API

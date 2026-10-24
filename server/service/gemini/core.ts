@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { exec } from "child_process";
 import { AIMediaModel } from "../../model/ai-media.model";
 import { openrouterChat, mapModelName, type OpenRouterMessage, type OpenRouterContentPart } from "../openrouter.service";
+import { AI_REPLY_PRIMARY_MODEL, AI_REPLY_FALLBACK_MODEL } from "../../../shared/ai-reply-models";
 import type {
   ChatIntent,
   FaithFulVisualGuardrailInput,
@@ -16,8 +17,8 @@ export const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 export const GEMINI_TEXT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 export const GEMINI_HEAVY_MODEL = process.env.GEMINI_HEAVY_MODEL || "gemini-3.5-flash";
 export const HTML_VIDEO_MODEL = process.env.HTML_VIDEO_MODEL || process.env.GEMINI_MODEL || "google/gemini-2.5-flash";
-export const AI_REPLY_MESSAGE_MODEL = process.env.AI_REPLY_MESSAGE_MODEL || process.env.GEMINI_MODEL || "deepseek-v4-flash-0731";
-export const AI_REPLY_COMMENT_MODEL = process.env.AI_REPLY_COMMENT_MODEL || process.env.GEMINI_MODEL || "deepseek-v4-flash-0731";
+export const AI_REPLY_MESSAGE_MODEL = AI_REPLY_PRIMARY_MODEL;
+export const AI_REPLY_COMMENT_MODEL = AI_REPLY_PRIMARY_MODEL;
 
 export const Type = {
   OBJECT: "object",
@@ -363,6 +364,27 @@ export async function buildOpenRouterMessages(
     msgs.push({ role: "user", content: String(contents) });
   }
 
+  // Config images also belong to the newest user turn when history uses contents[].
+  if (Array.isArray(contents) && images?.length) {
+    const latestUser = [...msgs].reverse().find(message => message.role === "user");
+    if (latestUser?.role === "user") {
+      const parts: OpenRouterContentPart[] = typeof latestUser.content === "string"
+        ? [{ type: "text", text: latestUser.content }] : [...latestUser.content];
+      for (const source of images) {
+        let dataUrl = source;
+        if (!source.startsWith("data:")) {
+          const downloaded = await fetchImageAsBase64(source);
+          if (!downloaded) throw new Error("Unable to load a required image");
+          dataUrl = `data:${downloaded.mimeType};base64,${downloaded.data}`;
+        }
+        if (!parts.some(part => part.type === "image_url" && part.image_url.url === dataUrl)) {
+          parts.push({ type: "image_url", image_url: { url: dataUrl } });
+        }
+      }
+      latestUser.content = parts;
+    }
+  }
+
   return msgs;
 }
 
@@ -381,7 +403,9 @@ export async function generateText(
   );
 
   const displayModel = mapModelName(modelId);
-  console.log(`[generateText] Calling OpenRouter | model=${displayModel} | msgs=${messages.length} | hasSchema=${!!config?.responseSchema} | hasImages=${!!(config?.images?.length)}`);
+  const hasImages = messages.some(message => message.role === "user" && Array.isArray(message.content)
+    && message.content.some(part => part.type === "image_url"));
+  console.log(`[generateText] Calling OpenRouter | model=${displayModel} | msgs=${messages.length} | hasSchema=${!!config?.responseSchema} | hasImages=${hasImages}`);
 
   try {
     const res = await openrouterChat({
@@ -392,7 +416,9 @@ export async function generateText(
       responseSchema: config?.responseSchema,
       maxRetries: config?.maxRetries,
       timeoutMs: config?.timeoutMs,
+      deadlineAt: config?.deadlineAt,
       maxTokens: config?.maxTokens,
+      reasoning: config?.reasoning,
     });
 
     if (needsJson) {
@@ -401,9 +427,11 @@ export async function generateText(
 
     return res;
   } catch (error: any) {
-    const fallbackModel =
-      config?.fallbackModel ||
-      process.env.FALLBACK_MODEL || "google/gemini-2.5-flash";
+    // A text fallback must not silently answer a visual question without vision support.
+    if (hasImages && config?.allowImageFallback === false) throw error;
+    const fallbackModel = modelId === AI_REPLY_PRIMARY_MODEL
+      ? AI_REPLY_FALLBACK_MODEL
+      : config?.fallbackModel || process.env.FALLBACK_MODEL || AI_REPLY_FALLBACK_MODEL;
     console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
 
     try {
@@ -415,7 +443,9 @@ export async function generateText(
         responseSchema: config?.responseSchema,
         maxRetries: config?.fallbackMaxRetries ?? config?.maxRetries,
         timeoutMs: config?.fallbackTimeoutMs ?? config?.timeoutMs,
+        deadlineAt: config?.deadlineAt,
         maxTokens: config?.maxTokens,
+        reasoning: config?.reasoning,
       });
 
       if (needsJson) {

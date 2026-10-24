@@ -676,7 +676,7 @@ export function KlingMotionWorkspace({
                         ) : (
                           <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-[8px] font-bold text-violet-400 uppercase tracking-widest p-1 text-center">
                             <Loader2 className="h-4 w-4 animate-spin mb-1 text-violet-500" />
-                            ĐANG DỰNG
+                            Đang dựng
                             {record.metadata?.progress !== undefined && ` ${record.metadata.progress}%`}
                           </div>
                         )}

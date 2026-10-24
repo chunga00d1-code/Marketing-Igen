@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, ChevronLeft, ChevronRight, Sparkles, Video, Layers, Zap, Check, Eye } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Sparkles, Video, Layers, Zap, Check, Eye, Lightbulb, Megaphone, Palette, ArrowRight } from "lucide-react";
 
 interface IdeationGuideModalProps {
   isOpen: boolean;
@@ -26,7 +26,7 @@ export default function IdeationGuideModal({ isOpen, onClose }: IdeationGuideMod
           </p>
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-3.5 space-y-2">
             <h5 className="text-[11px] font-bold text-indigo-850 uppercase tracking-wider font-mono flex items-center gap-1.5">
-              💡 Mẹo nhỏ cho bạn:
+              <Lightbulb size={14} />Mẹo nhỏ cho bạn:
             </h5>
             <ul className="text-xs text-slate-600 space-y-1.5 list-disc pl-4">
               <li>Bạn có thể đính kèm file tài liệu (<span className="font-semibold text-indigo-700">PDF, Word, TXT, MD</span>) để AI đọc và trích xuất dữ liệu chính xác nhất.</li>
@@ -49,13 +49,13 @@ export default function IdeationGuideModal({ isOpen, onClose }: IdeationGuideMod
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
             <div className="p-3 border border-slate-100 bg-slate-50/60 rounded-xl">
-              <span className="text-xs font-bold text-slate-850 block mb-1">📢 Chọn nền tảng:</span>
+              <span className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-850"><Megaphone size={14} />Chọn nền tảng:</span>
               <p className="text-[11px] text-slate-500 leading-relaxed">
                 Tích hợp sẵn <span className="font-semibold text-slate-700">Facebook</span> và <span className="font-semibold text-slate-700">TikTok</span>. Bạn có thể chọn đăng song song cả hai kênh.
               </p>
             </div>
             <div className="p-3 border border-slate-100 bg-slate-50/60 rounded-xl">
-              <span className="text-xs font-bold text-slate-850 block mb-1">🎨 Chọn loại Media:</span>
+              <span className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-850"><Palette size={14} />Chọn loại Media:</span>
               <p className="text-[11px] text-slate-500 leading-relaxed font-sans">
                 Linh hoạt giữa <span className="font-semibold text-slate-700">Hình ảnh AI</span>, <span className="font-semibold text-slate-700">Video AI</span> ngắn, hoặc độc đáo nhất là <span className="font-semibold text-slate-700">Video người ảo AI</span> tự động đọc lời thoại.
               </p>
@@ -95,8 +95,8 @@ export default function IdeationGuideModal({ isOpen, onClose }: IdeationGuideMod
               </div>
             </div>
           </div>
-          <p className="text-[11px] text-slate-500 italic">
-            👉 Bạn có thể bật/tắt hoặc bấm "Đổi trụ cột" để AI tạo phương án mới phù hợp hơn.
+          <p className="flex items-start gap-1.5 text-[11px] text-slate-500 italic">
+            <ArrowRight size={13} className="shrink-0" />Bạn có thể bật/tắt hoặc bấm "Đổi trụ cột" để AI tạo phương án mới phù hợp hơn.
           </p>
         </div>
       )
@@ -182,8 +182,8 @@ export default function IdeationGuideModal({ isOpen, onClose }: IdeationGuideMod
         {/* Stepper Progress Bar */}
         <div className="px-6 pt-5 shrink-0">
           <div className="flex items-center justify-between gap-1 text-[10px] font-mono font-bold text-indigo-600 mb-2">
-            <span>TIẾN TRÌNH HƯỚNG DẪN</span>
-            <span>BƯỚC {currentStep + 1} / {steps.length}</span>
+            <span>Tiến trình hướng dẫn</span>
+            <span>Bước {currentStep + 1} / {steps.length}</span>
           </div>
           <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden flex gap-0.5">
             {steps.map((_, idx) => (

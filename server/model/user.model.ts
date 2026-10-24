@@ -1,5 +1,6 @@
 import { Schema, model } from "mongoose";
 import { IUser } from "../interface/user.interface";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 
 const FacebookIntegrationSchema = new Schema(
   {
@@ -53,6 +54,7 @@ export const AiAutoReplyConfigSchema = new Schema(
   {
     enabled: { type: Boolean, default: true },
     commentReplyEnabled: { type: Boolean, default: true },
+    imageReplyEnabled: { type: Boolean, default: false },
     autoClassify: { type: Boolean, default: true },
     autoCloseDeal: { type: Boolean, default: false },
     autoFeedback: { type: Boolean, default: false },
@@ -62,7 +64,7 @@ export const AiAutoReplyConfigSchema = new Schema(
     customerServiceScript: { type: String, default: "" },
     customerServiceScriptFileName: { type: String, default: "" },
     trainingKnowledge: { type: String, default: "" },
-    model: { type: String, default: "deepseek-v4-flash-0731" },
+    model: { type: String, default: AI_REPLY_PRIMARY_MODEL },
     autoFollowUpEnabled: { type: Boolean, default: false },
     followUpDelayHours: { type: Number, default: 2 },
     followUpPrompt: { type: String, default: "" },

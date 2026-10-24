@@ -142,7 +142,7 @@ export function UserListTable({
                       >
                         {[
                           ...getAvailableRoles(),
-                          ...(!getAvailableRoles().some((r) => r.role === usr.role) ? [{ role: usr.role, displayName: usr.role.toUpperCase(), level: 99 }] : []),
+                          ...(!getAvailableRoles().some((r) => r.role === usr.role) ? [{ role: usr.role, displayName: usr.role, level: 99 }] : []),
                         ].map((r, index) => (
                           <option key={`${usr.uid}-${r.role}-${index}`} value={r.role}>
                             {r.displayName}

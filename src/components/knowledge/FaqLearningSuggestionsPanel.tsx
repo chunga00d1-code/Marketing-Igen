@@ -53,8 +53,12 @@ export function FaqLearningSuggestionsPanel({
     setLoading(true);
     try {
       const res = await companyKnowledgeService.listFaqCandidates(filterStatus);
-      setCandidates(res.candidates);
-      setStats(res.stats);
+      setCandidates(Array.isArray(res.candidates) ? res.candidates : []);
+      setStats({
+        pending: res.stats?.pending ?? 0,
+        approved: res.stats?.approved ?? 0,
+        rejected: res.stats?.rejected ?? 0,
+      });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Không thể tải danh sách đề xuất FAQ.");
     } finally {

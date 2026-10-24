@@ -184,7 +184,7 @@ export default function Header({ currentTab, onSearchSelect }: HeaderProps) {
                   {userProfile.displayName}
                 </span>
                 <span className="text-[9px] text-gray-400 font-medium tracking-wide">
-                  {userProfile.role.toUpperCase()}
+                  {userProfile.role}
                 </span>
               </div>
             </button>

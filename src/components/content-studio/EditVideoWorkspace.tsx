@@ -1679,7 +1679,7 @@ export function EditVideoWorkspace({
                               className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-cyan-400 ring-1 ring-cyan-300/50 bg-cyan-50/30' : 'border-slate-200 hover:border-slate-300'}`}
                             >
                               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span className="text-[10px] font-bold text-cyan-600 tracking-wider">LỚP CHỮ #{idx + 1}</span>
+                                <span className="text-[10px] font-bold text-cyan-600 tracking-wider">Lớp chữ #{idx + 1}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTimelineItem(idx)}
@@ -1778,7 +1778,7 @@ export function EditVideoWorkspace({
                               className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-purple-400 ring-1 ring-purple-300/50 bg-purple-50/20' : 'border-slate-200 hover:border-slate-300'}`}
                             >
                               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span className="text-[10px] font-bold text-purple-600 tracking-wider">NHẠC NỀN #{idx + 1}</span>
+                                <span className="text-[10px] font-bold text-purple-600 tracking-wider">Nhạc nền #{idx + 1}</span>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTimelineItem(idx)}
@@ -1848,7 +1848,7 @@ export function EditVideoWorkspace({
                               className={`p-4 rounded-2xl border bg-white flex flex-col gap-3 shadow-xs cursor-pointer transition-all ${activeTimelineIdx === idx ? 'border-slate-500 ring-1 ring-slate-300/80 bg-slate-50/50' : 'border-slate-200 hover:border-slate-300'}`}
                             >
                               <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span className="text-[10px] font-bold text-slate-600 tracking-wider">VIDEO CLIPS NGUỒN #{idx + 1}</span>
+                                <span className="text-[10px] font-bold text-slate-600 tracking-wider">Video clip nguồn #{idx + 1}</span>
                               </div>
                               <div className="grid gap-3 sm:grid-cols-2">
                                 <div className="flex gap-2">
@@ -2067,12 +2067,12 @@ export function EditVideoWorkspace({
                           <div className="max-w-md space-y-2">
                             <p className={`text-sm font-bold uppercase tracking-wider ${statusVal === 'failed' ? 'text-rose-600' : 'text-slate-900'}`}>
                               {statusVal === 'failed'
-                                ? 'TIẾN TRÌNH DỰNG VIDEO THẤT BẠI'
+                                ? 'Tiến trình dựng video thất bại'
                                 : statusVal === 'queued'
-                                  ? 'ĐANG CHỜ TRONG HÌNG ĐỢI...'
+                                  ? 'Đang chờ trong hàng đợi...'
                                   : isLocalRender
-                                    ? 'ĐANG TIẾN HÀNH DỰNG VIDEO...'
-                                    : 'ĐANG TẠO VIDEO TRÊN CLOUD...'}
+                                    ? 'Đang tiến hành dựng video...'
+                                    : 'Đang tạo video trên cloud...'}
                             </p>
                             <p className="text-xs text-slate-500 leading-relaxed">
                               {statusVal === 'failed'
@@ -2239,7 +2239,7 @@ export function EditVideoWorkspace({
                             ) : (
                               <div className="h-full w-full bg-slate-950 flex flex-col items-center justify-center text-[8px] font-bold text-cyan-500 uppercase tracking-wider p-1 text-center">
                                 <Loader2 className="h-4 w-4 animate-spin mb-1 text-cyan-500" />
-                                ĐANG DỰNG {item.metadata?.progress !== undefined ? `${item.metadata.progress}%` : ''}
+                                Đang dựng {item.metadata?.progress !== undefined ? `${item.metadata.progress}%` : ''}
                               </div>
                             )}
                           </div>

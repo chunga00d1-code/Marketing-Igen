@@ -1365,7 +1365,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                     {autoPilotProgress}%
                   </span>
                   <span className="text-[7px] font-extrabold text-purple-400 mt-0.5 uppercase tracking-wider font-mono">
-                    TIẾN ĐỘ
+                    Tiến độ
                   </span>
                 </div>
               </div>
@@ -2111,7 +2111,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
               {loadingPillars && (
                 <div className="absolute inset-0 bg-white/70 backdrop-blur-xs flex flex-col items-center justify-center text-center p-4 z-10 rounded-xl">
                   <RefreshCw className="h-6 w-6 text-indigo-600 animate-spin mb-2" />
-                  <span className="text-[11px] text-indigo-800 font-bold font-mono">AI ĐANG PHÂN TÍCH KHUNG NỘI DUNG...</span>
+                  <span className="text-[11px] text-indigo-800 font-bold font-mono">AI đang phân tích khung nội dung...</span>
                   <p className="text-[10px] text-gray-400 mt-1">Đảm bảo khung tranh phân phối đa dạng, tránh chỉ đăng tải bán hàng.</p>
                 </div>
               )}
@@ -2134,7 +2134,7 @@ export default function IdeationTab({ userProfile, setApprovalCards, setSubTab, 
                     {isSwapping && (
                       <div className="absolute inset-0 bg-white/70 backdrop-blur-3xs flex flex-col items-center justify-center text-center p-2 z-10 rounded-xl">
                         <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin" />
-                        <span className="text-[9px] text-indigo-850 font-bold mt-1 font-mono uppercase tracking-wide">ĐANG ĐỔI...</span>
+                        <span className="text-[9px] text-indigo-850 font-bold mt-1 font-mono uppercase tracking-wide">Đang đổi...</span>
                       </div>
                     )}
                     <div className="flex justify-between items-start gap-2 font-bold">

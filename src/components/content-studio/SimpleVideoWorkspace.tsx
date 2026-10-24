@@ -6,17 +6,17 @@ import { toast } from '../../pages/Toast';
 import {
   Loader2, UploadCloud, Video, Download, Play, Sparkles,
   Images, Settings, X, Trash2, Wand2,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Package, Shirt
 } from 'lucide-react';
 import { marketingService } from '../../services/marketingService';
 import { VeoSettingsPanel } from './VeoSettingsPanel';
 import { getAccessToken } from '../../services/authService';
 
 const VIDEO_TEMPLATES = [
-  { id: 'none', label: 'Tùy chỉnh (Tự nhập)', prompt: '' },
-  { id: 'cinematic', label: '🎬 Điện ảnh (Cinematic)', prompt: 'Cảnh quan hùng vĩ, ánh sáng hoàng hôn ấm áp, máy quay bay cao lướt qua những ngọn núi tuyết, phong cách Flycam.' },
-  { id: 'product', label: '📦 Quay sản phẩm (Creative)', prompt: 'Quay cận cảnh sản phẩm thời trang, máy quay xoay tròn 360 độ, ánh sáng studio chuyên nghiệp, phông nền tối giản, chuyển động mượt mà.' },
-  { id: 'fashion', label: '👗 Fashion Walk', prompt: 'Người mẫu đi bộ trên sàn runway, ánh sáng đèn flash lung linh, bối cảnh studio cao cấp, chuyển động slow-motion.' },
+  { id: 'none', label: 'Tùy chỉnh (Tự nhập)', prompt: '', icon: Wand2 },
+  { id: 'cinematic', label: 'Điện ảnh (Cinematic)', prompt: 'Cảnh quan hùng vĩ, ánh sáng hoàng hôn ấm áp, máy quay bay cao lướt qua những ngọn núi tuyết, phong cách Flycam.', icon: Video },
+  { id: 'product', label: 'Quay sản phẩm (Creative)', prompt: 'Quay cận cảnh sản phẩm thời trang, máy quay xoay tròn 360 độ, ánh sáng studio chuyên nghiệp, phông nền tối giản, chuyển động mượt mà.', icon: Package },
+  { id: 'fashion', label: 'Fashion Walk', prompt: 'Người mẫu đi bộ trên sàn runway, ánh sáng đèn flash lung linh, bối cảnh studio cao cấp, chuyển động slow-motion.', icon: Shirt },
 ];
 
 export function SimpleVideoWorkspace({ initialPrompt, cardId, onMediaSaved, onEditVideo, initialImage, autoTrigger }: {
@@ -477,7 +477,7 @@ export function SimpleVideoWorkspace({ initialPrompt, cardId, onMediaSaved, onEd
               </button>
               {isPresetDropdownOpen && (
                 <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-xl shadow-lg z-30 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
-                  {VIDEO_TEMPLATES.map(t => (
+                  {VIDEO_TEMPLATES.map(t => { const Icon = t.icon; return (
                     <button
                       key={t.id}
                       type="button"
@@ -486,11 +486,11 @@ export function SimpleVideoWorkspace({ initialPrompt, cardId, onMediaSaved, onEd
                         setOptimizedData(null);
                         setIsPresetDropdownOpen(false);
                       }}
-                      className={`w-full text-left px-3 py-1.5 text-[11px] hover:bg-slate-50 transition-colors block ${prompt === t.prompt ? 'text-[#0891b2] font-bold bg-[#e0f7fc]/20' : 'text-slate-700'}`}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-slate-50 ${prompt === t.prompt ? 'text-[#0891b2] font-bold bg-[#e0f7fc]/20' : 'text-slate-700'}`}
                     >
-                      {t.label}
+                      <Icon size={14} />{t.label}
                     </button>
-                  ))}
+                  ); })}
                 </div>
               )}
             </div>
@@ -758,7 +758,7 @@ export function SimpleVideoWorkspace({ initialPrompt, cardId, onMediaSaved, onEd
                         ) : (
                           <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center text-[8px] font-bold text-cyan-400 uppercase tracking-widest p-1 text-center">
                             <Loader2 className="h-4 w-4 animate-spin mb-1 text-cyan-500" />
-                            ĐANG DỰNG {record.metadata?.progress !== undefined ? `${record.metadata.progress}%` : ''}
+                            Đang dựng {record.metadata?.progress !== undefined ? `${record.metadata.progress}%` : ''}
                             {record.metadata?.progress !== undefined && (
                               <div className="w-16 bg-slate-855 h-1 rounded-full overflow-hidden mt-1 mx-auto">
                                 <div

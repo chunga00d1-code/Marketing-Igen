@@ -318,9 +318,9 @@ export function HeyGenWorkspace({
       const statusText = String(data.status).toLowerCase();
       
       if (statusText === "completed" || statusText === "success") {
-        toast.success(`🎉 Video "${videoTitle}" đã tạo thành công!`);
+        toast.success(`Video "${videoTitle}" đã tạo thành công!`);
       } else if (statusText === "failed" || statusText === "error") {
-        toast.error(`❌ Video "${videoTitle}" tạo thất bại.`);
+        toast.error(`Video "${videoTitle}" tạo thất bại.`);
       } else {
         toast.info(`ℹ️ Video "${videoTitle}" đang: ${translateJobStatus(data.status)}`);
       }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildChatKnowledgeQuery, isSimpleAcknowledgement } from "../chat-context";
+import { buildChatKnowledgeQuery, isAcknowledgementToAssistantOffer, isSimpleAcknowledgement } from "../chat-context";
 import { aiKnowledgeService } from "../ai-knowledge.service";
 import { AIKnowledgeChunkModel, AIKnowledgeDocumentModel } from "../../model/ai-knowledge.model";
 
@@ -11,6 +11,50 @@ test("acknowledgements match whole messages, including grouped messages", () => 
   for (const text of ["", "ok, ship bao nhiêu?", "dạ lấy 2 cái", "vâng nhưng bánh có trứng không?", "không được rồi", "1. ok\n2. địa chỉ ở đâu?"]) {
     assert.equal(isSimpleAcknowledgement(text), false, text);
   }
+});
+
+test("an acknowledgement to a pending link or sample offer keeps the customer topic for retrieval", () => {
+  const history = [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật cho bé gái" },
+    { sender: "model", text: "Dạ em gửi chị link danh mục mẫu bé gái nhé" },
+  ];
+  assert.equal(isAcknowledgementToAssistantOffer("ok", history), true);
+  const query = buildChatKnowledgeQuery("ok", history);
+  assert.match(query, /bánh sinh nhật cho bé gái/);
+  assert.match(query, /ok/);
+
+  assert.equal(isAcknowledgementToAssistantOffer("ok", [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Dạ em đã gửi link mẫu bánh rồi ạ" },
+  ]), false);
+  assert.equal(isAcknowledgementToAssistantOffer("ok", [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Dạ em gửi link rồi ạ" },
+  ]), false);
+  assert.equal(isAcknowledgementToAssistantOffer("ok", [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Anh chị lấy mấy cái ạ?" },
+  ]), false);
+});
+
+test("short age and recipient answers preserve the topic for retrieval", () => {
+  const history = [
+    { sender: "user", text: "Chị muốn xem bánh sinh nhật" },
+    { sender: "model", text: "Chị đặt cho bé trai hay bé gái ạ?" },
+    { sender: "user", text: "Bé gái" },
+    { sender: "model", text: "Bé bao nhiêu tuổi ạ?" },
+  ];
+  assert.match(buildChatKnowledgeQuery("3 tuổi", history), /bánh sinh nhật/);
+  history.push(
+    { sender: "user", text: "3 tuổi" },
+    { sender: "model", text: "Dạ em gửi chị link mẫu nhé" },
+  );
+  const query = buildChatKnowledgeQuery("ok", history);
+  assert.match(query, /bánh sinh nhật/);
+  assert.match(query, /Bé gái/);
+  assert.match(query, /3 tuổi/);
+  assert.doesNotMatch(query, /Dạ em gửi/);
+  assert.equal(buildChatKnowledgeQuery("Giá gói CRM bao nhiêu?", history), "Giá gói CRM bao nhiêu?");
 });
 
 test("follow-ups recover customer topic without treating old AI claims as facts", () => {
@@ -51,8 +95,9 @@ test("shared preparation applies the same scope to knowledge and scenario with c
     assert.equal(input.channel, "facebook");
     assert.match(input.query, /Tiramisu/);
     assert.equal(input.strictDocumentTypes, true);
-    const scenario = input.documentTypes.includes("scenario");
-    assert.deepEqual(input.documentTypes, scenario ? ["scenario"] : ["product", "pricing"]);
+    const scenario = input.documentTypes.length === 1 && input.documentTypes[0] === "scenario";
+    assert.deepEqual(input.documentTypes, scenario ? ["scenario"]
+      : input.topK === 12 ? ["product", "service", "general", "faq", "scenario"] : ["product", "pricing", "promotion"]);
     if (scenario) {
       assert.match(input.query, /Đã hỏi kích thước/);
       assert.equal(input.maxContextChars, 3500);
@@ -82,9 +127,9 @@ test("chat selects relevant default sections and combines sections for mixed que
       productCandidateNames: [], shouldAskProductConfirmation: false };
   });
   for (const [message, expected] of [
-    ["Địa chỉ cửa hàng ở đâu?", [["company_profile"], ["scenario"]]],
-    ["Đổi trả thế nào?", [["policy"], ["scenario"]]],
-    ["Tiramisu giá sao, địa chỉ ở đâu, có giao hàng không?", [["company_profile"], ["policy"], ["product", "pricing"], ["scenario"]]],
+    ["Địa chỉ cửa hàng ở đâu?", [["company_profile", "brand_guideline"], ["scenario"]]],
+    ["Đổi trả thế nào?", [["policy", "faq"], ["scenario"]]],
+    ["Tiramisu giá sao, địa chỉ ở đâu, có giao hàng không?", [["company_profile", "brand_guideline"], ["policy", "faq"], ["product", "pricing", "promotion"], ["scenario"]]],
   ] as const) {
     calls.length = 0;
     await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", message });
@@ -108,7 +153,7 @@ test("visit and pickup location questions include introduction without dropping 
   ]) {
     calls.length = 0;
     await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", message });
-    assert.deepEqual(calls[0], ["company_profile"], message);
+    assert.deepEqual(calls[0], ["company_profile", "brand_guideline"], message);
     assert.ok(calls.some((types) => types.includes("scenario")), message);
     assert.ok(!calls.some((types) => types.includes("general")), message);
     if (message.includes("có giao hàng")) {
@@ -168,7 +213,7 @@ test("legacy documents are a bounded fallback only when default sections return 
       productCandidateNames: [], shouldAskProductConfirmation: false };
   });
   const result = await aiKnowledgeService.prepareChatContext({ companyCode: "SHOP", message: "Giá tiramisu" });
-  assert.deepEqual(calls[0], ["product", "pricing"]);
+  assert.deepEqual(calls[0], ["product", "pricing", "promotion"]);
   assert.ok(calls[calls.length - 1].includes("general"));
   assert.match(result.contextText, /Giá cũ/);
 });

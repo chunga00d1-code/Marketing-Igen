@@ -6,14 +6,14 @@
   --font-sans: "Inter", "Be Vietnam Pro", "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  --color-primary: #00aeca;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #d7f4ff;
-  --color-on-primary-container: #005c6d;
-  --color-primary-fixed: #e9f3ff;
-  --color-primary-fixed-dim: #bfeaff;
+  --color-primary: #00adfc;
+  --color-on-primary: #052235;
+  --color-primary-container: #d9f3ff;
+  --color-on-primary-container: #005580;
+  --color-primary-fixed: #effaff;
+  --color-primary-fixed-dim: #b7eaff;
   --color-on-primary-fixed: #052235;
-  --color-on-primary-fixed-variant: #00718a;
+  --color-on-primary-fixed-variant: #00628f;
 
   --color-secondary: #64748b;
   --color-on-secondary: #ffffff;
@@ -55,8 +55,8 @@
   --color-outline-variant: #d8e2f0;
   --color-inverse-surface: #0f172a;
   --color-inverse-on-surface: #e8eef8;
-  --color-inverse-primary: #22d3ee;
-  --color-surface-tint: #00aeca;
+  --color-inverse-primary: #48caff;
+  --color-surface-tint: #00adfc;
 
   --color-white: #ffffff;
   --color-black: #071629;
@@ -89,29 +89,51 @@
   --color-gray-850: #06111f;
   --color-gray-900: #020617;
 
-  --color-blue-50: #e6f6ff;
-  --color-blue-100: #d5edff;
-  --color-blue-200: #b8dcff;
-  --color-blue-300: #8cc7ff;
-  --color-blue-400: #38bdf8;
-  --color-blue-500: #06b6d4;
-  --color-blue-600: #008bad;
-  --color-blue-700: #006f8d;
-  --color-blue-800: #075985;
-  --color-blue-900: #0c4a6e;
+  --color-blue-50: #effaff;
+  --color-blue-100: #d9f3ff;
+  --color-blue-200: #b7eaff;
+  --color-blue-300: #86ddff;
+  --color-blue-400: #48caff;
+  --color-blue-500: #00adfc;
+  --color-blue-600: #00adfc;
+  --color-blue-700: #008fcf;
+  --color-blue-800: #006f9f;
+  --color-blue-900: #003c59;
 
-  --color-indigo-50: #e8efff;
-  --color-indigo-100: #dbe7ff;
-  --color-indigo-150: #d2ddfb;
-  --color-indigo-200: #c7d7fe;
-  --color-indigo-300: #a9c2ff;
-  --color-indigo-400: #7da2ff;
-  --color-indigo-500: #3f7df4;
-  --color-indigo-600: #2563eb;
-  --color-indigo-650: #1d4ed8;
-  --color-indigo-700: #1d4ed8;
-  --color-indigo-800: #1e40af;
-  --color-indigo-900: #172554;
+  --color-sky-50: #effaff;
+  --color-sky-100: #d9f3ff;
+  --color-sky-200: #b7eaff;
+  --color-sky-300: #86ddff;
+  --color-sky-400: #48caff;
+  --color-sky-500: #00adfc;
+  --color-sky-600: #00adfc;
+  --color-sky-700: #008fcf;
+  --color-sky-800: #006f9f;
+  --color-sky-900: #003c59;
+
+  --color-cyan-50: #effaff;
+  --color-cyan-100: #d9f3ff;
+  --color-cyan-200: #b7eaff;
+  --color-cyan-300: #86ddff;
+  --color-cyan-400: #48caff;
+  --color-cyan-500: #00adfc;
+  --color-cyan-600: #00adfc;
+  --color-cyan-700: #008fcf;
+  --color-cyan-800: #006f9f;
+  --color-cyan-900: #003c59;
+
+  --color-indigo-50: #effaff;
+  --color-indigo-100: #d9f3ff;
+  --color-indigo-150: #cceeff;
+  --color-indigo-200: #b7eaff;
+  --color-indigo-300: #86ddff;
+  --color-indigo-400: #48caff;
+  --color-indigo-500: #00adfc;
+  --color-indigo-600: #00adfc;
+  --color-indigo-650: #00adfc;
+  --color-indigo-700: #008fcf;
+  --color-indigo-800: #006f9f;
+  --color-indigo-900: #003c59;
 
   --color-purple-50: #f3e8ff;
   --color-purple-100: #ead5ff;
@@ -377,4 +399,14 @@ code, kbd, samp, pre {
     box-shadow: 0 0 24px rgba(6, 182, 212, 0.4);
     border-color: rgba(6, 182, 212, 0.7);
   }
+}
+
+/* UI copy uses its authored sentence case, including legacy uppercase utility classes. */
+.uppercase {
+  text-transform: none;
+}
+
+#crm_tab_wrapper button:focus-visible {
+  outline: 2px solid #00ADFC;
+  outline-offset: 2px;
 }

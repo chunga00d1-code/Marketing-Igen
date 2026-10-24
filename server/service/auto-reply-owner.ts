@@ -22,3 +22,12 @@ export function selectAutoReplyCompanyIntegration<T extends CompanyIntegration>(
   }
   throw new AmbiguousAutoReplyOwnerError();
 }
+
+export function assertPersonalAutoReplyOwnership(owners: Array<{ companyCode?: string; role?: string }>): void {
+  const companies = new Set(owners.map(item =>
+    String(item.companyCode || (item.role === "superadmin" ? "SYSTEM" : "")).trim().toUpperCase()
+  ));
+  if (companies.size > 1 || (owners.length > 1 && companies.has(""))) {
+    throw new AmbiguousAutoReplyOwnerError();
+  }
+}

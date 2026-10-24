@@ -744,7 +744,7 @@ export function ImageGenerationWorkspace({ initialPrompt, cardId, onMediaSaved, 
           {isGenerating && (
             <div className="flex flex-col gap-1.5 p-3.5 bg-slate-50 border rounded-xl animate-pulse">
               <div className="flex justify-between items-center text-[10px] font-bold text-gray-500 font-mono">
-                <span>DỰNG KHUNG HÌNH AI...</span>
+                <span>Đang dựng khung hình AI...</span>
                 <span>{generateProgress}%</span>
               </div>
               <div className="w-full bg-slate-250 h-2 rounded-full overflow-hidden">

@@ -30,18 +30,36 @@ export const companySepayController = {
   },
 
   async webhook(req: AuthenticatedRequest, res: Response) {
+    const startedAt = Date.now();
+    // Log arrival before lookup/authentication, without exposing the webhook URL,
+    // signature, raw payload, account number or customer information.
+    console.log("[SePay][WEBHOOK_RECEIVED]", JSON.stringify({
+      at: new Date().toISOString(),
+      hasSignature: Boolean(req.headers["x-sepay-signature"]),
+      hasTimestamp: Boolean(req.headers["x-sepay-timestamp"]),
+      hasRawBody: Boolean((req as AuthenticatedRequest & { rawBody?: string }).rawBody),
+    }));
     try {
-      await companySepayService.processWebhook(
+      const result = await companySepayService.processWebhook(
         String(req.params.webhookId || ""),
         String((req as AuthenticatedRequest & { rawBody?: string }).rawBody || ""),
         String(req.headers["x-sepay-signature"] || ""),
         String(req.headers["x-sepay-timestamp"] || ""),
         req.body,
       );
+      console.log("[SePay][WEBHOOK_RESPONSE]", JSON.stringify({ httpStatus: 200, ...result, elapsedMs: Date.now() - startedAt }));
       return res.status(200).json({ success: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const unauthorized = /chữ ký|hết hạn|không tồn tại|chưa được bật/i.test(message);
+      console.error("[SePay][WEBHOOK_REJECTED]", JSON.stringify({
+        httpStatus: unauthorized ? 401 : 400,
+        reason: /hết hạn/i.test(message) ? "timestamp_expired"
+          : /chữ ký/i.test(message) ? "invalid_signature"
+          : /không tồn tại|chưa được bật/i.test(message) ? "webhook_missing_or_disabled"
+          : "processing_error",
+        elapsedMs: Date.now() - startedAt,
+      }));
       return res.status(unauthorized ? 401 : 400).json({ success: false, message });
     }
   },

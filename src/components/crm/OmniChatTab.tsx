@@ -1,11 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
 import React, { useRef, useEffect, useState } from "react";
-import { Search, Send, Sliders, Zap, FileText, DollarSign, MessageSquare, ChevronDown, Facebook, Clock3, Plus } from "lucide-react";
+import { Search, Send, Sliders, Zap, FileText, DollarSign, ChevronDown, Clock3, Plus, Bot, BadgeCheck, Sparkles } from "lucide-react";
 import { CustomerInbox, ChatMessage, AIChatConfig, ChatPagination } from "../../types";
 import { toast } from "../../pages/Toast";
 import { geminiApi } from "../../api/gemini";
 import { ExtendedLeadCard } from "../../services/crmService";
 import { AiAssistantConfigPanel } from "./AiAssistantConfigPanel";
+import { resolveAiReplyScope } from "../../utils/aiReplyScope";
+import { SocialPlatformIcon } from "./SocialPlatformIcon";
+import { DashboardFilledIcon } from "../DashboardFilledIcon";
 
 type OmniChatTabProps = {
   inboxCustomers: CustomerInbox[];
@@ -204,7 +207,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     }
 
     return () => clearInterval(interval);
-  }, [activeCustomer?.id, activeCustomer?.aiPausedUntil]);
+  }, [activeCustomer?.id, activeCustomer?.channel, activeCustomer?.accountId, activeCustomer?.aiPausedUntil]);
 
   const handleSidebarScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -217,15 +220,53 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
 
   const [localConfig, setLocalConfig] = useState<AIChatConfig>(aiConfig);
   const [savingConfig, setSavingConfig] = useState(false);
+  const [localConfigDraftDirty, setLocalConfigDraftDirty] = useState(false);
+  const configScopeKey = resolveAiReplyScope({
+    customer: activeCustomer, activeChannel, facebookId: selectedFacebookPageId,
+    zaloId: selectedZaloAccountId, tiktokId: selectedTiktokAccountId,
+  }).key;
+  const previousConfigScopeRef = useRef(configScopeKey);
+  const currentConfigScopeRef = useRef(configScopeKey);
+  currentConfigScopeRef.current = configScopeKey;
+  const localConfigRef = useRef(localConfig);
+  const draftRevisionRef = useRef(0);
 
   useEffect(() => {
-    setLocalConfig(aiConfig);
-  }, [aiConfig]);
+    if (previousConfigScopeRef.current !== configScopeKey) {
+      previousConfigScopeRef.current = configScopeKey;
+      draftRevisionRef.current += 1;
+      localConfigRef.current = aiConfig;
+      setLocalConfigDraftDirty(false);
+      setLocalConfig(aiConfig);
+      return;
+    }
+
+    if (!localConfigDraftDirty) {
+      localConfigRef.current = aiConfig;
+      setLocalConfig(aiConfig);
+    }
+  }, [aiConfig, configScopeKey, localConfigDraftDirty]);
+
+  const updateLocalConfig = (config: AIChatConfig) => {
+    draftRevisionRef.current += 1;
+    localConfigRef.current = config;
+    setLocalConfig(config);
+    setLocalConfigDraftDirty(true);
+  };
+
+  const persistLocalConfig = async (config: AIChatConfig) => {
+    const submittedRevision = draftRevisionRef.current;
+    const submittedScope = configScopeKey;
+    await setAIConfig(config);
+    if (submittedRevision === draftRevisionRef.current && submittedScope === currentConfigScopeRef.current) {
+      setLocalConfigDraftDirty(false);
+    }
+  };
 
   const handleSaveConfig = async () => {
     setSavingConfig(true);
     try {
-      await setAIConfig(localConfig);
+      await persistLocalConfig(localConfigRef.current);
       toast.success("Đã lưu thiết lập rule, kịch bản và cấu hình trợ lý AI thành công!");
     } catch (err: any) {
       console.error(err);
@@ -243,6 +284,19 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   const [loadingAIHealth, setLoadingAIHealth] = useState(false);
   const [testQuestion, setTestQuestion] = useState("Phí ship và chính sách bảo hành bên mình như thế nào?");
   const [testReply, setTestReply] = useState<any | null>(null);
+  const [testImages, setTestImages] = useState<Array<{ name: string; dataUrl: string }>>([]);
+  const [readingTestImages, setReadingTestImages] = useState(false);
+  const testRequestIdRef = useRef(0);
+  const testScopeRef = useRef("");
+  const testScope = configScopeKey + ":" + (activeCustomer?.id || "");
+  testScopeRef.current = testScope;
+  useEffect(() => {
+    testRequestIdRef.current += 1;
+    setTestReply(null);
+    setTestImages([]);
+    setReadingTestImages(false);
+    setTestingAI(false);
+  }, [testScope]);
   const [testingAI, setTestingAI] = useState(false);
   const [aiReplyLogs, setAIReplyLogs] = useState<any[]>([]);
   const knowledgeDocuments = Array.isArray(knowledgeHealth?.documents) ? knowledgeHealth.documents : [];
@@ -266,11 +320,39 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     }
   };
 
-  const handleTestAIReply = async () => {
-    if (!testQuestion.trim()) {
-      toast.error("Vui lòng nhập câu hỏi mẫu để test AI.");
+  const handleAddTestImages = async (files: File[]) => {
+    if (!files.length) return;
+    if (files.length + testImages.length > 3 || files.some(file =>
+      !["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) || file.size > 8 * 1024 * 1024)) {
+      toast.error("Chọn tối đa 3 ảnh JPG, PNG, WebP hoặc GIF, mỗi ảnh không quá 8 MB.");
       return;
     }
+    const submittedScope = testScopeRef.current;
+    const submittedGeneration = testRequestIdRef.current;
+    setReadingTestImages(true);
+    try {
+      const loaded = await Promise.all(files.map(file => new Promise<{ name: string; dataUrl: string }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: file.name, dataUrl: String(reader.result) });
+        reader.onerror = () => reject(new Error("Không đọc được ảnh đã chọn."));
+        reader.readAsDataURL(file);
+      })));
+      if (submittedScope === testScopeRef.current && submittedGeneration === testRequestIdRef.current) {
+        setTestImages(previous => [...previous, ...loaded].slice(0, 3));
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Không đọc được ảnh.");
+    } finally {
+      if (submittedScope === testScopeRef.current && submittedGeneration === testRequestIdRef.current) setReadingTestImages(false);
+    }
+  };
+
+  const handleTestAIReply = async () => {
+    if (!testQuestion.trim() && !testImages.length) {
+      toast.error("Vui lòng nhập câu hỏi mẫu hoặc chọn ảnh để test AI.");
+      return;
+    }
+    const requestId = ++testRequestIdRef.current;
     setTestingAI(true);
     try {
       const channel = activeCustomer?.channel || (activeChannel === "all" ? "facebook" : activeChannel);
@@ -280,14 +362,16 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         platformId: (channel === "facebook"
           ? activeCustomer?.pageId || selectedFacebookPageId
           : channel === "zalo" ? selectedZaloAccountId : selectedTiktokAccountId) || undefined,
+        images: testImages.map(image => image.dataUrl),
       });
+      if (requestId !== testRequestIdRef.current) return;
       setTestReply(result);
       await refreshAIHealth();
     } catch (err: any) {
       console.error(err);
-      toast.error(err.message || "Không thể tạo câu trả lời thử.");
+      if (requestId === testRequestIdRef.current) toast.error(err.message || "Không thể tạo câu trả lời thử.");
     } finally {
-      setTestingAI(false);
+      if (requestId === testRequestIdRef.current) setTestingAI(false);
     }
   };
 
@@ -319,13 +403,14 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         body: JSON.stringify({ docLink: driveLink, clearExisting: true })
       });
       const data = await res.json();
+      if (currentConfigScopeRef.current !== configScopeKey) return;
       if (res.ok && data.status === "success") {
         const nextConfig = {
-          ...localConfig,
+          ...localConfigRef.current,
           trainingKnowledge: data.text
         };
-        setLocalConfig(nextConfig);
-        await setAIConfig(nextConfig);
+        updateLocalConfig(nextConfig);
+        await persistLocalConfig(nextConfig);
         toast.success(`Đồng bộ thành công từ ${data.title}!`);
         refreshAIHealth();
       } else {
@@ -359,13 +444,14 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           const base64Data = base64String.split(",")[1];
 
           const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type);
+          if (currentConfigScopeRef.current !== configScopeKey) return;
 
           const nextConfig = {
-            ...localConfig,
+            ...localConfigRef.current,
             trainingKnowledge: data.text
           };
-          setLocalConfig(nextConfig);
-          await setAIConfig(nextConfig);
+          updateLocalConfig(nextConfig);
+          await persistLocalConfig(nextConfig);
           toast.success(`Đã trích xuất & nạp tài liệu: ${file.name} thành công!`);
           refreshAIHealth();
         } catch (err: any) {
@@ -404,15 +490,16 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         reader.onerror = () => reject(new Error("Không thể đọc tệp kịch bản."));
         reader.readAsDataURL(file);
       });
-      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
-      setLocalConfig({
-        ...localConfig,
-        customerServiceScript: "",
+      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario", extractOnly: true });
+      if (currentConfigScopeRef.current !== configScopeKey) return;
+      updateLocalConfig({
+        ...localConfigRef.current,
+        customerServiceScript: data.text,
         customerServiceScriptFileName: file.name,
       });
       await refreshAIHealth();
-      if (data.truncated) toast.info("Đã nạp kịch bản vào RAG riêng; nội dung được giới hạn còn 20.000 ký tự.");
-      else toast.success(`Đã nạp kịch bản từ ${file.name} vào RAG riêng; AI sẽ dùng nội dung liên quan khi trả lời.`);
+      if (data.truncated) toast.info("Đã đọc kịch bản, giới hạn 20.000 ký tự. Nhấn Lưu để áp dụng cho tài khoản đang chọn.");
+      else toast.success(`Đã đọc kịch bản từ ${file.name}. Nhấn Lưu để áp dụng cho tài khoản đang chọn.`);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Không thể nạp tệp kịch bản vào RAG.");
@@ -424,14 +511,13 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   const handleClearCustomerServiceScenario = async () => {
     setUploadingScenarioFile(true);
     try {
-      await geminiApi.clearCustomerServiceScenario();
-      setLocalConfig({
-        ...localConfig,
+      updateLocalConfig({
+        ...localConfigRef.current,
         customerServiceScript: "",
         customerServiceScriptFileName: "",
       });
       await refreshAIHealth();
-      toast.success("Đã xóa kịch bản khỏi RAG riêng.");
+      toast.success("Đã bỏ kịch bản riêng. Nhấn Lưu để áp dụng cho tài khoản đang chọn.");
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Không thể xóa kịch bản.");
@@ -448,9 +534,10 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
     setClearingKnowledge(true);
     try {
       await geminiApi.clearKnowledge();
-      const nextConfig = { ...localConfig, trainingKnowledge: "" };
-      setLocalConfig(nextConfig);
-      await setAIConfig(nextConfig);
+      if (currentConfigScopeRef.current !== configScopeKey) return;
+      const nextConfig = { ...localConfigRef.current, trainingKnowledge: "" };
+      updateLocalConfig(nextConfig);
+      await persistLocalConfig(nextConfig);
       setTestReply(null);
       await refreshAIHealth();
       toast.success("Đã xóa toàn bộ tài liệu AI đã feed.");
@@ -488,7 +575,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
   useEffect(() => {
     previousMessageCountRef.current = 0;
     previousFirstMessageIdRef.current = null;
-  }, [activeCustomer?.id]);
+  }, [activeCustomer?.id, activeCustomer?.channel, activeCustomer?.accountId]);
 
   // Auto-scroll when new messages arrive or conversation loaded
   useEffect(() => {
@@ -591,7 +678,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
               placeholder="Tìm tên khách hàng..."
               value={filterInbox}
               onChange={(e) => setFilterInbox(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 bg-slate-50/60 focus:bg-white rounded-xl text-xs outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all duration-200"
+              className="w-full pl-9 pr-3 py-2 border border-slate-200 bg-slate-50/60 focus:bg-white rounded-xl text-xs outline-none focus:ring-4 focus:ring-[#00ADFC]/10 focus:border-[#00ADFC] transition-all duration-200"
               id="inbox_sidebar_search"
             />
           </div>
@@ -626,9 +713,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
 
               {([
                 { key: "all", label: "Tất cả", icon: <Sliders className="h-3 w-3 shrink-0" /> },
-                { key: "facebook", label: "Facebook", icon: <svg className="h-3.5 w-3.5 fill-current text-blue-600 shrink-0" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" /></svg> },
-                { key: "zalo", label: "Zalo", icon: <span className="w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center leading-none shrink-0 font-sans shadow-xxs">Z</span> },
-                { key: "tiktok", label: "TikTok", icon: <span className="w-3.5 h-3.5 bg-black text-white text-[6.5px] font-extrabold rounded-full flex items-center justify-center leading-none shrink-0 font-sans shadow-xxs">T</span> },
+                { key: "facebook", label: "Facebook", icon: <SocialPlatformIcon platform="facebook" className="h-4 w-4" /> },
+                { key: "zalo", label: "Zalo", icon: <SocialPlatformIcon platform="zalo" className="h-4 w-4" /> },
+                { key: "tiktok", label: "TikTok", icon: <SocialPlatformIcon platform="tiktok" className="h-4 w-4" /> },
               ] as const).map((tab) => {
                 const isTabActive = activeChannel === tab.key;
                 const count = tab.key === "all"
@@ -649,7 +736,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                     {tab.icon}
                     <span className="text-[10px] leading-none">{tab.label}</span>
                     <span className={`px-1 py-0.5 rounded-full text-[8px] font-extrabold transition-colors duration-300 leading-none ${
-                      isTabActive ? "bg-slate-900 text-white" : "bg-slate-200/80 text-slate-500"
+                      isTabActive ? "bg-[#00ADFC] text-white" : "bg-slate-200/80 text-slate-500"
                     }`}>
                       {count}
                     </span>
@@ -689,15 +776,15 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                   return matchesSearch && matchesChannel;
                 })
                 .map((cust) => {
-                  const isActive = activeCustomer?.id === cust.id;
+                  const isActive = activeCustomer?.id === cust.id && activeCustomer.channel === cust.channel && activeCustomer.accountId === cust.accountId;
                   const hasHotTag = cust.tags.includes("Khách Nóng");
 
                   return (
                     <div
-                      key={cust.id}
+                      key={`${cust.channel || ""}:${cust.accountId || ""}:${cust.id}`}
                       onClick={() => handleSelectCustomer(cust)}
                       className={`p-4 flex items-start gap-3.5 cursor-pointer transition-all duration-250 text-left relative group border-b border-slate-100/50 ${isActive
-                        ? "bg-blue-50/40 border-l-4 border-blue-600 shadow-xs"
+                        ? "bg-[#EAF8FF] ring-1 ring-inset ring-[#BEEBFF] shadow-xs"
                         : "hover:bg-slate-50/60 hover:translate-x-1"
                         }`}
                       id={`inbox_thread_${cust.id}`}
@@ -707,25 +794,23 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                         {renderCustomerAvatar(cust, "h-10 w-10")}
                         {/* Channel source badge in top-right */}
                         {cust.channel === "facebook" ? (
-                          <span className="absolute -top-1 -right-1 p-0.5 bg-blue-600 text-white rounded-full border border-white shadow-sm flex items-center justify-center">
-                            <svg className="h-2.5 w-2.5 fill-current" viewBox="0 0 24 24">
-                              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                            </svg>
+                          <span className="absolute -top-1 -right-1 rounded-full border border-white bg-white shadow-sm">
+                            <SocialPlatformIcon platform="facebook" className="h-4 w-4" />
                           </span>
                         ) : cust.channel === "zalo" ? (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[7px] font-extrabold rounded-full border border-white shadow-sm flex items-center justify-center leading-none font-sans">
-                            Z
+                          <span className="absolute -top-1 -right-1 rounded-full border border-white bg-white shadow-sm">
+                            <SocialPlatformIcon platform="zalo" className="h-4 w-4" />
                           </span>
                         ) : cust.channel === "tiktok" ? (
-                          <span className="absolute -top-1 -right-1 w-4 h-4 bg-black text-white text-[7px] font-extrabold rounded-full border border-white shadow-sm flex items-center justify-center leading-none font-sans">
-                            T
+                          <span className="absolute -top-1 -right-1 rounded-full border border-white bg-white shadow-sm">
+                            <SocialPlatformIcon platform="tiktok" className="h-4 w-4" />
                           </span>
                         ) : null}
                       </div>
 
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center">
-                          <span className="font-bold text-xs text-slate-800 group-hover:text-blue-600 transition-colors duration-200 truncate">{cust.name}</span>
+                          <span className="font-bold text-xs text-slate-800 group-hover:text-[#008FCF] transition-colors duration-200 truncate">{cust.name}</span>
                           <span className="text-[9px] text-slate-400 font-mono">{cust.time}</span>
                         </div>
 
@@ -738,7 +823,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                           {hasHotTag && (
                             <span className="animate-pulse px-1.5 py-0.5 bg-red-500 text-white text-[8px] font-extrabold rounded-md shadow-sm flex items-center gap-0.5">
                               <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping shrink-0" />
-                              ƯU TIÊN GIỜ VÀNG
+                              Ưu tiên giờ vàng
                             </span>
                           )}
                           {cust.tags.map((tag, tIdx) => {
@@ -780,14 +865,16 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
       <div className="flex-1 bg-[radial-gradient(circle_at_top,_rgba(191,219,254,0.22),_transparent_32%),linear-gradient(180deg,#ffffff_0%,#f8fbff_100%)] flex flex-col justify-between h-full overflow-hidden" id="chat_conversation_area">
         {isInboxLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-white">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-200 border-t-blue-600 mb-3" />
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-200 border-t-[#00ADFC] mb-3" />
             <h4 className="font-extrabold text-slate-655 text-xs font-sans mb-1">Đang tải cuộc hội thoại...</h4>
             <p className="text-[10px] text-slate-400 max-w-xs font-sans">Hệ thống đang đồng bộ dữ liệu tin nhắn từ trang của bạn.</p>
           </div>
         ) : !activeCustomer ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-white">
-            <MessageSquare className="w-12 h-12 text-slate-200 mb-3 animate-pulse" />
-            <h4 className="font-extrabold text-slate-700 text-sm font-sans mb-1">Chưa chọn cuộc hội thoại</h4>
+            <span className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#EAF8FF] text-[#00ADFC]">
+              <DashboardFilledIcon name="inbox" className="h-8 w-8" />
+            </span>
+            <h4 className="font-medium text-slate-800 text-sm font-sans mb-1">Chưa chọn cuộc hội thoại</h4>
             <p className="text-[11px] text-slate-400 leading-normal max-w-xs font-sans">Vui lòng chọn một cuộc trò chuyện từ danh sách bên trái hoặc nhắn tin từ thẻ cơ hội bán hàng để bắt đầu.</p>
           </div>
         ) : (
@@ -869,7 +956,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                                 onClick={() => onUpdateLeadStatus(linkedLead.id, "won")}
                                 className="px-2 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-600 rounded-md text-[9px] font-extrabold transition-all cursor-pointer active:scale-95 shadow-sm ml-1"
                               >
-                                🎉 Chốt đơn
+                                <BadgeCheck size={12} className="mr-1 inline" />Chốt đơn
                               </button>
                             )}
                           </div>
@@ -877,7 +964,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                           <button
                             type="button"
                             onClick={() => onCreateLeadFromChat(activeCustomer, "cold")}
-                            className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-md text-[9px] font-bold transition-all cursor-pointer flex items-center gap-0.5 active:scale-95"
+                            className="px-2 py-0.5 bg-[#EAF8FF] hover:bg-[#DDF4FF] text-[#008FCF] border border-[#BEEBFF] rounded-md text-[9px] font-bold transition-all cursor-pointer flex items-center gap-0.5 active:scale-95"
                           >
                             <Plus className="w-2.5 h-2.5" />
                             Đưa vào CRM
@@ -899,7 +986,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                 <button
                   onClick={() => setShowConfig(!showConfig)}
                   className={`px-3 py-1.5 rounded-xl text-[10px] font-extrabold transition-all border flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 ${showConfig
-                    ? "bg-slate-900 text-white border-slate-900"
+                    ? "bg-[#00ADFC] text-white border-transparent"
                     : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                     }`}
                 >
@@ -909,25 +996,25 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
 
                 {/* Source logo info */}
                 <span className={`px-3 py-1.5 rounded-full text-[10px] font-bold font-sans flex items-center gap-1.5 border shadow-sm ${activeCustomer.channel === "facebook"
-                  ? "bg-blue-50 text-blue-700 border-blue-150"
+                  ? "bg-[#EAF8FF] text-[#008FCF] border-[#BEEBFF]"
                   : activeCustomer.channel === "tiktok"
                     ? "bg-slate-900 text-white border-slate-900"
-                    : "bg-indigo-50 text-indigo-700 border-indigo-150"
+                    : "bg-[#EAF8FF] text-[#008FCF] border-[#BEEBFF]"
                   }`}>
                   {activeCustomer.channel === "facebook" ? (
                     <>
-                      <Facebook className="h-3 w-3" />
-                      <span>FACEBOOK MESSENGER</span>
+                      <SocialPlatformIcon platform="facebook" className="h-3.5 w-3.5" />
+                      <span>Facebook Messenger</span>
                     </>
                   ) : activeCustomer.channel === "tiktok" ? (
                     <>
-                      <span className="w-3.5 h-3.5 bg-black text-white text-[6.5px] font-extrabold rounded-full flex items-center justify-center leading-none font-sans shrink-0 border border-white">T</span>
-                      <span>TIKTOK BUSINESS MESSAGING</span>
+                      <SocialPlatformIcon platform="tiktok" className="h-3.5 w-3.5" />
+                      <span>TikTok Business Messaging</span>
                     </>
                   ) : (
                     <>
-                      <span className="w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-extrabold rounded-full flex items-center justify-center leading-none font-sans shrink-0">Z</span>
-                      <span>ZALO INBOX</span>
+                      <SocialPlatformIcon platform="zalo" className="h-3.5 w-3.5" />
+                      <span>Zalo Inbox</span>
                     </>
                   )}
                 </span>
@@ -951,7 +1038,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                       disabled={chatPagination.loadingMore}
                       className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[11px] font-bold shadow-sm backdrop-blur transition-all ${chatPagination.loadingMore
                         ? "cursor-wait border-slate-200 bg-white/85 text-slate-400"
-                        : "border-blue-200 bg-white/90 text-blue-700 hover:border-blue-300 hover:bg-blue-50"
+                        : "border-[#BEEBFF] bg-white/90 text-[#008FCF] hover:border-[#00ADFC] hover:bg-[#EAF8FF]"
                         }`}
                     >
                       {chatPagination.loadingMore ? <Clock3 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5 rotate-180" />}
@@ -1011,7 +1098,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                             <div className="shrink-0 mr-1 rounded-full shadow-sm select-none">
                               {isAI ? (
                                 <span className="text-lg w-8 h-8 bg-white border border-slate-200 rounded-full flex items-center justify-center">
-                                  🤖
+                                  <Bot size={17} className="text-sky-600" />
                                 </span>
                               ) : (
                                 renderCustomerAvatar(activeCustomer, "h-8 w-8")
@@ -1020,17 +1107,17 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                           )}
 
                           <div className={`p-3.5 rounded-3xl relative shadow-xs transition-all duration-200 ${isMe
-                            ? "bg-gradient-to-tr from-blue-600 via-indigo-600 to-indigo-700 text-white rounded-br-none text-left font-sans text-xs hover:shadow-md"
+                            ? "bg-[#00ADFC] text-white rounded-br-none text-left font-sans text-xs hover:shadow-md"
                             : isSystem
                               ? "bg-emerald-50/90 border border-emerald-200 text-emerald-950 rounded-bl-none text-left font-mono text-[10.5px] shadow-sm shadow-emerald-500/5"
                               : isAI
-                                ? "bg-gradient-to-tr from-indigo-50 to-purple-50/70 border border-indigo-100 text-indigo-950 rounded-bl-none text-left font-sans text-xs shadow-sm shadow-indigo-500/5"
+                                ? "bg-[#EAF8FF] border border-[#CDEEFF] text-slate-800 rounded-bl-none text-left font-sans text-xs shadow-sm"
                                 : "bg-white border border-slate-100 hover:border-slate-200 text-slate-800 rounded-bl-none text-left font-sans text-xs hover:shadow-sm"
                             }`}>
                             {isAI && (
-                              <span className={`text-[8px] font-mono block font-bold tracking-wider mb-1 uppercase ${isSystem ? "text-emerald-600" : "text-indigo-500"
+                              <span className={`mb-1 flex items-center gap-1 font-mono text-[8px] font-bold uppercase tracking-wider ${isSystem ? "text-emerald-600" : "text-[#008FCF]"
                                 }`}>
-                                {isSystem ? "✦ HỆ THỐNG AI TỰ ĐỘNG CHỐT SALES" : "✦ iGen AI Assistant (Trả lời tự động)"}
+                                <Sparkles size={10} />{isSystem ? "Hệ thống AI tự động chốt sales" : "iGen AI Assistant (Trả lời tự động)"}
                               </span>
                             )}
                             {hasImageAttachment && (
@@ -1061,13 +1148,13 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                 {/* Pulsing Loading active thinking response from AI */}
                 {aiWaiting && (
                   <div className="flex items-start gap-2.5 animate-pulse" id="ai_thinking_marker">
-                    <span className="text-xl p-1 bg-slate-50 border border-indigo-100 rounded-full select-none shrink-0 shadow-xxs animate-spin-slow">🤖</span>
-                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-2xl rounded-bl-none text-left">
-                      <span className="text-[8px] font-mono block text-indigo-400 font-bold mb-1 uppercase tracking-widest">Trợ lý AI đang soạn câu trả lời...</span>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#CDEEFF] bg-slate-50 text-sky-600 shadow-xxs animate-spin-slow"><Bot size={18} /></span>
+                    <div className="p-3 bg-[#EAF8FF] border border-[#CDEEFF] rounded-2xl rounded-bl-none text-left">
+                      <span className="text-[8px] font-mono block text-[#008FCF] font-bold mb-1 uppercase tracking-widest">Trợ lý AI đang soạn câu trả lời...</span>
                       <div className="flex gap-1.5 justify-center py-1">
-                        <span className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
-                        <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
-                        <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }} />
+                        <span className="w-1.5 h-1.5 bg-[#008FCF] rounded-full animate-bounce" style={{ animationDelay: "0s" }} />
+                        <span className="w-1.5 h-1.5 bg-[#00ADFC] rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+                        <span className="w-1.5 h-1.5 bg-[#70D1FF] rounded-full animate-bounce" style={{ animationDelay: "0.4s" }} />
                       </div>
                     </div>
                   </div>
@@ -1081,9 +1168,9 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                 <button
                   type="button"
                   onClick={() => chatBottomRef.current?.scrollIntoView({ behavior: "smooth" })}
-                  className="absolute bottom-4 right-6 bg-white/90 backdrop-blur border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 p-2.5 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 animate-bounce active:scale-95 z-20 flex items-center gap-1.5 text-[10px] font-extrabold"
+                  className="absolute bottom-4 right-6 bg-white/90 backdrop-blur border border-slate-200 text-slate-700 hover:text-[#008FCF] hover:border-[#00ADFC] p-2.5 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 animate-bounce active:scale-95 z-20 flex items-center gap-1.5 text-[10px] font-extrabold"
                 >
-                  <ChevronDown className="h-4 w-4 text-blue-600" />
+                  <ChevronDown className="h-4 w-4 text-[#00ADFC]" />
                   <span>Cuộn xuống dưới</span>
                 </button>
               )}
@@ -1091,21 +1178,21 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
 
             {/* Inline warning banner if AI auto-reply is paused */}
             {aiConfig.enabled && aiCountdownText && (
-              <div className="mx-4 mb-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-between shadow-xxs animate-fade-in-up shrink-0">
-                <div className="flex items-center gap-2 text-indigo-900">
+              <div className="mx-4 mb-2 px-4 py-2 bg-[#EAF8FF] border border-[#CDEEFF] rounded-xl flex items-center justify-between shadow-xxs animate-fade-in-up shrink-0">
+                <div className="flex items-center gap-2 text-slate-800">
                   <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00ADFC] opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00ADFC]"></span>
                   </span>
-                  <span className="text-[10px] font-medium font-sans">
-                    🤖 Trợ lý AI đang tạm dừng phản hồi để bạn chat (tự động bật lại sau <strong>{aiCountdownText}</strong>)
+                  <span className="flex items-center gap-1 text-[10px] font-medium font-sans">
+                    <Bot size={12} />Trợ lý AI đang tạm dừng phản hồi để bạn chat (tự động bật lại sau <strong>{aiCountdownText}</strong>)
                   </span>
                 </div>
                 {onResumeAI && (
                   <button
                     type="button"
                     onClick={() => onResumeAI(activeCustomer.id, activeCustomer.channel || "facebook")}
-                    className="text-[9.5px] font-extrabold text-indigo-700 hover:text-indigo-900 hover:underline transition-colors duration-200 cursor-pointer"
+                    className="text-[9.5px] font-extrabold text-[#008FCF] hover:text-[#0077AD] hover:underline transition-colors duration-200 cursor-pointer"
                   >
                     Bật lại AI ngay
                   </button>
@@ -1127,7 +1214,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                 <input
                   type="text"
                   placeholder={`Gửi phản hồi cho ${activeCustomer.name}...`}
-                  className="flex-1 text-left px-4 py-3 border border-slate-200 bg-slate-50/40 rounded-xl text-xs focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none font-sans"
+                  className="flex-1 text-left px-4 py-3 border border-slate-200 bg-slate-50/40 rounded-xl text-xs focus:ring-4 focus:ring-[#00ADFC]/10 focus:border-[#00ADFC] outline-none font-sans"
                   value={typeMessage}
                   onChange={(e) => setTypeMessage(e.target.value)}
                   disabled={aiWaiting}
@@ -1137,7 +1224,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
                   disabled={aiWaiting || !typeMessage.trim()}
                   className={`p-3 rounded-xl transition-all shadow-sm flex items-center justify-center shrink-0 ${aiWaiting || !typeMessage.trim()
                     ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                    : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer active:scale-95 shadow-md shadow-blue-500/10"
+                    : "bg-[#00ADFC] hover:bg-[#008FCF] text-white cursor-pointer active:scale-95 shadow-md shadow-[#00ADFC]/10"
                     }`}
                 >
                   <Send className="w-4 h-4" />
@@ -1153,7 +1240,7 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
         <AiAssistantConfigPanel
           onClose={() => setShowConfig(false)}
           localConfig={localConfig}
-          setLocalConfig={setLocalConfig}
+          setLocalConfig={updateLocalConfig}
           savingConfig={savingConfig}
           handleSaveConfig={handleSaveConfig}
           driveLink={driveLink}
@@ -1167,6 +1254,10 @@ export const OmniChatTab: React.FC<OmniChatTabProps> = ({
           refreshAIHealth={refreshAIHealth}
           testQuestion={testQuestion}
           setTestQuestion={setTestQuestion}
+          testImages={testImages}
+          readingTestImages={readingTestImages}
+          handleAddTestImages={handleAddTestImages}
+          handleRemoveTestImage={index => setTestImages(images => images.filter((_, imageIndex) => imageIndex !== index))}
           testReply={testReply}
           testingAI={testingAI}
           handleTestAIReply={handleTestAIReply}

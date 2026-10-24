@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, Clock3, Facebook, Loader2, Sparkles, FolderOpen, Globe, Upload, Zap } from 'lucide-react';
+import { CalendarClock, Facebook, Loader2, Sparkles, FolderOpen, Globe, Upload, Zap, Plus, X, Check, Rocket, ArrowRight } from 'lucide-react';
 import { socialIntegrationService, SocialIntegration } from '../../services/socialIntegrationService';
 import { CampaignStatus, marketingCampaignService, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 import { toast } from '../../pages/Toast';
@@ -57,7 +57,7 @@ function addDaysToDateKey(dateKey: string, days: number) {
 }
 
 const toDateInput = (date: Date) => getDateKeyInTimezone(date);
-const CAMPAIGNS_PER_PAGE = 8;
+const CAMPAIGNS_PER_PAGE = 20;
 
 export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabProps) {
   const today = useMemo(() => toDateInput(new Date()), []);
@@ -95,6 +95,14 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const [creationMode, setCreationMode] = useState<'single' | 'campaign' | null>(null);
   const [imageMode, setImageMode] = useState<'ai' | 'order'>('order');
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [setupStep, setSetupStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [initialBrief, setInitialBrief] = useState('');
+  const [chatCampaign, setChatCampaign] = useState<MarketingCampaignSummary | null>(null);
+  const [newConversationSelected, setNewConversationSelected] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; campaignId?: string }>>([]);
+  const [chatSending, setChatSending] = useState(false);
   const [apifySources, setApifySources] = useState<string[]>(['google', 'facebook', 'tiktok']);
   const isSinglePost = creationMode === 'single';
   const isTikTokCampaign = selectedPlatforms.includes('TikTok');
@@ -476,6 +484,108 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     return parts.filter(Boolean).join('\n\n').trim();
   };
 
+  const openConversation = async (campaignId: string) => {
+    try {
+      const detail = await marketingCampaignService.detail(campaignId);
+      setChatCampaign(detail.campaign);
+      setNewConversationSelected(false);
+      const history = detail.campaign.chatHistory?.length ? detail.campaign.chatHistory : [
+        { role: 'user' as const, text: detail.campaign.sourceBrief, at: detail.campaign.createdAt },
+        { role: 'assistant' as const, text: 'Kế hoạch chiến dịch đã được tạo. Mở chi tiết để xem trạng thái và các bài đăng.', at: detail.campaign.createdAt },
+      ];
+      setChatMessages(history.map((message) => ({
+        role: message.role,
+        text: message.text,
+        campaignId: message.role === 'assistant' ? campaignId : undefined,
+      })));
+      setPrompt('');
+      setInitialBrief('');
+      setUploadedDocName('');
+      setUploadedDocText('');
+      setUploadedImageBase64('');
+      setShowSetup(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể mở hội thoại chiến dịch.');
+    }
+  };
+
+  const startNewConversation = () => {
+    setChatCampaign(null);
+    setNewConversationSelected(true);
+    setChatMessages([]);
+    setPrompt('');
+    setInitialBrief('');
+    setUploadedDocName('');
+    setUploadedDocText('');
+    setUploadedImageBase64('');
+    setUploadedTikTokVideo(null);
+    setShowSetup(false);
+    setShowAdvancedSetup(false);
+    setSetupStep(1);
+    setSelectedCampaignId(null);
+    setWizardStep(2);
+    setCreationMode(null);
+    setSelectedPlatforms(['Facebook']);
+    setIntegrationIds({});
+    setStartDate(today);
+    setEndDate(nextWeek);
+    setPostsPerDay(1);
+    setPostingTimes(['09:00']);
+    setCustomSchedule({});
+    setPublishMode('manual');
+    setImageMode('order');
+    setApifySources(['google', 'facebook', 'tiktok']);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const closeSetup = () => {
+    setPrompt(initialBrief);
+    setInitialBrief('');
+    setChatMessages([]);
+    setShowSetup(false);
+    setShowAdvancedSetup(false);
+    setSetupStep(1);
+  };
+
+  const sendChat = async () => {
+    const message = prompt.trim();
+    if (!message || chatSending || loadingDoc) return;
+    if (!chatCampaign) {
+      setInitialBrief(message);
+      setChatMessages([{ role: 'user', text: message }]);
+      setPrompt('');
+      setWizardStep(2);
+      setSetupStep(1);
+      setShowAdvancedSetup(false);
+      setShowSetup(true);
+      return;
+    }
+    if (chatCampaign.status !== 'draft') {
+      toast.warning('Chiến dịch này đã bắt đầu xử lý. Hãy mở chi tiết để chỉnh sửa từng bài.');
+      return;
+    }
+    setChatSending(true);
+    try {
+      const result = await marketingCampaignService.reviseDraft(chatCampaign._id, message, chatCampaign.draftRevision || 0);
+      setChatMessages((current) => [
+        ...current,
+        { role: 'user', text: message },
+        { role: 'assistant', text: 'Đã cập nhật bản kế hoạch theo yêu cầu. Mở chi tiết để kiểm tra trước khi khởi chạy.', campaignId: result.campaign._id },
+      ]);
+      setChatCampaign(result.campaign);
+      setCampaigns((current) => current.map((item) => item._id === result.campaign._id ? result.campaign : item));
+      setCampaignDetail((current) => current?.campaign._id === result.campaign._id
+        ? { campaign: result.campaign, slots: result.slots as CampaignSlot[] }
+        : current);
+      setPrompt('');
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Không thể sửa bản nháp.');
+    } finally {
+      setChatSending(false);
+    }
+  };
+
   // Load campaign details on selection
   useEffect(() => {
     if (!selectedCampaignId) {
@@ -546,7 +656,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
   const handleCreateCampaign = async () => {
     if (!creationMode) return toast.warning('Vui lòng chọn tạo một bài đăng hoặc chiến dịch nhiều bài.');
-    if (!prompt.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
+    if (!initialBrief.trim()) return toast.warning('Vui lòng nhập mục tiêu hoặc brief chiến dịch.');
     if (!dayCount || totalPosts > 450) return toast.warning('Chiến dịch phải có ngày hợp lệ và tối đa 450 bài.');
     if (uploadingTikTokVideo) return toast.warning('Vui lòng chờ video TikTok tải lên hoàn tất.');
     const hasPersonalFacebook = Boolean(userProfile?.facebookIntegration?.isConnected && userProfile?.facebookIntegration?.pageId);
@@ -573,7 +683,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
     setLoading(true);
     try {
-      const brief = buildSourceBriefContext();
+      const brief = buildSourceBriefContext(initialBrief);
       const imagesParam = imageMode === 'order' ? undefined : (uploadedImageBase64 ? [uploadedImageBase64] : undefined);
 
       const result = await marketingCampaignService.create({
@@ -589,7 +699,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         candidateCount: 1, // Single-Render Flow
         qualityMode,
         publishMode: isTikTokOnly ? 'manual' : (isSinglePost ? 'auto' : publishMode),
-        publishNow: isSinglePost,
+        publishNow: false,
         imageMode,
         mediaPolicy: isTikTokOnly ? 'video' : 'auto',
         initialVideoUrl: isTikTokOnly && isSinglePost ? uploadedTikTokVideo?.url : undefined,
@@ -598,7 +708,17 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         apifySources: apifySources.length > 0 ? apifySources : undefined,
       });
       setCampaigns((current) => [result.campaign, ...current]);
-      if (!isSinglePost) setSelectedCampaignId(result.campaign._id);
+      setChatCampaign(result.campaign);
+      setNewConversationSelected(false);
+      setChatMessages((current) => [...current, {
+        role: 'assistant',
+        text: isSinglePost
+          ? 'Đã lập bản nháp một bài đăng. Mở chi tiết để xem kế hoạch; nhắn tiếp nếu cần sửa, rồi xác nhận để bắt đầu đăng.'
+          : 'Đã lập bản kế hoạch chiến dịch. Mở chi tiết để xem lịch bài, rồi nhắn tiếp nếu cần điều chỉnh.',
+        campaignId: result.campaign._id,
+      }]);
+      setShowSetup(false);
+      setInitialBrief('');
       setPrompt('');
       setUploadedDocName('');
       setUploadedDocText('');
@@ -608,15 +728,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
       setApifySources(['google', 'facebook', 'tiktok']);
       setCustomSchedule({});
       setShowCustomSchedule(false);
-      const immediatePreparationMessage = result.preparation.enqueued > 0
-        ? 'Đã đưa tác vụ vào worker để chuẩn bị ngay.'
-        : result.preparation.deferred > 0
-          ? 'Tác vụ đang chờ worker trống để bắt đầu chuẩn bị.'
-          : 'Tác vụ sẽ được worker tự nhận để chuẩn bị.';
       toast.success(isSinglePost
-        ? (isTikTokCampaign
-          ? `Đã tạo yêu cầu nội dung TikTok. ${immediatePreparationMessage} ${uploadedTikTokVideo ? 'Video đã tải sẽ được gắn vào bài trước khi duyệt đăng.' : 'Sau đó nhập video Drive và duyệt trước khi đăng.'}`
-          : `Đã tạo bài và chuyển sang xử lý đăng ngay. ${immediatePreparationMessage}`)
+        ? 'Đã tạo bản nháp một bài. Mở chi tiết để xem, sửa hoặc xác nhận bắt đầu đăng.'
         : `Đã tạo bản kế hoạch “${result.campaign.title}”. Hãy phân công từng bài rồi xác nhận khởi chạy.`);
       void loadCampaigns(1);
     } catch (error: unknown) {
@@ -630,6 +743,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     try {
       const updated = await marketingCampaignService.lifecycle(campaign._id, action);
       setCampaigns((current) => current.map((item) => item._id === updated._id ? updated : item));
+      setChatCampaign((current) => current?._id === updated._id ? updated : current);
       toast.success(action === 'pause' ? 'Đã tạm dừng chiến dịch.' : action === 'resume' ? 'Đã tiếp tục chiến dịch.' : 'Đã hủy chiến dịch.');
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Không thể cập nhật chiến dịch.');
@@ -658,16 +772,136 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
   const statusLabel: Record<CampaignStatus, string> = {
     draft: 'Bản nháp', active: 'Đang chạy', paused: 'Tạm dừng', completed: 'Hoàn thành', cancelled: 'Đã hủy', failed: 'Có lỗi',
   };
+  const setupTitles = [
+    'Chọn nền tảng truyền thông',
+    'Chọn loại nội dung',
+    'Chọn nguồn media',
+    'Chọn nguồn AI tra cứu',
+    'Lên lịch đăng bài',
+  ];
+  const setupDescriptions = [
+    'Bạn muốn triển khai chiến dịch trên nền tảng nào?',
+    'Bạn muốn tạo một bài hay một chuỗi bài?',
+    'Bạn muốn chuẩn bị ảnh và video bằng cách nào?',
+    'AI nên tham khảo xu hướng từ nguồn nào?',
+    'Chọn thời gian và tài khoản nhận bài đăng.',
+  ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-      <section className="xl:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between">
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch lg:gap-0 lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white">
+      <section className="flex min-h-[520px] min-w-0 w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-xs md:p-7 lg:col-start-2 lg:row-start-1 lg:rounded-none lg:border-0 lg:shadow-none">
+        <div className="flex-1 space-y-5 overflow-y-auto py-6" aria-live="polite">
+          {chatMessages.length === 0 && (
+            <div className="mx-auto max-w-md py-16 text-center">
+              <svg aria-hidden="true" className="mx-auto mb-4 h-10 w-10 text-blue-600" viewBox="0 0 40 40" fill="none">
+                <rect x="5" y="4" width="30" height="32" rx="8" stroke="currentColor" strokeWidth="2.5" />
+                <path d="M12 14h16M12 20h12M12 26h8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                <circle cx="28" cy="27" r="3" fill="currentColor" />
+              </svg>
+              <h3 className="text-lg font-bold text-slate-800">Bạn muốn tạo chiến dịch gì?</h3>
+              <p className="mt-2 text-sm text-slate-500">Mô tả sản phẩm, khách hàng và mục tiêu. Bạn có thể gửi tài liệu hoặc ảnh kèm theo.</p>
+            </div>
+          )}
+          {chatMessages.map((message, index) => (
+            <div key={`${index}-${message.role}`} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${message.role === 'user' ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
+                <p className="whitespace-pre-wrap">{message.text}</p>
+                {message.campaignId && chatCampaign?._id === message.campaignId && (
+                  <button type="button" onClick={() => setSelectedCampaignId(message.campaignId || null)} className="mt-3 flex w-full items-center justify-between gap-4 rounded-xl border border-blue-200 bg-white p-3 text-left text-blue-800 transition hover:bg-blue-50">
+                    <span><b className="block text-sm">{chatCampaign.title}</b><span className="mt-1 block text-xs">{chatCampaign.statistics.totalSlots} bài dự kiến · {statusLabel[chatCampaign.status]} · Xem chi tiết</span></span>
+                    <CalendarClock size={18} className="shrink-0" />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          {chatCampaign && <p className="mb-2 text-xs text-slate-500">{chatCampaign.status === 'draft' ? 'Nhắn yêu cầu sửa bản kế hoạch; các lựa chọn nền tảng và lịch đăng được giữ nguyên.' : 'Mở chi tiết để theo dõi hoặc chỉnh sửa bài đang xử lý.'}</p>}
+          <CampaignPromptBox prompt={prompt} setPrompt={setPrompt} uploadedDocName={uploadedDocName} uploadedImageBase64={uploadedImageBase64} loadingDoc={loadingDoc} isDragging={isDragging} handleDragOver={handleDragOver} handleDragLeave={handleDragLeave} handleDrop={handleDrop} handleDocumentUpload={handleDocumentUpload} handleRemoveDocument={handleRemoveDocument} onClearAll={() => { setPrompt(''); setUploadedDocName(''); setUploadedDocText(''); setUploadedImageBase64(''); }} onSend={() => void sendChat()} sending={chatSending} allowAttachments={!chatCampaign} placeholder={chatCampaign ? 'Nhập yêu cầu sửa bản kế hoạch chiến dịch...' : undefined} />
+          <p className="text-[11px] text-slate-400">Enter để gửi · Shift + Enter để xuống dòng</p>
+        </div>
+      </section>
+
+      {chatCampaign && <section className="w-full rounded-2xl border border-blue-100 bg-blue-50/50 p-5 lg:col-start-2 lg:row-start-2 lg:rounded-none lg:border-0 lg:border-t lg:border-slate-200">
+        <div className="flex items-center gap-2 text-blue-700"><CalendarClock size={18} /><h3 className="text-sm font-extrabold">Tóm tắt chiến dịch</h3></div>
+        <div className="mt-4 grid gap-3 text-xs text-slate-600 sm:grid-cols-3">
+          <div className="rounded-xl bg-white p-3"><b className="block text-slate-800">Hình thức</b>{chatCampaign.campaignType === 'single' ? 'Một bài đăng' : 'Chiến dịch nhiều bài'}</div>
+          <div className="rounded-xl bg-white p-3"><b className="block text-slate-800">Lịch</b>{chatCampaign.startDate} → {chatCampaign.endDate}</div>
+          <div className="rounded-xl bg-white p-3"><b className="block text-slate-800">Sản lượng và nền tảng</b>{chatCampaign.statistics.totalSlots} bài · {chatCampaign.platforms.join(' + ')}</div>
+        </div>
+      </section>}
+
+      {showSetup && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/55 p-3 backdrop-blur-xs md:p-6"><div className={`my-auto w-full rounded-2xl bg-white p-5 shadow-2xl md:p-6 ${showAdvancedSetup ? 'max-w-5xl' : 'max-w-xl'}`}>
+        {!showAdvancedSetup && (
+          <div>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold text-blue-600">Bước {setupStep} / 5</p>
+                <h3 className="text-lg font-bold text-slate-900">{setupTitles[setupStep - 1]}</h3>
+                <p className="mt-1 text-sm text-slate-500">{setupDescriptions[setupStep - 1]}</p>
+              </div>
+              <button type="button" onClick={closeSetup} aria-label="Đóng thiết lập" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+            </div>
+            <div className="mt-5 flex gap-1.5" aria-hidden="true">{setupTitles.map((title, index) => <span key={title} className={`h-1 flex-1 rounded-full ${index < setupStep ? 'bg-blue-600' : 'bg-slate-200'}`} />)}</div>
+
+            {setupStep === 1 && <div className="mt-6 grid grid-cols-3 gap-3">
+              {(['Facebook', 'TikTok'] as const).map((platform) => <button key={platform} type="button" onClick={() => togglePlatform(platform)} className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border p-3 text-sm font-semibold transition ${selectedPlatforms.includes(platform) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}>
+                <img src={platform === 'Facebook' ? '/facebook-logo.svg' : '/tiktok-logo.svg'} alt="" aria-hidden="true" className="h-8 w-8 object-contain" />{platform}
+              </button>)}
+              <div aria-disabled="true" className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-400"><img src="/zalo-logo.svg" alt="" aria-hidden="true" className="h-8 w-8 object-contain grayscale opacity-50" />Zalo</div>
+              <p className="col-span-3 text-xs text-slate-500">Có thể chọn cả Facebook và TikTok cho chiến dịch nhiều bài.</p>
+            </div>}
+
+            {setupStep === 2 && <div className="mt-6 grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => { setCreationMode('single'); setSelectedPlatforms([selectedPlatform]); setImageMode(selectedPlatform === 'TikTok' ? 'order' : 'ai'); setStartDate(today); setEndDate(today); changePostsPerDay(1); }} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${creationMode === 'single' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><Zap size={26} /><b className="text-sm">Một bài đăng</b><span className="text-xs font-normal text-slate-500">Tạo một bài, xác nhận rồi đăng</span></button>
+              <button type="button" onClick={() => { setCreationMode('campaign'); setImageMode('order'); if (startDate === endDate) setEndDate(nextWeek); }} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${creationMode === 'campaign' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><CalendarClock size={26} /><b className="text-sm">Chiến dịch nhiều bài</b><span className="text-xs font-normal text-slate-500">Tạo kế hoạch và lịch đăng</span></button>
+            </div>}
+
+            {setupStep === 3 && <div className="mt-6 grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => setImageMode('ai')} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${imageMode === 'ai' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><Sparkles size={26} /><b className="text-sm">AI tạo ảnh</b><span className="text-xs font-normal text-slate-500">Tạo media khi chuẩn bị bài</span></button>
+              <button type="button" onClick={() => setImageMode('order')} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${imageMode === 'order' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><FolderOpen size={26} /><b className="text-sm">Media của bạn</b><span className="text-xs font-normal text-slate-500">Nhập từ Drive hoặc tải lên sau</span></button>
+            </div>}
+
+            {setupStep === 4 && <div className="mt-6 space-y-2">
+              {([
+                { id: 'google', label: 'Tìm kiếm Google', icon: Globe },
+                { id: 'facebook', label: 'Bài viết Facebook', icon: Facebook },
+                { id: 'tiktok', label: 'Xu hướng TikTok', icon: Sparkles },
+              ] as const).map((source) => { const Icon = source.icon; const selected = apifySources.includes(source.id); return <button key={source.id} type="button" onClick={() => setApifySources((current) => selected ? (current.length > 1 ? current.filter((item) => item !== source.id) : current) : [...current, source.id])} className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${selected ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600 hover:border-blue-300'}`}><Icon size={18} /><span className="flex-1">{source.label}</span>{selected ? <Check size={16} /> : <Plus size={16} />}</button>; })}
+              <p className="pt-2 text-xs text-slate-500">Chọn ít nhất một nguồn. Bạn có thể giữ cả ba như mặc định.</p>
+            </div>}
+
+            {setupStep === 5 && <div className="mt-6 max-h-[55vh] space-y-4 overflow-y-auto pr-1">
+              {isSinglePost ? <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">Một bài sẽ bắt đầu xử lý sau khi bạn xem bản nháp và xác nhận.</p> : <>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-xs font-semibold text-slate-700">Bắt đầu<input type="date" min={today} value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
+                  <label className="text-xs font-semibold text-slate-700">Kết thúc<input type="date" min={startDate || today} value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
+                </div>
+                <label className="block text-xs font-semibold text-slate-700">Số bài mỗi ngày<select value={postsPerDay} onChange={(event) => changePostsPerDay(Number(event.target.value))} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} bài</option>)}</select></label>
+                <div><p className="mb-1.5 text-xs font-semibold text-slate-700">Giờ đăng</p><div className="grid grid-cols-2 gap-2">{postingTimes.map((time, index) => <input key={index} type="time" value={time} onChange={(event) => setPostingTimes((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} aria-label={`Giờ đăng bài ${index + 1}`} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />)}</div></div>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" checked={publishMode === 'auto'} onChange={(event) => setPublishMode(event.target.checked ? 'auto' : 'manual')} className="accent-blue-600" /> Tự động đăng sau khi nội dung sẵn sàng</label>
+              </>}
+              {selectedPlatforms.map((platform) => <label key={platform} className="block text-xs font-semibold text-slate-700">{platform === 'Facebook' ? 'Facebook Page' : 'Tài khoản TikTok'}<select value={integrationIds[platform] || ''} onChange={(event) => setIntegrationIds((current) => ({ ...current, [platform]: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"><option value="">{platform === 'Facebook' && userProfile?.facebookIntegration?.isConnected ? userProfile.facebookIntegration.pageName || 'Facebook Page cá nhân' : platform === 'Facebook' && canUseLocalMockFacebookPage ? 'Fanpage giả lập (local)' : platform === 'TikTok' && canUseLocalMockTikTokAccount ? 'Tài khoản TikTok giả lập (local)' : 'Chọn tài khoản đã kết nối'}</option>{integrations.filter((item) => item.platform === platform).map((item) => <option key={item._id} value={item._id}>{item.displayName || item.username}</option>)}</select></label>)}
+              {isSinglePost && isTikTokCampaign && <div className="rounded-xl border border-slate-200 p-3"><input ref={tiktokVideoInputRef} type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleTikTokVideoUpload(file); }} /><button type="button" onClick={() => tiktokVideoInputRef.current?.click()} disabled={uploadingTikTokVideo} className="inline-flex items-center gap-2 text-xs font-semibold text-blue-700"><Upload size={16} />{uploadingTikTokVideo ? `Đang tải video ${tiktokUploadProgress}%` : uploadedTikTokVideo ? uploadedTikTokVideo.name : 'Tải video TikTok lên (hoặc nhập sau từ Drive)'}</button></div>}
+              <p className="text-xs text-slate-500">{isSinglePost ? '1 bài đăng' : `${totalPosts} bài dự kiến`} · {selectedPlatforms.join(' + ')} · Asia/Bangkok</p>
+              <button type="button" onClick={() => { setWizardStep(4); setShowAdvancedSetup(true); }} className="text-xs font-semibold text-blue-700 hover:underline">Tùy chọn lịch chi tiết</button>
+            </div>}
+
+            <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+              <button type="button" onClick={() => setupStep === 1 ? closeSetup() : setSetupStep(setupStep === 4 && isTikTokCampaign ? 2 : (setupStep - 1) as 1 | 2 | 3 | 4 | 5)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Quay lại</button>
+              {setupStep < 5 ? <button type="button" onClick={() => { if (setupStep === 2 && !creationMode) return toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.'); setSetupStep(setupStep === 2 && isTikTokCampaign ? 4 : (setupStep + 1) as 1 | 2 | 3 | 4 | 5); }} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Tiếp tục</button> : <button type="button" onClick={handleCreateCampaign} disabled={loading || uploadingTikTokVideo || !dayCount || totalPosts > 450} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">{loading && <Loader2 size={14} className="animate-spin" />}Tạo bản nháp</button>}
+            </div>
+          </div>
+        )}
+        {showAdvancedSetup && <>
+        <div className="mb-4 flex items-center justify-between"><div><h3 className="text-base font-extrabold text-slate-900">Tùy chọn lịch chi tiết</h3><p className="mt-1 text-xs text-slate-500">Thiết lập thêm khi lịch mặc định chưa phù hợp.</p></div><div className="flex items-center gap-2"><button type="button" onClick={() => setShowAdvancedSetup(false)} className="text-xs font-semibold text-blue-700 hover:underline">Quay lại</button><button type="button" onClick={closeSetup} aria-label="Đóng thiết lập" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button></div></div>
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs md:p-6">
         <div>
           {/* Stepper Header Bar */}
           <div className="mb-6 border-b border-slate-150 pb-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
               {[
-                { step: 1, label: 'Lên ý tưởng' },
                 { step: 2, label: 'Chọn nền tảng' },
                 { step: 3, label: 'Chọn nguồn tài liệu' },
                 { step: 4, label: 'Lên lịch đăng bài' },
@@ -679,9 +913,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     key={s.step}
                     type="button"
                     onClick={() => {
-                      const canOpen = s.step === 1
-                        || (s.step === 2 && prompt.trim())
-                        || (s.step >= 3 && prompt.trim() && creationMode);
+                      const canOpen = s.step === 2
+                        || (s.step >= 3 && initialBrief.trim() && creationMode);
                       if (canOpen) {
                         setWizardStep(s.step as 1 | 2 | 3 | 4);
                       }
@@ -701,7 +934,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                           : 'bg-slate-200 text-slate-600'
                         }`}
                     >
-                      {isCompleted ? '✓' : s.step}
+                      {isCompleted ? <Check size={14} /> : s.step}
                     </div>
                     <span className={`text-xs font-bold truncate transition-colors ${isActive ? 'text-cyan-950' : isCompleted ? 'text-emerald-950' : 'text-slate-600'}`}>
                       {s.label}
@@ -747,7 +980,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             <div className="space-y-6 animate-fadeIn">
               <div>
                 <h3 className="mb-2 text-xs font-extrabold text-slate-900 uppercase tracking-wide">
-                  CHỌN NỀN TẢNG TRUYỀN THÔNG:
+                  Chọn nền tảng truyền thông:
                 </h3>
                 <div className="flex flex-wrap items-center gap-2.5">
                   {/* Facebook */}
@@ -759,7 +992,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                        : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-300 hover:text-indigo-700'
                       }`}
                   >
-                    <Facebook size={16} className={selectedPlatforms.includes('Facebook') ? 'text-indigo-600' : 'text-blue-600 fill-blue-600/10'} />
+                    <img src="/facebook-logo.svg" alt="" aria-hidden="true" className="h-4 w-4 object-contain" />
                     <span>Facebook</span>
                   </button>
 
@@ -769,7 +1002,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     disabled
                     className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-1.5 text-xs font-semibold text-slate-400 opacity-60 cursor-not-allowed"
                   >
-                    <span className="text-[10px] font-extrabold tracking-tight text-slate-400">ZL</span>
+                    <img src="/zalo-logo.svg" alt="" aria-hidden="true" className="h-4 w-4 object-contain grayscale opacity-60" />
                     <span>Zalo</span>
                   </button>
 
@@ -782,7 +1015,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                        : 'border-slate-200 bg-white text-slate-500 hover:border-indigo-300 hover:text-indigo-700'
                       }`}
                   >
-                    <span className={`text-[10px] font-extrabold tracking-tight ${selectedPlatforms.includes('TikTok') ? 'text-indigo-600' : 'text-slate-500'}`}>TT</span>
+                    <img src="/tiktok-logo.svg" alt="" aria-hidden="true" className="h-4 w-4 object-contain" />
                     <span>TikTok</span>
                   </button>
                 </div>
@@ -792,7 +1025,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-indigo-600" />
-                    CHỌN LOẠI HÌNH NỘI DUNG:
+                    Chọn loại hình nội dung:
                   </h3>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -817,7 +1050,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="block text-xs font-extrabold text-slate-900">Một bài đăng</span>
-                        <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">⚡ Đăng ngay</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700"><Zap size={10} />Đăng sau khi xác nhận</span>
                       </div>
                     </div>
                   </button>
@@ -840,7 +1073,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="block text-xs font-extrabold text-slate-900">Chiến dịch nhiều bài</span>
-                        <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[9px] font-bold text-cyan-700">🚀 Lịch tự động</span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-cyan-100 px-1.5 py-0.5 text-[9px] font-bold text-cyan-700"><Rocket size={10} />Lịch tự động</span>
                       </div>
                     </div>
                   </button>
@@ -987,7 +1220,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                         <span className="text-xs font-bold text-slate-800">{source.label}</span>
                         {isSelected && (
                           <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-white text-[9px] font-bold">
-                            ✓
+                            <Check size={10} />
                           </span>
                         )}
                       </div>
@@ -1021,7 +1254,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
                         ? (uploadedTikTokVideo
                           ? 'Video đã tải sẽ được gắn vào bài này. Hệ thống tạo nội dung, kiểm tra video, sau đó chờ bạn xác nhận xuất bản TikTok.'
                           : 'Hệ thống sẽ tạo nội dung TikTok và chờ video từ Google Drive. Video chỉ sẵn sàng đăng sau khi được nhập, kiểm tra và xác nhận xuất bản.')
-                        : 'Hệ thống sẽ tạo bài viết và tự động đăng ngay lên Facebook Page.'}
+                        : 'Sau khi bạn xác nhận, hệ thống sẽ tạo bài viết và đăng lên Facebook Page.'}
                     </p>
                   </div>
 
@@ -1355,7 +1588,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           {wizardStep > 1 ? (
             <button
               type="button"
-              onClick={() => setWizardStep((prev) => (prev - 1) as 1 | 2 | 3 | 4)}
+              onClick={() => wizardStep === 2 ? setShowAdvancedSetup(false) : setWizardStep((prev) => (prev - 1) as 1 | 2 | 3 | 4)}
               className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer flex items-center gap-1.5"
             >
               <span>◀ Quay lại</span>
@@ -1368,10 +1601,6 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             <button
               type="button"
               onClick={() => {
-                if (wizardStep === 1 && !prompt.trim()) {
-                  toast.warning('Vui lòng nhập ý tưởng hoặc brief bài viết trước khi tiếp tục.');
-                  return;
-                }
                 if (wizardStep === 2 && !creationMode) {
                   toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.');
                   return;
@@ -1380,138 +1609,84 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
               }}
               className="rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer flex items-center gap-1.5 ml-auto"
             >
-              <span>Tiếp tục (Bước {wizardStep + 1}/4) ➔</span>
+              <span className="inline-flex items-center gap-1">Tiếp tục (Bước {wizardStep + 1}/4) <ArrowRight size={14} /></span>
             </button>
           ) : (
             <button
               type="button"
               onClick={handleCreateCampaign}
-              disabled={loading || !creationMode || !prompt.trim() || !dayCount || (!isSinglePost && totalPosts > 450) || (isTikTokCampaign && !integrationIds.TikTok && !canUseLocalMockTikTokAccount)}
+              disabled={loading || !creationMode || !initialBrief.trim() || !dayCount || (!isSinglePost && totalPosts > 450) || (isTikTokCampaign && !integrationIds.TikTok && !canUseLocalMockTikTokAccount)}
               className="rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 transition cursor-pointer flex items-center gap-2 ml-auto"
             >
               {loading ? <Loader2 size={16} className="animate-spin text-white" /> : <Sparkles size={16} />}
               <span>{loading
-                ? (isSinglePost ? (isTikTokCampaign ? 'AI đang tạo nội dung TikTok...' : 'AI đang tạo bài viết...') : 'AI đang lập chiến lược và danh sách bài...')
-                : (isSinglePost ? (isTikTokCampaign ? '⚡ Tạo nội dung & yêu cầu video' : '⚡ Tạo và đăng ngay 1 bài') : `Tạo kế hoạch chi tiết ${totalPosts || 0} bài`)}</span>
+                ? (isSinglePost ? 'AI đang lập kế hoạch một bài...' : 'AI đang lập chiến lược và danh sách bài...')
+                : (isSinglePost ? 'Tạo bản nháp 1 bài' : `Tạo kế hoạch chi tiết ${totalPosts || 0} bài`)}</span>
             </button>
           )}
         </div>
       </section>
+      </>}
+      </div></div>}
 
-      <aside className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-6">
-        <div className="flex items-center gap-2 text-indigo-700"><CalendarClock size={19} /><h3 className="text-sm font-extrabold">Tóm tắt thiết lập</h3></div>
-        <div className="mt-5 space-y-3 text-xs text-slate-600">
-          <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Hình thức</b><span>{creationMode === 'single' ? 'Một bài đăng' : creationMode === 'campaign' ? 'Chiến dịch nhiều bài' : 'Chưa chọn'}</span></div>
-          <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Thời gian</b><span>{isSinglePost ? (isTikTokCampaign ? 'Tạo nội dung ngay · nhập video rồi duyệt đăng' : 'Đăng ngay sau khi tạo') : `${dayCount || 0} ngày · ${startDate} → ${endDate}`}</span></div>
-          <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Sản lượng</b><span>{isSinglePost ? '1 bài' : `${postsPerDay} bài/ngày · tổng ${totalPosts || 0} bài`}</span></div>
-          {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="block text-slate-800">Chu kỳ render</b><span>Render trọn tháng đầu; mỗi tháng tiếp theo bắt đầu trước 10 ngày</span></div>}
-          {!isSinglePost && <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Clock3 size={13} /> Khung giờ</b><span>{postingTimes.join(', ')}</span></div>}
-          <div className="rounded-xl border border-white bg-white p-3"><b className="mb-1 flex items-center gap-1 text-slate-800"><Facebook size={13} /> Nền tảng</b><span>{selectedPlatformLabel}</span></div>
-        </div>
-        {!isSinglePost && totalPosts > 450 && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-600">Tối đa 450 bài mỗi chiến dịch. Hãy giảm số ngày hoặc số bài/ngày.</p>}
-      </aside>
-
-      <section className="xl:col-span-3 rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3">
-          <div>
-            <h3 className="text-sm font-extrabold text-slate-850">Lịch sử nội dung & chiến dịch</h3>
-            {!loadingCampaigns && totalCampaigns > 0 && (
-              <p className="mt-1 text-xs text-slate-500">
-                Hiển thị {Math.min((currentPage - 1) * CAMPAIGNS_PER_PAGE + 1, totalCampaigns)}–{Math.min(currentPage * CAMPAIGNS_PER_PAGE, totalCampaigns)} / {totalCampaigns} chiến dịch
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {loadingCampaigns && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-indigo-600">
-                <Loader2 size={15} className="animate-spin" />
-                Đang đồng bộ lịch sử chiến dịch...
-              </span>
-            )}
-          </div>
+      <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 lg:col-start-1 lg:row-start-1 lg:row-span-2 lg:flex lg:max-h-[calc(100vh-12rem)] lg:flex-col lg:rounded-none lg:border-0 lg:border-r lg:border-slate-200">
+        <button type="button" onClick={startNewConversation} aria-pressed={newConversationSelected} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-bold transition ${newConversationSelected ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><Plus size={16} /> Chiến dịch mới</button>
+        <div className="mt-5 flex items-center justify-between gap-2 px-2">
+          <h3 className="text-xs font-bold text-slate-700">Chiến dịch đã tạo</h3>
+          {loadingCampaigns ? <Loader2 size={14} className="animate-spin text-blue-600" /> : <span className="text-[10px] text-slate-400">{totalCampaigns}</span>}
         </div>
 
         {/* Filter Status Tabs */}
-        {campaigns.length > 0 && (
-          <div className="mb-4 flex flex-wrap gap-1.5 border-b border-slate-100 pb-3 select-none">
-            {(
-              [
-                { value: 'all', label: 'Tất cả' },
-                { value: 'active', label: 'Đang chạy' },
-                { value: 'paused', label: 'Tạm dừng' },
-                { value: 'completed', label: 'Hoàn thành' },
-                { value: 'cancelled', label: 'Đã hủy' },
-                { value: 'failed', label: 'Có lỗi' },
-              ] as const
-            ).map((tab) => {
-              return (
-                <button
-                  type="button"
-                  key={tab.value}
-                  onClick={() => setFilterStatus(tab.value)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${filterStatus === tab.value
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/40'
-                    }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        {campaigns.length > 0 && <select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value as 'all' | CampaignStatus)} aria-label="Lọc chiến dịch" className="mx-2 mt-3 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-600">
+          <option value="all">Tất cả</option>
+          <option value="draft">Bản nháp</option>
+          <option value="active">Đang chạy</option>
+          <option value="paused">Tạm dừng</option>
+          <option value="completed">Hoàn thành</option>
+          <option value="cancelled">Đã hủy</option>
+          <option value="failed">Có lỗi</option>
+        </select>}
 
         {!loadingCampaigns && campaigns.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 p-10 text-center bg-slate-50/20">
-            <div className="rounded-full bg-indigo-50 p-4 text-indigo-600 mb-4 shadow-xs border border-indigo-100/50">
-              <Sparkles size={28} className="animate-pulse" />
-            </div>
-            <h4 className="text-sm font-bold text-slate-800 mb-1">Chưa có chiến dịch Marketing nào</h4>
-            <p className="text-xs text-slate-500 max-w-sm leading-relaxed mb-6 font-medium">
-              Lập lịch bài đăng tự động bằng AI sẽ giúp bạn tiết kiệm thời gian và tiếp cận khách hàng liên tục. Hãy nhập mục tiêu chiến dịch của bạn ở bên trái để bắt đầu!
-            </p>
-            <div className="flex flex-wrap justify-center gap-2 max-w-md bg-white border border-slate-100 p-3.5 rounded-xl text-[11px] text-slate-500 font-sans text-left leading-relaxed">
-              <div className="flex gap-2">
-                <span className="text-indigo-600 font-bold select-none">💡</span>
-                <span><b>Gợi ý:</b> Nhập prompt cụ thể (sản phẩm, giọng điệu, đối tượng khách hàng) hoặc tải lên file tài liệu/ảnh hỗ trợ để AI lập lịch chính xác nhất.</span>
-              </div>
-            </div>
-          </div>
+          <p className="px-2 py-8 text-center text-xs text-slate-400">Chưa có chiến dịch nào. Nhập ý tưởng ở khung bên phải để bắt đầu.</p>
         ) : !loadingCampaigns && filteredCampaigns.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-xs text-slate-400">
+          <div className="px-2 py-6 text-center text-xs text-slate-400">
             Không tìm thấy chiến dịch nào với trạng thái này.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="mt-3 min-h-0 space-y-1 overflow-y-auto">
             {filteredCampaigns.map((campaign) => (
               <CampaignItem
                 key={campaign._id}
                 campaign={campaign}
                 statusLabel={statusLabel}
                 onOpenDetail={(campaignId) => setSelectedCampaignId(campaignId)}
+                onOpenChat={(campaignId) => void openConversation(campaignId)}
                 onLifecycle={handleLifecycle}
+                compact
+                selected={chatCampaign?._id === campaign._id}
               />
             ))}
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-6 pt-4 border-t border-slate-100 select-none">
+              <div className="flex items-center justify-center gap-2 mt-3 pt-3 border-t border-slate-100 select-none">
                 <button
                   type="button"
                   onClick={() => void loadCampaigns(currentPage - 1)}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition cursor-pointer"
+                  className="px-2 py-1 rounded-lg border border-slate-200 text-[10px] font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition cursor-pointer"
                 >
                   Trang trước
                 </button>
-                <span className="text-xs text-slate-500 font-medium">
+                <span className="text-[10px] text-slate-500 font-medium">
                   Trang {currentPage} / {totalPages}
                 </span>
                 <button
                   type="button"
                   onClick={() => void loadCampaigns(currentPage + 1)}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition cursor-pointer"
+                  className="px-2 py-1 rounded-lg border border-slate-200 text-[10px] font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:hover:bg-transparent transition cursor-pointer"
                 >
                   Trang sau
                 </button>
@@ -1519,7 +1694,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             )}
           </div>
         )}
-      </section>
+      </aside>
 
       <CampaignDetailModal
         isOpen={Boolean(selectedCampaignId)}
@@ -1570,6 +1745,10 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
         onActivate={async (campaignId) => {
           const result = await marketingCampaignService.activate(campaignId);
           setCampaigns((current) => current.map((item) => item._id === result.campaign._id ? result.campaign : item));
+          setChatCampaign((current) => current?._id === result.campaign._id ? result.campaign : current);
+          setChatMessages((current) => chatCampaign?._id === result.campaign._id
+            ? [...current, { role: 'assistant', text: 'Đã xác nhận. Hệ thống bắt đầu chuẩn bị và đăng bài theo thiết lập.', campaignId }]
+            : current);
           const detail = await marketingCampaignService.detail(campaignId);
           setCampaignDetail({ campaign: detail.campaign, slots: detail.slots as CampaignSlot[] });
           const preparationMessage = result.preparation.enqueued > 0

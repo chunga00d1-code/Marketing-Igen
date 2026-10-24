@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, react-hooks/exhaustive-deps */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { AI_REPLY_PRIMARY_MODEL } from "../../../shared/ai-reply-models";
 import {
   MessageSquare, Zap, RefreshCw, Terminal, CheckCircle,
   HelpCircle, Save, Sliders, ExternalLink, ChevronDown, ChevronUp,
@@ -40,6 +41,7 @@ export function AiCommentReplyManager({
   const [localConfig, setLocalConfig] = useState<AIChatConfig>({
     enabled: false,
     commentReplyEnabled: false,
+    imageReplyEnabled: false,
     autoClassify: true,
     autoCloseDeal: false,
     autoFeedback: false,
@@ -49,7 +51,7 @@ export function AiCommentReplyManager({
     customerServiceScript: "",
     customerServiceScriptFileName: "",
     trainingKnowledge: "",
-    model: localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+    model: AI_REPLY_PRIMARY_MODEL,
     autoFollowUpEnabled: false,
     followUpDelayHours: 2,
     followUpPrompt: ""
@@ -60,12 +62,7 @@ export function AiCommentReplyManager({
   const [logs, setLogs] = useState<any[]>([]);
   const [knowledgeHealth, setKnowledgeHealth] = useState<any>(null);
   const [loadingHealth, setLoadingHealth] = useState(false);
-  const scenarioDocument = Array.isArray(knowledgeHealth?.scenarioDocuments) && knowledgeHealth.scenarioDocuments.length
-    ? knowledgeHealth.scenarioDocuments[0]
-    : Array.isArray(knowledgeHealth?.documents)
-      ? knowledgeHealth.documents.find((document: any) => document.documentType === "scenario")
-      : null;
-  const scenarioFileName = scenarioDocument?.title || localConfig.customerServiceScriptFileName;
+  const scenarioFileName = localConfig.customerServiceScriptFileName;
 
   // Pagination states for Logs
   const [logsPage, setLogsPage] = useState(1);
@@ -101,9 +98,29 @@ export function AiCommentReplyManager({
 
 
   const [activePlatform, setActivePlatform] = useState<"facebook" | "tiktok">("facebook");
+  const configScopeKey = activePlatform === "facebook"
+    ? `facebook:${selectedFacebookPageId}`
+    : `tiktok:${selectedTiktokAccountId}`;
+  const configDraftDirtyRef = useRef(false);
+  const previousConfigScopeRef = useRef(configScopeKey);
+  const currentConfigScopeRef = useRef(configScopeKey);
+  currentConfigScopeRef.current = configScopeKey;
+  const draftRevisionRef = useRef(0);
+
+  const setLocalConfigDraft = (config: React.SetStateAction<AIChatConfig>) => {
+    draftRevisionRef.current += 1;
+    configDraftDirtyRef.current = true;
+    setLocalConfig(config);
+  };
 
   // Sync settings from selectedFacebookPageId or selectedTiktokAccountId or fallback to userProfile
   useEffect(() => {
+    if (previousConfigScopeRef.current !== configScopeKey) {
+      previousConfigScopeRef.current = configScopeKey;
+      draftRevisionRef.current += 1;
+      configDraftDirtyRef.current = false;
+    }
+
     let active = true;
     const loadPageConfig = async () => {
       let targetId = "";
@@ -119,7 +136,7 @@ export function AiCommentReplyManager({
         }
       }
 
-      if (targetId && !targetId.startsWith("company_")) {
+      if (targetId && targetId !== "personal" && !targetId.startsWith("company_")) {
         try {
           const res = await fetch(`/api/v1/crud/social-integrations/${targetId}`, {
             headers: {
@@ -127,11 +144,12 @@ export function AiCommentReplyManager({
             },
           });
           const result = await res.json().catch(() => ({}));
-          if (active && res.ok && result.status === "success" && result.data?.aiAutoReplyConfig) {
+          if (active && !configDraftDirtyRef.current && res.ok && result.status === "success" && result.data?.aiAutoReplyConfig) {
             const config = result.data.aiAutoReplyConfig;
             setLocalConfig({
               enabled: config.enabled ?? false,
               commentReplyEnabled: config.commentReplyEnabled ?? false,
+              imageReplyEnabled: config.imageReplyEnabled ?? false,
               autoClassify: true,
               autoCloseDeal: true,
               autoFeedback: true,
@@ -141,7 +159,7 @@ export function AiCommentReplyManager({
               customerServiceScript: config.customerServiceScript ?? "",
               customerServiceScriptFileName: config.customerServiceScriptFileName ?? "",
               trainingKnowledge: config.trainingKnowledge ?? "",
-              model: config.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
+              model: AI_REPLY_PRIMARY_MODEL,
               autoFollowUpEnabled: config.autoFollowUpEnabled ?? false,
               followUpDelayHours: config.followUpDelayHours ?? 2,
               followUpPrompt: config.followUpPrompt ?? "",
@@ -154,23 +172,25 @@ export function AiCommentReplyManager({
       }
 
       // Fallback to userProfile
-      if (active && userProfile?.aiAutoReplyConfig) {
+      const fallbackConfig = targetId && targetId !== "personal" ? undefined : userProfile?.aiAutoReplyConfig;
+      if (active && !configDraftDirtyRef.current) {
         setLocalConfig({
-          enabled: userProfile.aiAutoReplyConfig.enabled ?? false,
-          commentReplyEnabled: userProfile.aiAutoReplyConfig.commentReplyEnabled ?? false,
+          enabled: fallbackConfig?.enabled ?? false,
+          commentReplyEnabled: fallbackConfig?.commentReplyEnabled ?? false,
+          imageReplyEnabled: fallbackConfig?.imageReplyEnabled ?? false,
           autoClassify: true,
           autoCloseDeal: true,
           autoFeedback: true,
-          replyDelay: userProfile.aiAutoReplyConfig.replyDelay ?? 15,
-          customerAddressStyle: userProfile.aiAutoReplyConfig.customerAddressStyle ?? "",
-          advancedInstructions: userProfile.aiAutoReplyConfig.advancedInstructions ?? "",
-          customerServiceScript: userProfile.aiAutoReplyConfig.customerServiceScript ?? "",
-          customerServiceScriptFileName: userProfile.aiAutoReplyConfig.customerServiceScriptFileName ?? "",
-          trainingKnowledge: userProfile.aiAutoReplyConfig.trainingKnowledge ?? "",
-          model: userProfile.aiAutoReplyConfig.model || localStorage.getItem("selected_ai_model") || "deepseek-v4-flash-0731",
-          autoFollowUpEnabled: userProfile.aiAutoReplyConfig.autoFollowUpEnabled ?? false,
-          followUpDelayHours: userProfile.aiAutoReplyConfig.followUpDelayHours ?? 2,
-          followUpPrompt: userProfile.aiAutoReplyConfig.followUpPrompt ?? "",
+          replyDelay: fallbackConfig?.replyDelay ?? 15,
+          customerAddressStyle: fallbackConfig?.customerAddressStyle ?? "",
+          advancedInstructions: fallbackConfig?.advancedInstructions ?? "",
+          customerServiceScript: fallbackConfig?.customerServiceScript ?? "",
+          customerServiceScriptFileName: fallbackConfig?.customerServiceScriptFileName ?? "",
+          trainingKnowledge: fallbackConfig?.trainingKnowledge ?? "",
+          model: AI_REPLY_PRIMARY_MODEL,
+          autoFollowUpEnabled: fallbackConfig?.autoFollowUpEnabled ?? false,
+          followUpDelayHours: fallbackConfig?.followUpDelayHours ?? 2,
+          followUpPrompt: fallbackConfig?.followUpPrompt ?? "",
         });
       }
     };
@@ -180,7 +200,7 @@ export function AiCommentReplyManager({
     return () => {
       active = false;
     };
-  }, [selectedFacebookPageId, facebookPages, userProfile]);
+  }, [selectedFacebookPageId, selectedTiktokAccountId, activePlatform, facebookPages, tiktokAccounts, userProfile]);
 
   const fetchSinglePostDetail = async (postId: string) => {
     if (!postId || postId === "unknown_post" || postId.includes("mock")) return;
@@ -419,9 +439,12 @@ export function AiCommentReplyManager({
 
   // Save config
   const handleSaveConfig = async () => {
+    const submittedRevision = draftRevisionRef.current;
+    const submittedScope = configScopeKey;
     setSavingConfig(true);
     const configToSave = {
       ...localConfig,
+      model: AI_REPLY_PRIMARY_MODEL,
       autoClassify: true,
       autoCloseDeal: true,
       autoFeedback: true
@@ -446,6 +469,9 @@ export function AiCommentReplyManager({
         }
       } else {
         await updateAiAutoReplyConfig(configToSave);
+      }
+      if (submittedRevision === draftRevisionRef.current && submittedScope === currentConfigScopeRef.current) {
+        configDraftDirtyRef.current = false;
       }
       toast.success(`Đã cập nhật cấu hình tự động trả lời bình luận ${activePlatform === "facebook" ? "Facebook" : "TikTok"}!`);
     } catch (err: any) {
@@ -472,7 +498,7 @@ export function AiCommentReplyManager({
       if (!confirmed) return;
     }
 
-    setLocalConfig((previous) => ({
+    setLocalConfigDraft((previous) => ({
       ...previous,
       trainingKnowledge: mode === "append" && currentKnowledge
         ? `${currentKnowledge}\n\n${scenarioLibrary}`
@@ -558,12 +584,12 @@ export function AiCommentReplyManager({
         body: JSON.stringify({ docLink: driveLink, clearExisting: true })
       });
       const data = await res.json();
+      if (currentConfigScopeRef.current !== configScopeKey) return;
       if (res.ok && data.status === "success") {
-        const nextConfig = {
-          ...localConfig,
+        setLocalConfigDraft(previous => ({
+          ...previous,
           trainingKnowledge: data.text
-        };
-        setLocalConfig(nextConfig);
+        }));
         toast.success(`Đồng bộ thành công từ ${data.title}! Hãy bấm "Lưu cấu hình auto-reply" để áp dụng.`);
         void fetchAIHealth();
       } else {
@@ -596,12 +622,11 @@ export function AiCommentReplyManager({
 
           const { geminiApi } = await import("../../api/gemini");
           const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type);
-
-          const nextConfig = {
-            ...localConfig,
+          if (currentConfigScopeRef.current !== configScopeKey) return;
+          setLocalConfigDraft(previous => ({
+            ...previous,
             trainingKnowledge: data.text
-          };
-          setLocalConfig(nextConfig);
+          }));
           toast.success(`Đã trích xuất & nạp tài liệu: ${file.name} thành công! Hãy bấm "Lưu cấu hình" để hoàn tất.`);
           void fetchAIHealth();
         } catch (err: any) {
@@ -641,15 +666,16 @@ export function AiCommentReplyManager({
         reader.readAsDataURL(file);
       });
       const { geminiApi } = await import("../../api/gemini");
-      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario" });
-      setLocalConfig({
-        ...localConfig,
-        customerServiceScript: "",
+      const data = await geminiApi.uploadLocalDocument(file.name, base64Data, file.type || "application/octet-stream", { documentType: "scenario", extractOnly: true });
+      if (currentConfigScopeRef.current !== configScopeKey) return;
+      setLocalConfigDraft(previous => ({
+        ...previous,
+        customerServiceScript: data.text,
         customerServiceScriptFileName: file.name,
-      });
+      }));
       await fetchAIHealth();
-      if (data.truncated) toast.info("Đã nạp kịch bản vào RAG riêng; nội dung được giới hạn còn 20.000 ký tự.");
-      else toast.success(`Đã nạp kịch bản từ ${file.name} vào RAG riêng; AI sẽ dùng nội dung liên quan khi trả lời.`);
+      if (data.truncated) toast.info("Đã đọc kịch bản, giới hạn 20.000 ký tự. Nhấn Lưu để áp dụng cho tài khoản đang chọn.");
+      else toast.success(`Đã đọc kịch bản từ ${file.name}. Nhấn Lưu để áp dụng cho tài khoản đang chọn.`);
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Không thể nạp tệp kịch bản vào RAG.");
@@ -661,15 +687,13 @@ export function AiCommentReplyManager({
   const handleClearCustomerServiceScenario = async () => {
     setUploadingScenarioFile(true);
     try {
-      const { geminiApi } = await import("../../api/gemini");
-      await geminiApi.clearCustomerServiceScenario();
-      setLocalConfig({
-        ...localConfig,
+      setLocalConfigDraft(previous => ({
+        ...previous,
         customerServiceScript: "",
         customerServiceScriptFileName: "",
-      });
+      }));
       await fetchAIHealth();
-      toast.success("Đã xóa kịch bản khỏi RAG riêng.");
+      toast.success("Đã bỏ kịch bản riêng. Nhấn Lưu để áp dụng cho tài khoản đang chọn.");
     } catch (error: any) {
       console.error(error);
       toast.error(error.message || "Không thể xóa kịch bản.");
@@ -689,7 +713,7 @@ export function AiCommentReplyManager({
       const { geminiApi } = await import("../../api/gemini");
       await geminiApi.clearKnowledge();
       const nextConfig = { ...localConfig, trainingKnowledge: "" };
-      setLocalConfig(nextConfig);
+      setLocalConfigDraft(nextConfig);
       toast.success("Đã xóa toàn bộ tài liệu AI đã feed.");
       void fetchAIHealth();
     } catch (err: any) {
@@ -889,7 +913,7 @@ export function AiCommentReplyManager({
                       <input
                         type="checkbox"
                         checked={localConfig.commentReplyEnabled}
-                        onChange={(e) => setLocalConfig({ ...localConfig, commentReplyEnabled: e.target.checked })}
+                        onChange={(e) => setLocalConfigDraft({ ...localConfig, commentReplyEnabled: e.target.checked })}
                         className="sr-only peer"
                       />
                       <div className="w-8 h-4 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-indigo-650" />
@@ -909,7 +933,7 @@ export function AiCommentReplyManager({
                       min={1}
                       max={45}
                       value={localConfig.replyDelay}
-                      onChange={(e) => setLocalConfig({ ...localConfig, replyDelay: parseInt(e.target.value) })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, replyDelay: parseInt(e.target.value) })}
                       className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-650"
                     />
                   </div>
@@ -1081,7 +1105,7 @@ export function AiCommentReplyManager({
                       type="text"
                       placeholder="Ví dụ: anh - chị (để trống để dùng mặc định anh/chị)"
                       value={localConfig.customerAddressStyle ?? ""}
-                      onChange={(e) => setLocalConfig({ ...localConfig, customerAddressStyle: e.target.value })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, customerAddressStyle: e.target.value })}
                       className="w-full px-2.5 py-2 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                     <p className="text-[9px] leading-relaxed text-slate-400">AI sẽ dùng đúng cách viết này thay cho “anh/chị” trong câu trả lời.</p>
@@ -1095,7 +1119,7 @@ export function AiCommentReplyManager({
                     <textarea
                       placeholder="Nhập rule bổ sung riêng cho doanh nghiệp này..."
                       value={localConfig.advancedInstructions}
-                      onChange={(e) => setLocalConfig({ ...localConfig, advancedInstructions: e.target.value })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, advancedInstructions: e.target.value })}
                       className="w-full h-24 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                   </div>
@@ -1116,9 +1140,9 @@ export function AiCommentReplyManager({
                       <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50">
                         <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md" className="sr-only" disabled={uploadingScenarioFile} onChange={(event) => { const file = event.target.files?.[0]; if (file) handleUploadCustomerServiceScript(file); event.currentTarget.value = ""; }} />
                         <UploadCloud className="h-4 w-4 text-indigo-600" />
-                        <span>{uploadingScenarioFile ? "Đang nạp kịch bản vào RAG..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
+                        <span>{uploadingScenarioFile ? "Đang đọc kịch bản..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
                       </label>
-                    <p className="text-[9px] leading-relaxed text-slate-400">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Tệp được lưu vào RAG riêng; AI truy xuất các bước liên quan theo ngữ cảnh hội thoại.</p>
+                    <p className="text-[9px] leading-relaxed text-slate-400">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Nhấn Lưu để dùng kịch bản riêng cho tài khoản đang chọn. Tài liệu trong kho tri thức có phạm vi dùng chung hoặc theo Page được cấu hình tại kho.</p>
                   </div>
 
                   {/* Manual Training Knowledge */}
@@ -1160,7 +1184,7 @@ export function AiCommentReplyManager({
                     <textarea
                       placeholder="Nhập thông tin sản phẩm, câu hỏi thường gặp FAQ, chính sách giao hàng..."
                       value={localConfig.trainingKnowledge}
-                      onChange={(e) => setLocalConfig({ ...localConfig, trainingKnowledge: e.target.value })}
+                      onChange={(e) => setLocalConfigDraft({ ...localConfig, trainingKnowledge: e.target.value })}
                       className="w-full h-36 p-2.5 border border-slate-200 bg-slate-50 focus:bg-white rounded-xl text-[10px] leading-relaxed focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all duration-200"
                     />
                     <p className="text-[8px] text-slate-400 leading-normal">

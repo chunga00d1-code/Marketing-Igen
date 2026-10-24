@@ -30,14 +30,19 @@ import {
   Target,
   ChevronLeft,
   ChevronRight,
+  Info,
+  Clock3,
+  FileText,
+  Plus,
 } from "lucide-react";
 import {
   marketingAnalyticsService,
   AnalyticsResponse,
 } from "../../services/marketingAnalyticsService";
 import { toast } from "../../pages/Toast";
+import ReportFilterControls from "./ReportFilterControls";
 
-const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#ec4899"];
+const COLORS = ["#00adfc", "#10b981", "#f59e0b", "#f43f5e", "#8b5cf6", "#ec4899"];
 const PILLAR_CHART_LIMIT = 6;
 
 function normalizePillarName(value: string): string {
@@ -70,75 +75,107 @@ function MetricCard({
   const isSky = tone.includes("blue") || tone.includes("cyan") || tone.includes("sky");
   const isAmber = tone.includes("amber") || tone.includes("orange");
 
-  let iconBg = "bg-slate-50 text-slate-500";
-  let glowColor = "rgba(148, 163, 184, 0.1)";
+  let surface = "border-slate-100 from-slate-50 via-white to-slate-50";
+  let iconBg = "bg-slate-100 text-slate-500";
+  let labelColor = "text-slate-600";
+  let decorativeBar = "bg-slate-200";
   let progressBg = "bg-slate-100";
   let progressBar = "bg-slate-400";
-  
+
   if (isPink) {
-    iconBg = "bg-pink-500/10 text-pink-600";
-    glowColor = "rgba(244, 63, 94, 0.12)";
-    progressBg = "bg-pink-100/50";
-    progressBar = "bg-gradient-to-r from-pink-500 to-rose-500";
+    surface = "border-pink-100 from-pink-50 via-white to-rose-50/60";
+    iconBg = "bg-pink-100 text-pink-600";
+    labelColor = "text-pink-700";
+    decorativeBar = "bg-pink-200/70";
+    progressBg = "bg-pink-100";
+    progressBar = "bg-pink-400";
   } else if (isViolet) {
-    iconBg = "bg-violet-500/10 text-violet-600";
-    glowColor = "rgba(139, 92, 246, 0.12)";
-    progressBg = "bg-violet-100/50";
-    progressBar = "bg-gradient-to-r from-violet-500 to-indigo-500";
+    surface = "border-violet-100 from-violet-50 via-white to-purple-50/60";
+    iconBg = "bg-violet-100 text-violet-600";
+    labelColor = "text-violet-700";
+    decorativeBar = "bg-violet-200/70";
+    progressBg = "bg-violet-100";
+    progressBar = "bg-violet-400";
   } else if (isEmerald) {
-    iconBg = "bg-emerald-500/10 text-emerald-600";
-    glowColor = "rgba(16, 185, 129, 0.12)";
-    progressBg = "bg-emerald-100/50";
-    progressBar = "bg-gradient-to-r from-emerald-500 to-teal-500";
+    surface = "border-emerald-100 from-emerald-50 via-white to-teal-50/60";
+    iconBg = "bg-emerald-100 text-emerald-600";
+    labelColor = "text-emerald-700";
+    decorativeBar = "bg-emerald-200/70";
+    progressBg = "bg-emerald-100";
+    progressBar = "bg-emerald-400";
   } else if (isSky) {
-    iconBg = "bg-sky-500/10 text-sky-600";
-    glowColor = "rgba(14, 165, 233, 0.12)";
-    progressBg = "bg-sky-100/50";
-    progressBar = "bg-gradient-to-r from-sky-500 to-cyan-500";
+    surface = "border-sky-100 from-sky-50 via-white to-blue-50/60";
+    iconBg = "bg-sky-100 text-sky-600";
+    labelColor = "text-sky-700";
+    decorativeBar = "bg-sky-200/70";
+    progressBg = "bg-sky-100";
+    progressBar = "bg-sky-400";
   } else if (isAmber) {
-    iconBg = "bg-amber-500/10 text-amber-600";
-    glowColor = "rgba(245, 158, 11, 0.12)";
-    progressBg = "bg-amber-100/50";
-    progressBar = "bg-gradient-to-r from-amber-500 to-orange-500";
+    surface = "border-orange-100 from-orange-50 via-white to-amber-50/60";
+    iconBg = "bg-orange-100 text-orange-600";
+    labelColor = "text-orange-700";
+    decorativeBar = "bg-orange-200/70";
+    progressBg = "bg-orange-100";
+    progressBar = "bg-orange-400";
   }
 
   return (
-    <div className="group relative bg-white/70 backdrop-blur-md border border-slate-100/80 rounded-3xl p-5 shadow-[0_8px_30px_rgba(0,0,0,0.015)] hover:shadow-[0_15px_35px_rgba(0,0,0,0.04)] hover:-translate-y-1 hover:border-slate-200/50 transition-all duration-300 overflow-hidden flex flex-col justify-between min-h-[145px]">
-      <div 
-        className="absolute -bottom-8 -right-8 w-24 h-24 rounded-full blur-2xl opacity-15 pointer-events-none transition-all duration-500 group-hover:scale-125" 
-        style={{ backgroundColor: glowColor }} 
-      />
-      <div className={`absolute top-0 left-0 right-0 h-[4px] bg-gradient-to-r ${tone}`} />
-      
-      <div className="flex justify-between items-start">
-        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{title}</span>
-        <span className={`p-2.5 rounded-2xl ${iconBg} flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 shadow-xs`}>
-          <Icon className="h-4.5 w-4.5" />
+    <div className={`relative flex min-h-[164px] min-w-0 flex-col justify-between overflow-hidden rounded-[20px] border bg-gradient-to-br p-4 shadow-[0_6px_24px_rgba(31,96,160,0.035)] ${surface}`}>
+      <div className="relative z-10 flex items-start gap-2.5">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+          <Icon className="h-5 w-5" />
         </span>
+        <span className={`pt-1 text-[11px] font-normal leading-snug ${labelColor}`}>{title}</span>
       </div>
-      
-      <div className="mt-2.5">
-        <h4 className="text-3.5xl font-black text-slate-800 tracking-tight leading-none transition-colors group-hover:text-slate-900">{value}</h4>
-        
-        {progress !== undefined && (
-          <div className="mt-3.5 space-y-1.5">
-            <div className={`w-full h-1 rounded-full ${progressBg} overflow-hidden`}>
-              <div 
-                className={`h-full rounded-full transition-all duration-500 ${progressBar}`}
-                style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-              />
-            </div>
-            <div className="flex justify-between text-[10px] text-slate-400 font-bold">
-              <span>{description}</span>
-              <span>{Math.round(progress)}%</span>
-            </div>
-          </div>
-        )}
-        
-        {progress === undefined && (
-          <p className="text-xs text-slate-400 mt-2 font-semibold">{description}</p>
-        )}
+      <div className="pointer-events-none absolute right-4 top-14 flex h-12 items-end gap-1 opacity-70" aria-hidden="true">
+        {["h-3", "h-5", "h-7", "h-10"].map((height) => <span key={height} className={`w-2.5 rounded-t ${height} ${decorativeBar}`} />)}
       </div>
+      <div className="relative z-10 mt-3">
+        <h4 className="text-[28px] font-normal leading-none tracking-tight text-slate-900">{value}</h4>
+        <div className={`mt-3 h-1.5 w-full overflow-hidden rounded-full ${progressBg}`}>
+          <div className={`h-full rounded-full transition-all duration-500 ${progressBar}`} style={{ width: `${Math.min(100, Math.max(0, progress ?? 0))}%` }} />
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-1 text-[10px] text-slate-500">
+          <span className="truncate">{description}</span>
+          {progress !== undefined && <span className="shrink-0">{Math.round(progress)}%</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReportEmptyState({ kind, children }: { kind: "trend" | "platform" | "pillar" | "errors"; children: React.ReactNode }) {
+  return (
+    <div className="flex h-full min-h-44 flex-col items-center justify-center gap-4 text-center text-sm text-slate-500">
+      {kind === "trend" && (
+        <div className="relative flex h-24 items-end gap-1.5 text-sky-200" aria-hidden="true">
+          <span className="h-6 w-5 rounded-t bg-sky-100" /><span className="h-10 w-5 rounded-t bg-sky-100" />
+          <span className="h-15 w-5 rounded-t bg-sky-200" /><span className="h-20 w-5 rounded-t bg-sky-200" />
+          <span className="absolute -bottom-1 -right-11 flex h-12 w-12 items-center justify-center rounded-full border-4 border-white bg-sky-100 text-white"><Clock3 size={28} /></span>
+        </div>
+      )}
+      {kind === "platform" && (
+        <div className="relative h-32 w-32" aria-hidden="true">
+          <div className="h-30 w-30 rounded-full [background:conic-gradient(#bfdbfe_0_27%,#e0f2fe_27%_100%)]" />
+          <div className="absolute left-[26px] top-[26px] h-[68px] w-[68px] rounded-full bg-white" />
+          <div className="absolute -bottom-1 -right-2 flex h-14 w-14 items-center justify-center rounded-xl border-4 border-white bg-sky-50 text-sky-300 shadow-sm"><FileText size={27} /></div>
+        </div>
+      )}
+      {kind === "pillar" && (
+        <div className="relative flex h-28 w-36 items-center justify-center" aria-hidden="true">
+          <span className="absolute left-0 top-12 h-4 w-4 rounded-full bg-sky-100" /><span className="absolute right-0 top-5 h-5 w-5 rounded-full bg-sky-100" />
+          <div className="flex h-24 w-20 flex-col gap-2 rounded-xl bg-sky-50 p-4 shadow-sm"><span className="h-2 rounded-full bg-sky-200" /><span className="h-2 rounded-full bg-sky-200" /><span className="h-2 w-3/4 rounded-full bg-sky-200" /></div>
+          <span className="absolute bottom-0 right-3 flex h-11 w-11 items-center justify-center rounded-full border-4 border-white bg-sky-500 text-white"><Plus size={25} /></span>
+        </div>
+      )}
+      {kind === "errors" && (
+        <div className="relative flex h-28 w-36 items-center justify-center" aria-hidden="true">
+          <span className="absolute left-1 top-12 h-4 w-4 rounded-full bg-pink-100" /><span className="absolute right-0 top-4 h-5 w-5 rounded-full bg-pink-100" />
+          <div className="flex h-24 w-20 flex-col gap-2 rounded-xl bg-slate-100 p-4 shadow-sm"><span className="h-2 rounded-full bg-slate-200" /><span className="h-2 rounded-full bg-slate-200" /><span className="h-2 w-3/4 rounded-full bg-slate-200" /></div>
+          <span className="absolute bottom-0 right-3 flex h-11 w-11 items-center justify-center rounded-full border-4 border-white bg-pink-500 text-white"><AlertTriangle size={21} /></span>
+        </div>
+      )}
+      <p className="max-w-sm leading-relaxed">{children}</p>
     </div>
   );
 }
@@ -265,11 +302,36 @@ export default function AnalyticsDashboard() {
     setEndDate("");
   };
 
+  const hasActiveFilters = Boolean(campaignId || platform || startDate || endDate);
+  const reportInsight = !data || !data.overview
+    ? null
+    : data.overview.totalSlots === 0
+      ? {
+          title: "Chưa có bài viết trong phạm vi đang xem",
+          detail: hasActiveFilters
+            ? "Hãy mở rộng thời gian hoặc đặt lại bộ lọc để kiểm tra dữ liệu của các chiến dịch khác."
+            : "Khi chiến dịch có bài viết, bạn sẽ thấy tiến độ đăng tải, hiệu quả từng nền tảng và tương tác tại đây.",
+        }
+      : data.overview.failedSlots > 0
+        ? {
+            title: `${data.overview.failedSlots} bài đăng thất bại cần kiểm tra`,
+            detail: "Xem mục lỗi đăng tải và chi tiết từng bài để xác định nguyên nhân trước khi tiếp tục theo dõi hiệu suất.",
+          }
+        : data.overview.publishedSlots === 0
+          ? {
+              title: `${data.overview.totalSlots} bài viết chưa có lượt xuất bản thành công`,
+              detail: "Số liệu tiếp cận, tương tác và phân bổ nền tảng sẽ xuất hiện sau khi bài viết được đăng thành công.",
+            }
+          : {
+              title: `${data.overview.publishedSlots} / ${data.overview.totalSlots} bài đã xuất bản`,
+              detail: "Đối chiếu xu hướng theo ngày, phân bổ nền tảng và hiệu suất từng bài để đánh giá kết quả chiến dịch.",
+            };
+
   if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center h-80 gap-3 text-slate-400">
         <RefreshCw className="h-8 w-8 animate-spin text-indigo-500" />
-        <p className="font-semibold text-sm">Đang tổng hợp dữ liệu báo cáo...</p>
+        <p className="text-sm">Đang tổng hợp dữ liệu báo cáo...</p>
       </div>
     );
   }
@@ -279,12 +341,12 @@ export default function AnalyticsDashboard() {
       <div className="flex flex-col items-center justify-center h-80 gap-3 text-slate-500 bg-slate-50/50 rounded-2xl border border-slate-100 p-6">
         <AlertTriangle className="h-10 w-10 text-amber-500" />
         <div className="text-center">
-          <p className="font-bold text-sm text-slate-700">Không thể tải dữ liệu báo cáo</p>
+          <p className="text-sm text-slate-700">Không thể tải dữ liệu báo cáo</p>
           <p className="text-xs text-slate-400 mt-1">Vui lòng kiểm tra kết nối hệ thống hoặc thử lại</p>
         </div>
         <button
           onClick={() => void loadData()}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-normal px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           Thử lại
@@ -302,82 +364,42 @@ export default function AnalyticsDashboard() {
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Header & Controls Toolbar */}
-      <div className="flex flex-col gap-4 border-b border-slate-100 pb-4">
+      <div className="relative isolate flex flex-col gap-5 overflow-hidden rounded-[24px] border border-sky-100 bg-gradient-to-br from-white via-white to-sky-50/60 p-5 shadow-[0_8px_28px_rgba(47,117,183,0.035)]">
+        <div className="pointer-events-none absolute -right-8 -top-16 h-40 w-2/5 rounded-full bg-sky-100/50 blur-2xl" aria-hidden="true" />
+        <div className="pointer-events-none absolute right-32 top-2 hidden h-20 items-end gap-1.5 opacity-30 lg:flex" aria-hidden="true">
+          {["h-4", "h-7", "h-10", "h-14", "h-17"].map((height) => <span key={height} className={`w-3 rounded-t bg-sky-300 ${height}`} />)}
+          <TrendingUp size={44} className="mb-9 ml-1 text-sky-300" />
+        </div>
         {/* Dòng 1: Tiêu đề */}
-        <div className="flex justify-between items-start">
+        <div className="relative z-10 flex justify-between items-start">
           <div>
-            <h2 className="text-lg font-black text-slate-800 tracking-tight flex items-center gap-2 animate-fadeIn">
-              BÁO CÁO HIỆU SUẤT ĐĂNG TẢI
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
+            <h2 className="flex items-center gap-2 text-xl font-normal tracking-tight text-slate-900">
+              Báo cáo hiệu suất đăng tải
+              <Info size={15} className="text-sky-500" />
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">Phân tích đa chiều chiến dịch, tương tác và chất lượng nội dung AI</p>
+            <p className="mt-1 text-sm text-slate-500">Theo dõi tiến độ xuất bản, lượt tiếp cận và tương tác theo chiến dịch, kênh và thời gian.</p>
           </div>
         </div>
 
         {/* Dòng 2: Bộ lọc dạng Tag & Xuất báo cáo */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Bộ lọc Chiến dịch */}
-            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1.5 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Chiến dịch:</span>
-              <select
-                value={campaignId}
-                onChange={(e) => setCampaignId(e.target.value)}
-                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs"
-              >
-                <option value="">Tất cả</option>
-                {data?.campaigns?.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.title}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Bộ lọc Nền tảng */}
-            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1.5 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Nền tảng:</span>
-              <select
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value)}
-                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs"
-              >
-                <option value="">Tất cả</option>
-                <option value="Facebook">Facebook Page</option>
-                <option value="TikTok">TikTok Channel</option>
-              </select>
-            </div>
-
-            {/* Từ ngày */}
-            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1 text-slate-500 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Từ:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs py-0.5"
-              />
-            </div>
-
-            {/* Đến ngày */}
-            <div className="flex items-center gap-2 bg-white/60 backdrop-blur-xs border border-slate-100/80 rounded-xl px-3 py-1 text-slate-500 hover:bg-white hover:border-indigo-500/20 transition-all duration-300 shadow-xs">
-              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Đến:</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent font-bold text-slate-700 outline-none cursor-pointer text-xs py-0.5"
-              />
-            </div>
-
+            <ReportFilterControls
+              campaigns={data?.campaigns?.map((campaign) => ({ value: campaign._id, label: campaign.title })) ?? []}
+              campaignId={campaignId}
+              platform={platform}
+              startDate={startDate}
+              endDate={endDate}
+              onCampaignChange={setCampaignId}
+              onPlatformChange={setPlatform}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+            />
             {/* Đặt lại bộ lọc */}
             {(campaignId || platform || startDate || endDate) && (
               <button
                 onClick={clearFilters}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 text-xs font-bold transition-all border border-transparent hover:border-rose-100 shadow-xs"
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-500 text-xs font-normal transition-all border border-transparent hover:border-rose-100 shadow-xs"
               >
                 Đặt lại
               </button>
@@ -388,31 +410,41 @@ export default function AnalyticsDashboard() {
           <button
             onClick={handleExportExcel}
             disabled={!data || !data.overview || data.overview.totalSlots === 0}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl transition-all duration-300 hover:shadow-lg hover:shadow-emerald-600/20 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            className="flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-teal-400 to-teal-500 px-5 py-2.5 text-xs font-normal text-white shadow-sm transition hover:from-teal-500 hover:to-teal-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Download className="h-3.5 w-3.5" />
-            XUẤT EXCEL
+            Xuất Excel
           </button>
         </div>
       </div>
 
+      {reportInsight && (
+        <div className="flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-slate-600">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
+          <div>
+            <p className="text-slate-800">{reportInsight.title}</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{reportInsight.detail}</p>
+          </div>
+        </div>
+      )}
+
       {data && data.overview && (
         <>
           {/* 2. Styled KPI Cards from reference image */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {/* Tổng bài viết */}
             <MetricCard
-              title="TỔNG BÀI MARKETING"
+              title="Tổng bài marketing"
               value={data.overview.totalSlots}
               description={`${data.overview.publishedSlots} đã xuất bản`}
               icon={Megaphone}
-              tone="from-pink-500 to-rose-500"
+              tone="from-sky-500 to-blue-500"
               progress={data.overview.totalSlots > 0 ? (data.overview.publishedSlots / data.overview.totalSlots) * 100 : 0}
             />
 
             {/* Đã xuất bản */}
             <MetricCard
-              title="ĐÃ XUẤT BẢN"
+              title="Đã xuất bản"
               value={data.overview.publishedSlots}
               description="Bài đăng hoạt động"
               icon={CheckCircle}
@@ -422,9 +454,9 @@ export default function AnalyticsDashboard() {
 
             {/* Xử lý / Chờ duyệt */}
             <MetricCard
-              title="XỬ LÝ / CHỜ DUYỆT"
+              title="Xử lý / chờ duyệt"
               value={data.overview.pendingApprovalSlots}
-              description="Đang pending/xử lý"
+              description="Bài đang xử lý hoặc chờ duyệt"
               icon={Sparkles}
               tone="from-purple-500 to-indigo-500"
               progress={data.overview.totalSlots > 0 ? (data.overview.pendingApprovalSlots / data.overview.totalSlots) * 100 : 0}
@@ -432,61 +464,61 @@ export default function AnalyticsDashboard() {
 
             {/* Tỷ lệ thành công */}
             <MetricCard
-              title="TỶ LỆ THÀNH CÔNG"
+              title="Tỷ lệ thành công"
               value={`${data.overview.successRate}%`}
               description="Tỷ lệ xuất bản đạt"
               icon={Percent}
-              tone="from-blue-500 to-cyan-500"
+              tone="from-orange-400 to-amber-500"
               progress={data.overview.successRate}
             />
 
             {/* Lượt tiếp cận */}
             <MetricCard
-              title="LƯỢT TIẾP CẬN"
+              title="Lượt tiếp cận"
               value={data.platformMetrics.totalReach >= 1000
                 ? `${(data.platformMetrics.totalReach / 1000).toFixed(1)}k`
                 : data.platformMetrics.totalReach}
-              description="Lượt reach độc giả"
+              description="Lượt tiếp cận đã ghi nhận"
               icon={Target}
-              tone="from-purple-500 to-rose-500"
+              tone="from-pink-400 to-rose-500"
             />
 
             {/* Lượt tương tác */}
             <MetricCard
-              title="LƯỢT TƯƠNG TÁC"
+              title="Lượt tương tác"
               value={data.platformMetrics.totalLikes + data.platformMetrics.totalComments + data.platformMetrics.totalShares}
-              description="Likes, bình luận, share"
+              description="Lượt thích, bình luận, chia sẻ"
               icon={Heart}
               tone="from-amber-500 to-orange-500"
             />
           </div>
 
           {/* 3. Bento Grid Layout (Optimized structure) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* CỘT TRÁI (2/3): Hiệu suất xu hướng & Pillars */}
-            <div className="lg:col-span-2 space-y-5">
+            <div className="space-y-4 lg:col-span-2">
               
               {/* Tabbed Trend Charts: Gộp biểu đồ 1 và biểu đồ 3 để tiết kiệm diện tích */}
-              <div className="bg-white border border-slate-100 rounded-xl p-4.5 shadow-xs">
-                <div className="flex items-center justify-between mb-4 border-b border-slate-50 pb-3">
-                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <TrendingUp className="h-4 w-4 text-indigo-500" />
-                    BẢO CÁO XU HƯỚNG THEO THỜI GIAN
+              <div className="min-h-[310px] rounded-[20px] border border-sky-100 bg-gradient-to-tr from-sky-50/60 via-white to-white p-5 shadow-[0_6px_24px_rgba(31,96,160,0.035)]">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="flex items-center gap-2 text-sm font-normal text-slate-900">
+                    <TrendingUp className="h-5 w-5 text-sky-500" />
+                    Báo cáo xu hướng theo thời gian
                   </h3>
                   
                   {/* Switcher tabs */}
-                  <div className="flex bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold">
+                  <div className="flex rounded-xl bg-slate-100/80 p-0.5 text-xs font-normal">
                     <button
                       onClick={() => setActiveChartTab("posts")}
-                      className={`px-3 py-1 rounded-md transition-all ${activeChartTab === "posts" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+                      className={`rounded-lg px-3 py-1.5 transition-all ${activeChartTab === "posts" ? "bg-sky-500 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                     >
-                      SỐ BÀI ĐĂNG
+                      Số bài đăng
                     </button>
                     <button
                       onClick={() => setActiveChartTab("engagement")}
-                      className={`px-3 py-1 rounded-md transition-all ${activeChartTab === "engagement" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+                      className={`rounded-lg px-3 py-1.5 transition-all ${activeChartTab === "engagement" ? "bg-sky-500 text-white shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                     >
-                      LƯỢT REACH & THÍCH
+                      Lượt xem & thích
                     </button>
                   </div>
                 </div>
@@ -502,8 +534,8 @@ export default function AnalyticsDashboard() {
                               <stop offset="95%" stopColor="#10b981" stopOpacity={0.15}/>
                             </linearGradient>
                             <linearGradient id="colorPlanned" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.15}/>
+                              <stop offset="5%" stopColor="#00adfc" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#00adfc" stopOpacity={0.15}/>
                             </linearGradient>
                             <linearGradient id="colorFailed" x1="0" y1="0" x2="0" y2="1">
                               <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8}/>
@@ -551,21 +583,19 @@ export default function AnalyticsDashboard() {
                       </ResponsiveContainer>
                     )
                   ) : (
-                    <div className="flex items-center justify-center h-full text-slate-400 text-xs">
-                      Không có dữ liệu thống kê trong khoảng ngày này
-                    </div>
+                    <ReportEmptyState kind="trend">Chưa có dữ liệu theo ngày trong phạm vi đã chọn.</ReportEmptyState>
                   )}
                 </div>
               </div>
 
               {/* Hàng 2: Content Pillars (Ngang) & Radar đánh giá AI (Cạnh nhau) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 
                 {/* Content Pillars */}
-                <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-xs flex flex-col justify-between">
-                  <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 border-b border-slate-50 pb-2.5 mb-2.5">
-                    <Layers className="h-4 w-4 text-emerald-500" />
-                    HIỆU QUẢ THEO CONTENT PILLAR
+                <div className="flex min-h-[300px] flex-col justify-between rounded-[20px] border border-sky-100 bg-gradient-to-tr from-sky-50/60 via-white to-white p-5 shadow-[0_6px_24px_rgba(31,96,160,0.035)]">
+                  <h3 className="mb-3 flex items-center gap-2 text-sm font-normal text-slate-900">
+                    <Layers className="h-5 w-5 text-sky-500" />
+                    Hiệu quả theo content pillar
                   </h3>
                   <div className="h-56">
                     {data.byPillar.length > 0 ? (
@@ -577,8 +607,8 @@ export default function AnalyticsDashboard() {
                         >
                           <defs>
                             <linearGradient id="colorTotal" x1="0" y1="0" x2="1" y2="0">
-                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
-                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0.15}/>
+                              <stop offset="5%" stopColor="#00adfc" stopOpacity={0.8}/>
+                              <stop offset="95%" stopColor="#00adfc" stopOpacity={0.15}/>
                             </linearGradient>
                             <linearGradient id="colorLikes" x1="0" y1="0" x2="1" y2="0">
                               <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8}/>
@@ -587,50 +617,48 @@ export default function AnalyticsDashboard() {
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(226, 232, 240, 0.3)" />
                           <XAxis type="number" tick={{ fontSize: 9, fill: '#94a3b8' }} />
-                          <YAxis type="category" dataKey="pillar" tick={{ fontSize: 10, fill: '#64748b', fontWeight: 600 }} width={108} tickFormatter={formatPillarLabel} />
+                          <YAxis type="category" dataKey="pillar" tick={{ fontSize: 10, fill: '#64748b', fontWeight: 400 }} width={108} tickFormatter={formatPillarLabel} />
                           <Tooltip labelFormatter={(label) => normalizePillarName(String(label))} contentStyle={{ fontSize: 11, borderRadius: 12, border: '1px solid rgba(226, 232, 240, 0.8)', backgroundColor: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)' }} />
                           <Bar name="Tổng số bài" dataKey="total" fill="url(#colorTotal)" radius={[0, 3, 3, 0]} barSize={10} />
                           <Bar name="Thích" dataKey="likes" fill="url(#colorLikes)" radius={[0, 3, 3, 0]} barSize={10} />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div className="flex items-center justify-center h-full text-slate-400 text-xs">
-                        Chưa ghi nhận Pillars
-                      </div>
+                      <ReportEmptyState kind="pillar">Chưa có nhóm nội dung để so sánh hiệu suất.</ReportEmptyState>
                     )}
                   </div>
                 </div>
 
                 {/* Phân bổ Phễu Marketing (TOFU / MOFU / BOFU) */}
-                <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-xs flex flex-col justify-between">
-                  <div className="flex items-center justify-between border-b border-slate-50 pb-2.5 mb-2.5">
-                    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                      <Target className="h-4 w-4 text-indigo-500" />
-                      PHÂN BỔ THEO PHỄU MARKETING
+                <div className="flex min-h-[300px] flex-col justify-between rounded-[20px] border border-sky-100 bg-white p-5 shadow-[0_6px_24px_rgba(31,96,160,0.035)]">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="flex items-center gap-2 text-sm font-normal text-slate-900">
+                      <Target className="h-5 w-5 text-sky-500" />
+                      Phân bổ theo phễu marketing
                     </h3>
                     {data.qualityScores?.avgScore > 0 && (
-                      <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-normal text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
                         AI Score: {data.qualityScores.avgScore}/100
                       </span>
                     )}
                   </div>
 
-                  <div className="space-y-3 my-auto py-1">
+                  <div className="my-auto space-y-6 py-3">
                     {(data.byFunnel && data.byFunnel.length > 0 ? data.byFunnel : [
-                      { stage: "TOFU", label: "Nhận biết thương hiệu (TOFU)", desc: "Mở rộng tiếp cận", count: 0, percentage: 33, color: "from-blue-500 to-indigo-600" },
-                      { stage: "MOFU", label: "Tương tác & Đánh giá (MOFU)", desc: "Giữ chân khách hàng", count: 0, percentage: 34, color: "from-purple-500 to-pink-600" },
-                      { stage: "BOFU", label: "Chuyển đổi & Chốt đơn (BOFU)", desc: "Thúc đẩy doanh số", count: 0, percentage: 33, color: "from-emerald-500 to-teal-600" },
+                      { stage: "TOFU", label: "Nhận biết thương hiệu (TOFU)", desc: "Mở rộng tiếp cận", count: 0, percentage: 0, color: "from-sky-400 to-blue-500" },
+                      { stage: "MOFU", label: "Tương tác & Đánh giá (MOFU)", desc: "Giữ chân khách hàng", count: 0, percentage: 0, color: "from-violet-400 to-purple-500" },
+                      { stage: "BOFU", label: "Chuyển đổi & Chốt đơn (BOFU)", desc: "Thúc đẩy doanh số", count: 0, percentage: 0, color: "from-pink-400 to-rose-500" },
                     ]).map((f) => (
                       <div key={f.stage} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-700 text-[11px]">{f.label}</span>
-                          <span className="font-black text-slate-800 text-[11px]">
-                            {f.count} bài <span className="text-slate-400 font-semibold">({f.percentage}%)</span>
+                          <span className="font-normal text-slate-700 text-[11px]">{f.label}</span>
+                          <span className="font-normal text-slate-800 text-[11px]">
+                            {f.count} bài <span className="text-slate-400 font-normal">({f.percentage}%)</span>
                           </span>
                         </div>
-                        <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-3 w-full overflow-hidden rounded-full bg-slate-100">
                           <div
-                            className={`h-full bg-gradient-to-r ${f.color || 'from-indigo-500 to-purple-600'} transition-all duration-500 rounded-full`}
+                            className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ${f.stage === 'TOFU' ? 'from-sky-400 to-blue-500' : f.stage === 'MOFU' ? 'from-violet-400 to-purple-500' : 'from-pink-400 to-rose-500'}`}
                             style={{ width: `${Math.max(f.percentage, 4)}%` }}
                           />
                         </div>
@@ -638,26 +666,21 @@ export default function AnalyticsDashboard() {
                     ))}
                   </div>
 
-                  <div className="text-[10px] text-slate-400 font-medium pt-2 border-t border-slate-50 flex items-center justify-between">
-                    <span>TOFU: Phễu Đầu (Thu hút)</span>
-                    <span>MOFU: Phễu Giữa (Tương tác)</span>
-                    <span>BOFU: Phễu Cuối (Chuyển đổi)</span>
-                  </div>
                 </div>
 
               </div>
             </div>
 
             {/* CỘT PHẢI (1/3): Phân bổ Platform & Lỗi */}
-            <div className="space-y-5">
+            <div className="space-y-4">
               
               {/* Phân bổ kênh đăng bài */}
-              <div className="bg-white border border-slate-100 rounded-xl p-4.5 shadow-xs flex flex-col justify-between">
-                <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 border-b border-slate-50 pb-3 mb-3">
-                  <Activity className="h-4 w-4 text-indigo-500" />
-                  PHÂN BỔ THEO NỀN TẢNG
+              <div className="flex min-h-[310px] flex-col justify-between rounded-[20px] border border-sky-100 bg-white p-5 shadow-[0_6px_24px_rgba(31,96,160,0.035)]">
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-normal text-slate-900">
+                  <Activity className="h-5 w-5 text-sky-500" />
+                  Phân bổ theo nền tảng
                 </h3>
-                <div className="h-36 relative flex items-center justify-center">
+                <div className="relative flex h-56 items-center justify-center">
                   {pieData.some(p => p.value > 0) ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
@@ -678,60 +701,55 @@ export default function AnalyticsDashboard() {
                       </PieChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div className="flex items-center justify-center h-full text-slate-400 text-xs">
-                      Không có bài đăng thành công
-                    </div>
+                    <ReportEmptyState kind="platform">Chưa có bài đăng thành công để so sánh giữa các nền tảng.</ReportEmptyState>
                   )}
                 </div>
                 {/* Legends */}
-                <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-50 pt-2.5">
+                {pieData.some((item) => item.value > 0) && <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-50 pt-2.5">
                   {pieData.map((item, index) => (
                     <div key={item.name} className="flex items-center gap-1.5">
                       <div
                         className="h-2.5 w-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: COLORS[index % COLORS.length] }}
                       />
-                      <span className="text-[10px] font-bold text-slate-600 truncate">
+                      <span className="text-[10px] font-normal text-slate-600 truncate">
                         {item.name}: {item.value} bài
                       </span>
                     </div>
                   ))}
-                </div>
+                </div>}
               </div>
 
               {/* Bảng lỗi nhỏ gọn */}
-              <div className="bg-white border border-slate-100 rounded-xl p-4 shadow-xs flex flex-col h-[230px] overflow-hidden">
-                <h3 className="text-xs font-bold text-rose-600 flex items-center gap-1.5 border-b border-slate-50 pb-2.5 mb-2.5">
-                  <AlertTriangle className="h-4 w-4" />
-                  LỖI ĐĂNG TẢI CẦN LƯU Ý
+              <div className="flex h-[300px] flex-col overflow-hidden rounded-[20px] border border-pink-100 bg-gradient-to-tr from-pink-50/30 via-white to-white p-5 shadow-[0_6px_24px_rgba(31,96,160,0.035)]">
+                <h3 className="mb-3 flex items-center gap-2 text-sm font-normal text-pink-600">
+                  <AlertTriangle className="h-5 w-5" />
+                  Lỗi đăng tải cần lưu ý
                 </h3>
                 <div className="flex-1 overflow-y-auto">
                   {data.topErrors.length > 0 ? (
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                        <tr className="border-b border-slate-100 text-[9px] font-normal text-slate-400 uppercase tracking-wider">
                           <th className="py-1">Lỗi</th>
                           <th className="py-1">Chi tiết</th>
                           <th className="py-1 text-right">Lần</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50 text-[10px] font-bold text-slate-500">
+                      <tbody className="divide-y divide-slate-50 text-[10px] font-normal text-slate-500">
                         {data.topErrors.slice(0, 5).map((err, i) => (
                           <tr key={i} className="hover:bg-slate-50/50">
-                            <td className="py-1.5 font-bold text-rose-500">{err.errorType}</td>
+                            <td className="py-1.5 font-normal text-rose-500">{err.errorType}</td>
                             <td className="py-1.5 max-w-[180px] truncate" title={err.message}>
                               {err.message}
                             </td>
-                            <td className="py-1.5 text-right font-black text-slate-700">{err.count}</td>
+                            <td className="py-1.5 text-right font-normal text-slate-700">{err.count}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-1.5">
-                      <CheckCircle className="h-6 w-6 text-emerald-500" />
-                      <span className="text-xs font-semibold">Tất cả ổn định, 0 ghi nhận lỗi</span>
-                    </div>
+                    <ReportEmptyState kind="errors">Chưa ghi nhận lỗi đăng tải trong phạm vi báo cáo.</ReportEmptyState>
                   )}
                 </div>
               </div>
@@ -750,11 +768,11 @@ export default function AnalyticsDashboard() {
               return (
                 <>
                   <div className="flex items-center justify-between border-b border-slate-50 pb-3 mb-3.5">
-                    <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <h3 className="text-xs font-normal text-slate-700 flex items-center gap-1.5">
                       <Layers className="h-4 w-4 text-indigo-500" />
-                      CHI TIẾT HIỆU SUẤT TỪNG BÀI VIẾT
+                      Chi tiết hiệu suất từng bài viết
                     </h3>
-                    <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
+                    <span className="text-[10px] font-normal text-slate-400 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-100">
                       Tổng số: {totalPosts} bài viết
                     </span>
                   </div>
@@ -763,7 +781,7 @@ export default function AnalyticsDashboard() {
                     {paginatedPosts.length > 0 ? (
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                          <tr className="border-b border-slate-100 text-[10px] font-normal text-slate-400 uppercase tracking-widest">
                             <th className="py-2.5 px-3">Bài viết</th>
                             <th className="py-2.5 px-3">Kênh</th>
                             <th className="py-2.5 px-3">Pillar</th>
@@ -774,7 +792,7 @@ export default function AnalyticsDashboard() {
                             <th className="py-2.5 px-3 text-center">Liên kết</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-bold">
+                        <tbody className="divide-y divide-slate-50 text-xs text-slate-600 font-normal">
                           {paginatedPosts.map((post) => {
                             const likes = post.likes ?? 0;
                             const comments = post.comments ?? 0;
@@ -796,15 +814,15 @@ export default function AnalyticsDashboard() {
                             return (
                               <tr key={post._id} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="py-3 px-3 max-w-[280px]">
-                                  <p className="text-slate-800 font-bold truncate" title={post.slotId?.topicBrief}>
+                                  <p className="text-slate-800 font-normal truncate" title={post.slotId?.topicBrief}>
                                     {post.slotId?.topicBrief || "Bài viết không tên / Content tự động"}
                                   </p>
-                                  <span className="text-[10px] font-semibold text-slate-400">
+                                  <span className="text-[10px] font-normal text-slate-400">
                                     Lên lịch: {dateStr}
                                   </span>
                                 </td>
                                 <td className="py-3 px-3">
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-normal ${
                                     post.platform === "Facebook"
                                       ? "bg-blue-50 text-blue-600"
                                       : "bg-zinc-950 text-white"
@@ -813,25 +831,25 @@ export default function AnalyticsDashboard() {
                                   </span>
                                 </td>
                                 <td className="py-3 px-3">
-                                  <span className="text-slate-500 font-semibold">
+                                  <span className="text-slate-500 font-normal">
                                     {post.slotId?.pillar || "Khác"}
                                   </span>
                                 </td>
-                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                <td className="py-3 px-3 text-right font-normal text-slate-700">
                                   {reach.toLocaleString()}
                                 </td>
-                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                <td className="py-3 px-3 text-right font-normal text-slate-700">
                                   {impressions.toLocaleString()}
                                 </td>
                                 <td className="py-3 px-3 text-right">
                                   <div className="flex flex-col items-end">
-                                    <span className="font-black text-slate-700">{totalEngagements.toLocaleString()}</span>
-                                    <span className="text-[9px] font-semibold text-slate-400">
+                                    <span className="font-normal text-slate-700">{totalEngagements.toLocaleString()}</span>
+                                    <span className="text-[9px] font-normal text-slate-400">
                                       {likes} L / {comments} C / {shares} S
                                     </span>
                                   </div>
                                 </td>
-                                <td className="py-3 px-3 text-right font-black text-slate-700">
+                                <td className="py-3 px-3 text-right font-normal text-slate-700">
                                   {clicks.toLocaleString()}
                                 </td>
                                 <td className="py-3 px-3 text-center">
@@ -840,12 +858,12 @@ export default function AnalyticsDashboard() {
                                       href={post.postUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-bold"
+                                      className="text-indigo-600 hover:text-indigo-800 transition-colors underline text-[11px] font-normal"
                                     >
                                       Xem bài gốc
                                     </a>
                                   ) : (
-                                    <span className="text-slate-300 font-semibold">-</span>
+                                    <span className="text-slate-300 font-normal">-</span>
                                   )}
                                 </td>
                               </tr>
@@ -856,7 +874,7 @@ export default function AnalyticsDashboard() {
                     ) : (
                       <div className="flex flex-col items-center justify-center py-10 text-slate-400 gap-2">
                         <Layers className="h-8 w-8 text-slate-300 animate-pulse" />
-                        <span className="text-xs font-semibold">Không tìm thấy bài viết nào phù hợp với bộ lọc</span>
+                        <span className="text-xs font-normal">{hasActiveFilters ? "Không có bài viết phù hợp. Hãy thử mở rộng hoặc đặt lại bộ lọc." : "Chưa có bài viết để xem hiệu suất chi tiết."}</span>
                       </div>
                     )}
                   </div>
@@ -864,8 +882,8 @@ export default function AnalyticsDashboard() {
                   {/* Thanh Phân Trang (Pagination Controls) */}
                   {totalPosts > 0 && (
                     <div className="flex flex-col sm:flex-row items-center justify-between border-t border-slate-100 pt-3 mt-3 gap-2">
-                      <span className="text-[11px] font-medium text-slate-500">
-                        Hiển thị <span className="font-bold text-slate-700">{startIndex + 1}</span> - <span className="font-bold text-slate-700">{Math.min(startIndex + pageSize, totalPosts)}</span> trên <span className="font-bold text-slate-700">{totalPosts}</span> bài viết
+                      <span className="text-[11px] font-normal text-slate-500">
+                        Hiển thị <span className="font-normal text-slate-700">{startIndex + 1}</span> - <span className="font-normal text-slate-700">{Math.min(startIndex + pageSize, totalPosts)}</span> trên <span className="font-normal text-slate-700">{totalPosts}</span> bài viết
                       </span>
                       {totalPages > 1 && (
                         <div className="flex items-center gap-1.5">
@@ -882,7 +900,7 @@ export default function AnalyticsDashboard() {
                               <button
                                 key={page}
                                 onClick={() => setCurrentPage(page)}
-                                className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                                className={`px-2.5 py-1 text-xs font-normal rounded-lg transition cursor-pointer ${
                                   currentPage === page
                                     ? "bg-indigo-600 text-white shadow-xs"
                                     : "text-slate-600 hover:bg-slate-100"

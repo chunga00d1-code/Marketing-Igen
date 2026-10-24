@@ -7,6 +7,8 @@ import {
   Download,
   FilePlus2,
   Link,
+  Lock,
+  Globe2,
   LoaderCircle,
   Redo2,
   Search,
@@ -192,9 +194,10 @@ export function BulkWorkspaceHeader({
               <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-400">Cấp độ truy cập</label>
               <div className="relative">
                 <select value={visibility} onChange={(event) => onVisibilityChange(event.target.value as 'private' | 'public')} className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50 px-3 pl-9 pr-10 text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
-                  <option value="private">🔒 Chỉ bạn mới có quyền truy cập</option>
-                  <option value="public">🌐 Công khai (Kho mẫu cộng đồng)</option>
+                  <option value="private">Chỉ bạn mới có quyền truy cập</option>
+                  <option value="public">Công khai (Kho mẫu cộng đồng)</option>
                 </select>
+                {visibility === 'private' ? <Lock className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-500" /> : <Globe2 className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-500" />}
                 <ChevronDown className="pointer-events-none absolute right-3 top-3 text-slate-500" />
               </div>
             </div>

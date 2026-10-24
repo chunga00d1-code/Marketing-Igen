@@ -1372,17 +1372,6 @@ export const tiktokService = {
       });
 
     if (normalizedEvent.includes("message")) {
-      const messageEvent = {
-        platform: "tiktok",
-        conversationId: parsed.conversationId,
-        senderId: parsed.senderId,
-        text: parsed.messageText,
-        cardId: matchedCard?._id?.toString() || parsed.cardId || "",
-        raw: parsed.raw,
-      };
-
-      broadcastEvent("tiktok_message_received", messageEvent);
-
       return {
         status: "success",
         type: "message",

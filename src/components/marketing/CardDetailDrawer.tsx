@@ -13,7 +13,9 @@ import {
   X,
   Loader2,
   ZoomIn,
-  Upload
+  Upload,
+  AlertTriangle,
+  Music2
 } from "lucide-react";
 import { ContentApprovalCard } from "../../types";
 import { formatCardDate, isRenderableVideoUrl, formatPublishError } from "./CardWidgets";
@@ -404,7 +406,7 @@ export default function CardDetailDrawer({
           {/* Error info */}
           {card.status === "failed" && card.publishError && (
             <div className="flex flex-col gap-1 text-[10px] text-red-750 font-mono bg-red-50 border border-red-200 p-3.5 rounded-xl">
-              <span className="font-extrabold flex items-center gap-1">⚠️ LỖI TỰ ĐỘNG ĐĂNG:</span>
+              <span className="font-extrabold flex items-center gap-1"><AlertTriangle size={12} />Lỗi tự động đăng:</span>
               <span className="leading-relaxed font-sans font-medium text-red-650">{formatPublishError(card.publishError)}</span>
             </div>
           )}
@@ -464,7 +466,7 @@ export default function CardDetailDrawer({
               {isPublishingTikTok ? (
                 <><RefreshCw className="h-4 w-4 animate-spin" /><span>Đang đăng lên TikTok...</span></>
               ) : (
-                <><span className="text-sm font-sans">♪</span><span>Đăng ngay lên TikTok {tiktokIntegration.isMock ? '(Demo)' : ''}</span></>
+                <><Music2 size={14} /><span>Đăng ngay lên TikTok {tiktokIntegration.isMock ? '(Demo)' : ''}</span></>
               )}
             </button>
           )}

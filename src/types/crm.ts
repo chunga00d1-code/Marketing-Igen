@@ -33,6 +33,7 @@ export interface CustomerInbox {
   status: "online" | "offline";
   tags: string[];
   channel?: "facebook" | "zalo" | "tiktok";
+  accountId?: string;
   aiPausedUntil?: string | null;
   pageId?: string;
   lastMessageAt?: Date;
@@ -41,6 +42,7 @@ export interface CustomerInbox {
 export interface AIChatConfig {
   enabled: boolean;
   commentReplyEnabled?: boolean;
+  imageReplyEnabled?: boolean;
   autoClassify: boolean;
   autoCloseDeal: boolean;
   autoFeedback: boolean;

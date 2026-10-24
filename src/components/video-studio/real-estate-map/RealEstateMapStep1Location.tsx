@@ -6,6 +6,7 @@ import {
   MousePointerClick,
   PencilRuler,
   RotateCcw,
+  Ruler,
   Search,
   Square,
   Trash2,
@@ -209,7 +210,7 @@ export function RealEstateMapStep1Location({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-600 text-white text-xs">
-              📐
+              <Ruler size={14} />
             </span>
             <h3 className="text-xs font-bold text-slate-900">
               Ranh giới thửa đất (Polygon)

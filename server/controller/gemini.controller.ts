@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, no-useless-escape, prefer-const */
 import { Request, Response } from "express";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import mongoose from "mongoose";
 import { geminiService } from "../service/gemini.service";
 import { videoBlueprintService } from "../service/video-blueprint.service";
@@ -15,6 +16,11 @@ import AdmZip from "adm-zip";
 import { PDFParse } from "pdf-parse";
 import { openrouterChat } from "../service/openrouter.service";
 import { prepareChatPreview } from "../service/chat-preview.service";
+import { prepareChatReplyContext, buildChatConversationInstructions, describeChatVisualContext } from "../service/chat-reply-context.service";
+import { randomUUID } from "node:crypto";
+import { visualToImageObservation, type ChatReply } from "../service/chat-visual-context";
+import { chatOrderFlowRegistry } from "../service/chat-ordering/registry";
+import { createChatAiTrace, describeChatAiTrace, withChatAiTrace } from "../service/chat-ai-trace";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
   const rawMessage = String(error.message || "");
@@ -624,7 +630,7 @@ export const geminiController = {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
 
-      const cost = getTextModelCost(aiConfig);
+      const cost = getTextModelCost({ ...aiConfig, model: AI_REPLY_PRIMARY_MODEL });
       await walletService.checkBalance(userId, cost);
       const companyCode = (req as any).user?.companyCode;
       const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
@@ -751,7 +757,7 @@ export const geminiController = {
    */
   async testReply(req: AuthenticatedRequest, res: Response) {
     try {
-      const { message, conversationId, platformId, channel = "facebook" } = req.body;
+      const { message = "", images = [], conversationId, platformId, channel = "facebook" } = req.body;
       const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
         ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
         : String(req.user?.companyCode || "").trim().toUpperCase();
@@ -761,27 +767,53 @@ export const geminiController = {
       }
 
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
-      const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId }, resolveAutoReplyOwner);
-      const aiConfig = preview.aiConfig;
-      const cost = getTextModelCost(aiConfig);
+      const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, withImages: images.length > 0 }, resolveAutoReplyOwner);
+      const aiConfig = images.length ? { ...preview.aiConfig, imageReplyEnabled: true } : preview.aiConfig;
+      const aiTrace = aiConfig.imageReplyEnabled ? createChatAiTrace() : undefined;
+      const cost = getTextModelCost({ ...aiConfig, model: AI_REPLY_PRIMARY_MODEL });
       await walletService.checkBalance(userId, cost);
       const startedAt = Date.now();
-      const effectiveRagContext = await aiKnowledgeService.prepareChatContext({
-        companyCode,
-        message,
-        history: preview.history,
-        channel: preview.channel,
-        pageId: preview.pageId,
-        trainingKnowledge: aiConfig?.trainingKnowledge,
+      const preparedReplyContext = await prepareChatReplyContext({
+        companyCode, message, history: preview.history, channel: preview.channel,
+        platformId: preview.platformId, conversationId, sessionId: preview.sessionId,
+        messageId: "preview-" + randomUUID(), messages: preview.sourceMessages, uploadedImages: images, aiConfig,
+        deadlineAt: aiConfig.imageReplyEnabled ? startedAt + 90_000 : undefined,
       });
+      const effectiveRagContext = preparedReplyContext.ragContext;
       const effectiveRagContextDebug = aiKnowledgeService.describeEffectiveRagContext(effectiveRagContext as any);
       console.log("[geminiController.testReply] Context diagnostics:", JSON.stringify({
-        companyCode,
         messageLength: String(message || "").length,
         ...effectiveRagContextDebug,
+        companyCode,
       }));
 
-      const result = await geminiService.chat(message, preview.history, aiConfig, effectiveRagContext);
+      let result = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, preview.history, aiConfig.imageReplyEnabled
+        ? { ...aiConfig, advancedInstructions: buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")) }
+        : aiConfig, effectiveRagContext));
+      const orderPreview = channel === "facebook" && conversationId && preview.pageId && result.visual
+        ? await withChatAiTrace(aiTrace, async () => chatOrderFlowRegistry.resolve(companyCode).preview?.({
+          companyCode, pageId: preview.pageId, conversationId, message,
+          messageId: preparedReplyContext.sourceMessageId,
+          imageUrls: preparedReplyContext.memoryImages.flatMap(image => image.url ? [image.url] : []),
+          observation: visualToImageObservation(result.visual, preparedReplyContext.memoryImages),
+          visualMode: true, session: preview.sessionId ? { sessionId: preview.sessionId, resetDraft: false } : undefined,
+          freshImage: images.length > 0, customerAddressStyle: String(aiConfig.customerAddressStyle || ""),
+          replyDeadlineAt: effectiveRagContext.replyDeadlineAt,
+          businessContext: [aiConfig.advancedInstructions, aiConfig.customerServiceScript,
+            effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
+        })) : undefined;
+      if (orderPreview?.consultationContext) {
+        const flow = chatOrderFlowRegistry.resolve(companyCode);
+        const rendered = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, preview.history, {
+          ...aiConfig, advancedInstructions: [buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")),
+            flow.conversationInstructions, flow.consultationInstructions].filter(Boolean).join("\n"),
+        }, { ...effectiveRagContext, visualInput: undefined, visualContext: result.visual,
+          contextText: [effectiveRagContext.contextText, "Đối chiếu đơn thử (chưa lưu): " + orderPreview.consultationContext].join("\n\n") }));
+        if (orderPreview.wordingSource && flow.preservesReplyFacts && !flow.preservesReplyFacts(orderPreview.wordingSource, rendered.text)) {
+          throw new Error("AI preview changed verified catalogue facts.");
+        }
+        result = { ...result, text: rendered.text };
+      }
       const log = await aiKnowledgeService.createReplyLog({
         companyCode,
         channel: "test",
@@ -791,6 +823,7 @@ export const geminiController = {
         contextMatches: effectiveRagContext.matches,
         latencyMs: Date.now() - startedAt,
         status: "preview",
+        visualDiagnostics: { ...describeChatVisualContext(preparedReplyContext), ...(aiTrace ? describeChatAiTrace(aiTrace) : {}) },
       });
 
       await walletService.deductBalance(userId, cost, "Chi phí test câu trả lời tự động AI");
@@ -799,6 +832,8 @@ export const geminiController = {
         mode: effectiveRagContext.contextText || effectiveRagContext.scenarioContextText ? "trained" : "default",
         contextMatches: effectiveRagContext.matches || 0,
         logId: log._id,
+        dryRun: true,
+        ...(orderPreview ? { orderPreview } : {}),
       });
     } catch (error: any) {
       console.error("[geminiController.testReply] Error:", error);
@@ -1477,19 +1512,6 @@ export const geminiController = {
         pageIds,
         documentType,
       });
-
-      if (isScenario && companyCode && req.body.appendScenario !== true) {
-        const legacyScenarioFields = {
-          $unset: {
-            "aiAutoReplyConfig.customerServiceScript": 1,
-            "aiAutoReplyConfig.customerServiceScriptFileName": 1,
-          },
-        };
-        await Promise.all([
-          UserModel.updateMany({ companyCode }, legacyScenarioFields),
-          SocialIntegrationModel.updateMany({ companyCode }, legacyScenarioFields),
-        ]);
-      }
 
       await walletService.deductBalance(userId, API_COSTS.GEMINI_FAQ, `Chi phí trích xuất & nạp tài liệu upload (${fileName})`);
 

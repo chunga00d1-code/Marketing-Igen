@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React from "react";
-import { Sliders, Zap, Clock3, FileText, UploadCloud, Trash2 } from "lucide-react";
+import { Sliders, Zap, Clock3, FileText, UploadCloud, Trash2, Lightbulb } from "lucide-react";
 import { AIChatConfig } from "../../types";
 import { KnowledgeCenterSummaryCard } from "../knowledge/KnowledgeCenterSummaryCard";
 
@@ -21,6 +21,10 @@ interface AiAssistantConfigPanelProps {
   refreshAIHealth: () => void;
   testQuestion: string;
   setTestQuestion: (q: string) => void;
+  testImages: Array<{ name: string; dataUrl: string }>;
+  readingTestImages: boolean;
+  handleAddTestImages: (files: File[]) => void;
+  handleRemoveTestImage: (index: number) => void;
   testReply: any;
   testingAI: boolean;
   handleTestAIReply: () => void;
@@ -52,6 +56,10 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
   refreshAIHealth,
   testQuestion,
   setTestQuestion,
+  testImages,
+  readingTestImages,
+  handleAddTestImages,
+  handleRemoveTestImage,
   testReply,
   testingAI,
   handleTestAIReply,
@@ -65,11 +73,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
   handleUploadCustomerServiceScript,
   handleClearCustomerServiceScenario,
 }) => {
-  const knowledgeDocuments = Array.isArray(knowledgeHealth?.documents) ? knowledgeHealth.documents : [];
-  const scenarioDocument = (Array.isArray(knowledgeHealth?.scenarioDocuments) && knowledgeHealth.scenarioDocuments.length
-    ? knowledgeHealth.scenarioDocuments
-    : knowledgeDocuments.filter((document: any) => document.documentType === "scenario"))[0];
-  const scenarioFileName = scenarioDocument?.title || localConfig.customerServiceScriptFileName;
+  const scenarioFileName = localConfig.customerServiceScriptFileName;
   const detectedTopics = Array.isArray(knowledgeHealth?.detectedTopics) ? knowledgeHealth.detectedTopics : [];
   const knowledgeWarnings = Array.isArray(knowledgeHealth?.warnings) ? knowledgeHealth.warnings : [];
 
@@ -174,6 +178,16 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
           )}
         </div>
 
+        <div className="flex items-start justify-between gap-3 pt-4 border-t border-slate-100">
+          <div>
+            <label htmlFor="direct-image-reply" className="block text-xs font-extrabold text-slate-700">Tư vấn trực tiếp bằng ảnh</label>
+            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">AI xem ảnh cùng hội thoại và rule của tài khoản đang chọn. Bật và lưu để áp dụng cho tin nhắn thực tế.</p>
+          </div>
+          <input id="direct-image-reply" type="checkbox" checked={localConfig.imageReplyEnabled === true}
+            onChange={event => setLocalConfig({ ...localConfig, imageReplyEnabled: event.target.checked })}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600" />
+        </div>
+
         {/* delay slider config */}
         <div className="pt-4 border-t border-slate-100 space-y-2">
           <div className="flex justify-between items-center text-xs">
@@ -209,9 +223,9 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-2.5 text-[10px] font-semibold text-slate-600 hover:border-indigo-400 hover:bg-indigo-50/50">
               <input type="file" accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md" className="sr-only" disabled={uploadingScenarioFile} onChange={(event) => { const file = event.target.files?.[0]; if (file) handleUploadCustomerServiceScript(file); event.currentTarget.value = ""; }} />
               <UploadCloud className="h-4 w-4 text-indigo-600" />
-              <span>{uploadingScenarioFile ? "Đang nạp kịch bản vào RAG..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
+              <span>{uploadingScenarioFile ? "Đang đọc kịch bản..." : scenarioFileName ? "Thay tệp kịch bản" : "Chọn tệp kịch bản"}</span>
             </label>
-          <p className="text-[10px] leading-relaxed text-slate-500">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Tệp được lưu vào RAG riêng; AI truy xuất các bước liên quan theo ngữ cảnh hội thoại.</p>
+          <p className="text-[10px] leading-relaxed text-slate-500">Hỗ trợ PDF, Word, Excel, TXT và Markdown. Nhấn Lưu để dùng kịch bản riêng cho tài khoản đang chọn. Tài liệu trong kho tri thức có phạm vi dùng chung hoặc theo Page được cấu hình tại kho.</p>
         </div>
 
         <div className="pt-4 border-t border-slate-100 space-y-2">
@@ -331,7 +345,7 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
           </label>
           <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 space-y-1">
             <span className="text-[9.5px] font-bold text-blue-800 flex items-center gap-1">
-              💡 Gợi ý tài liệu huấn luyện tốt nhất:
+              <Lightbulb size={12} />Gợi ý tài liệu huấn luyện tốt nhất:
             </span>
             <ul className="list-disc list-inside text-[8.5px] text-slate-600 space-y-0.5 leading-relaxed">
               <li><b>Tài liệu FAQ</b> (Bộ câu hỏi & đáp án thường gặp)</li>
@@ -398,16 +412,33 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
               className="w-full h-20 p-2.5 border border-slate-200 bg-white rounded-xl text-[10px] leading-relaxed focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none"
               placeholder="Nhập câu hỏi mẫu để kiểm tra cách AI trả lời..."
             />
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white p-2 text-[10px] font-semibold text-slate-600">
+              <UploadCloud className="h-4 w-4" />
+              {readingTestImages ? "Đang đọc ảnh..." : "Chọn ảnh thử (tối đa 3 ảnh, 8 MB/ảnh)"}
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="sr-only"
+                disabled={testingAI || readingTestImages || testImages.length >= 3}
+                onChange={event => { handleAddTestImages(Array.from(event.target.files || [])); event.currentTarget.value = ""; }} />
+            </label>
+            {testImages.length > 0 && <div className="flex gap-2">
+              {testImages.map((image, index) => <div key={index} className="relative min-w-0 flex-1 rounded-lg border border-slate-200 bg-white p-1">
+                <img src={image.dataUrl} alt={image.name} className="h-20 w-full rounded object-contain" />
+                <button type="button" onClick={() => handleRemoveTestImage(index)} disabled={testingAI}
+                  aria-label={"Bỏ ảnh " + image.name} className="absolute right-1 top-1 rounded bg-white p-1 text-red-600 shadow">
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>)}
+            </div>}
             <button
               type="button"
               onClick={handleTestAIReply}
-              disabled={testingAI}
+              disabled={testingAI || readingTestImages}
               className="w-full px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-[10px] disabled:opacity-50"
             >
               {testingAI ? "AI đang trả lời thử..." : "Test câu trả lời AI"}
             </button>
             <p className="text-[9px] text-slate-500 leading-relaxed">
               Test dùng cấu hình đã lưu và ngữ cảnh hội thoại đang chọn. Hãy lưu thay đổi rule, kịch bản trước khi test.
+              {" "}Ảnh tải lên được thử bằng luồng tư vấn trực tiếp; kết quả thử không gửi cho khách hoặc cập nhật đơn.
             </p>
           </div>
 
@@ -418,6 +449,17 @@ export const AiAssistantConfigPanel: React.FC<AiAssistantConfigPanelProps> = ({
                 <span className="text-[8px] font-bold text-indigo-500 uppercase">{testReply.mode} • {testReply.contextMatches} matches</span>
               </div>
               <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">{testReply.text}</p>
+              {testReply.visual && <details className="border-t border-indigo-100 pt-2">
+                <summary className="cursor-pointer font-semibold text-indigo-700">Mẫu và yêu cầu AI đã hiểu</summary>
+                <p className="mt-2 text-slate-600">{testReply.visual.summary}</p>
+                {testReply.visual.customerRequests?.map((request: { detail: string }, index: number) =>
+                  <p key={index} className="mt-1 text-slate-600">• {request.detail}</p>)}
+                {testReply.visual.uncertainties?.map((detail: string, index: number) =>
+                  <p key={index} className="mt-1 text-amber-700">Cần làm rõ: {detail}</p>)}
+              </details>}
+              {testReply.orderPreview && <p className="text-[9px] text-slate-500">
+                Đã mô phỏng đối chiếu đơn và bảng giá; thông tin đơn thực tế chưa được cập nhật.
+              </p>}
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, MapPin, Navigation, Route, Sparkles } from "lucide-react";
+import { ArrowRight, Loader2, MapPin, Navigation, Route, Sparkles } from "lucide-react";
 import type { RealEstateMapCoordinate } from "../../../services/realEstateMapVideoService";
 import { realEstateMapVideoService } from "../../../services/realEstateMapVideoService";
 import type { GisMapLayer } from "./map-video.types";
@@ -83,7 +83,7 @@ export function RealEstateMapRouteABPanel({
       // 4. Tạo layer mới
       const newLayer: GisMapLayer = {
         id: `route_${Date.now()}`,
-        name: `Lộ trình ${fromName} ➜ ${toName}`,
+        name: `Lộ trình ${fromName} đến ${toName}`,
         type: "route",
         visible: true,
         color: "#ffd700",
@@ -118,7 +118,7 @@ export function RealEstateMapRouteABPanel({
       <div>
         <h2 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
           <Route className="h-4 w-4 text-indigo-600" />
-          Tự Động Vẽ Lộ Trình (A ➜ B)
+          Tự Động Vẽ Lộ Trình (A <ArrowRight size={12} /> B)
         </h2>
         <p className="text-[11px] text-slate-500 mt-0.5">
           Tạo đường ray neon phát sáng kết nối 2 vị trí
@@ -197,8 +197,8 @@ export function RealEstateMapRouteABPanel({
             <span>Đã tạo tuyến đường:</span>
             <span>{lastRouteInfo.distanceKm} km · ~{lastRouteInfo.durationMin} phút</span>
           </div>
-          <p className="text-[11px] text-slate-600 truncate">
-            {lastRouteInfo.fromName} ➜ {lastRouteInfo.toName}
+          <p className="flex items-center gap-1 truncate text-[11px] text-slate-600">
+            {lastRouteInfo.fromName} <ArrowRight size={12} className="shrink-0" /> {lastRouteInfo.toName}
           </p>
         </div>
       )}

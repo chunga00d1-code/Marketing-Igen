@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars */
+import { randomUUID } from "node:crypto";
 import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import { UserModel } from "../model/user.model";
-import { emitToPage } from "../socket";
+import { emitToMessengerAccount } from "../socket";
 import { aiAutoReplyService } from "./ai-auto-reply.service";
 import { facebookCommentService } from "./facebook-comment.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { messengerOrderService } from "./messenger-order.service";
 import { companyProductCatalogService } from "./company-product-catalog.service";
 import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
+import { facebookSendRequest } from "./facebook-send-request";
 import {
   FacebookMessengerError,
   createFacebookIntegrationNotFoundError,
@@ -158,7 +161,7 @@ export const fbMessengerService = {
       }
 
       // Phát sự kiện socket để cập nhật realtime danh sách ở frontend
-      emitToPage(pageId, "conversation_updated", conversation);
+      emitToMessengerAccount("facebook", pageId, "conversation_updated", conversation);
     }
 
     console.log(`[FB Service syncConversations] Đồng bộ xong ${conversations.length} hội thoại từ Facebook cho Page ID: ${pageId} trong ${Date.now() - startedAt}ms`);
@@ -246,12 +249,12 @@ export const fbMessengerService = {
       // Sắp xếp tin nhắn theo thời gian tăng dần trước khi emit
       newMessagesToEmit.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       for (const msg of newMessagesToEmit) {
-        emitToPage(pageId, "new_message", {
+        emitToMessengerAccount("facebook", pageId, "new_message", {
           message: msg,
           conversation: refreshedConversation
         });
       }
-      emitToPage(pageId, "conversation_updated", refreshedConversation);
+      emitToMessengerAccount("facebook", pageId, "conversation_updated", refreshedConversation);
 
       // Kích hoạt AI Auto-Reply nếu phát hiện tin nhắn đến mới từ khách hàng qua đồng bộ
       const latestInboundMsg = [...newMessagesToEmit]
@@ -515,7 +518,7 @@ export const fbMessengerService = {
       );
 
       if (updatedConversation) {
-        emitToPage(pageId, "conversation_updated", updatedConversation);
+        emitToMessengerAccount("facebook", pageId, "conversation_updated", updatedConversation);
       }
     } catch (error) {
       console.error("[FB Service enrichConversationProfile] Khong the cap nhat profile Facebook:", error);
@@ -529,7 +532,7 @@ export const fbMessengerService = {
     const senderId = event.sender.id; // PSID của khách hàng
     const recipientId = event.recipient.id; // ID của Fanpage mình (pageId)
     const message = event.message;
-    const messageId = String(message?.mid || `fb_in_${recipientId}_${senderId}_${Date.now()}`).trim();
+    const messageId = String(message?.mid || `fb_in_${recipientId}_${senderId}_${randomUUID()}`).trim();
     const timestamp = new Date(event.timestamp);
 
     const resolvedPageId = pageId || recipientId;
@@ -664,16 +667,20 @@ export const fbMessengerService = {
     console.log(`[FB Service processIncomingMessage] 💾 MSG SAVE: Đã lưu tin nhắn inbound thành công (messageId=${messageId})`);
 
     // Realtime update via Socket.IO
-    emitToPage(resolvedPageId, "new_message", {
+    emitToMessengerAccount("facebook", resolvedPageId, "new_message", {
       message: newMsg,
       conversation: conversation
     });
-    emitToPage(resolvedPageId, "conversation_updated", conversation);
+    emitToMessengerAccount("facebook", resolvedPageId, "conversation_updated", conversation);
 
     const conversationId = conversation._id.toString();
     const handleOrderMessage = async () => {
       try {
-        const receiptOrder = await messengerOrderService.capturePaymentReceipt(
+        const { chatOrderFlowRegistry } = await import("./chat-ordering/registry");
+        const orderFlow = await chatOrderFlowRegistry.resolveForPage(resolvedPageId);
+        const orderFlowEnabled = await orderFlow.isEnabled(resolvedPageId);
+        const orderFlowActive = await orderFlow.isActive(resolvedPageId, conversationId);
+        const receiptOrder = orderFlowActive ? null : await messengerOrderService.capturePaymentReceipt(
           resolvedPageId,
           conversationId,
           messageId,
@@ -690,7 +697,7 @@ export const fbMessengerService = {
           return;
         }
 
-        const productSelection = await messengerOrderService.captureProductSelection(
+        const productSelection = orderFlowActive ? null : await messengerOrderService.captureProductSelection(
           resolvedPageId,
           conversationId,
           messageId,
@@ -702,7 +709,7 @@ export const fbMessengerService = {
           return;
         }
 
-        if (messengerOrderService.isConfirmationMessage(text)) {
+        if (!orderFlowEnabled && !orderFlowActive && messengerOrderService.isConfirmationMessage(text)) {
           const order = await messengerOrderService.captureConfirmedOrder(resolvedPageId, conversationId, messageId, text);
           if (order) {
             const depositRequest = await messengerOrderService.getDepositRequest(order.orderId);
@@ -722,7 +729,7 @@ export const fbMessengerService = {
           }
         }
 
-        if (text) {
+        if (text && !orderFlowActive) {
           const suggestions = await companyProductCatalogService.findSuggestionsForPage(resolvedPageId, text);
           if (suggestions?.images.length) {
             let sentCount = 0;
@@ -762,10 +769,14 @@ export const fbMessengerService = {
    * Cập nhật trạng thái đã đọc của tin nhắn
    */
   async processReadReceipt(event: any) {
-    const senderId = event.sender.id;
+    const senderId = event.sender?.id;
     const pageId = event.recipient?.id;
+    if (!senderId || !pageId) {
+      console.warn("[FB Read Receipt] Bỏ qua receipt thiếu sender hoặc page ID.");
+      return;
+    }
     await FBConversationModel.findOneAndUpdate(
-      pageId ? { recipientId: senderId, pageId } : { recipientId: senderId },
+      { recipientId: senderId, pageId },
       { unreadCount: 0 }
     );
   },
@@ -779,7 +790,7 @@ export const fbMessengerService = {
     if (conversation.unreadCount !== 0) {
       conversation.unreadCount = 0;
       await conversation.save();
-      emitToPage(pageId, "conversation_updated", conversation);
+      emitToMessengerAccount("facebook", pageId, "conversation_updated", conversation);
     }
 
     return { success: true };
@@ -792,7 +803,7 @@ export const fbMessengerService = {
     }
     conversation.aiPausedUntil = undefined;
     await conversation.save();
-    emitToPage(pageId, "conversation_updated", conversation);
+    emitToMessengerAccount("facebook", pageId, "conversation_updated", conversation);
     return conversation;
   },
 
@@ -828,6 +839,7 @@ export const fbMessengerService = {
     text: string,
     senderType: "human" | "ai" = "human",
     tokenContext?: FacebookTokenContext,
+    consultationSessionId?: string,
   ) {
     const conversation = await FBConversationModel.findOne({ _id: conversationId, pageId });
     if (!conversation) {
@@ -886,7 +898,7 @@ export const fbMessengerService = {
     };
 
     try {
-      const response = await (globalThis as any).fetch(url, {
+      const response = await facebookSendRequest(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -931,10 +943,11 @@ export const fbMessengerService = {
       }
       await conversation.save();
 
-      const outboundMessageId = data.message_id || `out_${conversation._id.toString()}_${Date.now()}`;
+      const outboundMessageId = data.message_id || `out_${conversation._id.toString()}_${randomUUID()}`;
       const newMsg = await FBMessageModel.findOneAndUpdate(
         { messageId: outboundMessageId },
         {
+          ...(consultationSessionId ? { $set: { consultationSessionId } } : {}),
           $setOnInsert: {
             conversationId: conversation._id,
             senderId: resolvedPageId,
@@ -957,11 +970,11 @@ export const fbMessengerService = {
       );
 
       // Realtime update via Socket.IO
-      emitToPage(resolvedPageId, "new_message", {
+      emitToMessengerAccount("facebook", resolvedPageId, "new_message", {
         message: newMsg,
         conversation: conversation
       });
-      emitToPage(resolvedPageId, "conversation_updated", conversation);
+      emitToMessengerAccount("facebook", resolvedPageId, "conversation_updated", conversation);
 
       return {
         status: "success",
@@ -994,7 +1007,7 @@ export const fbMessengerService = {
     const token = await this.getPageAccessTokenByPageId(resolvedPageId, tokenContext);
     if (!token) throw createFacebookIntegrationNotFoundError();
     const url = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
-    const response = await (globalThis as any).fetch(url, {
+    const response = await facebookSendRequest(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1017,7 +1030,7 @@ export const fbMessengerService = {
     conversation.lastMessageAt = new Date();
     conversation.unreadCount = 0;
     await conversation.save();
-    const outboundMessageId = data.message_id || `out_image_${conversation._id.toString()}_${Date.now()}`;
+    const outboundMessageId = data.message_id || `out_image_${conversation._id.toString()}_${randomUUID()}`;
     const newMsg = await FBMessageModel.findOneAndUpdate(
       { messageId: outboundMessageId },
       {
@@ -1035,8 +1048,8 @@ export const fbMessengerService = {
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
-    if (newMsg) emitToPage(resolvedPageId, "new_message", { message: newMsg, conversation });
-    emitToPage(resolvedPageId, "conversation_updated", conversation);
+    if (newMsg) emitToMessengerAccount("facebook", resolvedPageId, "new_message", { message: newMsg, conversation });
+    emitToMessengerAccount("facebook", resolvedPageId, "conversation_updated", conversation);
     return { status: "success", messageId: outboundMessageId };
   },
 
@@ -1208,7 +1221,7 @@ export const fbMessengerService = {
     let companyCode = pageOwner?.companyCode || null;
     let aiEnabled = !!pageOwner?.aiAutoReplyConfig?.enabled;
     let replyDelay = pageOwner?.aiAutoReplyConfig?.replyDelay ?? null;
-    let model = pageOwner?.aiAutoReplyConfig?.model || null;
+    const model = AI_REPLY_PRIMARY_MODEL;
     let pageOwnerEmail = pageOwner?.email || null;
     let ownerSource = pageOwner ? "user" : null;
 
@@ -1224,7 +1237,6 @@ export const fbMessengerService = {
           pageOwnerEmail = companyUser.email;
           aiEnabled = !!companyUser.aiAutoReplyConfig?.enabled;
           replyDelay = companyUser.aiAutoReplyConfig?.replyDelay ?? null;
-          model = companyUser.aiAutoReplyConfig?.model || null;
           ownerSource = "company";
         }
       }

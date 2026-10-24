@@ -55,7 +55,7 @@ export function SEOHead({ meta }: { meta: SeoMeta }) {
     ensureMeta('meta[name="apple-mobile-web-app-title"]', { name: "apple-mobile-web-app-title" }).setAttribute("content", BRAND_NAME);
     ensureMeta('meta[name="format-detection"]', { name: "format-detection" }).setAttribute("content", "telephone=no");
     ensureMeta('meta[name="referrer"]', { name: "referrer" }).setAttribute("content", "strict-origin-when-cross-origin");
-    ensureMeta('meta[name="theme-color"]', { name: "theme-color" }).setAttribute("content", "#00aeca");
+    ensureMeta('meta[name="theme-color"]', { name: "theme-color" }).setAttribute("content", "#00adfc");
 
     ensureMeta('meta[property="og:type"]', { property: "og:type" }).setAttribute("content", merged.type || "website");
     ensureMeta('meta[property="og:locale"]', { property: "og:locale" }).setAttribute("content", SEO_DEFAULT_LOCALE);

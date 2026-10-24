@@ -6,6 +6,8 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { connectDB } from "./server/config/database";
+import { startCakeDepositWorker } from "./server/service/cake-deposit-worker";
+import { startFacebookAutoReplyQueueWorker } from "./server/service/ai-auto-reply.service";
 import { apiRouter } from "./server/router";
 import { swaggerRouter } from "./server/swagger";
 import { initSocketServer } from "./server/socket";
@@ -229,6 +231,8 @@ function injectSeoMeta(html: string, requestPath: string): string {
 async function startServer() {
   // Kết nối cơ sở dữ liệu MongoDB
   await connectDB();
+  startCakeDepositWorker();
+  await startFacebookAutoReplyQueueWorker();
 
   // Khởi động hàng đợi xử lý Remotion
   remotionQueueService.initWorker();

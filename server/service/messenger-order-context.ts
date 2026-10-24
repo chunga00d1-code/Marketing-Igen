@@ -8,8 +8,8 @@ function normalize(value: string) {
   return String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\u0111/g, "d")
     .toLowerCase()
+    .replace(/\u0111/g, "d")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -18,7 +18,7 @@ function normalize(value: string) {
 export function isNewOrderStartMessage(value: string) {
   const text = normalize(value);
   return /\b(muon|can)\s+(dat|mua|lay)\b/.test(text)
-    || /\b(cho|minh|toi|em|anh|chi)\s+(minh|toi|em|anh|chi)?\s*(dat|mua)\b/.test(text)
+    || /\b(cho|minh|toi|em|anh|chi)\s+(minh|toi|em|anh|chi)?\s*(dat|mua)\b(?!\s+cho\b)/.test(text)
     || /^(dat|mua|order)\s+(?!hang\b).{2,}/.test(text)
     || /\b(dat|order)\s+(giup|minh|toi|em)\b/.test(text);
 }

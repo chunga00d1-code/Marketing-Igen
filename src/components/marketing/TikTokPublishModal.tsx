@@ -193,7 +193,7 @@ export default function TikTokPublishModal({
             </div>
           ) : creatorInfo ? (
             <div className="flex items-center gap-3 rounded-2xl border border-slate-700 bg-[#18181c] p-4">
-              {creatorInfo.creatorAvatarUrl ? <img src={creatorInfo.creatorAvatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 font-bold">♪</div>}
+              {creatorInfo.creatorAvatarUrl ? <img src={creatorInfo.creatorAvatarUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-700 text-white"><Music size={20} /></div>}
               <div><p className="text-xs text-slate-400">Đăng vào tài khoản / Posting to TikTok Account:</p><p className="font-extrabold text-sm text-white">{creatorInfo.creatorNickname}</p><p className="text-xs text-slate-400">@{creatorInfo.creatorUsername}</p></div>
             </div>
           ) : null}

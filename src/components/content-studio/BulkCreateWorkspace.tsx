@@ -2026,7 +2026,7 @@ export function BulkCreateWorkspace({ onClose, initialCampaignId }: BulkCreateWo
             <img
               src={BRAND_LOGO_PATH}
               alt={BRAND_NAME}
-              className="h-11 w-11 rounded-2xl border border-blue-100 bg-white object-cover shadow-md shadow-blue-500/10"
+              className="h-11 w-16 rounded-xl border border-blue-100 bg-white object-contain shadow-md shadow-blue-500/10"
             />
             <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-white">
               <ArrowLeft className="h-2.5 w-2.5" />

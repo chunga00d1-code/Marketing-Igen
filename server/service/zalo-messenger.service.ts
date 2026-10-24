@@ -1,7 +1,9 @@
 ﻿/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars, prefer-const */
+import { randomUUID } from "node:crypto";
 import { ZaloConversationModel, ZaloMessageModel } from "../model/zalo-messenger.model";
+import { AI_REPLY_PRIMARY_MODEL } from "../../shared/ai-reply-models";
 import { UserModel } from "../model/user.model";
-import { emitToPage } from "../socket";
+import { emitToMessengerAccount } from "../socket";
 import { aiAutoReplyService } from "./ai-auto-reply.service";
 
 const syncTimestamps = new Map<string, number>();
@@ -549,7 +551,7 @@ export const zaloMessengerService = {
     if (conversation.unreadCount !== 0) {
       conversation.unreadCount = 0;
       await conversation.save();
-      emitToPage(oaId, "conversation_updated", conversation);
+      emitToMessengerAccount("zalo", oaId, "conversation_updated", conversation);
     }
 
     return { success: true };
@@ -562,7 +564,7 @@ export const zaloMessengerService = {
     }
     conversation.aiPausedUntil = undefined;
     await conversation.save();
-    emitToPage(oaId, "conversation_updated", conversation);
+    emitToMessengerAccount("zalo", oaId, "conversation_updated", conversation);
     return conversation;
   },
 
@@ -598,7 +600,7 @@ export const zaloMessengerService = {
     const recipientId = conversation.recipientId;
     console.log(`[Zalo SendReply] oaId=${oaId}, conversationId=${conversationId}, recipientId=${recipientId}, textLength=${text.length}, hasUserLevel=${user ? "true" : "false"}, hasCompanyLevel=${companyIntegration ? "true" : "false"}, isMock=${isMock ? "true" : "false"}`);
 
-    const messageId = `zalo_out_${Date.now()}`;
+    const messageId = `zalo_out_${randomUUID()}`;
     const sentAt = new Date();
     const newMsg = new ZaloMessageModel({
       conversationId: conversation._id,
@@ -612,11 +614,11 @@ export const zaloMessengerService = {
       status: "sent",
     });
     const emitRealtimeUpdate = () => {
-      emitToPage(oaId, "new_message", {
+      emitToMessengerAccount("zalo", oaId, "new_message", {
         message: newMsg,
         conversation: conversation
       });
-      emitToPage(oaId, "conversation_updated", conversation);
+      emitToMessengerAccount("zalo", oaId, "conversation_updated", conversation);
     };
 
     // Phát socket realtime
@@ -639,7 +641,7 @@ export const zaloMessengerService = {
       setTimeout(async () => {
         try {
           const autoReplyText = `[Zalo Demo Bot] Cảm ơn bạn đã phản hồi: "${text}". Hệ thống ERP đang thử nghiệm hoạt động tốt!`;
-          const botMessageId = `zalo_in_mock_${Date.now()}`;
+          const botMessageId = `zalo_in_mock_${randomUUID()}`;
 
           const incomingMsg = new ZaloMessageModel({
             conversationId: conversation._id,
@@ -660,11 +662,11 @@ export const zaloMessengerService = {
           await conversation.save();
 
           // PhÃ¡t socket tin nháº¯n Ä‘áº¿n
-          emitToPage(oaId, "new_message", {
+          emitToMessengerAccount("zalo", oaId, "new_message", {
             message: incomingMsg,
             conversation: conversation
           });
-          emitToPage(oaId, "conversation_updated", conversation);
+          emitToMessengerAccount("zalo", oaId, "conversation_updated", conversation);
         } catch (err) {
           console.error("Lỗi giả lập phản hồi Zalo:", err);
         }
@@ -746,7 +748,7 @@ export const zaloMessengerService = {
     let ownerSource = userOwner ? "user" : null;
     let aiEnabled = !!userOwner?.aiAutoReplyConfig?.enabled;
     let replyDelay = userOwner?.aiAutoReplyConfig?.replyDelay ?? null;
-    let model = userOwner?.aiAutoReplyConfig?.model || null;
+    const model = AI_REPLY_PRIMARY_MODEL;
 
     if (!userOwner && companyCode) {
       const companyUser = await UserModel.findOne({
@@ -759,7 +761,6 @@ export const zaloMessengerService = {
         ownerSource = "company";
         aiEnabled = !!companyUser.aiAutoReplyConfig?.enabled;
         replyDelay = companyUser.aiAutoReplyConfig?.replyDelay ?? null;
-        model = companyUser.aiAutoReplyConfig?.model || null;
       }
     }
 
@@ -860,19 +861,34 @@ export const zaloMessengerService = {
     // Zalo's official developer console test webhook sends a hardcoded recipient.id of "579745863508352884"
     if (oaId === "579745863508352884") {
       console.log("[Zalo Service Webhook] Phát hiện payload test từ Zalo Webhooks UI. Tự động chuyển đổi sang Zalo OA ID active.");
-      const activeUser = await UserModel.findOne({ "zaloIntegration.isConnected": true });
-      let foundOaId = activeUser?.zaloIntegration?.oaId;
-      if (!foundOaId) {
+      const configuredOaId = String(process.env.ZALO_OA_ID || "").trim();
+      if (configuredOaId) {
+        oaId = configuredOaId;
+      } else {
         const { SocialIntegrationModel } = require("../model/social-integration.model");
-        const companyIntegration = await SocialIntegrationModel.findOne({
-          platform: "Zalo",
-          isConnected: true
-        });
-        if (companyIntegration) {
-          foundOaId = companyIntegration.username;
+        const [companyOaIds, personalOaIds] = await Promise.all([
+          SocialIntegrationModel.distinct("username", {
+            platform: "Zalo",
+            isConnected: true,
+            username: { $nin: [null, ""] },
+          }),
+          UserModel.distinct("zaloIntegration.oaId", {
+            "zaloIntegration.isConnected": true,
+            "zaloIntegration.oaId": { $nin: [null, ""] },
+          }),
+        ]);
+        const connectedOaIds = Array.from(new Set(
+          [...companyOaIds, ...personalOaIds]
+            .map((accountId) => String(accountId || "").trim())
+            .filter(Boolean),
+        ));
+        if (connectedOaIds.length === 1) {
+          oaId = connectedOaIds[0];
+        } else {
+          console.warn("[Zalo Service Webhook] Payload kiểm tra thiếu OA ID và cấu hình không xác định duy nhất. Bỏ qua để tránh gán nhầm hội thoại.");
+          return;
         }
       }
-      oaId = foundOaId || process.env.ZALO_OA_ID || "270721158521070717";
     }
 
     const eventName = body.event_name;
@@ -889,7 +905,7 @@ export const zaloMessengerService = {
     }
 
     const senderId = body.sender?.id; // User ID OA-Scoped của khách hàng
-    const messageId = body.message?.msg_id || `zalo_in_${Date.now()}`;
+    const messageId = body.message?.msg_id || `zalo_in_${randomUUID()}`;
     const timestamp = body.timestamp ? new Date(Number(body.timestamp)) : new Date();
     const duplicateMsg = await ZaloMessageModel.findOne({ messageId });
     if (duplicateMsg) {
@@ -1011,11 +1027,11 @@ export const zaloMessengerService = {
       await newMsg.save();
 
       // Realtime update qua Socket.IO
-      emitToPage(oaId, "new_message", {
+      emitToMessengerAccount("zalo", oaId, "new_message", {
         message: newMsg,
         conversation: conversation
       });
-      emitToPage(oaId, "conversation_updated", conversation);
+      emitToMessengerAccount("zalo", oaId, "conversation_updated", conversation);
       console.log(`[Zalo Service Webhook] Đã lưu tin nhắn mới thành công từ Zalo User: ${senderId}`);
 
       // Kích hoạt AI Auto-Reply Bot bất đồng bộ

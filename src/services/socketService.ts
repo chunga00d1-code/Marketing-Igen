@@ -24,7 +24,13 @@ type SocketVideoUpdate = {
     title?: string;
   } & Record<string, unknown>;
 } & Record<string, unknown>;
-type NewMessagePayload = { message: SocketMessage; conversation: SocketConversation };
+export type MessengerChannel = "facebook" | "zalo" | "tiktok";
+export type MessengerScope = { channel: MessengerChannel; accountId: string };
+type ScopedMessengerPayload = { channel?: MessengerChannel; accountId?: string };
+type NewMessagePayload = {
+  message: SocketMessage;
+  conversation: SocketConversation;
+} & ScopedMessengerPayload;
 type VideoStatusPayload = { videoId: string; status: string; updates: SocketVideoUpdate[] };
 export type CampaignSlotUpdatePayload = {
   slotId: string;
@@ -36,17 +42,26 @@ export type CampaignSlotUpdatePayload = {
 
 class SocketService {
   private socket: Socket | null = null;
+  private token: string | null = null;
   private messageCallbacks: Array<(data: NewMessagePayload) => void> = [];
   private conversationCallbacks: Array<(conversation: SocketConversation) => void> = [];
   private statusCallbacks: Array<(connected: boolean) => void> = [];
   private videoCallbacks: Array<(data: VideoStatusPayload) => void> = [];
   private campaignSlotCallbacks: Array<(data: CampaignSlotUpdatePayload) => void> = [];
+  private messengerScopes: MessengerScope[] = [];
 
   connect(token: string) {
-    if (this.socket) {
+    if (this.socket && this.token === token) {
       console.log("[SocketService] Socket already exists, skipping duplicate connect.");
       return;
     }
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.disconnect();
+      this.socket = null;
+      this.statusCallbacks.forEach((cb) => cb(false));
+    }
+    this.token = token;
 
     // Determine the socket server URL (same host in local/production)
     const socketUrl = window.location.origin;
@@ -65,6 +80,7 @@ class SocketService {
 
     this.socket.on("connect", () => {
       console.log(`[SocketService] Connected successfully (Socket ID: ${this.socket?.id})`);
+      this.socket?.emit("set_messenger_scopes", this.messengerScopes);
       this.statusCallbacks.forEach((cb) => cb(true));
     });
 
@@ -84,7 +100,7 @@ class SocketService {
     });
 
     // Listen to conversation updates
-    this.socket.on("conversation_updated", (conversation: SocketConversation) => {
+    this.socket.on("conversation_updated", (conversation: SocketConversation & ScopedMessengerPayload) => {
       console.log("[SocketService] Received 'conversation_updated' event:", conversation);
       this.conversationCallbacks.forEach((cb) => cb(conversation));
     });
@@ -103,6 +119,8 @@ class SocketService {
   }
 
   disconnect() {
+    this.messengerScopes = [];
+    this.token = null;
     if (this.socket) {
       console.log("[SocketService] Disconnecting...");
       this.socket.removeAllListeners();
@@ -114,6 +132,11 @@ class SocketService {
 
   isConnected() {
     return !!this.socket?.connected;
+  }
+
+  setMessengerScopes(scopes: MessengerScope[]) {
+    this.messengerScopes = scopes.filter((scope) => scope.accountId.trim());
+    this.socket?.emit("set_messenger_scopes", this.messengerScopes);
   }
 
   onNewMessage(callback: (data: NewMessagePayload) => void) {

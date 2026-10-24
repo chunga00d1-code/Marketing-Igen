@@ -14,9 +14,6 @@ const DEFAULT_CONFIG: OrderSheetConfig = {
   ordersSheetName: "Orders",
   itemsSheetName: "OrderItems",
   writeTrigger: "customer_confirmed",
-  depositEnabled: false,
-  depositPercent: 30,
-  depositInstructions: "",
 };
 
 interface OrderSheetConfigCardProps {
@@ -54,19 +51,13 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
     if (config.enabled && !/\/spreadsheets\/d\/[a-zA-Z0-9_-]+/.test(config.spreadsheetUrl)) {
       throw new Error("Vui lòng nhập link Google Sheet hợp lệ.");
     }
-    if (config.depositEnabled && !String(config.depositInstructions || "").trim()) {
-      throw new Error("Vui lòng nhập thông tin chuyển khoản trước khi bật yêu cầu đặt cọc.");
-    }
     const nextConfig: OrderSheetConfig = {
-      ...config,
+      enabled: config.enabled,
       spreadsheetId: "",
       spreadsheetUrl: config.spreadsheetUrl.trim(),
       ordersSheetName: config.ordersSheetName.trim() || "Orders",
       itemsSheetName: config.itemsSheetName.trim() || "OrderItems",
       writeTrigger: "customer_confirmed",
-      depositEnabled: Boolean(config.depositEnabled),
-      depositPercent: Math.min(100, Math.max(1, Number(config.depositPercent || 30))),
-      depositInstructions: String(config.depositInstructions || "").trim(),
       updatedAt: new Date().toISOString(),
     };
     await socialIntegrationService.updateIntegration(integration._id, { orderSheetConfig: nextConfig });
@@ -86,7 +77,7 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
       }
       if (action === "template") {
         await socialIntegrationService.initializeOrderSheet(integrationId);
-        toast.success("Đã tạo/cập nhật hai tab Orders và OrderItems.");
+        toast.success("Đã tạo/cập nhật tab đơn hàng với 12 cột.");
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Không thể cập nhật Google Sheet.");
@@ -127,64 +118,16 @@ export default function OrderSheetConfigCard({ integration, onSaved }: OrderShee
         placeholder="https://docs.google.com/spreadsheets/d/..."
         className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
       />
-      <div className="grid grid-cols-2 gap-2">
+      <div>
         <input
           value={config.ordersSheetName}
           onChange={(event) => setConfig((current) => ({ ...current, ordersSheetName: event.target.value }))}
           placeholder="Orders"
-          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
-        />
-        <input
-          value={config.itemsSheetName}
-          onChange={(event) => setConfig((current) => ({ ...current, itemsSheetName: event.target.value }))}
-          placeholder="OrderItems"
-          className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
+          className="h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-emerald-500"
         />
       </div>
-      <div className="space-y-2 rounded-lg border border-blue-100 bg-white p-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-bold text-gray-800">Yêu cầu khách đặt cọc</p>
-            <p className="mt-0.5 text-[10px] leading-4 text-gray-500">Sau khi chốt đơn, bot gửi hướng dẫn cọc và yêu cầu ảnh biên lai.</p>
-          </div>
-          <label className="relative inline-flex shrink-0 cursor-pointer items-center">
-            <input
-              type="checkbox"
-              className="peer sr-only"
-              checked={Boolean(config.depositEnabled)}
-              onChange={(event) => setConfig((current) => ({ ...current, depositEnabled: event.target.checked }))}
-            />
-            <span className="h-5 w-9 rounded-full bg-gray-300 transition peer-checked:bg-blue-600 after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-4" />
-          </label>
-        </div>
-        {config.depositEnabled && (
-          <>
-            <label className="block text-[10px] font-semibold text-gray-600">
-              Phần trăm đặt cọc
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={config.depositPercent ?? 30}
-                onChange={(event) => setConfig((current) => ({ ...current, depositPercent: Number(event.target.value) }))}
-                className="mt-1 h-9 w-full rounded-lg border border-gray-200 bg-white px-3 text-xs outline-none focus:border-blue-500"
-              />
-            </label>
-            <label className="block text-[10px] font-semibold text-gray-600">
-              Thông tin chuyển khoản gửi cho khách
-              <textarea
-                rows={4}
-                maxLength={2000}
-                value={config.depositInstructions || ""}
-                onChange={(event) => setConfig((current) => ({ ...current, depositInstructions: event.target.value }))}
-                placeholder={"Ngân hàng: ...\nSố tài khoản: ...\nChủ tài khoản: ...\nNội dung chuyển khoản: Tên + SĐT"}
-                className="mt-1 w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs outline-none focus:border-blue-500"
-              />
-            </label>
-            <p className="text-[10px] leading-4 text-amber-700">Ảnh khách gửi sẽ được lưu lên Cloudinary; Sheet chỉ ghi nhận “chờ đối soát”, không tự xác nhận đã thanh toán.</p>
-          </>
-        )}
-      </div>
+      <p className="text-[10px] leading-4 text-gray-500">Nếu tab cũ có mẫu nhiều cột, dữ liệu sẽ được chuyển sang tab “12 cột”. Tab cũ được giữ làm bản sao ẩn.</p>
+      <p className="text-[11px] leading-4 text-gray-500">Yêu cầu cọc, phần trăm cọc và tài khoản nhận tiền dùng cấu hình chung tại “SePay xác nhận tiền cọc”.</p>
       <div className="grid grid-cols-3 gap-2">
         <button type="button" onClick={() => void run("save")} disabled={!!busyAction} className="flex items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-2 text-[10px] font-bold text-gray-700 disabled:opacity-50">
           {busyAction === "save" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />} Lưu

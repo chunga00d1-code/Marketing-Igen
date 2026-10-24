@@ -1,6 +1,6 @@
 ﻿/* eslint-disable @typescript-eslint/no-unused-vars */
 import React, { useEffect, useMemo, useState } from "react";
-import { Calendar, Clock } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, Lightbulb } from "lucide-react";
 import { ContentApprovalCard, PublishEvent } from "../../types";
 import { toast } from "../../pages/Toast";
 import { marketingCampaignService, MarketingCampaignCalendarSlot } from "../../services/marketingCampaignService";
@@ -43,10 +43,11 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
   const [campaignSlots, setCampaignSlots] = useState<MarketingCampaignCalendarSlot[]>([]);
   const [loadingCalendar, setLoadingCalendar] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const today = new Date();
 
   const monthNamesVi = [
-    "THÁNG 1", "THÁNG 2", "THÁNG 3", "THÁNG 4", "THÁNG 5", "THÁNG 6",
-    "THÁNG 7", "THÁNG 8", "THÁNG 9", "THÁNG 10", "THÁNG 11", "THÁNG 12"
+    "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
+    "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12"
   ];
 
   const handlePrevMonth = () => {
@@ -175,7 +176,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
           type="button"
           onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
           disabled={currentPage === 1}
-          className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-normal text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Trước
         </button>
@@ -183,7 +184,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
           type="button"
           onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
           disabled={currentPage === totalPages}
-          className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-normal text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Sau
         </button>
@@ -192,23 +193,23 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
   );
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6" id="publishing_calendar_block">
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)]" id="publishing_calendar_block">
       {/* Left 2 Cols: Monthly grid view */}
-      <div className="xl:col-span-2 bg-white border border-slate-200/60 p-6 rounded-3xl text-xs flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow duration-300 animate-fadeIn" id="calendar_grid_container">
+      <div className="flex min-w-0 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 text-xs shadow-sm" id="calendar_grid_container">
         <div>
-          <div className="flex justify-between items-center mb-6">
-            <h4 className="font-bold text-slate-800 text-sm font-sans tracking-tight flex items-center gap-2">
-              <Calendar className="h-4.5 w-4.5 text-indigo-500 animate-pulse" />
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <h4 className="flex items-center gap-2 font-sans text-base font-normal tracking-tight text-slate-900">
+              <CalendarDays className="h-5 w-5 shrink-0 text-sky-500" />
               Lịch Xuất Bản Content • {monthNamesVi[currentMonth]}, {currentYear}
             </h4>
-            <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200/60 text-[11px] font-mono select-none">
-              <button onClick={handlePrevMonth} className="p-1 px-2 hover:bg-white rounded-lg cursor-pointer transition-colors shadow-3xs font-extrabold text-slate-650">‹</button>
-              <span className="font-bold px-2 text-slate-800 uppercase text-[10px] tracking-wide">{monthNamesVi[currentMonth]}, {currentYear}</span>
-              <button onClick={handleNextMonth} className="p-1 px-2 hover:bg-white rounded-lg cursor-pointer transition-colors shadow-3xs font-extrabold text-slate-650">›</button>
+            <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-1 text-xs select-none">
+              <button type="button" onClick={handlePrevMonth} aria-label="Tháng trước" className="flex h-7 w-7 items-center justify-center rounded-full text-slate-700 transition hover:bg-white"><ChevronLeft size={16} /></button>
+              <span className="min-w-28 text-center font-normal text-slate-900">{monthNamesVi[currentMonth]}, {currentYear}</span>
+              <button type="button" onClick={handleNextMonth} aria-label="Tháng sau" className="flex h-7 w-7 items-center justify-center rounded-full text-slate-700 transition hover:bg-white"><ChevronRight size={16} /></button>
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5 bg-slate-50/80 p-1.5 rounded-2xl text-center font-bold tracking-wider text-slate-500 text-[10px] uppercase mb-2 border border-slate-200/40">
+          <div className="grid grid-cols-7 rounded-t-xl border border-b-0 border-slate-200 bg-sky-50 py-1.5 text-center text-xs font-normal text-slate-500">
             <div>T2</div>
             <div>T3</div>
             <div>T4</div>
@@ -219,12 +220,12 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
           </div>
 
           {/* Grid squares rendering dynamic items */}
-          <div className="grid grid-cols-7 gap-1.5 font-mono text-[11px]" id="calendar_days_grid">
+          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-xl border border-slate-200 bg-slate-200 font-sans text-xs" id="calendar_days_grid">
             {/* Mock padded previous month days */}
             {Array.from({ length: startOffset }).map((_, idx) => {
               const dayVal = prevMonthLastDate - startOffset + idx + 1;
               return (
-                <div key={`prev-${idx}`} className="h-16 p-2 bg-slate-50 text-slate-300 rounded-xl select-none text-left opacity-30 border border-transparent">
+                <div key={`prev-${idx}`} className="h-16 bg-slate-50 p-2 text-left text-slate-400 select-none">
                   {dayVal}
                 </div>
               );
@@ -234,32 +235,37 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
               const dayNum = dIdx + 1;
               const matchEvents = joinedEvents.filter(e => e.date === dayNum);
               const isSelected = selectedDay === dayNum;
+              const isToday = currentYear === today.getFullYear() && currentMonth === today.getMonth() && dayNum === today.getDate();
               return (
                 <div
                   key={dayNum}
                   onClick={() => setSelectedDay(dayNum)}
-                  className={`h-16 p-2 text-left rounded-xl border transition-all cursor-pointer relative ${isSelected
-                      ? "bg-indigo-50/50 border-indigo-400 text-indigo-900 shadow-2xs"
-                      : "bg-white border-slate-100 hover:bg-slate-50 hover:border-slate-200 hover:shadow-3xs"
+                  title={isToday ? 'Hôm nay' : undefined}
+                  className={`relative h-16 cursor-pointer p-2 text-left transition-colors ${isSelected
+                      ? "bg-sky-50 text-sky-900 ring-2 ring-inset ring-sky-400"
+                      : isToday ? "bg-sky-50/70 hover:bg-sky-100" : "bg-white hover:bg-sky-50/50"
                     }`}
                 >
-                  <span className="font-extrabold select-none text-[10px] text-slate-700">{dayNum}</span>
+                  <div className="flex items-start justify-between gap-1">
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-full text-xs font-normal select-none ${isToday ? 'bg-blue-600 text-white' : 'text-slate-900'}`}>{dayNum}</span>
+                    {isToday && <span className="text-[10px] font-normal text-blue-700">Hôm nay</span>}
+                  </div>
                   {matchEvents.length > 0 && (
                     <div className="absolute bottom-1.5 left-1.5 right-1.5 flex flex-col gap-0.5">
                       {matchEvents.slice(0, 2).map(e => {
                         const eventStyle =
-                          e.channel === "Facebook" ? "bg-blue-600 text-white" :
+                          e.channel === "Facebook" ? "bg-[#1877f2] text-white" :
                             e.channel === "TikTok" ? "bg-slate-900 text-white border border-slate-950" :
                               e.channel === "Zalo" ? "bg-sky-500 text-white" :
                                 "bg-indigo-650 text-white";
                         return (
-                          <div key={e.id} className={`px-1 rounded-md text-[8px] font-sans truncate font-bold uppercase tracking-wider text-center ${eventStyle}`}>
+                          <div key={e.id} className={`px-1 rounded-md text-[8px] font-sans truncate font-normal uppercase tracking-wider text-center ${eventStyle}`}>
                             {e.channel}
                           </div>
                         );
                       })}
                       {matchEvents.length > 2 && (
-                        <div className="text-[7px] text-slate-400 text-center font-bold font-sans tracking-wide leading-none mt-0.5">
+                        <div className="text-[7px] text-slate-400 text-center font-normal font-sans tracking-wide leading-none mt-0.5">
                           + {matchEvents.length - 2} bài
                         </div>
                       )}
@@ -268,44 +274,49 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                 </div>
               );
             })}
+            {Array.from({ length: (7 - ((startOffset + daysInMonth) % 7)) % 7 }).map((_, index) => (
+              <div key={`next-${index}`} className="h-16 bg-slate-50" aria-hidden="true" />
+            ))}
           </div>
         </div>
 
-        <div className="p-3.5 bg-slate-50 border-t border-slate-200/60 rounded-b-2xl select-none text-center text-[10px] text-slate-400 font-mono mt-5">
-          Click chọn các ngày có gắn sự kiện để truy lục lịch truyền thông tương ứng của iGen Marketing
+        <div className="mt-4 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-center text-xs text-slate-500 select-none">
+          <Lightbulb className="h-4 w-4 shrink-0 text-sky-500" />
+          <span>Click chọn các ngày có gắn sự kiện để truy lục lịch truyền thông tương ứng của iGen Marketing</span>
         </div>
       </div>
 
       {/* Right Card: Day content schedule timeline detail */}
-      <div className="bg-white border p-6 rounded-2xl flex flex-col h-full min-h-[500px]" id="calendar_events_details_col">
+      <div className="flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" id="calendar_events_details_col">
         {selectedDay ? (
           <div className="flex flex-col h-full">
-            <div className="flex justify-between items-center">
-              <h4 className="font-bold text-gray-850 text-sm font-sans tracking-tight uppercase">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-sans text-base font-normal tracking-tight text-slate-900">
                 Lịch Đăng ngày {selectedDay}/{currentMonth + 1}/{currentYear}
               </h4>
               <button
                 onClick={() => setSelectedDay(null)}
-                className="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded font-mono text-[9px] font-bold border border-indigo-150 transition-colors cursor-pointer"
+                className="cursor-pointer rounded-full bg-sky-50 px-3 py-1.5 text-xs font-normal text-sky-700 transition-colors hover:bg-sky-100"
               >
                 Xem tất cả
               </button>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Danh sách chuỗi nội dung cần vận hành trong ngày.</p>
+            <p className="mt-1 text-sm text-slate-500">Danh sách chuỗi nội dung cần vận hành trong ngày.</p>
 
-            <div className="flex-1 overflow-y-auto mt-6 space-y-4 text-xs text-slate-550 text-left">
+            <div className="mt-6 flex-1 space-y-4 overflow-y-auto rounded-2xl bg-slate-50/60 p-4 text-left text-xs text-slate-600">
               {displayedEvents.length === 0 ? (
-                <div className="p-8 text-center bg-gray-50 text-gray-400 italic rounded-xl">
-                  {loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong ngày này."}
+                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-5 text-center text-sm text-slate-500">
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-2xl bg-sky-100 text-sky-500 shadow-sm"><span className="absolute left-5 top-6 h-1.5 w-9 rounded-full bg-sky-400" /><span className="absolute left-5 top-10 h-1.5 w-12 rounded-full bg-sky-200" /><span className="absolute left-5 top-14 h-1.5 w-8 rounded-full bg-sky-200" /><CalendarDays className="absolute -bottom-2 -right-2 h-10 w-10 rounded-xl border-4 border-white bg-sky-500 p-1.5 text-white" /></div>
+                  <span>{loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong ngày này."}</span>
                 </div>
               ) : (
                 paginatedEvents.map(event => (
                   <div key={event.id} className="p-4 bg-slate-50 border border-gray-155 rounded-xl relative flex flex-col gap-2">
                     <div className="flex justify-between items-center">
-                      <span className="px-2 py-0.5 bg-slate-200 rounded-sm font-bold font-mono text-[9px] uppercase">
+                      <span className="px-2 py-0.5 bg-slate-200 rounded-sm font-normal font-mono text-[9px] uppercase">
                         Kênh: {event.channel}
                       </span>
-                      <span className={`px-2 py-0.5 rounded-sm font-bold font-mono text-[9px] uppercase text-white ${event.status === "Published"
+                      <span className={`px-2 py-0.5 rounded-sm font-normal font-mono text-[9px] uppercase text-white ${event.status === "Published"
                           ? "bg-green-500"
                           : event.status === "Approved"
                             ? "bg-blue-600"
@@ -314,7 +325,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                         {event.statusLabel}
                       </span>
                     </div>
-                    <h5 className="font-bold font-sans text-xs text-slate-800 leading-normal">{event.title}</h5>
+                    <h5 className="font-normal font-sans text-xs text-slate-800 leading-normal">{event.title}</h5>
                     <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
                       Định dạng: {event.type}
@@ -327,29 +338,30 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
           </div>
         ) : (
           <div className="flex flex-col h-full">
-            <div className="flex justify-between items-center">
-              <h4 className="font-bold text-gray-850 text-sm font-sans tracking-tight uppercase">
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-sans text-base font-normal tracking-tight text-slate-900">
                 Lịch Đăng tháng {currentMonth + 1}/{currentYear}
               </h4>
-              <span className="px-2 py-0.5 bg-slate-100 rounded font-mono text-[9px] font-bold border border-gray-200">
+              <span className="shrink-0 rounded-full bg-sky-50 px-4 py-2 text-xs font-normal text-slate-800">
                 {loadingCalendar ? "Đang tải..." : `${joinedEvents.length} bài viết`}
               </span>
             </div>
-            <p className="text-xs text-gray-400 mt-1">Tất cả bài đăng dự kiến trong tháng này.</p>
+            <p className="mt-1 text-sm text-slate-500">Tất cả bài đăng dự kiến trong tháng này.</p>
 
-            <div className="flex-1 overflow-y-auto mt-6 space-y-4 text-xs text-slate-550 text-left">
+            <div className="mt-6 flex-1 space-y-4 overflow-y-auto rounded-2xl bg-slate-50/60 p-4 text-left text-xs text-slate-600">
               {displayedEvents.length === 0 ? (
-                <div className="p-8 text-center bg-gray-50 text-gray-400 italic rounded-xl">
-                  {loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong tháng này!"}
+                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-5 text-center text-sm text-slate-500">
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-2xl bg-sky-100 text-sky-500 shadow-sm"><span className="absolute left-5 top-6 h-1.5 w-9 rounded-full bg-sky-400" /><span className="absolute left-5 top-10 h-1.5 w-12 rounded-full bg-sky-200" /><span className="absolute left-5 top-14 h-1.5 w-8 rounded-full bg-sky-200" /><CalendarDays className="absolute -bottom-2 -right-2 h-10 w-10 rounded-xl border-4 border-white bg-sky-500 p-1.5 text-white" /></div>
+                  <span>{loadingCalendar ? "Đang tải lịch chiến dịch..." : "Không có lịch đăng tải nào trong tháng này!"}</span>
                 </div>
               ) : (
                 paginatedEvents.map(event => (
                     <div key={event.id} className="p-4 bg-slate-50 border border-gray-150 rounded-xl relative flex flex-col gap-2">
                       <div className="flex justify-between items-center">
-                        <span className="px-2 py-0.5 bg-slate-200 rounded-sm font-bold font-mono text-[9px] uppercase">
+                        <span className="px-2 py-0.5 bg-slate-200 rounded-sm font-normal font-mono text-[9px] uppercase">
                           Ngày {event.date} • {event.channel}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-sm font-bold font-mono text-[9px] uppercase text-white ${event.status === "Published"
+                        <span className={`px-2 py-0.5 rounded-sm font-normal font-mono text-[9px] uppercase text-white ${event.status === "Published"
                             ? "bg-green-500"
                             : event.status === "Approved"
                               ? "bg-blue-600"
@@ -358,7 +370,7 @@ export default function CalendarTab({ isUserRole, approvalCards }: CalendarTabPr
                           {event.statusLabel}
                         </span>
                       </div>
-                      <h5 className="font-bold font-sans text-xs text-slate-800 leading-normal">{event.title}</h5>
+                      <h5 className="font-normal font-sans text-xs text-slate-800 leading-normal">{event.title}</h5>
                       <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />
                         Định dạng: {event.type}

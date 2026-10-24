@@ -3,7 +3,7 @@ import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model
 import { MessengerOrderModel } from "../model/messenger-order.model";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { googleOrderSheetService, parseGoogleSpreadsheetId } from "./google-order-sheet.service";
-import { openrouterChat } from "./openrouter.service";
+import { generateReplyCompletion } from "./ai-reply-provider";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { companyTelegramOrderService } from "./company-telegram-order.service";
 import { cloudinaryService } from "./cloudinary.service";
@@ -141,9 +141,8 @@ function cleanExtractedOrder(value: ExtractedOrder) {
   };
 }
 
-async function extractOrder(transcript: string, model: string) {
-  const response = await openrouterChat({
-    model,
+async function extractOrder(transcript: string) {
+  const response = await generateReplyCompletion({
     temperature: 0,
     maxTokens: 1800,
     jsonMode: true,
@@ -195,9 +194,14 @@ async function extractOrder(transcript: string, model: string) {
 async function syncOrder(orderId: string) {
   const order = await MessengerOrderModel.findOne({ orderId });
   if (!order || order.status === "synced") return order;
+  const verifiedDeposit = order.depositRequired && order.depositStatus === "verified";
+  const waivedDeposit = !order.depositRequired && order.depositStatus === "not_required";
+  if (order.checkoutFlow === "cake_deposit" && !verifiedDeposit && !waivedDeposit) return order;
   const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
   const config = integration?.orderSheetConfig;
   if (!integration || !config?.enabled) return order;
+  if (order.checkoutFlow === "cake_deposit" && (integration.companyCode !== order.companyCode
+    || integration.username !== order.pageId || !integration.isConnected)) return order;
 
   try {
     const spreadsheetId = config.spreadsheetId || parseGoogleSpreadsheetId(config.spreadsheetUrl);
@@ -237,6 +241,9 @@ async function syncOrder(orderId: string) {
         depositRequired: order.depositRequired,
         depositAmount: order.depositAmount,
         depositStatus: order.depositStatus,
+        depositPercent: order.depositPercent,
+        remainingBalance: order.checkoutSnapshot?.balance,
+        paymentStatus: order.depositStatus === "verified" ? "Đã thanh toán cọc" : undefined,
         receiptUrl: order.receiptUrl,
         receiptReceivedAt: order.receiptReceivedAt,
         paymentCode: order.paymentCode,
@@ -312,6 +319,7 @@ function depositRequestText(
 }
 
 export const messengerOrderService = {
+  syncConfirmedDepositOrder: syncOrder,
   isConfirmationMessage: hasExplicitConfirmation,
 
   async captureConfirmedOrder(pageId: string, conversationId: string, sourceMessageId: string, latestText: string) {
@@ -341,10 +349,7 @@ export const messengerOrderService = {
     messages.reverse();
     const orderMessages = selectCurrentOrderContext(messages);
     const transcript = [`TEN FACEBOOK: ${conversation.senderName || ""}`, ...orderMessages.map((message) => `${message.direction === "inbound" ? "KHACH" : "SHOP"}: ${message.text || "[dinh kem]"}`)].join("\n").slice(-14000);
-    const replyModel = integration.aiAutoReplyConfig?.model
-      || process.env.AI_REPLY_MESSAGE_MODEL
-      || "deepseek-v4-flash-0731";
-    const extracted = await extractOrder(transcript, replyModel);
+    const extracted = await extractOrder(transcript);
     if (extracted.confirmed !== true) {
       console.warn(`[Messenger Order] AI không xác nhận đây là đơn đã chốt: conversationId=${conversationId}, messageId=${sourceMessageId}`);
       return null;
@@ -353,15 +358,11 @@ export const messengerOrderService = {
     const clean = cleanExtractedOrder(extracted);
     const confirmed = clean.missingFields.length === 0;
     const company = await CompanyModel.findOne({ code: integration.companyCode }).lean();
-    const companyDepositEnabled = company?.sepayConfig?.depositEnabled === true;
-    const legacyDepositEnabled = integration.orderSheetConfig.depositEnabled === true
-      && Boolean(String(integration.orderSheetConfig.depositInstructions || "").trim());
+    const companyDepositEnabled = company?.sepayConfig?.enabled === true && company.sepayConfig.depositEnabled === true;
     const configuredDepositPercent = Math.min(100, Math.max(1, Number(
-      companyDepositEnabled
-        ? company?.sepayConfig?.depositPercent || 30
-        : integration.orderSheetConfig.depositPercent || 30,
+      company?.sepayConfig?.depositPercent || 30,
     )));
-    const depositRequired = confirmed && (companyDepositEnabled || legacyDepositEnabled);
+    const depositRequired = confirmed && companyDepositEnabled;
     const fingerprint = createHash("sha256")
       .update(JSON.stringify({ conversationId, ...clean }))
       .digest("hex");
@@ -424,15 +425,17 @@ export const messengerOrderService = {
   async getDepositRequest(orderId: string) {
     const order = await MessengerOrderModel.findOne({ orderId });
     if (!order || !order.depositRequired || order.depositStatus !== "awaiting_receipt" || order.depositRequestedAt) return null;
-    const integration = await SocialIntegrationModel.findById(order.integrationId).lean();
-    const instructions = String(integration?.orderSheetConfig?.depositInstructions || "").trim();
     const company = await CompanyModel.findOne({ code: order.companyCode }).lean();
-    const companyDepositEnabled = company?.sepayConfig?.depositEnabled === true;
-    const legacyDepositEnabled = integration?.orderSheetConfig?.depositEnabled === true && Boolean(instructions);
-    if (!companyDepositEnabled && !legacyDepositEnabled) return null;
-    const percent = order.depositPercent
-      || (companyDepositEnabled ? company?.sepayConfig?.depositPercent : integration?.orderSheetConfig?.depositPercent)
-      || 30;
+    const config = company?.sepayConfig;
+    if (!config?.enabled || !config.depositEnabled) return null;
+    const percent = order.depositPercent || config.depositPercent || 30;
+    // Existing orders retain their saved amount and percentage; bank details come from the company.
+    if (!config.qrBankId || !config.qrAccountNumber || !config.qrAccountName) return null;
+    const instructions = [
+      `Ngân hàng: ${config.qrBankId}`,
+      `Số tài khoản: ${config.qrAccountNumber}`,
+      `Chủ tài khoản: ${config.qrAccountName}`,
+    ].join("\n");
     const paymentQr = await companySepayService.getPaymentQr(order.companyCode, order.depositAmount, order.paymentCode);
     return depositRequestText(order.orderId, percent, order.depositAmount, instructions, order.paymentCode, paymentQr);
   },
@@ -590,6 +593,19 @@ export const messengerOrderService = {
   async retry(orderId: string, companyCode: string) {
     const order = await MessengerOrderModel.findOne({ orderId, companyCode });
     if (!order) throw new Error("Khong tim thay don Messenger.");
+    if (order.checkoutFlow === "cake_deposit") {
+      const waivedDeposit = !order.depositRequired && order.depositStatus === "not_required";
+      if (!waivedDeposit && !(order.depositRequired && order.depositStatus === "verified")) {
+        throw new Error("Đơn chưa được xác nhận tiền cọc qua webhook hoặc không thuộc diện miễn cọc.");
+      }
+      const retriedOrder = await MessengerOrderModel.findOneAndUpdate({ _id: order._id }, {
+        $set: { depositSyncAttempts: 0, depositSyncNextAt: new Date(), depositSyncError: "" },
+        $unset: { depositSyncCompletedAt: 1 },
+      }, { new: true });
+      void import("./cake-deposit-worker").then(({ wakeCakeDepositWorker }) => wakeCakeDepositWorker())
+        .catch(error => console.error("[Messenger Order] Không thể kích hoạt thử lại đơn bánh:", error));
+      return retriedOrder;
+    }
     if (order.missingFields.length) throw new Error("Don hang con thieu thong tin bat buoc.");
     if (!order.confirmedAt) order.confirmedAt = new Date();
     order.status = "confirmed";

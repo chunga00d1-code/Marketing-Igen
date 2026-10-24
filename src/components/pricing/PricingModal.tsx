@@ -71,7 +71,7 @@ export function PricingModal({ isOpen, onClose }: PricingModalProps) {
                 type="button"
                 onClick={() => setActiveTab(tab.id as TabCategory)}
                 className={`rounded-xl px-3.5 py-1.5 transition cursor-pointer text-xs ${activeTab === tab.id
-                  ? "bg-[#0284c7] text-white font-bold shadow-xs"
+                  ? "bg-blue-600 text-white font-bold shadow-xs"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
                   }`}
               >

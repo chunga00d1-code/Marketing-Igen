@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "../auto-reply-owner";
+import { AmbiguousAutoReplyOwnerError, assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "../auto-reply-owner";
 import { resolveAutoReplyOwner, ensureFacebookAutoReplyEnabled } from "../ai-auto-reply.service";
 import { SocialIntegrationModel } from "../../model/social-integration.model";
 import { UserModel } from "../../model/user.model";
@@ -62,4 +62,35 @@ test("Facebook activation cannot silently enable a conflicting company's integra
     companyIntegrations: [{ companyCode: "SYSTEM" }, { companyCode: "VIBARYCAKE" }],
   }), AmbiguousAutoReplyOwnerError);
   assert.equal(update.mock.callCount(), 0);
+});
+
+test("personal integrations cannot mix companies or users with unknown ownership", () => {
+  assert.throws(() => assertPersonalAutoReplyOwnership([{ companyCode: "CAKE" }, { companyCode: "SOFTWARE" }]), AmbiguousAutoReplyOwnerError);
+  assert.throws(() => assertPersonalAutoReplyOwnership([{}, {}]), AmbiguousAutoReplyOwnerError);
+  assert.doesNotThrow(() => assertPersonalAutoReplyOwnership([{ companyCode: " shop " }, { companyCode: "SHOP" }]));
+});
+
+test("a Page's saved niche wins over an enabled company member's different niche", async (context) => {
+  const pageConfig = { enabled: false, advancedInstructions: "Tư vấn phần mềm" };
+  context.mock.method(SocialIntegrationModel, "find", () => ({ lean: async () => [
+    { _id: "page-config", companyCode: "SHOP", aiAutoReplyConfig: pageConfig },
+  ] }));
+  context.mock.method(UserModel, "find", async () => [
+    { _id: "user-1", companyCode: "SHOP", aiAutoReplyConfig: { enabled: true, advancedInstructions: "Bán bánh" } },
+  ]);
+  const owner = await resolveAutoReplyOwner("facebook", "page-1");
+  assert.equal(owner.aiConfig, pageConfig);
+  assert.equal(owner.source, "company_integration_fallback");
+});
+
+test("company membership alone does not donate another Page's rules", async (context) => {
+  context.mock.method(SocialIntegrationModel, "find", () => ({ lean: async () => [
+    { _id: "page-config", companyCode: "SHOP" },
+  ] }));
+  context.mock.method(UserModel, "find", async (filter) => filter.companyCode ? [
+    { _id: "member", companyCode: "SHOP", aiAutoReplyConfig: { enabled: true, advancedInstructions: "Bán bánh" } },
+  ] : []);
+  const owner = await resolveAutoReplyOwner("facebook", "software-page");
+  assert.equal(owner.companyCode, "SHOP");
+  assert.equal(owner.aiConfig, null);
 });

@@ -9,6 +9,7 @@ import {
   Navigation,
   PanelLeftOpen,
   PencilRuler,
+  MapPin,
   Play,
   Trash2,
   Video,
@@ -40,10 +41,11 @@ export function RealEstateMapFloatingPolygonBar({
       <div className="flex items-center gap-2 border-r border-slate-200 pr-3">
         <span className="h-2.5 w-2.5 rounded-full bg-indigo-600 animate-ping" />
         <div>
-          <span className="text-xs font-bold text-slate-900 block">
+          <span className="flex items-center gap-1 text-xs font-bold text-slate-900">
+            {drawMode === "draw-polygon" ? <PencilRuler size={13} /> : <MousePointerClick size={13} />}
             {drawMode === "draw-polygon"
-              ? "✏️ Chế độ Vẽ Đa Giác (Click các góc, click đúp để đóng)"
-              : "🖐️ Chế độ Chỉnh Sửa Đỉnh (Kéo các điểm góc)"}
+              ? "Chế độ Vẽ Đa Giác (Click các góc, click đúp để đóng)"
+              : "Chế độ Chỉnh Sửa Đỉnh (Kéo các điểm góc)"}
           </span>
           <span className="text-[10px] text-indigo-600 font-semibold">
             {formatArea(polygonArea)} · {(boundary || []).length} đỉnh
@@ -330,7 +332,7 @@ export function RealEstateMapSafeAreaOverlay({
         {/* Safe Area Guides */}
         <div className="absolute top-4 left-4 right-4 flex items-center justify-between text-[11px] font-bold text-indigo-700">
           <span className="rounded-md bg-white/90 shadow-xs px-2 py-0.5 border border-indigo-100">
-            VÙNG GHI HÌNH ({aspectRatio})
+            Vùng ghi hình ({aspectRatio})
           </span>
           <span className="rounded-md bg-white/90 shadow-xs px-2 py-0.5 border border-indigo-100">
             Top Safe Zone
@@ -361,13 +363,13 @@ export function RealEstateMapStatusBadge({
     <div className="absolute right-4 bottom-4 z-10 flex items-center gap-3 rounded-2xl bg-white/95 backdrop-blur-md px-3.5 py-2 text-xs text-slate-700 shadow-lg border border-slate-200">
       <div className="flex items-center gap-2">
         <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-        <span>
-          📍 Tâm: <strong>{location.lat.toFixed(4)}, {location.lng.toFixed(4)}</strong>
+        <span className="flex items-center gap-1">
+          <MapPin size={12} />Tâm: <strong>{location.lat.toFixed(4)}, {location.lng.toFixed(4)}</strong>
         </span>
       </div>
       <span className="text-slate-300">|</span>
-      <span>
-        🧱 <strong>{layerCount} lớp dữ liệu</strong>
+      <span className="flex items-center gap-1">
+        <Layers size={12} /><strong>{layerCount} lớp dữ liệu</strong>
       </span>
     </div>
   );
