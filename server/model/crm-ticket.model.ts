@@ -2,7 +2,9 @@ import { Schema, model } from "mongoose";
 import { ICRMTicket } from "../interface/crm-ticket.interface";
 
 const CRMTicketSchema = new Schema<ICRMTicket>({
-  customerName: { type: String, required: true, index: true },
+  customerName: { type: String, required: function () {
+    return !((this.sourceChannel === "facebook" || this.sourceChannel === "test") && this.phone);
+  }, index: true },
   company: { type: String, default: "" },
   value: { type: Number, default: 0 },
   phone: { type: String, default: "" },
