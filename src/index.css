@@ -431,6 +431,15 @@ code, kbd, samp, pre {
   color: #fff;
 }
 
+.campaign-detail-modal .research-report .clean-markdown-view :is(h3, h4, h5) {
+  color: #334155;
+}
+
+.campaign-detail-modal .research-report .clean-markdown-view h4 > span:not(:first-child) {
+  background-color: transparent;
+  color: inherit;
+}
+
 .campaign-detail-modal .clean-markdown-view code {
   background-color: #f0f9ff;
   color: #007fb8;
