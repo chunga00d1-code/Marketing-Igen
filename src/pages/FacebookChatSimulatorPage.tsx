@@ -21,11 +21,26 @@ type TestConversation = {
   isLegacy: boolean;
 };
 
-function groupTestConversations(logs: TestReplyLog[]): TestConversation[] {
+const savedSessionsKey = "facebook-chat-simulator-log-sessions";
+const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function readSavedSessionIds(): Record<string, string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(savedSessionsKey) || "{}");
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return {};
+    return Object.fromEntries(Object.entries(saved).filter(([logId, sessionId]) =>
+      /^[0-9a-f]{24}$/i.test(logId) && typeof sessionId === "string" && sessionIdPattern.test(sessionId)
+    )) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function groupTestConversations(logs: TestReplyLog[], savedSessionIds: Record<string, string>): TestConversation[] {
   const conversations = new Map<string, TestConversation>();
   for (const log of [...logs].reverse()) {
-    const sessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(log.conversationId || "")
-      ? log.conversationId : "";
+    const loggedSessionId = log.conversationId || "";
+    const sessionId = sessionIdPattern.test(loggedSessionId) ? loggedSessionId : savedSessionIds[log._id] || "";
     const id = sessionId || `log:${log._id}`;
     const existing = conversations.get(id);
     if (existing) {
@@ -71,7 +86,9 @@ const suggestions = [
 export default function FacebookChatSimulatorPage() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [testLogs, setTestLogs] = useState<TestReplyLog[]>([]);
+  const [savedSessionIds, setSavedSessionIds] = useState(readSavedSessionIds);
   const [selectedConversationId, setSelectedConversationId] = useState<string>(() => crypto.randomUUID());
+  const [historyView, setHistoryView] = useState<"conversations" | "single">("conversations");
   const [historySearch, setHistorySearch] = useState("");
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState("");
@@ -97,8 +114,11 @@ export default function FacebookChatSimulatorPage() {
     return () => { mounted = false; };
   }, []);
 
-  const conversations = groupTestConversations(testLogs);
+  const conversations = groupTestConversations(testLogs, savedSessionIds);
+  const conversationCount = conversations.filter((conversation) => !conversation.isLegacy).length;
+  const singleTestCount = conversations.length - conversationCount;
   const filteredConversations = conversations.filter((conversation) =>
+    (historyView === "conversations" ? !conversation.isLegacy : conversation.isLegacy) &&
     conversation.logs.some((log) =>
       `${log.customerMessage} ${log.aiResponse}`.toLocaleLowerCase("vi").includes(historySearch.toLocaleLowerCase("vi").trim())
     )
@@ -141,6 +161,14 @@ export default function FacebookChatSimulatorPage() {
         knowledgeSources: Array.isArray(result.knowledgeSources) ? result.knowledgeSources : [],
         mode: result.mode === "trained" ? "trained" : "default",
       }]);
+      if (typeof result.logId === "string" && /^[0-9a-f]{24}$/i.test(result.logId)) {
+        setSavedSessionIds((current) => {
+          const updated = { ...current, [result.logId]: selectedConversationId };
+          try { localStorage.setItem(savedSessionsKey, JSON.stringify(updated)); } catch { /* Storage can be unavailable. */ }
+          return updated;
+        });
+      }
+      setHistoryView("conversations");
       void refreshHistory();
     } catch (cause) {
       setTurns((current) => current.filter((turn) => turn.id !== messageId));
@@ -154,6 +182,7 @@ export default function FacebookChatSimulatorPage() {
   function resetChat() {
     if (isSending) return;
     setSelectedConversationId(crypto.randomUUID());
+    setHistoryView("conversations");
     setTurns([]);
     nextId.current = 0;
     setDraft("");
@@ -194,12 +223,24 @@ export default function FacebookChatSimulatorPage() {
         <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:max-h-none" aria-label="Lịch sử trò chuyện thử">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <div>
-              <p className="font-semibold text-slate-900">Các cuộc trò chuyện</p>
-              <p className="text-xs text-slate-500">100 lượt thử gần nhất</p>
+              <p className="font-semibold text-slate-900">Lịch sử mô phỏng</p>
+              <p className="text-xs text-slate-500">Trong 100 lượt thử gần nhất</p>
             </div>
             <button type="button" onClick={() => void refreshHistory()} disabled={isLoadingHistory}
               className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Tải lại lịch sử">
               <RotateCcw size={16} />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-1 border-b border-slate-100 p-2" role="tablist" aria-label="Loại lịch sử mô phỏng">
+            <button type="button" role="tab" aria-selected={historyView === "conversations"}
+              onClick={() => setHistoryView("conversations")}
+              className={`rounded-lg px-2 py-2 text-xs font-medium ${historyView === "conversations" ? "bg-sky-100 text-sky-800" : "text-slate-500 hover:bg-slate-50"}`}>
+              Hội thoại ({conversationCount})
+            </button>
+            <button type="button" role="tab" aria-selected={historyView === "single"}
+              onClick={() => setHistoryView("single")}
+              className={`rounded-lg px-2 py-2 text-xs font-medium ${historyView === "single" ? "bg-sky-100 text-sky-800" : "text-slate-500 hover:bg-slate-50"}`}>
+              Thử đơn ({singleTestCount})
             </button>
           </div>
           <div className="border-b border-slate-100 p-3">
@@ -211,7 +252,9 @@ export default function FacebookChatSimulatorPage() {
             {isLoadingHistory && <p className="px-2 py-3 text-sm text-slate-500">Đang tải lịch sử...</p>}
             {historyError && <p role="alert" className="px-2 py-3 text-sm text-red-700">{historyError}</p>}
             {!isLoadingHistory && !historyError && filteredConversations.length === 0 && (
-              <p className="px-2 py-3 text-sm text-slate-500">Chưa có cuộc trò chuyện phù hợp.</p>
+              <p className="px-2 py-3 text-sm text-slate-500">
+                {historyView === "conversations" ? "Chưa có hội thoại nhiều lượt phù hợp." : "Chưa có lượt thử đơn phù hợp."}
+              </p>
             )}
             {filteredConversations.map((conversation) => (
               <button key={conversation.id} type="button" onClick={() => openConversation(conversation)} disabled={isSending}
