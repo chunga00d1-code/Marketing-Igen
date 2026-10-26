@@ -6,6 +6,10 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    css: {
+      // Tailwind runs through its Vite plugin; keep Vite from loading E:\postcss.config.mjs.
+      postcss: { plugins: [] },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

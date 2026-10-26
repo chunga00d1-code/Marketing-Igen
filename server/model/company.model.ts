@@ -20,6 +20,17 @@ const CompanyElevenLabsConfigSchema = new Schema(
   { _id: false }
 );
 
+const CompanyLeadSheetConfigSchema = new Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    spreadsheetUrl: { type: String, default: "", trim: true, maxlength: 1000 },
+    spreadsheetId: { type: String, default: "", trim: true },
+    sheetName: { type: String, default: "Leads", trim: true, maxlength: 80 },
+    updatedAt: { type: Date },
+  },
+  { _id: false },
+);
+
 const CompanyTelegramOrderConfigSchema = new Schema(
   {
     enabled: { type: Boolean, default: false },
@@ -73,8 +84,10 @@ const CompanySchema = new Schema<ICompany>({
   name: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   ownerEmail: { type: String, required: true },
+  chatSaveMode: { type: String, enum: ["both", "lead", "order"], default: "both" },
   heygenConfig: { type: CompanyHeyGenConfigSchema, default: () => ({}) },
   elevenlabsConfig: { type: CompanyElevenLabsConfigSchema, default: () => ({}) },
+  leadSheetConfig: { type: CompanyLeadSheetConfigSchema, default: () => ({}) },
   telegramOrderConfig: { type: CompanyTelegramOrderConfigSchema, default: () => ({}) },
   sepayConfig: { type: CompanySepayConfigSchema, default: () => ({}) },
   productCatalogConfig: { type: CompanyProductCatalogConfigSchema, default: () => ({}) },

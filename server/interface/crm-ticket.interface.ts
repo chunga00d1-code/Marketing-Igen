@@ -18,5 +18,13 @@ export interface ICRMTicket extends Document {
   status: "cold" | "warm" | "hot" | "won" | "upsell";
   lastInteraction?: string;
   companyCode: string;
+  sourceChannel?: "facebook" | "test";
+  sourceConversationId?: string;
+  conversationSummary?: string;
+  leadSheetStatus?: "pending" | "syncing" | "synced" | "failed";
+  leadSheetError?: string;
+  leadSheetSyncedAt?: Date;
+  leadSheetLeaseUntil?: Date;
+  leadSheetLeaseId?: string;
   selectedProducts?: ILeadProductSelection[];
 }

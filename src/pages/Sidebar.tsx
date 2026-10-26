@@ -74,6 +74,13 @@ const navGroups: NavGroupConfig[] = [
         icon: MessageSquareShare,
         filledIcon: "crm",
       },
+      {
+        label: "FB CHAT SIMULATOR",
+        title: "Mô phỏng chat Facebook",
+        railTitle: "FB Demo",
+        icon: MessageSquareShare,
+        filledIcon: "crm",
+      },
     ],
   },
   {

@@ -36,6 +36,7 @@ import { companyTelegramOrderRouter } from "./company-telegram-order.router";
 import { companySepayRouter } from "./company-sepay.router";
 import { companyCakeCatalogRouter } from "./company-cake-catalog.router";
 import { companyProductCatalogRouter } from "./company-product-catalog.router";
+import { companyLeadSheetRouter } from "./company-lead-sheet.router";
 export const apiRouter = Router();
 /**
  * GET /api/v1/health
@@ -100,6 +101,7 @@ apiRouter.use("/wallet", walletRouter);
 
 apiRouter.use("/crud", crudRouter);
 apiRouter.use("/order-sheets", orderSheetRouter);
+apiRouter.use("/company-lead-sheet", companyLeadSheetRouter);
 apiRouter.use("/company-telegram-order", companyTelegramOrderRouter);
 apiRouter.use(companySepayRouter);
 apiRouter.use("/company-cake-catalog", companyCakeCatalogRouter);

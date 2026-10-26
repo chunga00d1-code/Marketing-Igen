@@ -36,6 +36,10 @@ export const APP_ROUTES: AppRoute[] = [
     component: lazy(() => import("../pages/CRMTab")),
   },
   {
+    tab: "FB CHAT SIMULATOR",
+    component: lazy(() => import("../pages/FacebookChatSimulatorPage")),
+  },
+  {
     tab: "QUAN TRI USER",
     component: lazy(() => import("../pages/UserAdminTab")),
     canAccess: (userProfile) => userProfile.role === "superadmin" || userProfile.role === "admin",
