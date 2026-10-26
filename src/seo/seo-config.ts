@@ -167,6 +167,13 @@ export const TAB_SEO_MAP: Partial<Record<TabType, SeoMeta>> = {
     priority: "0.8",
     changeFrequency: "weekly",
   },
+  "FB CHAT SIMULATOR": {
+    title: "Mô phỏng chat Facebook",
+    description: "Thử câu trả lời AI theo ngữ cảnh hội thoại Facebook trong môi trường phát triển.",
+    keywords: "mô phỏng Facebook Messenger, thử AI trả lời",
+    path: "/mo-phong-chat-facebook",
+    robots: "noindex, nofollow",
+  },
   "QUAN TRI USER": {
     title: "Quản trị tài khoản",
     description:

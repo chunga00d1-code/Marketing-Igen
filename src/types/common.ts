@@ -8,6 +8,7 @@ export type TabType =
   | "VIDEO STUDIO"
   | "KHO TRI THUC"
   | "SALES CRM"
+  | "FB CHAT SIMULATOR"
   | "QUAN TRI USER"
   | "VI & NAP TIEN"
   | "CAI DAT"

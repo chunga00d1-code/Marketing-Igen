@@ -37,6 +37,7 @@ export interface ChatRagContext {
   contextText?: string;
   companyCode?: string;
   matches?: number;
+  sourceTitles?: string[];
   bestScore?: number;
   productCandidateNames?: string[];
   shouldAskProductConfirmation?: boolean;

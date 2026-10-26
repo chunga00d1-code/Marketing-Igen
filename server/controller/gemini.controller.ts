@@ -757,7 +757,7 @@ export const geminiController = {
    */
   async testReply(req: AuthenticatedRequest, res: Response) {
     try {
-      const { message = "", images = [], conversationId, platformId, channel = "facebook" } = req.body;
+      const { message = "", images = [], conversationId, platformId, channel = "facebook", history } = req.body;
       const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
         ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
         : String(req.user?.companyCode || "").trim().toUpperCase();
@@ -768,13 +768,14 @@ export const geminiController = {
 
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
       const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, withImages: images.length > 0 }, resolveAutoReplyOwner);
+      const previewHistory = !conversationId && !platformId && Array.isArray(history) ? history : preview.history;
       const aiConfig = images.length ? { ...preview.aiConfig, imageReplyEnabled: true } : preview.aiConfig;
       const aiTrace = aiConfig.imageReplyEnabled ? createChatAiTrace() : undefined;
       const cost = getTextModelCost({ ...aiConfig, model: AI_REPLY_PRIMARY_MODEL });
       await walletService.checkBalance(userId, cost);
       const startedAt = Date.now();
       const preparedReplyContext = await prepareChatReplyContext({
-        companyCode, message, history: preview.history, channel: preview.channel,
+        companyCode, message, history: previewHistory, channel: preview.channel,
         platformId: preview.platformId, conversationId, sessionId: preview.sessionId,
         messageId: "preview-" + randomUUID(), messages: preview.sourceMessages, uploadedImages: images, aiConfig,
         deadlineAt: aiConfig.imageReplyEnabled ? startedAt + 90_000 : undefined,
@@ -787,7 +788,7 @@ export const geminiController = {
         companyCode,
       }));
 
-      let result = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, preview.history, aiConfig.imageReplyEnabled
+      let result = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, previewHistory, aiConfig.imageReplyEnabled
         ? { ...aiConfig, advancedInstructions: buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")) }
         : aiConfig, effectiveRagContext));
       const orderPreview = channel === "facebook" && conversationId && preview.pageId && result.visual
@@ -804,7 +805,7 @@ export const geminiController = {
         })) : undefined;
       if (orderPreview?.consultationContext) {
         const flow = chatOrderFlowRegistry.resolve(companyCode);
-        const rendered = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, preview.history, {
+        const rendered = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, previewHistory, {
           ...aiConfig, advancedInstructions: [buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")),
             flow.conversationInstructions, flow.consultationInstructions].filter(Boolean).join("\n"),
         }, { ...effectiveRagContext, visualInput: undefined, visualContext: result.visual,
@@ -831,6 +832,7 @@ export const geminiController = {
         ...result,
         mode: effectiveRagContext.contextText || effectiveRagContext.scenarioContextText ? "trained" : "default",
         contextMatches: effectiveRagContext.matches || 0,
+        knowledgeSources: effectiveRagContext.sourceTitles,
         logId: log._id,
         dryRun: true,
         ...(orderPreview ? { orderPreview } : {}),

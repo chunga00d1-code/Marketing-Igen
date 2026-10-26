@@ -319,6 +319,7 @@ export const geminiApi = {
     conversationId?: string;
     platformId?: string;
     images?: string[];
+    history?: Array<{ sender: "user" | "model"; text: string }>;
   }): Promise<any> {
     const response = await fetch("/api/v1/gemini/test-reply", {
       method: "POST",
