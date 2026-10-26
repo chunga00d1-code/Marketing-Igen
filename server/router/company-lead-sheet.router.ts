@@ -12,6 +12,7 @@ const configSchema = {
     enabled: Joi.boolean().optional(),
     spreadsheetUrl: Joi.string().trim().max(1000).allow("").optional(),
     sheetName: Joi.string().trim().max(80).optional(),
+    chatSaveMode: Joi.string().valid("both", "lead", "order").optional(),
   }),
 };
 

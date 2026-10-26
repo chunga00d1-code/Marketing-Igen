@@ -20,6 +20,7 @@ import { prepareChatReplyContext, buildChatConversationInstructions, describeCha
 import { randomUUID } from "node:crypto";
 import { visualToImageObservation, type ChatReply } from "../service/chat-visual-context";
 import { chatOrderFlowRegistry } from "../service/chat-ordering/registry";
+import { getChatSaveMode, processesChatOrder, savesChatLead } from "../service/chat-save-mode.service";
 import { createChatAiTrace, describeChatAiTrace, withChatAiTrace } from "../service/chat-ai-trace";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
@@ -765,6 +766,7 @@ export const geminiController = {
       if (!userId) {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
+      const chatSaveMode = channel === "facebook" ? await getChatSaveMode(companyCode) : "both";
 
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
       const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, withImages: images.length > 0 }, resolveAutoReplyOwner);
@@ -791,7 +793,7 @@ export const geminiController = {
       let result = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, previewHistory, aiConfig.imageReplyEnabled
         ? { ...aiConfig, advancedInstructions: buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")) }
         : aiConfig, effectiveRagContext));
-      const orderPreview = channel === "facebook" && conversationId && preview.pageId && result.visual
+      const orderPreview = channel === "facebook" && processesChatOrder(chatSaveMode) && conversationId && preview.pageId && result.visual
         ? await withChatAiTrace(aiTrace, async () => chatOrderFlowRegistry.resolve(companyCode).preview?.({
           companyCode, pageId: preview.pageId, conversationId, message,
           messageId: preparedReplyContext.sourceMessageId,
@@ -830,7 +832,7 @@ export const geminiController = {
 
       const { saveChatLead } = await import("../service/chat-lead.service");
       let leadSaveFailed = false;
-      const savedLead = channel === "facebook" && testSessionId && !conversationId && !platformId
+      const savedLead = channel === "facebook" && savesChatLead(chatSaveMode) && testSessionId && !conversationId && !platformId
         ? await saveChatLead({ companyCode, channel: "test", conversationId: testSessionId,
           message, history: previewHistory }).catch((saveError) => {
           console.error("[geminiController.testReply] Không lưu được liên hệ khách hàng:", saveError);
@@ -857,6 +859,7 @@ export const geminiController = {
         leadSheetEnabled: Boolean(savedLead?.sheetEnabled),
         leadSheetError: savedLead?.sheetError || "",
         leadSaveFailed,
+        chatSaveMode,
         dryRun: true,
         ...(orderPreview ? { orderPreview } : {}),
       });

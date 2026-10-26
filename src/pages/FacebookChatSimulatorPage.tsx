@@ -228,7 +228,7 @@ export default function FacebookChatSimulatorPage() {
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook, không tạo hội thoại thật và không chạy webhook hay quy trình đặt hàng tự động. Khi khách cung cấp đủ tên và số điện thoại, thông tin được lưu thành lead thử trong CRM và đồng bộ vào Google Sheet nếu đã bật kết nối lead.
+        Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook và không tạo đơn hàng thật. Ở chế độ lưu lead hoặc tự động, khi khách cung cấp đủ tên và số điện thoại, thông tin được lưu vào CRM và đồng bộ Google Sheet nếu đã bật kết nối lead.
       </div>
 
       <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1">

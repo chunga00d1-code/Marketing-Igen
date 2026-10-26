@@ -84,6 +84,7 @@ const CompanySchema = new Schema<ICompany>({
   name: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
   ownerEmail: { type: String, required: true },
+  chatSaveMode: { type: String, enum: ["both", "lead", "order"], default: "both" },
   heygenConfig: { type: CompanyHeyGenConfigSchema, default: () => ({}) },
   elevenlabsConfig: { type: CompanyElevenLabsConfigSchema, default: () => ({}) },
   leadSheetConfig: { type: CompanyLeadSheetConfigSchema, default: () => ({}) },

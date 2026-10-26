@@ -1,10 +1,12 @@
 import { CompanyModel } from "../model/company.model";
 import { googleLeadSheetService, parseLeadSpreadsheetId, validateLeadSheetName } from "./google-lead-sheet.service";
+import { normalizeChatSaveMode, type ChatSaveMode } from "./chat-save-mode.service";
 
 export interface LeadSheetInput {
   enabled?: boolean;
   spreadsheetUrl?: string;
   sheetName?: string;
+  chatSaveMode?: ChatSaveMode;
 }
 
 async function companyRecord(companyCode: string) {
@@ -21,6 +23,7 @@ export const companyLeadSheetService = {
       enabled: Boolean(config?.enabled),
       spreadsheetUrl: String(config?.spreadsheetUrl || ""),
       sheetName: String(config?.sheetName || "Leads"),
+      chatSaveMode: normalizeChatSaveMode(company.chatSaveMode),
       serviceAccountEmail: googleLeadSheetService.serviceAccountEmail(),
     };
   },
@@ -41,8 +44,14 @@ export const companyLeadSheetService = {
     const sheetName = validateLeadSheetName(String(input.sheetName ?? current?.sheetName ?? "Leads"));
     const spreadsheetId = spreadsheetUrl ? parseLeadSpreadsheetId(spreadsheetUrl) : "";
     if (enabled && !spreadsheetId) throw new Error("Cần nhập link Google Sheet trước khi bật lưu lead.");
-    if (enabled) await googleLeadSheetService.prepare(spreadsheetId, sheetName);
-    company.leadSheetConfig = { enabled, spreadsheetUrl, spreadsheetId, sheetName, updatedAt: new Date() };
+    const sheetChanged = enabled !== Boolean(current?.enabled) || current?.spreadsheetId !== spreadsheetId
+      || current?.sheetName !== sheetName;
+    if (enabled && sheetChanged) {
+      await googleLeadSheetService.prepare(spreadsheetId, sheetName);
+    }
+    company.leadSheetConfig = { enabled, spreadsheetUrl, spreadsheetId, sheetName,
+      updatedAt: sheetChanged ? new Date() : current?.updatedAt };
+    company.chatSaveMode = normalizeChatSaveMode(input.chatSaveMode ?? company.chatSaveMode);
     await company.save();
     return this.getConfig(company.code);
   },

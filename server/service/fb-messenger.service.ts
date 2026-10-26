@@ -8,6 +8,7 @@ import { aiAutoReplyService } from "./ai-auto-reply.service";
 import { facebookCommentService } from "./facebook-comment.service";
 import { SocialIntegrationModel } from "../model/social-integration.model";
 import { messengerOrderService } from "./messenger-order.service";
+import { getChatSaveModeForPage, processesChatOrder } from "./chat-save-mode.service";
 import { companyProductCatalogService } from "./company-product-catalog.service";
 import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { facebookSendRequest } from "./facebook-send-request";
@@ -676,11 +677,13 @@ export const fbMessengerService = {
     const conversationId = conversation._id.toString();
     const handleOrderMessage = async () => {
       try {
+        const saveMode = await getChatSaveModeForPage(resolvedPageId);
+        const allowOrder = processesChatOrder(saveMode);
         const { chatOrderFlowRegistry } = await import("./chat-ordering/registry");
-        const orderFlow = await chatOrderFlowRegistry.resolveForPage(resolvedPageId);
-        const orderFlowEnabled = await orderFlow.isEnabled(resolvedPageId);
-        const orderFlowActive = await orderFlow.isActive(resolvedPageId, conversationId);
-        const receiptOrder = orderFlowActive ? null : await messengerOrderService.capturePaymentReceipt(
+        const orderFlow = allowOrder ? await chatOrderFlowRegistry.resolveForPage(resolvedPageId) : null;
+        const orderFlowEnabled = orderFlow ? await orderFlow.isEnabled(resolvedPageId) : false;
+        const orderFlowActive = orderFlow ? await orderFlow.isActive(resolvedPageId, conversationId) : false;
+        const receiptOrder = !allowOrder || orderFlowActive ? null : await messengerOrderService.capturePaymentReceipt(
           resolvedPageId,
           conversationId,
           messageId,
@@ -697,7 +700,7 @@ export const fbMessengerService = {
           return;
         }
 
-        const productSelection = orderFlowActive ? null : await messengerOrderService.captureProductSelection(
+        const productSelection = !allowOrder || orderFlowActive ? null : await messengerOrderService.captureProductSelection(
           resolvedPageId,
           conversationId,
           messageId,
@@ -709,7 +712,7 @@ export const fbMessengerService = {
           return;
         }
 
-        if (!orderFlowEnabled && !orderFlowActive && messengerOrderService.isConfirmationMessage(text)) {
+        if (allowOrder && !orderFlowEnabled && !orderFlowActive && messengerOrderService.isConfirmationMessage(text)) {
           const order = await messengerOrderService.captureConfirmedOrder(resolvedPageId, conversationId, messageId, text);
           if (order) {
             const depositRequest = await messengerOrderService.getDepositRequest(order.orderId);
