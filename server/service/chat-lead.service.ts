@@ -12,22 +12,21 @@ const shortContactPattern = /^\s*([\p{L}]+(?:\s+[\p{L}]+){0,3})\s*[,;:-]?\s*(?=(
 
 export function extractChatContact(message: string, history: ChatTurn[]) {
   const recent = [...history, { sender: "user" as const, text: message }].slice(-12);
-  let lastRequest = -1;
-  recent.forEach((turn, index) => {
-    if (turn.sender === "model" && /(?:tên|họ tên)/iu.test(turn.text)
-      && /(?:số điện thoại|sđt)/iu.test(turn.text)) lastRequest = index;
-  });
-  const customerMessages = (lastRequest < 0 ? recent.slice(-1) : recent.slice(lastRequest + 1))
-    .filter(turn => turn.sender === "user").map(turn => turn.text);
-  const contactText = customerMessages.join("\n");
-  const phone = contactText.match(phonePattern)?.[1]?.replace(/[^\d+]/g, "") || "";
+  const contactRequested = history.some(turn => turn.sender === "model"
+    && /(?:tên|họ tên|số điện thoại|sđt)/iu.test(turn.text));
+  const readName = (text: string) => (text.match(namePattern)?.[1]
+    || (contactRequested && !/^\s*(?:số|sđt|điện thoại|phone|liên hệ)(?:\s|:)/iu.test(text)
+      ? text.match(shortContactPattern)?.[1] : ""))?.trim()
+    .replace(/\s+(?:số|sđt)$/iu, "") || "";
+  const phone = [...message.matchAll(new RegExp(phonePattern.source, "g"))].at(-1)?.[1]
+    ?.replace(/[^\d+]/g, "") || "";
   const normalizedPhone = phone.startsWith("+84") ? `0${phone.slice(3)}` : phone.startsWith("84") ? `0${phone.slice(2)}` : phone;
-  if (!/^0\d{9}$/.test(normalizedPhone)) return null;
-
-  const name = customerMessages.map(text => (text.match(namePattern)?.[1]
-    || (lastRequest >= 0 ? text.match(shortContactPattern)?.[1] : ""))?.trim().replace(/\s+(?:số|sđt)$/iu, "")).find(Boolean);
-  if (!name) return null;
-  return { name, phone: normalizedPhone };
+  const validPhone = /^0\d{9}$/.test(normalizedPhone) ? normalizedPhone : "";
+  const currentName = readName(message);
+  if (!validPhone && !currentName) return null;
+  const name = currentName || (validPhone ? recent.filter(turn => turn.sender === "user")
+    .reverse().map(turn => readName(turn.text)).find(Boolean) : "") || "";
+  return { name, phone: validPhone };
 }
 
 export function summarizeChatConversation(message: string, history: ChatTurn[]) {
@@ -35,8 +34,9 @@ export function summarizeChatConversation(message: string, history: ChatTurn[]) 
   const details: string[] = [];
   turns.forEach((turn, index) => {
     if (turn.sender !== "user") return;
-    const text = turn.text.replace(/\s+/g, " ").trim();
-    if (!text || phonePattern.test(text)) return;
+    const text = turn.text.replace(new RegExp(phonePattern.source, "g"), match =>
+      /^\d|^\+/.test(match) ? "" : match[0]).replace(/\s+/g, " ").trim();
+    if (!text) return;
     const previousBot = [...turns.slice(0, index)].reverse().find(item => item.sender === "model")?.text || "";
     const question = previousBot.match(/[^.!?]*\?/g)?.at(-1)?.replace(/\s+/g, " ").trim();
     const detail = text.length <= 20 && question ? `${question} → ${text}` : text;
@@ -96,7 +96,7 @@ export async function saveChatLead(params: {
   const key = { companyCode: params.companyCode, sourceChannel: params.channel,
     sourceConversationId: params.conversationId };
   const existing = await CRMTicketModel.findOne(key);
-  if (!contact && !existing) return null;
+  if (!contact?.phone && !existing) return null;
   const summary = summarizeChatConversation(params.message, params.history);
   const name = contact?.name || existing?.customerName || "";
   const phone = contact?.phone || existing?.phone || "";
