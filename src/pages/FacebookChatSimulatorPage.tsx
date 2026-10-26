@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bot, RotateCcw, Send, UserRound } from "lucide-react";
+import { Bot, MessageSquareText, Plus, RotateCcw, Send, UserRound } from "lucide-react";
 import { geminiApi } from "../api/gemini";
 
 type ChatTurn = {
@@ -11,6 +11,57 @@ type ChatTurn = {
   mode?: "trained" | "default";
 };
 
+type TestReplyLog = Awaited<ReturnType<typeof geminiApi.fetchTestReplyLogs>>[number];
+
+type TestConversation = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  logs: TestReplyLog[];
+  isLegacy: boolean;
+};
+
+function groupTestConversations(logs: TestReplyLog[]): TestConversation[] {
+  const conversations = new Map<string, TestConversation>();
+  for (const log of [...logs].reverse()) {
+    const sessionId = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(log.conversationId || "")
+      ? log.conversationId : "";
+    const id = sessionId || `log:${log._id}`;
+    const existing = conversations.get(id);
+    if (existing) {
+      existing.logs.push(log);
+      existing.updatedAt = log.createdAt;
+    } else {
+      conversations.set(id, {
+        id,
+        title: log.customerMessage,
+        updatedAt: log.createdAt,
+        logs: [log],
+        isLegacy: !sessionId,
+      });
+    }
+  }
+  return [...conversations.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function turnsFromLogs(logs: TestReplyLog[]): ChatTurn[] {
+  return logs.flatMap((log, index) => [
+    { id: index * 2 + 1, sender: "user" as const, text: log.customerMessage },
+    {
+      id: index * 2 + 2,
+      sender: "model" as const,
+      text: log.aiResponse,
+      contextMatches: log.contextMatches,
+      mode: log.mode,
+    },
+  ]);
+}
+
+function formatConversationDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
+}
+
 const suggestions = [
   "Tôi đang tìm sản phẩm phù hợp, bạn tư vấn giúp?",
   "Tôi cần cung cấp gì để nhận báo giá?",
@@ -19,6 +70,11 @@ const suggestions = [
 
 export default function FacebookChatSimulatorPage() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [testLogs, setTestLogs] = useState<TestReplyLog[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string>(() => crypto.randomUUID());
+  const [historySearch, setHistorySearch] = useState("");
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [historyError, setHistoryError] = useState("");
   const [draft, setDraft] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
@@ -29,10 +85,42 @@ export default function FacebookChatSimulatorPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns, isSending]);
 
+  useEffect(() => {
+    let mounted = true;
+    geminiApi.fetchTestReplyLogs().then((logs) => {
+      if (mounted) setTestLogs(logs);
+    }).catch(() => {
+      if (mounted) setHistoryError("Không thể tải lịch sử trò chuyện thử.");
+    }).finally(() => {
+      if (mounted) setIsLoadingHistory(false);
+    });
+    return () => { mounted = false; };
+  }, []);
+
+  const conversations = groupTestConversations(testLogs);
+  const filteredConversations = conversations.filter((conversation) =>
+    conversation.logs.some((log) =>
+      `${log.customerMessage} ${log.aiResponse}`.toLocaleLowerCase("vi").includes(historySearch.toLocaleLowerCase("vi").trim())
+    )
+  );
+  const isLegacySelection = selectedConversationId.startsWith("log:");
+
+  async function refreshHistory() {
+    setHistoryError("");
+    setIsLoadingHistory(true);
+    try {
+      setTestLogs(await geminiApi.fetchTestReplyLogs());
+    } catch {
+      setHistoryError("Không thể tải lịch sử trò chuyện thử.");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
+
   async function sendMessage(event?: FormEvent, suggestedText?: string) {
     event?.preventDefault();
     const text = (suggestedText ?? draft).trim();
-    if (!text || isSending) return;
+    if (!text || isSending || isLegacySelection) return;
 
     const history = turns.slice(-30).map(({ sender, text: turnText }) => ({ sender, text: turnText }));
     setDraft("");
@@ -42,7 +130,7 @@ export default function FacebookChatSimulatorPage() {
     setTurns((current) => [...current, { id: messageId, sender: "user", text }]);
 
     try {
-      const result = await geminiApi.testReply(text, { channel: "facebook", history });
+      const result = await geminiApi.testReply(text, { channel: "facebook", history, testSessionId: selectedConversationId });
       const reply = typeof result?.text === "string" ? result.text.trim() : "";
       if (!reply) throw new Error("AI chưa trả về nội dung. Vui lòng thử lại.");
       setTurns((current) => [...current, {
@@ -53,6 +141,7 @@ export default function FacebookChatSimulatorPage() {
         knowledgeSources: Array.isArray(result.knowledgeSources) ? result.knowledgeSources : [],
         mode: result.mode === "trained" ? "trained" : "default",
       }]);
+      void refreshHistory();
     } catch (cause) {
       setTurns((current) => current.filter((turn) => turn.id !== messageId));
       setDraft(text);
@@ -64,13 +153,25 @@ export default function FacebookChatSimulatorPage() {
 
   function resetChat() {
     if (isSending) return;
+    setSelectedConversationId(crypto.randomUUID());
     setTurns([]);
+    nextId.current = 0;
+    setDraft("");
+    setError("");
+  }
+
+  function openConversation(conversation: TestConversation) {
+    if (isSending) return;
+    const savedTurns = turnsFromLogs(conversation.logs);
+    setSelectedConversationId(conversation.id);
+    setTurns(savedTurns);
+    nextId.current = savedTurns.length;
     setDraft("");
     setError("");
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-9rem)] min-h-[560px] max-w-5xl flex-col gap-4">
+    <div className="mx-auto flex h-[calc(100vh-9rem)] min-h-[560px] max-w-7xl flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-sky-600">Facebook Messenger · Demo</p>
@@ -81,7 +182,7 @@ export default function FacebookChatSimulatorPage() {
         </div>
         <button type="button" onClick={resetChat} disabled={isSending || turns.length === 0}
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
-          <RotateCcw size={16} /> Bắt đầu lại
+          <Plus size={16} /> Cuộc trò chuyện mới
         </button>
       </div>
 
@@ -89,12 +190,53 @@ export default function FacebookChatSimulatorPage() {
         Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook, không tạo hội thoại thật và không chạy webhook hay quy trình đặt hàng tự động.
       </div>
 
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1">
+        <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:max-h-none" aria-label="Lịch sử trò chuyện thử">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+            <div>
+              <p className="font-semibold text-slate-900">Các cuộc trò chuyện</p>
+              <p className="text-xs text-slate-500">100 lượt thử gần nhất</p>
+            </div>
+            <button type="button" onClick={() => void refreshHistory()} disabled={isLoadingHistory}
+              className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Tải lại lịch sử">
+              <RotateCcw size={16} />
+            </button>
+          </div>
+          <div className="border-b border-slate-100 p-3">
+            <input value={historySearch} onChange={(event) => setHistorySearch(event.target.value)}
+              placeholder="Tìm trong lịch sử..." aria-label="Tìm trong lịch sử trò chuyện thử"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-sky-400" />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {isLoadingHistory && <p className="px-2 py-3 text-sm text-slate-500">Đang tải lịch sử...</p>}
+            {historyError && <p role="alert" className="px-2 py-3 text-sm text-red-700">{historyError}</p>}
+            {!isLoadingHistory && !historyError && filteredConversations.length === 0 && (
+              <p className="px-2 py-3 text-sm text-slate-500">Chưa có cuộc trò chuyện phù hợp.</p>
+            )}
+            {filteredConversations.map((conversation) => (
+              <button key={conversation.id} type="button" onClick={() => openConversation(conversation)} disabled={isSending}
+                aria-current={selectedConversationId === conversation.id ? "true" : undefined}
+                className={`mb-1 w-full rounded-xl px-3 py-3 text-left text-sm hover:bg-slate-50 disabled:opacity-50 ${selectedConversationId === conversation.id ? "bg-sky-50 ring-1 ring-sky-200" : ""}`}>
+                <span className="flex items-start gap-2">
+                  <MessageSquareText size={17} className="mt-0.5 shrink-0 text-sky-600" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-slate-800">{conversation.title}</span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      {conversation.isLegacy ? "Lượt thử cũ" : `${conversation.logs.length} lượt trao đổi`} · {formatConversationDate(conversation.updatedAt)}
+                    </span>
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-100 text-sky-700"><Bot size={21} /></div>
           <div>
             <p className="font-semibold text-slate-900">Trợ lý AI Facebook</p>
-            <p className="text-xs text-slate-500">Hội thoại thử · chỉ hiển thị trong phiên này</p>
+            <p className="text-xs text-slate-500">{isLegacySelection ? "Lượt thử cũ · chỉ xem" : "Hội thoại thử · được lưu trong lịch sử"}</p>
           </div>
         </div>
 
@@ -133,15 +275,17 @@ export default function FacebookChatSimulatorPage() {
         </div>
 
         {error && <div role="alert" className="border-t border-red-100 bg-red-50 px-5 py-3 text-sm text-red-700">{error}</div>}
+        {isLegacySelection && <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Lượt thử cũ chưa có mã phiên để tiếp tục. Hãy tạo cuộc trò chuyện mới để thử tiếp.</p>}
         <form onSubmit={sendMessage} className="flex items-end gap-3 border-t border-slate-100 bg-white p-4">
-          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={4000} rows={2}
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} maxLength={4000} rows={2} disabled={isLegacySelection}
             onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }}
             placeholder="Nhập tin nhắn của khách hàng..." aria-label="Tin nhắn của khách hàng"
             className="min-h-12 flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-sky-400" />
-          <button type="submit" disabled={!draft.trim() || isSending}
+          <button type="submit" disabled={!draft.trim() || isSending || isLegacySelection}
             className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-600 text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Gửi tin nhắn thử"><Send size={19} /></button>
         </form>
+      </div>
       </div>
     </div>
   );

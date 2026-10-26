@@ -1844,8 +1844,8 @@ export const aiKnowledgeService = {
     });
   },
 
-  async listReplyLogs(companyCode?: string, limit = 20) {
-    return AIReplyLogModel.find({ companyCode: normalizeCompanyCode(companyCode) })
+  async listReplyLogs(companyCode?: string, limit = 20, channel?: "test") {
+    return AIReplyLogModel.find({ companyCode: normalizeCompanyCode(companyCode), ...(channel ? { channel } : {}) })
       .sort({ createdAt: -1 })
       .limit(Math.min(Math.max(limit, 1), 100))
       .lean();

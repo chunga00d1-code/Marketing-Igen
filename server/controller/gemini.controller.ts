@@ -757,7 +757,7 @@ export const geminiController = {
    */
   async testReply(req: AuthenticatedRequest, res: Response) {
     try {
-      const { message = "", images = [], conversationId, platformId, channel = "facebook", history } = req.body;
+      const { message = "", images = [], conversationId, platformId, channel = "facebook", history, testSessionId } = req.body;
       const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
         ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
         : String(req.user?.companyCode || "").trim().toUpperCase();
@@ -818,6 +818,7 @@ export const geminiController = {
       const log = await aiKnowledgeService.createReplyLog({
         companyCode,
         channel: "test",
+        conversationId: !conversationId && !platformId ? testSessionId : undefined,
         customerMessage: message,
         aiResponse: result.text,
         contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
@@ -851,7 +852,11 @@ export const geminiController = {
    */
   async listAIReplyLogs(req: AuthenticatedRequest, res: Response) {
     try {
-      const logs = await aiKnowledgeService.listReplyLogs(req.user?.companyCode, Number(req.query.limit || 20));
+      const logs = await aiKnowledgeService.listReplyLogs(
+        req.user?.companyCode,
+        Number(req.query.limit || 20),
+        req.query.channel === "test" ? "test" : undefined
+      );
       return res.status(200).json({ logs });
     } catch (error: any) {
       console.error("[geminiController.listAIReplyLogs] Error:", error);

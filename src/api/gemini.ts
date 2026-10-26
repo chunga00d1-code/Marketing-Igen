@@ -320,6 +320,7 @@ export const geminiApi = {
     platformId?: string;
     images?: string[];
     history?: Array<{ sender: "user" | "model"; text: string }>;
+    testSessionId?: string;
   }): Promise<any> {
     const response = await fetch("/api/v1/gemini/test-reply", {
       method: "POST",
@@ -341,6 +342,26 @@ export const geminiApi = {
     }
     const data = await response.json();
     return data.logs || [];
+  },
+
+  async fetchTestReplyLogs(limit: number = 100): Promise<Array<{
+    _id: string;
+    channel: string;
+    conversationId?: string;
+    customerMessage: string;
+    aiResponse: string;
+    contextMatches: number;
+    mode: "trained" | "default";
+    createdAt: string;
+  }>> {
+    const response = await fetch(`/api/v1/gemini/ai-reply-logs?channel=test&limit=${limit}`, {
+      headers: getJwtHeaders(false),
+    });
+    if (!response.ok) {
+      await handleErrorResponse(response, "Không thể tải lịch sử trò chuyện thử");
+    }
+    const data = await response.json();
+    return Array.isArray(data.logs) ? data.logs.filter((log: { channel?: string }) => log.channel === "test") : [];
   },
 
   async sendAIReplyFeedback(id: string, feedback: "good" | "bad" | "needs_fix", note: string = ""): Promise<void> {
