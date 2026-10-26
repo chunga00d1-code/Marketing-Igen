@@ -338,6 +338,11 @@ const testReplySchema = {
     channel: Joi.string().valid("facebook", "zalo", "tiktok").optional(),
     conversationId: Joi.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
     platformId: Joi.string().max(200).optional(),
+    testSessionId: Joi.string().guid({ version: "uuidv4" }).optional(),
+    history: Joi.array().max(30).items(Joi.object({
+      sender: Joi.string().valid("user", "model").required(),
+      text: Joi.string().max(4000).required(),
+    })).optional(),
   }).custom((value, helpers) => value.message.trim() || value.images?.length
     ? value : helpers.message({ custom: "Vui lòng nhập câu hỏi hoặc chọn ảnh để kiểm định AI." })),
 };

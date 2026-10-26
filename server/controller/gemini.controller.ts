@@ -20,6 +20,7 @@ import { prepareChatReplyContext, buildChatConversationInstructions, describeCha
 import { randomUUID } from "node:crypto";
 import { visualToImageObservation, type ChatReply } from "../service/chat-visual-context";
 import { chatOrderFlowRegistry } from "../service/chat-ordering/registry";
+import { getChatSaveMode, processesChatOrder, savesChatLead } from "../service/chat-save-mode.service";
 import { createChatAiTrace, describeChatAiTrace, withChatAiTrace } from "../service/chat-ai-trace";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
@@ -757,7 +758,7 @@ export const geminiController = {
    */
   async testReply(req: AuthenticatedRequest, res: Response) {
     try {
-      const { message = "", images = [], conversationId, platformId, channel = "facebook" } = req.body;
+      const { message = "", images = [], conversationId, platformId, channel = "facebook", history, testSessionId } = req.body;
       const companyCode = (req.user?.role === "superadmin" && (req.body?.companyCode || req.query?.companyCode))
         ? String(req.body?.companyCode || req.query?.companyCode).trim().toUpperCase()
         : String(req.user?.companyCode || "").trim().toUpperCase();
@@ -765,16 +766,18 @@ export const geminiController = {
       if (!userId) {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
+      const chatSaveMode = channel === "facebook" ? await getChatSaveMode(companyCode) : "both";
 
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
       const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, withImages: images.length > 0 }, resolveAutoReplyOwner);
+      const previewHistory = !conversationId && !platformId && Array.isArray(history) ? history : preview.history;
       const aiConfig = images.length ? { ...preview.aiConfig, imageReplyEnabled: true } : preview.aiConfig;
       const aiTrace = aiConfig.imageReplyEnabled ? createChatAiTrace() : undefined;
       const cost = getTextModelCost({ ...aiConfig, model: AI_REPLY_PRIMARY_MODEL });
       await walletService.checkBalance(userId, cost);
       const startedAt = Date.now();
       const preparedReplyContext = await prepareChatReplyContext({
-        companyCode, message, history: preview.history, channel: preview.channel,
+        companyCode, message, history: previewHistory, channel: preview.channel,
         platformId: preview.platformId, conversationId, sessionId: preview.sessionId,
         messageId: "preview-" + randomUUID(), messages: preview.sourceMessages, uploadedImages: images, aiConfig,
         deadlineAt: aiConfig.imageReplyEnabled ? startedAt + 90_000 : undefined,
@@ -787,10 +790,10 @@ export const geminiController = {
         companyCode,
       }));
 
-      let result = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, preview.history, aiConfig.imageReplyEnabled
+      let result = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, previewHistory, aiConfig.imageReplyEnabled
         ? { ...aiConfig, advancedInstructions: buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")) }
         : aiConfig, effectiveRagContext));
-      const orderPreview = channel === "facebook" && conversationId && preview.pageId && result.visual
+      const orderPreview = channel === "facebook" && processesChatOrder(chatSaveMode) && conversationId && preview.pageId && result.visual
         ? await withChatAiTrace(aiTrace, async () => chatOrderFlowRegistry.resolve(companyCode).preview?.({
           companyCode, pageId: preview.pageId, conversationId, message,
           messageId: preparedReplyContext.sourceMessageId,
@@ -804,7 +807,7 @@ export const geminiController = {
         })) : undefined;
       if (orderPreview?.consultationContext) {
         const flow = chatOrderFlowRegistry.resolve(companyCode);
-        const rendered = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, preview.history, {
+        const rendered = await withChatAiTrace<ChatReply>(aiTrace, () => geminiService.chat(message, previewHistory, {
           ...aiConfig, advancedInstructions: [buildChatConversationInstructions(String(aiConfig.advancedInstructions || "")),
             flow.conversationInstructions, flow.consultationInstructions].filter(Boolean).join("\n"),
         }, { ...effectiveRagContext, visualInput: undefined, visualContext: result.visual,
@@ -817,6 +820,7 @@ export const geminiController = {
       const log = await aiKnowledgeService.createReplyLog({
         companyCode,
         channel: "test",
+        conversationId: !conversationId && !platformId ? testSessionId : undefined,
         customerMessage: message,
         aiResponse: result.text,
         contextText: [effectiveRagContext.contextText, effectiveRagContext.scenarioContextText].filter(Boolean).join("\n\n"),
@@ -826,12 +830,36 @@ export const geminiController = {
         visualDiagnostics: { ...describeChatVisualContext(preparedReplyContext), ...(aiTrace ? describeChatAiTrace(aiTrace) : {}) },
       });
 
+      const { saveChatLead } = await import("../service/chat-lead.service");
+      let leadSaveFailed = false;
+      const savedLead = channel === "facebook" && savesChatLead(chatSaveMode) && testSessionId && !conversationId && !platformId
+        ? await saveChatLead({ companyCode, channel: "test", conversationId: testSessionId,
+          message, history: previewHistory }).catch((saveError) => {
+          console.error("[geminiController.testReply] Không lưu được liên hệ khách hàng:", saveError);
+          leadSaveFailed = true;
+          return null;
+        }) : null;
+      if (savedLead) {
+        log.leadSaved = true;
+        log.leadSheetSaved = savedLead.sheetSaved;
+        await log.save().catch((saveError) => {
+          console.error("[geminiController.testReply] Không cập nhật được trạng thái lead trong log:", saveError);
+        });
+      }
+
       await walletService.deductBalance(userId, cost, "Chi phí test câu trả lời tự động AI");
       return res.status(200).json({
         ...result,
         mode: effectiveRagContext.contextText || effectiveRagContext.scenarioContextText ? "trained" : "default",
         contextMatches: effectiveRagContext.matches || 0,
+        knowledgeSources: effectiveRagContext.sourceTitles,
         logId: log._id,
+        leadSaved: Boolean(savedLead),
+        leadSheetSaved: Boolean(savedLead?.sheetSaved),
+        leadSheetEnabled: Boolean(savedLead?.sheetEnabled),
+        leadSheetError: savedLead?.sheetError || "",
+        leadSaveFailed,
+        chatSaveMode,
         dryRun: true,
         ...(orderPreview ? { orderPreview } : {}),
       });
@@ -849,7 +877,11 @@ export const geminiController = {
    */
   async listAIReplyLogs(req: AuthenticatedRequest, res: Response) {
     try {
-      const logs = await aiKnowledgeService.listReplyLogs(req.user?.companyCode, Number(req.query.limit || 20));
+      const logs = await aiKnowledgeService.listReplyLogs(
+        req.user?.companyCode,
+        Number(req.query.limit || 20),
+        req.query.channel === "test" ? "test" : undefined
+      );
       return res.status(200).json({ logs });
     } catch (error: any) {
       console.error("[geminiController.listAIReplyLogs] Error:", error);

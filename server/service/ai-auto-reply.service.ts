@@ -16,6 +16,8 @@ import { zaloMessengerService } from "./zalo-messenger.service";
 import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.service";
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
+import { saveChatLead } from "./chat-lead.service";
+import { getChatSaveMode, processesChatOrder, savesChatLead } from "./chat-save-mode.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { chatOrderFlowRegistry } from "./chat-ordering/registry";
@@ -985,9 +987,11 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
+            const chatSaveMode = channel === "facebook" ? await getChatSaveMode(companyCode) : "both";
             const aiTrace = aiConfig.imageReplyEnabled === true ? createChatAiTrace() : undefined;
             const { orderFlow, customerSession, preparedReplyContext, effectiveRagContext, visualContext, checkoutReply, aiResponse } = await withChatAiTrace(aiTrace, async () => {
-              const orderFlow = channel === "facebook" ? chatOrderFlowRegistry.resolve(companyCode) : undefined;
+              const orderFlow = channel === "facebook" && processesChatOrder(chatSaveMode)
+                ? chatOrderFlowRegistry.resolve(companyCode) : undefined;
               const customerSession = orderFlow && await orderFlow.isEnabled(resolvedPlatformId)
                 ? await orderFlow.prepareSession({ companyCode, pageId: resolvedPlatformId, conversationId }, latestDbMessage.messageId) : undefined;
               if (customerSession) {
@@ -1240,6 +1244,17 @@ export const aiAutoReplyService = {
               }).catch((logError) => {
                 console.error(`[AI AutoReply] Tin đã gửi thành công nhưng không lưu được log: conversationId=${conversationId}`, logError);
               });
+
+              if (channel === "facebook" && savesChatLead(chatSaveMode)) {
+                const leadResult = await saveChatLead({ companyCode, channel: "facebook", conversationId,
+                  message: groupedCustomerMessage, history }).catch((saveError) => {
+                  console.error(`[AI AutoReply] Không lưu được liên hệ khách hàng: conversationId=${conversationId}`, saveError);
+                  return null;
+                });
+                if (leadResult?.sheetError) {
+                  console.error(`[AI AutoReply] Không đồng bộ được lead vào Sheet: conversationId=${conversationId}`, leadResult.sheetError);
+                }
+              }
 
               // Cập nhật trạng thái hội thoại sau khi Bot trả lời để theo dõi follow-up
               try {

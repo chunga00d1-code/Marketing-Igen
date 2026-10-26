@@ -913,7 +913,7 @@ export const aiKnowledgeService = {
       }))),
       this.searchRelevantContext({
         ...scope, query: scenarioQuery, documentTypes: ["scenario"], strictDocumentTypes: true,
-        preserveDocumentOrder: true, topK: 5, maxContextChars: 3500,
+        preserveDocumentOrder: true, topK: 8, maxContextChars: 5000,
       }),
       hasPurchaseIntent
         ? this.searchRelevantContext({
@@ -951,6 +951,10 @@ export const aiKnowledgeService = {
       ].filter(Boolean).join("\n\n---\n\n"),
       matches: availableContexts.reduce((total, context) => total + context.matches, 0) +
         categoryLinkItems.length,
+      sourceTitles: [...new Set([
+        ...availableContexts.flatMap((context) => context.items.map((item) => item.title)),
+        ...categoryLinkItems.map((item) => item.title),
+      ].filter(Boolean))],
       bestScore: Math.max(0, ...availableContexts.map((context) => context.bestScore), categoryContext?.bestScore || 0),
       productCandidateNames: [...new Set(availableContexts.flatMap((context) => context.productCandidateNames))],
       shouldAskProductConfirmation: availableContexts.some((context) => context.shouldAskProductConfirmation),
@@ -1280,8 +1284,9 @@ export const aiKnowledgeService = {
       bestScore?: number;
       productCandidateNames?: string[];
       shouldAskProductConfirmation?: boolean;
+      sourceTitles?: string[];
     };
-    scenarioContext?: { contextText?: string };
+    scenarioContext?: { contextText?: string; matches?: number; items?: Array<{ title: string }> };
     trainingKnowledge?: string;
   }) {
     const normalizedCompanyCode = normalizeCompanyCode(input.companyCode);
@@ -1289,6 +1294,10 @@ export const aiKnowledgeService = {
     const trainingKnowledge = String(input.trainingKnowledge || "").trim().slice(0, 20000);
     const ragText = String(ragContext.contextText || "").trim();
     const scenarioContextText = String(input.scenarioContext?.contextText || "").trim();
+    const sourceTitles = [...new Set([
+      ...(ragContext.sourceTitles || []),
+      ...(input.scenarioContext?.items || []).map((item) => item.title),
+    ].filter(Boolean))];
 
     if (ragText || trainingKnowledge || scenarioContextText) {
       const contextParts = [
@@ -1301,7 +1310,8 @@ export const aiKnowledgeService = {
       return {
         contextText: contextParts.join("\n\n"),
         scenarioContextText,
-        matches: ragContext.matches || 0,
+        matches: (ragContext.matches || 0) + (input.scenarioContext?.matches || 0),
+        sourceTitles,
         bestScore: ragContext.bestScore || 0,
         productCandidateNames: ragContext.productCandidateNames || [],
         shouldAskProductConfirmation: !!ragContext.shouldAskProductConfirmation,
@@ -1320,6 +1330,7 @@ export const aiKnowledgeService = {
       contextText: "",
       scenarioContextText: "",
       matches: 0,
+      sourceTitles: [],
       bestScore: 0,
       productCandidateNames: [],
       shouldAskProductConfirmation: false,
@@ -1833,8 +1844,8 @@ export const aiKnowledgeService = {
     });
   },
 
-  async listReplyLogs(companyCode?: string, limit = 20) {
-    return AIReplyLogModel.find({ companyCode: normalizeCompanyCode(companyCode) })
+  async listReplyLogs(companyCode?: string, limit = 20, channel?: "test") {
+    return AIReplyLogModel.find({ companyCode: normalizeCompanyCode(companyCode), ...(channel ? { channel } : {}) })
       .sort({ createdAt: -1 })
       .limit(Math.min(Math.max(limit, 1), 100))
       .lean();
