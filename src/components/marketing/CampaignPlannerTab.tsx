@@ -789,6 +789,8 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
     'Bạn muốn chuẩn bị ảnh và video bằng cách nào?',
     'Chọn thời gian và tài khoản nhận bài đăng.',
   ];
+  const setupStepCount = isSinglePost && !isTikTokCampaign ? 3 : 4;
+  const isFinalSetupStep = setupStep === setupStepCount;
 
   return (
     <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-stretch lg:gap-0 lg:rounded-2xl lg:border lg:border-slate-200 lg:bg-white">
@@ -840,13 +842,13 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
           <div>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="mb-2 text-[11px] font-semibold text-blue-600">Bước {setupStep} / 4</p>
+                <p className="mb-2 text-[11px] font-semibold text-blue-600">Bước {setupStep} / {setupStepCount}</p>
                 <h3 className="text-lg font-bold text-slate-900">{setupTitles[setupStep - 1]}</h3>
                 <p className="mt-1 text-sm text-slate-500">{setupDescriptions[setupStep - 1]}</p>
               </div>
               <button type="button" onClick={closeSetup} aria-label="Đóng thiết lập" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
             </div>
-            <div className="mt-5 flex gap-1.5" aria-hidden="true">{setupTitles.map((title, index) => <span key={title} className={`h-1 flex-1 rounded-full ${index < setupStep ? 'bg-blue-600' : 'bg-slate-200'}`} />)}</div>
+            <div className="mt-5 flex gap-1.5" aria-hidden="true">{setupTitles.slice(0, setupStepCount).map((title, index) => <span key={title} className={`h-1 flex-1 rounded-full ${index < setupStep ? 'bg-blue-600' : 'bg-slate-200'}`} />)}</div>
 
             {setupStep === 1 && <div className="mt-6 space-y-5">
               <div className="grid grid-cols-3 gap-3">
@@ -884,6 +886,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
             {setupStep === 3 && <div className="mt-6 grid grid-cols-2 gap-3">
               <button type="button" onClick={() => setImageMode('ai')} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${imageMode === 'ai' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><Sparkles size={26} /><b className="text-sm">AI tạo ảnh</b><span className="text-xs font-normal text-slate-500">Tạo media khi chuẩn bị bài</span></button>
               <button type="button" onClick={() => setImageMode('order')} className={`flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition ${imageMode === 'order' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-700 hover:border-blue-300'}`}><FolderOpen size={26} /><b className="text-sm">Media của bạn</b><span className="text-xs font-normal text-slate-500">Nhập từ Drive hoặc tải lên sau</span></button>
+              {setupStepCount === 3 && <p className="col-span-2 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">Một bài sẽ bắt đầu xử lý sau khi bạn xem bản nháp và xác nhận.</p>}
             </div>}
 
             {setupStep === 4 && <div className="mt-6 max-h-[55vh] space-y-4 overflow-y-auto pr-1">
@@ -903,7 +906,7 @@ export default function CampaignPlannerTab({ userProfile }: CampaignPlannerTabPr
 
             <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
               <button type="button" onClick={() => setupStep === 1 ? closeSetup() : setSetupStep(setupStep === 4 && isTikTokCampaign ? 2 : (setupStep - 1) as 1 | 2 | 3 | 4)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Quay lại</button>
-              {setupStep < 4 ? <button type="button" onClick={() => { if (setupStep === 2 && !creationMode) return toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.'); setSetupStep(setupStep === 2 && isTikTokCampaign ? 4 : (setupStep + 1) as 1 | 2 | 3 | 4); }} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Tiếp tục</button> : <button type="button" onClick={handleCreateCampaign} disabled={loading || uploadingTikTokVideo || !dayCount || totalPosts > 450} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">{loading && <Loader2 size={14} className="animate-spin" />}Tạo bản nháp</button>}
+              {!isFinalSetupStep ? <button type="button" onClick={() => { if (setupStep === 2 && !creationMode) return toast.warning('Vui lòng chọn một bài đăng hoặc chiến dịch nhiều bài.'); setSetupStep(setupStep === 2 && isTikTokCampaign ? 4 : (setupStep + 1) as 1 | 2 | 3 | 4); }} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Tiếp tục</button> : <button type="button" onClick={handleCreateCampaign} disabled={loading || uploadingTikTokVideo || !dayCount || totalPosts > 450} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">{loading && <Loader2 size={14} className="animate-spin" />}Tạo bản nháp</button>}
             </div>
           </div>
         )}
