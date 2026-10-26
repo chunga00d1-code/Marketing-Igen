@@ -1243,10 +1243,14 @@ export const aiAutoReplyService = {
               });
 
               if (channel === "facebook") {
-                await saveChatLead({ companyCode, channel: "facebook", conversationId,
+                const leadResult = await saveChatLead({ companyCode, channel: "facebook", conversationId,
                   message: groupedCustomerMessage, history }).catch((saveError) => {
                   console.error(`[AI AutoReply] Không lưu được liên hệ khách hàng: conversationId=${conversationId}`, saveError);
+                  return null;
                 });
+                if (leadResult?.sheetError) {
+                  console.error(`[AI AutoReply] Không đồng bộ được lead vào Sheet: conversationId=${conversationId}`, leadResult.sheetError);
+                }
               }
 
               // Cập nhật trạng thái hội thoại sau khi Bot trả lời để theo dõi follow-up

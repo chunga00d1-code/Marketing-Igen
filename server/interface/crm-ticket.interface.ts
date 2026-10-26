@@ -20,5 +20,11 @@ export interface ICRMTicket extends Document {
   companyCode: string;
   sourceChannel?: "facebook" | "test";
   sourceConversationId?: string;
+  conversationSummary?: string;
+  leadSheetStatus?: "pending" | "syncing" | "synced" | "failed";
+  leadSheetError?: string;
+  leadSheetSyncedAt?: Date;
+  leadSheetLeaseUntil?: Date;
+  leadSheetLeaseId?: string;
   selectedProducts?: ILeadProductSelection[];
 }

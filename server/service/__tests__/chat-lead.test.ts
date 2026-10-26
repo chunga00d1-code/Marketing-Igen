@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { extractChatContact } from "../chat-lead.service";
+import { extractChatContact, summarizeChatConversation } from "../chat-lead.service";
 
 const request = { sender: "model" as const, text: "Anh chị cho em xin tên và số điện thoại liên hệ nhé." };
 
@@ -30,4 +30,31 @@ test("does not reuse old contact details after the contact request window", () =
     { sender: "user", text: "Tôi là Nam, số 0900000000" },
     { sender: "model", text: "Mình đang chọn sơn cho phòng nào?" },
   ]), null);
+});
+
+test("summarizes customer needs and recent advice without duplicating the contact reply", () => {
+  const summary = summarizeChatConversation("Anh là Nam, số 0900000000", [
+    { sender: "user", text: "Tôi muốn sơn nhà mới" },
+    { sender: "model", text: "Anh muốn sơn nội thất hay ngoại thất?" },
+    { sender: "user", text: "Cả hai, nhà ba tầng" },
+    { sender: "model", text: "Có thể chọn dòng sơn phù hợp từng khu vực." },
+    request,
+  ]);
+  assert.match(summary, /sơn nhà mới/);
+  assert.match(summary, /Cả hai, nhà ba tầng/);
+  assert.match(summary, /Tư vấn gần nhất/);
+  assert.doesNotMatch(summary, /0900000000/);
+});
+
+test("keeps the bot question beside short customer answers in the summary", () => {
+  const summary = summarizeChatConversation("Anh là Nam, số 0900000000", [
+    { sender: "user", text: "Tôi muốn sơn nhà" },
+    { sender: "model", text: "Anh muốn sơn nội thất hay ngoại thất?" },
+    { sender: "user", text: "Cả hai" },
+    { sender: "model", text: "Nhà mình có mấy tầng?" },
+    { sender: "user", text: "3" },
+    request,
+  ]);
+  assert.match(summary, /nội thất hay ngoại thất\? → Cả hai/);
+  assert.match(summary, /mấy tầng\? → 3/);
 });

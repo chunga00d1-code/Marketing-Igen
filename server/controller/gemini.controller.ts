@@ -839,6 +839,7 @@ export const geminiController = {
         }) : null;
       if (savedLead) {
         log.leadSaved = true;
+        log.leadSheetSaved = savedLead.sheetSaved;
         await log.save().catch((saveError) => {
           console.error("[geminiController.testReply] Không cập nhật được trạng thái lead trong log:", saveError);
         });
@@ -852,6 +853,9 @@ export const geminiController = {
         knowledgeSources: effectiveRagContext.sourceTitles,
         logId: log._id,
         leadSaved: Boolean(savedLead),
+        leadSheetSaved: Boolean(savedLead?.sheetSaved),
+        leadSheetEnabled: Boolean(savedLead?.sheetEnabled),
+        leadSheetError: savedLead?.sheetError || "",
         leadSaveFailed,
         dryRun: true,
         ...(orderPreview ? { orderPreview } : {}),

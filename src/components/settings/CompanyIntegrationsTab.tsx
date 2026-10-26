@@ -10,6 +10,7 @@ import { getAccessToken } from "../../services/authService";
 import OrderSheetConfigCard from "./OrderSheetConfigCard";
 import TelegramOrderConfigCard from "./TelegramOrderConfigCard";
 import SepayConfigCard from "./SepayConfigCard";
+import LeadSheetConfigCard from "./LeadSheetConfigCard";
 
 interface CompanyIntegrationsTabProps {
   userProfile: any;
@@ -710,6 +711,7 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
 
   return (
     <div className="space-y-6">
+      <LeadSheetConfigCard canEdit={userProfile?.role === "admin" || userProfile?.role === "superadmin"} />
       <TelegramOrderConfigCard userProfile={userProfile} />
       <SepayConfigCard userProfile={userProfile} />
       <div className="bg-white/80 backdrop-blur-md border border-gray-200/80 rounded-2xl p-6 shadow-xs">

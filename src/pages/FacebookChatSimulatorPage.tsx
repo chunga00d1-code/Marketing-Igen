@@ -10,6 +10,9 @@ type ChatTurn = {
   knowledgeSources?: string[];
   mode?: "trained" | "default";
   leadSaved?: boolean;
+  leadSheetSaved?: boolean;
+  leadSheetEnabled?: boolean;
+  leadSheetError?: string;
   leadSaveFailed?: boolean;
 };
 
@@ -71,6 +74,7 @@ function turnsFromLogs(logs: TestReplyLog[]): ChatTurn[] {
       contextMatches: log.contextMatches,
       mode: log.mode,
       leadSaved: log.leadSaved,
+      leadSheetSaved: log.leadSheetSaved,
     },
   ]);
 }
@@ -164,6 +168,9 @@ export default function FacebookChatSimulatorPage() {
         knowledgeSources: Array.isArray(result.knowledgeSources) ? result.knowledgeSources : [],
         mode: result.mode === "trained" ? "trained" : "default",
         leadSaved: result.leadSaved === true,
+        leadSheetSaved: result.leadSheetSaved === true,
+        leadSheetEnabled: result.leadSheetEnabled === true,
+        leadSheetError: typeof result.leadSheetError === "string" ? result.leadSheetError : "",
         leadSaveFailed: result.leadSaveFailed === true,
       }]);
       if (typeof result.logId === "string" && /^[0-9a-f]{24}$/i.test(result.logId)) {
@@ -221,7 +228,7 @@ export default function FacebookChatSimulatorPage() {
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook, không tạo hội thoại thật và không chạy webhook hay quy trình đặt hàng tự động. Khi khách cung cấp đủ tên và số điện thoại, thông tin được lưu thành lead thử trong CRM.
+        Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook, không tạo hội thoại thật và không chạy webhook hay quy trình đặt hàng tự động. Khi khách cung cấp đủ tên và số điện thoại, thông tin được lưu thành lead thử trong CRM và đồng bộ vào Google Sheet nếu đã bật kết nối lead.
       </div>
 
       <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1">
@@ -310,6 +317,9 @@ export default function FacebookChatSimulatorPage() {
               <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${turn.sender === "user" ? "bg-sky-600 text-white" : "border border-slate-200 bg-white text-slate-800"}`}>
                 <p className="whitespace-pre-wrap break-words">{turn.text}</p>
                 {turn.leadSaved && <p className="mt-2 text-xs font-medium text-emerald-700">Đã lưu tên và số điện thoại vào CRM</p>}
+                {turn.leadSheetSaved && <p className="mt-1 text-xs font-medium text-emerald-700">Đã lưu tên, SĐT và tóm tắt hội thoại vào Google Sheet</p>}
+                {turn.leadSaved && !turn.leadSheetSaved && turn.leadSheetEnabled === false && <p className="mt-1 text-xs text-slate-500">Sheet lead chưa được kết nối trong Cài đặt → Tích hợp doanh nghiệp.</p>}
+                {turn.leadSaved && !turn.leadSheetSaved && turn.leadSheetEnabled && <p className="mt-1 text-xs font-medium text-amber-700">Chưa đồng bộ được Google Sheet{turn.leadSheetError ? `: ${turn.leadSheetError}` : "."}</p>}
                 {turn.leadSaveFailed && <p className="mt-2 text-xs font-medium text-red-700">Không lưu được thông tin liên hệ vào CRM. Vui lòng thử lại.</p>}
                 {turn.sender === "model" && <p className="mt-2 text-xs text-slate-500">
                   {turn.knowledgeSources?.length

@@ -13,6 +13,14 @@ export interface ICompanyElevenLabsConfig {
   apiKey: string;
 }
 
+export interface ICompanyLeadSheetConfig {
+  enabled: boolean;
+  spreadsheetUrl: string;
+  spreadsheetId: string;
+  sheetName: string;
+  updatedAt?: Date;
+}
+
 export interface ICompanyTelegramOrderConfig {
   enabled: boolean;
   notifyNewOrder: boolean;
@@ -61,6 +69,7 @@ export interface ICompany extends Document {
   ownerEmail: string;
   heygenConfig?: ICompanyHeyGenConfig;
   elevenlabsConfig?: ICompanyElevenLabsConfig;
+  leadSheetConfig?: ICompanyLeadSheetConfig;
   telegramOrderConfig?: ICompanyTelegramOrderConfig;
   sepayConfig?: ICompanySepayConfig;
   productCatalogConfig?: ICompanyProductCatalogConfig;

@@ -14,6 +14,12 @@ const CRMTicketSchema = new Schema<ICRMTicket>({
   companyCode: { type: String, required: true, index: true },
   sourceChannel: { type: String, enum: ["facebook", "test"] },
   sourceConversationId: { type: String },
+  conversationSummary: { type: String, default: "" },
+  leadSheetStatus: { type: String, enum: ["pending", "syncing", "synced", "failed"] },
+  leadSheetError: { type: String, default: "" },
+  leadSheetSyncedAt: { type: Date },
+  leadSheetLeaseUntil: { type: Date },
+  leadSheetLeaseId: { type: String },
   selectedProducts: {
     type: [{
       productId: { type: String },
