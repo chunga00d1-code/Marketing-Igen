@@ -9,6 +9,8 @@ type ChatTurn = {
   contextMatches?: number;
   knowledgeSources?: string[];
   mode?: "trained" | "default";
+  leadSaved?: boolean;
+  leadSaveFailed?: boolean;
 };
 
 type TestReplyLog = Awaited<ReturnType<typeof geminiApi.fetchTestReplyLogs>>[number];
@@ -68,6 +70,7 @@ function turnsFromLogs(logs: TestReplyLog[]): ChatTurn[] {
       text: log.aiResponse,
       contextMatches: log.contextMatches,
       mode: log.mode,
+      leadSaved: log.leadSaved,
     },
   ]);
 }
@@ -160,6 +163,8 @@ export default function FacebookChatSimulatorPage() {
         contextMatches: Number(result.contextMatches) || 0,
         knowledgeSources: Array.isArray(result.knowledgeSources) ? result.knowledgeSources : [],
         mode: result.mode === "trained" ? "trained" : "default",
+        leadSaved: result.leadSaved === true,
+        leadSaveFailed: result.leadSaveFailed === true,
       }]);
       if (typeof result.logId === "string" && /^[0-9a-f]{24}$/i.test(result.logId)) {
         setSavedSessionIds((current) => {
@@ -216,7 +221,7 @@ export default function FacebookChatSimulatorPage() {
       </div>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook, không tạo hội thoại thật và không chạy webhook hay quy trình đặt hàng tự động.
+        Đây là bản xem trước câu trả lời AI. Mỗi lượt thử có thể trừ chi phí AI trong ví. Tin nhắn không gửi lên Facebook, không tạo hội thoại thật và không chạy webhook hay quy trình đặt hàng tự động. Khi khách cung cấp đủ tên và số điện thoại, thông tin được lưu thành lead thử trong CRM.
       </div>
 
       <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1">
@@ -304,6 +309,8 @@ export default function FacebookChatSimulatorPage() {
               {turn.sender === "model" && <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700"><Bot size={17} /></div>}
               <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${turn.sender === "user" ? "bg-sky-600 text-white" : "border border-slate-200 bg-white text-slate-800"}`}>
                 <p className="whitespace-pre-wrap break-words">{turn.text}</p>
+                {turn.leadSaved && <p className="mt-2 text-xs font-medium text-emerald-700">Đã lưu tên và số điện thoại vào CRM</p>}
+                {turn.leadSaveFailed && <p className="mt-2 text-xs font-medium text-red-700">Không lưu được thông tin liên hệ vào CRM. Vui lòng thử lại.</p>}
                 {turn.sender === "model" && <p className="mt-2 text-xs text-slate-500">
                   {turn.knowledgeSources?.length
                     ? `Ngữ cảnh từ: ${turn.knowledgeSources.join(", ")} (${turn.contextMatches} đoạn phù hợp)`

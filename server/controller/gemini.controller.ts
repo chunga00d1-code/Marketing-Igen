@@ -828,6 +828,22 @@ export const geminiController = {
         visualDiagnostics: { ...describeChatVisualContext(preparedReplyContext), ...(aiTrace ? describeChatAiTrace(aiTrace) : {}) },
       });
 
+      const { saveChatLead } = await import("../service/chat-lead.service");
+      let leadSaveFailed = false;
+      const savedLead = channel === "facebook" && testSessionId && !conversationId && !platformId
+        ? await saveChatLead({ companyCode, channel: "test", conversationId: testSessionId,
+          message, history: previewHistory }).catch((saveError) => {
+          console.error("[geminiController.testReply] Không lưu được liên hệ khách hàng:", saveError);
+          leadSaveFailed = true;
+          return null;
+        }) : null;
+      if (savedLead) {
+        log.leadSaved = true;
+        await log.save().catch((saveError) => {
+          console.error("[geminiController.testReply] Không cập nhật được trạng thái lead trong log:", saveError);
+        });
+      }
+
       await walletService.deductBalance(userId, cost, "Chi phí test câu trả lời tự động AI");
       return res.status(200).json({
         ...result,
@@ -835,6 +851,8 @@ export const geminiController = {
         contextMatches: effectiveRagContext.matches || 0,
         knowledgeSources: effectiveRagContext.sourceTitles,
         logId: log._id,
+        leadSaved: Boolean(savedLead),
+        leadSaveFailed,
         dryRun: true,
         ...(orderPreview ? { orderPreview } : {}),
       });

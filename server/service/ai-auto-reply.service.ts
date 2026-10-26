@@ -16,6 +16,7 @@ import { zaloMessengerService } from "./zalo-messenger.service";
 import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.service";
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
+import { saveChatLead } from "./chat-lead.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { chatOrderFlowRegistry } from "./chat-ordering/registry";
@@ -1240,6 +1241,13 @@ export const aiAutoReplyService = {
               }).catch((logError) => {
                 console.error(`[AI AutoReply] Tin đã gửi thành công nhưng không lưu được log: conversationId=${conversationId}`, logError);
               });
+
+              if (channel === "facebook") {
+                await saveChatLead({ companyCode, channel: "facebook", conversationId,
+                  message: groupedCustomerMessage, history }).catch((saveError) => {
+                  console.error(`[AI AutoReply] Không lưu được liên hệ khách hàng: conversationId=${conversationId}`, saveError);
+                });
+              }
 
               // Cập nhật trạng thái hội thoại sau khi Bot trả lời để theo dõi follow-up
               try {

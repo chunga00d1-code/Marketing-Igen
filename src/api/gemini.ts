@@ -352,6 +352,7 @@ export const geminiApi = {
     aiResponse: string;
     contextMatches: number;
     mode: "trained" | "default";
+    leadSaved?: boolean;
     createdAt: string;
   }>> {
     const response = await fetch(`/api/v1/gemini/ai-reply-logs?channel=test&limit=${limit}`, {

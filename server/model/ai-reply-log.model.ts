@@ -13,6 +13,7 @@ export interface IAIReplyLog extends Document {
   mode: "default" | "trained";
   latencyMs: number;
   status: "sent" | "failed" | "preview";
+  leadSaved?: boolean;
   feedback?: "good" | "bad" | "needs_fix";
   feedbackNote?: string;
   visualDiagnostics?: {
@@ -45,6 +46,7 @@ const AIReplyLogSchema = new Schema<IAIReplyLog>(
     mode: { type: String, enum: ["default", "trained"], required: true, index: true },
     latencyMs: { type: Number, default: 0 },
     status: { type: String, enum: ["sent", "failed", "preview"], default: "sent", index: true },
+    leadSaved: { type: Boolean, default: false },
     feedback: { type: String, enum: ["good", "bad", "needs_fix"], default: undefined },
     feedbackNote: { type: String, default: "" },
     visualDiagnostics: { type: Schema.Types.Mixed, default: undefined },

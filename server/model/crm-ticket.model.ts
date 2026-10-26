@@ -12,6 +12,8 @@ const CRMTicketSchema = new Schema<ICRMTicket>({
   status: { type: String, enum: ["cold", "warm", "hot", "won", "upsell"], default: "cold", index: true },
   lastInteraction: { type: String },
   companyCode: { type: String, required: true, index: true },
+  sourceChannel: { type: String, enum: ["facebook", "test"] },
+  sourceConversationId: { type: String },
   selectedProducts: {
     type: [{
       productId: { type: String },
@@ -22,5 +24,8 @@ const CRMTicketSchema = new Schema<ICRMTicket>({
     default: [],
   },
 });
+
+CRMTicketSchema.index({ companyCode: 1, sourceChannel: 1, sourceConversationId: 1 },
+  { unique: true, partialFilterExpression: { sourceConversationId: { $type: "string" } } });
 
 export const CRMTicketModel = model<ICRMTicket>("CRMTicket", CRMTicketSchema);
