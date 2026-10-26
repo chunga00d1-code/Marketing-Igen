@@ -338,7 +338,7 @@ export default function CampaignDetailModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-300">
-      <div className="campaign-detail-modal relative w-full max-w-7xl max-h-[90vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-sky-100 overflow-hidden transition-all duration-300 animate-scaleIn">
+      <div className="campaign-detail-modal relative flex h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-2xl transition-all duration-300 animate-scaleIn">
 
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-sky-100 px-6 py-4 bg-gradient-to-r from-white via-white to-sky-50/60 shrink-0">
@@ -383,16 +383,6 @@ export default function CampaignDetailModal({
                 }`}
             >
               Research & Xu hướng ({allResearchEvidence.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMainTab('overall_strategy')}
-              className={`px-4 py-2 text-xs rounded-t-xl transition-all cursor-pointer border-t border-x shrink-0 ${activeMainTab === 'overall_strategy'
-                ? 'bg-[#00adfc] border-[#00adfc] text-white shadow-sm -mb-px'
-                : 'border-transparent text-slate-600 hover:bg-sky-100 hover:text-sky-700'
-                }`}
-            >
-              Chiến lược tổng
             </button>
             <button
               type="button"
@@ -485,7 +475,7 @@ export default function CampaignDetailModal({
                           <tr>
                             <th className="p-3">Thời gian đăng</th>
                             <th className="p-3">Nền tảng</th>
-                            <th className="p-3">Pillar / Chủ đề</th>
+                            <th className="p-3">Nhóm chủ đề</th>
                             <th className="p-3">Tiêu đề / Nội dung</th>
                             <th className="p-3 text-center">Link bài viết MXH</th>
                           </tr>
@@ -553,9 +543,9 @@ export default function CampaignDetailModal({
                   {campaignDetail.campaign.researchReport && (
                     <div className="rounded-xl border border-sky-100 p-4.5 bg-sky-50/30 space-y-2">
                       <span className="flex items-center gap-1.5 text-xs text-sky-700 uppercase tracking-wider">
-                        <BarChart3 size={14} />Báo cáo nghiên cứu & Phân tích xu hướng (AI Research Agent)
+                        <BarChart3 size={14} />Báo cáo nghiên cứu & Phân tích xu hướng
                       </span>
-                      <div className="border border-sky-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
+                      <div className="research-report border border-sky-100 bg-white rounded-xl p-4.5 max-h-96 overflow-y-auto shadow-2xs">
                         <CleanMarkdownView content={campaignDetail.campaign.researchReport} />
                       </div>
                     </div>
@@ -759,7 +749,7 @@ export default function CampaignDetailModal({
                         <table className="w-full text-left text-xs border-collapse border border-sky-100 bg-white rounded-xl">
                           <thead>
                             <tr className="border-b border-sky-100 bg-sky-50/70 text-[11px] text-sky-900">
-                              <th className="p-3 border-r border-sky-100 min-w-[140px]">Trụ cột (Pillar)</th>
+                              <th className="p-3 border-r border-sky-100 min-w-[140px]">Trụ cột</th>
                               <th className="p-3 border-r border-sky-100 min-w-[160px]">Định hướng</th>
                               <th className="p-3 border-r border-sky-100">Góc tiếp cận (Angles)</th>
                               <th className="p-3 border-r border-sky-100 text-center w-[80px]">Phễu</th>
@@ -966,7 +956,7 @@ export default function CampaignDetailModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="border-t border-sky-100 px-6 py-4 flex items-center justify-between bg-sky-50/30">
+        <div className="flex shrink-0 items-center justify-between border-t border-sky-100 bg-sky-50/30 px-6 py-4">
           <div>
             {campaignDetail?.campaign?.status === 'draft' && (
               <span className="text-xs text-amber-700">Chưa có worker hoặc lịch đăng nào được kích hoạt.</span>

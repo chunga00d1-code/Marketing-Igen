@@ -89,14 +89,11 @@ export default function AuthPage() {
 
         {/* Brand Header */}
         <div className="text-center space-y-3">
-          <div className="inline-block relative">
-            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 opacity-20 blur-sm animate-pulse" />
-            <img
-              src={BRAND_LOGO_PATH}
-              alt={BRAND_NAME}
-              className="relative mx-auto h-16 w-16 rounded-2xl border border-white object-cover shadow-lg"
-            />
-          </div>
+          <img
+            src={BRAND_LOGO_PATH}
+            alt={BRAND_NAME}
+            className="mx-auto h-20 w-40 object-contain"
+          />
           <div className="space-y-1">
             <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">{BRAND_NAME}</h2>
             <p className="text-xs text-slate-400">Đăng nhập workspace Marketing & Sales để bắt đầu</p>

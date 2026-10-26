@@ -453,7 +453,7 @@ export const CampaignSlotsTable: React.FC<CampaignSlotsTableProps> = ({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 select-none">
         <div>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Lịch trình đăng bài chi tiết (Campaign Slots)</span>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block font-mono">Lịch trình đăng bài chi tiết</span>
           {isCampaignAllCompleted ? (
             <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded mt-1 inline-flex items-center gap-1">
               <Check size={11} className="text-emerald-600" />

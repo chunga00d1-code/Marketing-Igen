@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChevronRight, MessageCircle, Pause, Play, Settings2, XCircle } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronRight, MessageCircle, MoreVertical, Pause, Play, Settings2, XCircle } from 'lucide-react';
 import { CampaignStatus, MarketingCampaignSummary } from '../../services/marketingCampaignService';
 
 interface CampaignItemProps {
@@ -23,20 +23,41 @@ export default function CampaignItem({
 }: CampaignItemProps) {
   const completed = campaign.statistics.publishedSlots + campaign.statistics.failedSlots;
   const progress = campaign.statistics.totalSlots > 0 ? Math.round((completed / campaign.statistics.totalSlots) * 100) : 0;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuOpen]);
 
   if (compact) {
     return (
-      <div className={`group rounded-xl border p-2 transition ${selected ? 'border-blue-200 bg-blue-50' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}`}>
-        <button type="button" onClick={() => (onOpenChat || onOpenDetail)(campaign._id)} className="w-full text-left">
-          <span className="block truncate text-xs font-semibold text-slate-800" title={campaign.title}>{campaign.title}</span>
-          <span className="mt-1 block text-[10px] text-slate-500">{statusLabel[campaign.status]} · {campaign.statistics.totalSlots} bài</span>
-        </button>
-        <div className="mt-2 flex items-center gap-1 border-t border-slate-200/70 pt-1.5">
-          <button type="button" onClick={() => onOpenDetail(campaign._id)} title="Xem chi tiết chiến dịch" className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-blue-600"><Settings2 size={14} /></button>
-          {campaign.status === 'active' && <button type="button" onClick={() => onLifecycle(campaign, 'pause')} title="Tạm dừng" className="rounded-md p-1 text-amber-700 hover:bg-white"><Pause size={14} /></button>}
-          {campaign.status === 'paused' && <button type="button" onClick={() => onLifecycle(campaign, 'resume')} title="Tiếp tục" className="rounded-md p-1 text-green-700 hover:bg-white"><Play size={14} /></button>}
-          {['active', 'paused', 'failed', 'draft'].includes(campaign.status) && <button type="button" onClick={() => onLifecycle(campaign, 'cancel')} title="Hủy chiến dịch" className="ml-auto rounded-md p-1 text-red-600 hover:bg-white"><XCircle size={14} /></button>}
+      <div ref={menuRef} className={`group rounded-xl border p-2 transition ${selected ? 'border-blue-200 bg-blue-50' : 'border-transparent hover:border-slate-200 hover:bg-slate-50'}`}>
+        <div className="flex items-start gap-1">
+          <button type="button" onClick={() => { setMenuOpen(false); (onOpenChat || onOpenDetail)(campaign._id); }} className="min-w-0 flex-1 text-left">
+            <span className="block truncate text-xs font-semibold text-slate-800" title={campaign.title}>{campaign.title}</span>
+            <span className="mt-1 block text-[10px] text-slate-500">{statusLabel[campaign.status]} · {campaign.statistics.totalSlots} bài</span>
+          </button>
+          {campaign.status === 'active' && <button type="button" onClick={() => onLifecycle(campaign, 'pause')} title="Tạm dừng" aria-label="Tạm dừng chiến dịch" className="shrink-0 rounded-md p-1 text-amber-700 hover:bg-white"><Pause size={14} /></button>}
+          {campaign.status === 'paused' && <button type="button" onClick={() => onLifecycle(campaign, 'resume')} title="Tiếp tục" aria-label="Tiếp tục chiến dịch" className="shrink-0 rounded-md p-1 text-green-700 hover:bg-white"><Play size={14} /></button>}
+          <button type="button" onClick={() => setMenuOpen((open) => !open)} aria-label={`Tùy chọn cho chiến dịch ${campaign.title}`} aria-expanded={menuOpen} aria-controls={`campaign-actions-${campaign._id}`} className="shrink-0 rounded-md p-1 text-slate-500 hover:bg-white hover:text-blue-600"><MoreVertical size={16} /></button>
         </div>
+        {menuOpen && <div id={`campaign-actions-${campaign._id}`} className="mt-2 space-y-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+          <button type="button" onClick={() => { setMenuOpen(false); onOpenDetail(campaign._id); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50"><Settings2 size={14} />Chi tiết</button>
+          {['active', 'paused', 'failed', 'draft'].includes(campaign.status) && <button type="button" onClick={() => { setMenuOpen(false); onLifecycle(campaign, 'cancel'); }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50"><XCircle size={14} />Hủy chiến dịch</button>}
+        </div>}
       </div>
     );
   }
