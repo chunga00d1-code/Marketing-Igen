@@ -6,6 +6,13 @@ import { randomUUID } from "node:crypto";
 
 type ChatTurn = { sender: "user" | "model"; text: string };
 
+export function usableFacebookName(value?: string) {
+  const name = String(value || "").trim().replace(/\s+/g, " ");
+  const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return !name || /^(?:khach hang(?: facebook)?|facebook user|facebook customer|user|unknown)$/u.test(normalized)
+    || /^\d+$/u.test(name) ? "" : name;
+}
+
 const phonePattern = /(?:^|[^\d])((?:\+?84|0)[\s.-]?(?:\d[\s.-]?){9,10})(?!\d)/;
 const namePattern = /(?:^|[,.!?\n]\s*)(?:tên\s+(?:tôi|mình|em|anh|chị)\s+là|(?:tôi|mình|em|anh|chị)\s+tên\s+là|(?:tôi|mình|em|anh|chị)\s+là|tên\s*[:-]?)\s+([\p{L}]+(?:\s+[\p{L}]+){0,4})/iu;
 const shortContactPattern = /^\s*([\p{L}]+(?:\s+[\p{L}]+){0,3})\s*[,;:-]?\s*(?=(?:\+?84|0)\d)/iu;
@@ -91,6 +98,7 @@ export async function saveChatLead(params: {
   conversationId: string;
   message: string;
   history: ChatTurn[];
+  facebookName?: string;
 }) {
   const contact = extractChatContact(params.message, params.history);
   const key = { companyCode: params.companyCode, sourceChannel: params.channel,
@@ -98,7 +106,8 @@ export async function saveChatLead(params: {
   const existing = await CRMTicketModel.findOne(key);
   if (!contact?.phone && !existing) return null;
   const summary = summarizeChatConversation(params.message, params.history);
-  const name = contact?.name || existing?.customerName || "";
+  const name = contact?.name || existing?.customerName
+    || (params.channel === "facebook" ? usableFacebookName(params.facebookName) : "");
   const phone = contact?.phone || existing?.phone || "";
   const unchanged = Boolean(existing && existing.customerName === name && existing.phone === phone
     && existing.conversationSummary === summary);

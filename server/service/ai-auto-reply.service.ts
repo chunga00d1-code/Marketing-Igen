@@ -772,6 +772,7 @@ export const aiAutoReplyService = {
           // Fetch the conversation to ensure it still exists and check if the last message is still inbound
           let lastMessageDirection = "inbound";
           let history: any[] = [];
+          let facebookCustomerName = "";
           let latestDbMessage: any = null;
           let groupedCustomerMessage = normalizedIncomingText;
           let groupedMessageCount = 1;
@@ -845,6 +846,8 @@ export const aiAutoReplyService = {
               }).catch(() => {});
               return;
             }
+
+            facebookCustomerName = conv.senderName || "";
 
             if (conv.aiPausedUntil && conv.aiPausedUntil > new Date()) {
               console.log(`[AI AutoReply] ⚠️ BỎ QUA: Cuộc hội thoại FB ${conversationId} đang tạm dừng AI đến ${conv.aiPausedUntil.toISOString()} do nhân viên can thiệp.`);
@@ -1247,7 +1250,7 @@ export const aiAutoReplyService = {
 
               if (channel === "facebook" && savesChatLead(chatSaveMode)) {
                 const leadResult = await saveChatLead({ companyCode, channel: "facebook", conversationId,
-                  message: groupedCustomerMessage, history }).catch((saveError) => {
+                  message: groupedCustomerMessage, history, facebookName: facebookCustomerName }).catch((saveError) => {
                   console.error(`[AI AutoReply] Không lưu được liên hệ khách hàng: conversationId=${conversationId}`, saveError);
                   return null;
                 });

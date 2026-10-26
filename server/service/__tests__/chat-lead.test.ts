@@ -1,11 +1,18 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { extractChatContact, saveChatLead, summarizeChatConversation } from "../chat-lead.service";
+import { extractChatContact, saveChatLead, summarizeChatConversation, usableFacebookName } from "../chat-lead.service";
 import { CRMTicketModel } from "../../model/crm-ticket.model";
 import { CompanyModel } from "../../model/company.model";
 import { googleLeadSheetService } from "../google-lead-sheet.service";
 
 const request = { sender: "model" as const, text: "Anh chị cho em xin tên và số điện thoại liên hệ nhé." };
+
+test("Facebook fallback excludes placeholder names and IDs", () => {
+  for (const name of [undefined, "", "Khách hàng Facebook", "Khach hang Facebook", "Facebook User", "123456789"]) {
+    assert.equal(usableFacebookName(name), "");
+  }
+  assert.equal(usableFacebookName("  Nguyễn   An  "), "Nguyễn An");
+});
 
 test("captures explicit name and phone after contact request", () => {
   assert.deepEqual(extractChatContact("Anh là Nam, số 0900000000", [request]),
@@ -78,6 +85,23 @@ test("saves phone-only lead then updates its name and phone on the same Sheet ke
   ]);
   assert.equal(new Set(sheetWrites.map(row => row.key)).size, 1);
   assert.match(sheetWrites[2].summary, /Nhà tôi hai tầng/);
+
+  stored = null;
+  const facebook = { ...base, channel: "facebook" as const, facebookName: "Nguyễn An" };
+  await saveChatLead({ ...facebook, message: "SĐT 0900000000" });
+  assert.equal(sheetWrites.at(-1)?.name, "Nguyễn An");
+  await saveChatLead({ ...facebook, message: "Tôi tên là Bình" });
+  assert.equal(sheetWrites.at(-1)?.name, "Bình");
+  await saveChatLead({ ...facebook, message: "Nhà tôi hai tầng" });
+  assert.equal(sheetWrites.at(-1)?.name, "Bình");
+  stored = null;
+  await saveChatLead({ ...facebook, facebookName: "Khách hàng Facebook", message: "SĐT 0900000000" });
+  assert.equal(sheetWrites.at(-1)?.name, "");
+  await saveChatLead({ ...facebook, message: "Nhà tôi hai tầng" });
+  assert.equal(sheetWrites.at(-1)?.name, "Nguyễn An");
+  stored = null;
+  await saveChatLead({ ...base, facebookName: "Nguyễn An", message: "SĐT 0900000000" });
+  assert.equal(sheetWrites.at(-1)?.name, "");
 });
 
 test("captures short name and phone reply to a contact request", () => {
