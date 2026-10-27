@@ -12,6 +12,8 @@ import { getChatSaveModeForPage, processesChatOrder } from "./chat-save-mode.ser
 import { companyProductCatalogService } from "./company-product-catalog.service";
 import { AmbiguousAutoReplyOwnerError, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { facebookSendRequest } from "./facebook-send-request";
+import { FACEBOOK_AI_METADATA, assertFacebookAiReplyAllowed, pauseFacebookForHuman,
+  recordFacebookHumanEcho } from "./facebook-human-intervention";
 import {
   FacebookMessengerError,
   createFacebookIntegrationNotFoundError,
@@ -377,7 +379,14 @@ export const fbMessengerService = {
       const messagingEvents = entry.messaging || [];
       if (messagingEvents.length > 0) {
         for (const event of messagingEvents) {
-          if (event.message && !event.message.is_echo) {
+          if (event.message?.is_echo) {
+            const recorded = await recordFacebookHumanEcho(String(entry.id), event);
+            if (recorded) {
+              if (recorded.shouldCancel) aiAutoReplyService.cancelPendingReply(String(recorded.conversation._id), "human_reply");
+              emitToMessengerAccount("facebook", String(entry.id), "new_message", { conversation: recorded.conversation, message: recorded.message });
+              emitToMessengerAccount("facebook", String(entry.id), "conversation_updated", recorded.conversation);
+            }
+          } else if (event.message) {
             const attachmentCount = Array.isArray(event.message?.attachments) ? event.message.attachments.length : 0;
             const quickReplyPayload = String(event.message?.quick_reply?.payload || "").trim();
             console.log(
@@ -480,7 +489,7 @@ export const fbMessengerService = {
       return { success: true, message: "Mock Page bypass" };
     }
 
-    const fields = "feed,messages,messaging_postbacks,message_deliveries,message_reads";
+    const fields = "feed,messages,messaging_postbacks,message_deliveries,message_reads,message_echoes";
     const url = `https://graph.facebook.com/v25.0/${cleanPageId}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(token)}`;
     console.log(`[FB Service subscribePageWebhooks] Đang đăng ký webhook cho Page ID: ${cleanPageId}...`);
 
@@ -851,7 +860,10 @@ export const fbMessengerService = {
 
     // Hủy các phản hồi AI đang lên lịch do nhân viên đã can thiệp
     if (senderType === "human") {
+      await pauseFacebookForHuman(pageId, conversationId);
       aiAutoReplyService.cancelPendingReply(conversationId, "human_reply");
+    } else {
+      await assertFacebookAiReplyAllowed(pageId, conversationId);
     }
 
     const recipientPsid = conversation.recipientId;
@@ -896,16 +908,17 @@ export const fbMessengerService = {
     
     const body = {
       recipient: { id: recipientPsid },
-      message: { text },
+      message: { text, ...(senderType === "ai" ? { metadata: FACEBOOK_AI_METADATA } : {}) },
       messaging_type: "RESPONSE"
     };
 
     try {
+      if (senderType === "ai") await assertFacebookAiReplyAllowed(resolvedPageId, conversationId);
       const response = await facebookSendRequest(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
+      }, senderType === "ai" ? () => assertFacebookAiReplyAllowed(resolvedPageId, conversationId) : undefined);
 
       if (!response.ok) {
         const textErr = await response.text();
@@ -952,6 +965,7 @@ export const fbMessengerService = {
         {
           ...(consultationSessionId ? { $set: { consultationSessionId } } : {}),
           $setOnInsert: {
+            senderType,
             conversationId: conversation._id,
             senderId: resolvedPageId,
             recipientId: recipientPsid,
@@ -1010,12 +1024,14 @@ export const fbMessengerService = {
     const token = await this.getPageAccessTokenByPageId(resolvedPageId, tokenContext);
     if (!token) throw createFacebookIntegrationNotFoundError();
     const url = `https://graph.facebook.com/v25.0/me/messages?access_token=${token}`;
+    await assertFacebookAiReplyAllowed(resolvedPageId, conversationId);
     const response = await facebookSendRequest(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         recipient: { id: recipientPsid },
         message: {
+          metadata: FACEBOOK_AI_METADATA,
           attachment: {
             type: "image",
             payload: { url: imageUrl, is_reusable: true },
@@ -1023,7 +1039,7 @@ export const fbMessengerService = {
         },
         messaging_type: "RESPONSE",
       }),
-    });
+    }, () => assertFacebookAiReplyAllowed(resolvedPageId, conversationId));
     if (!response.ok) {
       const responseText = await response.text();
       throw translateFacebookSendError(responseText, response.status);
@@ -1038,6 +1054,7 @@ export const fbMessengerService = {
       { messageId: outboundMessageId },
       {
         $setOnInsert: {
+          senderType: "ai",
           conversationId: conversation._id,
           senderId: resolvedPageId,
           recipientId: recipientPsid,

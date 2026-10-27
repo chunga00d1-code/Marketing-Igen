@@ -4,6 +4,7 @@ import { aiKnowledgeService } from "./ai-knowledge.service";
 import { geminiService } from "./gemini.service";
 import { fbMessengerService } from "./fb-messenger.service";
 import { AIReplyLogModel } from "../model/ai-reply-log.model";
+import { FACEBOOK_AI_METADATA } from "./facebook-human-intervention";
 
 const processingComments = new Set<string>();
 
@@ -169,7 +170,7 @@ export const facebookCommentService = {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               recipient: { comment_id: commentId },
-              message: { text: privateInbox }
+              message: { text: privateInbox, metadata: FACEBOOK_AI_METADATA }
             }),
           });
 

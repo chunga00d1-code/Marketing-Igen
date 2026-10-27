@@ -1,6 +1,7 @@
 export const FACEBOOK_STANDARD_MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type FacebookMessengerErrorCode =
+  | "FB_AI_PAUSED"
   | "FB_MESSAGING_WINDOW_EXPIRED"
   | "FB_INTEGRATION_NOT_FOUND"
   | "FB_ACCESS_TOKEN_INVALID"
