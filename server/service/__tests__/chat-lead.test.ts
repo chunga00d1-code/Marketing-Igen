@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { extractChatContact, saveChatLead, summarizeChatConversation, usableFacebookName } from "../chat-lead.service";
 import { CRMTicketModel } from "../../model/crm-ticket.model";
 import { CompanyModel } from "../../model/company.model";
+import { SocialIntegrationModel } from "../../model/social-integration.model";
 import { googleLeadSheetService } from "../google-lead-sheet.service";
 
 const request = { sender: "model" as const, text: "Anh chị cho em xin tên và số điện thoại liên hệ nhé." };
@@ -60,6 +61,7 @@ test("allows unnamed chat leads but preserves required names for ordinary CRM ti
 test("saves phone-only lead then updates its name and phone on the same Sheet key", async t => {
   let stored: Record<string, unknown> | null = null;
   const sheetWrites: Array<{ key: string; name: string; phone: string; summary: string }> = [];
+  const sheetTargets: string[] = [];
   t.mock.method(CRMTicketModel, "findOne", async () => stored);
   t.mock.method(CRMTicketModel, "findOneAndUpdate", async (filter: Record<string, unknown>, update: {
     $set: Record<string, unknown>; $setOnInsert?: Record<string, unknown>;
@@ -72,8 +74,8 @@ test("saves phone-only lead then updates its name and phone on the same Sheet ke
   t.mock.method(CompanyModel, "findOne", () => ({ select: () => ({ lean: async () => ({
     leadSheetConfig: { enabled: true, spreadsheetId: "test-sheet", sheetName: "Leads" },
   }) }) }));
-  t.mock.method(googleLeadSheetService, "upsert", async (_id: string, _tab: string,
-    row: typeof sheetWrites[number]) => { sheetWrites.push(row); });
+  t.mock.method(googleLeadSheetService, "upsert", async (id: string, _tab: string,
+    row: typeof sheetWrites[number]) => { sheetWrites.push(row); sheetTargets.push(id); });
   const base = { companyCode: "TEST", channel: "test" as const, conversationId: "same-conversation", history: [] };
   assert.equal(await saveChatLead({ ...base, message: "Tôi chưa muốn cung cấp liên hệ" }), null);
   assert.equal(await saveChatLead({ ...base, message: "Tôi tên là Nam" }), null);
@@ -102,6 +104,14 @@ test("saves phone-only lead then updates its name and phone on the same Sheet ke
   stored = null;
   await saveChatLead({ ...base, facebookName: "Nguyễn An", message: "SĐT 0900000000" });
   assert.equal(sheetWrites.at(-1)?.name, "");
+
+  t.mock.method(SocialIntegrationModel, "find", filter => {
+    assert.equal(filter.username, "page-1");
+    return { select: () => ({ lean: async () => [{ companyCode: "TEST", leadSheetMode: "custom",
+      leadSheetConfig: { enabled: true, spreadsheetId: "page-sheet", sheetName: "Page Leads" } }] }) };
+  });
+  await saveChatLead({ ...facebook, pageId: "page-1", message: "Nhà tôi hai tầng" });
+  assert.equal(sheetTargets.at(-1), "page-sheet");
 });
 
 test("captures short name and phone reply to a contact request", () => {

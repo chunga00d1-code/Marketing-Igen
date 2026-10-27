@@ -20,7 +20,7 @@ import { prepareChatReplyContext, buildChatConversationInstructions, describeCha
 import { randomUUID } from "node:crypto";
 import { visualToImageObservation, type ChatReply } from "../service/chat-visual-context";
 import { chatOrderFlowRegistry } from "../service/chat-ordering/registry";
-import { getChatSaveMode, processesChatOrder, savesChatLead } from "../service/chat-save-mode.service";
+import { getChatSaveMode, getChatSaveModeForPage, processesChatOrder, savesChatLead } from "../service/chat-save-mode.service";
 import { createChatAiTrace, describeChatAiTrace, withChatAiTrace } from "../service/chat-ai-trace";
 
 function handleGeminiError(res: Response, error: any, defaultMessage: string) {
@@ -766,10 +766,11 @@ export const geminiController = {
       if (!userId) {
         return res.status(401).json({ status: "error", message: "Yêu cầu đăng nhập" });
       }
-      const chatSaveMode = channel === "facebook" ? await getChatSaveMode(companyCode) : "both";
 
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
       const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, withImages: images.length > 0 }, resolveAutoReplyOwner);
+      const chatSaveMode = channel === "facebook"
+        ? await (preview.pageId ? getChatSaveModeForPage(preview.pageId) : getChatSaveMode(companyCode)) : "both";
       const previewHistory = !conversationId && !platformId && Array.isArray(history) ? history : preview.history;
       const aiConfig = images.length ? { ...preview.aiConfig, imageReplyEnabled: true } : preview.aiConfig;
       const aiTrace = aiConfig.imageReplyEnabled ? createChatAiTrace() : undefined;

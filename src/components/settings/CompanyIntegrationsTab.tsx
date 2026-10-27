@@ -1468,6 +1468,11 @@ export default function CompanyIntegrationsTab({ userProfile }: CompanyIntegrati
                     </div>
 
                     {item.platform === "Facebook" && (
+                      <LeadSheetConfigCard integrationId={item._id}
+                        canEdit={userProfile?.role === "admin" || userProfile?.role === "superadmin"} />
+                    )}
+
+                    {item.platform === "Facebook" && (
                       <OrderSheetConfigCard
                         integration={item}
                         onSaved={() => fetchCompanyIntegrations([], false)}
