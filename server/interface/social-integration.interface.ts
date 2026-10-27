@@ -1,5 +1,6 @@
 import { Document } from "mongoose";
 import { IAiAutoReplyConfig } from "./user.interface";
+import { ICompanyLeadSheetConfig } from "./company.interface";
 
 export interface IOrderSheetConfig {
   enabled: boolean;
@@ -30,5 +31,8 @@ export interface ISocialIntegration extends Document {
   isMock: boolean;
   aiAutoReplyConfig?: IAiAutoReplyConfig;
   orderSheetConfig?: IOrderSheetConfig;
+  chatSaveMode?: "inherit" | "both" | "lead" | "order";
+  leadSheetMode?: "inherit" | "custom";
+  leadSheetConfig?: ICompanyLeadSheetConfig;
 }
 

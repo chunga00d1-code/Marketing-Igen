@@ -17,7 +17,7 @@ import { fbMessengerService, type FacebookTokenContext } from "./fb-messenger.se
 import { tiktokMessengerService } from "./tiktok-messenger.service";
 import { aiKnowledgeService } from "./ai-knowledge.service";
 import { saveChatLead } from "./chat-lead.service";
-import { getChatSaveMode, processesChatOrder, savesChatLead } from "./chat-save-mode.service";
+import { getChatSaveModeForPage, processesChatOrder, savesChatLead } from "./chat-save-mode.service";
 import { assertPersonalAutoReplyOwnership, selectAutoReplyCompanyIntegration } from "./auto-reply-owner";
 import { selectCurrentOrderContext } from "./messenger-order-context";
 import { chatOrderFlowRegistry } from "./chat-ordering/registry";
@@ -990,7 +990,7 @@ export const aiAutoReplyService = {
           try {
             const startedAt = Date.now();
             const companyCode = targetCompanyCode;
-            const chatSaveMode = channel === "facebook" ? await getChatSaveMode(companyCode) : "both";
+            const chatSaveMode = channel === "facebook" ? await getChatSaveModeForPage(resolvedPlatformId) : "both";
             const aiTrace = aiConfig.imageReplyEnabled === true ? createChatAiTrace() : undefined;
             const { orderFlow, customerSession, preparedReplyContext, effectiveRagContext, visualContext, checkoutReply, aiResponse } = await withChatAiTrace(aiTrace, async () => {
               const orderFlow = channel === "facebook" && processesChatOrder(chatSaveMode)
@@ -1250,7 +1250,8 @@ export const aiAutoReplyService = {
 
               if (channel === "facebook" && savesChatLead(chatSaveMode)) {
                 const leadResult = await saveChatLead({ companyCode, channel: "facebook", conversationId,
-                  message: groupedCustomerMessage, history, facebookName: facebookCustomerName }).catch((saveError) => {
+                  message: groupedCustomerMessage, history, facebookName: facebookCustomerName,
+                  pageId: resolvedPlatformId }).catch((saveError) => {
                   console.error(`[AI AutoReply] Không lưu được liên hệ khách hàng: conversationId=${conversationId}`, saveError);
                   return null;
                 });

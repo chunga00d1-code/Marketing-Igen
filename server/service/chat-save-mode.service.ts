@@ -25,15 +25,37 @@ export async function getChatSaveMode(companyCode: string): Promise<ChatSaveMode
   return normalizeChatSaveMode(company?.chatSaveMode);
 }
 
-export async function getChatSaveModeForPage(pageId: string): Promise<ChatSaveMode> {
+export async function getFacebookStorageIntegration(pageId: string, companyCode?: string) {
   const integrations = await SocialIntegrationModel.find({
     platform: "Facebook", username: pageId, isConnected: true,
-  }).select("companyCode aiAutoReplyConfig.enabled").lean();
+  }).select("companyCode aiAutoReplyConfig.enabled chatSaveMode leadSheetMode leadSheetConfig").lean();
   const companies = new Set(integrations.map(item => String(item.companyCode || "").trim().toUpperCase()));
   if (companies.size > 1) throw new AmbiguousAutoReplyOwnerError();
-  if (companies.has("")) return "both";
+  if (companies.has("")) {
+    if (companyCode) throw new AmbiguousAutoReplyOwnerError();
+    return integrations[0];
+  }
   const integration = selectAutoReplyCompanyIntegration(integrations);
-  if (integration?.companyCode) return getChatSaveMode(integration.companyCode);
+  if (integration && companyCode && integration.companyCode.trim().toUpperCase() !== companyCode.trim().toUpperCase()) {
+    throw new AmbiguousAutoReplyOwnerError();
+  }
+  return integration;
+}
+
+export async function getLeadSheetConfig(companyCode: string, pageId?: string) {
+  const integration = pageId ? await getFacebookStorageIntegration(pageId, companyCode) : null;
+  if (integration?.leadSheetMode === "custom") return integration.leadSheetConfig;
+  const company = await CompanyModel.findOne({ code: companyCode.trim().toUpperCase() }).select("leadSheetConfig").lean();
+  return company?.leadSheetConfig;
+}
+
+export async function getChatSaveModeForPage(pageId: string): Promise<ChatSaveMode> {
+  const integration = await getFacebookStorageIntegration(pageId);
+  if (integration && !integration.companyCode) return "both";
+  if (integration?.companyCode) {
+    return integration.chatSaveMode && integration.chatSaveMode !== "inherit"
+      ? normalizeChatSaveMode(integration.chatSaveMode) : getChatSaveMode(integration.companyCode);
+  }
   const owners = await UserModel.find({ "facebookIntegration.isConnected": true,
     "facebookIntegration.pageId": pageId }).select("companyCode role").lean();
   assertPersonalAutoReplyOwnership(owners);

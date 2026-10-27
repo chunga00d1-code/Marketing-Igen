@@ -1,6 +1,6 @@
 import { CRMTicketModel } from "../model/crm-ticket.model";
 import { ICRMTicket } from "../interface/crm-ticket.interface";
-import { CompanyModel } from "../model/company.model";
+import { getLeadSheetConfig } from "./chat-save-mode.service";
 import { googleLeadSheetService } from "./google-lead-sheet.service";
 import { randomUUID } from "node:crypto";
 
@@ -56,12 +56,11 @@ export function summarizeChatConversation(message: string, history: ChatTurn[]) 
     lastAdvice ? `Tư vấn gần nhất: ${lastAdvice}` : ""].filter(Boolean).join(". ").slice(0, 1500);
 }
 
-async function syncLeadSheet(ticket: ICRMTicket | null, unchanged: boolean) {
+async function syncLeadSheet(ticket: ICRMTicket | null, unchanged: boolean, pageId?: string) {
   if (!ticket) return { sheetEnabled: false, sheetSaved: false, sheetError: "" };
-  const company = await CompanyModel.findOne({ code: ticket.companyCode }).select("leadSheetConfig").lean();
-  const config = company?.leadSheetConfig;
+  const config = await getLeadSheetConfig(ticket.companyCode, pageId);
   if (!config?.enabled || !config.spreadsheetId) return { sheetEnabled: false, sheetSaved: false, sheetError: "" };
-  if (unchanged && ticket.leadSheetStatus === "synced" && ticket.leadSheetSyncedAt
+  if (!pageId && unchanged && ticket.leadSheetStatus === "synced" && ticket.leadSheetSyncedAt
     && ticket.leadSheetSyncedAt >= (config.updatedAt || new Date(0))) {
     return { sheetEnabled: true, sheetSaved: true, sheetError: "" };
   }
@@ -99,6 +98,7 @@ export async function saveChatLead(params: {
   message: string;
   history: ChatTurn[];
   facebookName?: string;
+  pageId?: string;
 }) {
   const contact = extractChatContact(params.message, params.history);
   const key = { companyCode: params.companyCode, sourceChannel: params.channel,
@@ -120,5 +120,5 @@ export async function saveChatLead(params: {
     $setOnInsert: { companyCode: params.companyCode, sourceChannel: params.channel,
       sourceConversationId: params.conversationId, status: "cold" },
   }, { upsert: true, new: true });
-  return { ticket, ...await syncLeadSheet(ticket, unchanged) };
+  return { ticket, ...await syncLeadSheet(ticket, unchanged, params.channel === "facebook" ? params.pageId : undefined) };
 }

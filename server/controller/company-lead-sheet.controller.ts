@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { companyLeadSheetService } from "../service/company-lead-sheet.service";
+import { pageLeadSheetService } from "../service/page-lead-sheet.service";
 
 function companyCode(req: AuthenticatedRequest) {
   const value = String(req.user?.companyCode || "").trim().toUpperCase();
@@ -13,6 +14,21 @@ function onError(res: Response, error: unknown) {
 }
 
 export const companyLeadSheetController = {
+  async getPage(req: AuthenticatedRequest, res: Response) {
+    try {
+      return res.json({ status: "success", data: await pageLeadSheetService.getConfig(companyCode(req), req.params.id) });
+    } catch (error) { return onError(res, error); }
+  },
+  async updatePage(req: AuthenticatedRequest, res: Response) {
+    try {
+      return res.json({ status: "success", data: await pageLeadSheetService.updateConfig(companyCode(req), req.params.id, req.body) });
+    } catch (error) { return onError(res, error); }
+  },
+  async testPage(req: AuthenticatedRequest, res: Response) {
+    try {
+      return res.json({ status: "success", data: await pageLeadSheetService.testConfig(companyCode(req), req.params.id, req.body) });
+    } catch (error) { return onError(res, error); }
+  },
   async get(req: AuthenticatedRequest, res: Response) {
     try {
       return res.json({ status: "success", data: await companyLeadSheetService.getConfig(companyCode(req)) });
