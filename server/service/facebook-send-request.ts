@@ -11,9 +11,10 @@ function temporaryDnsFailure(error: unknown) {
 }
 
 /** Retry only DNS failures: no connection was established, so no message was delivered. */
-export async function facebookSendRequest(url: string, init: RequestInit): Promise<Response> {
+export async function facebookSendRequest(url: string, init: RequestInit, beforeAttempt?: () => Promise<void>): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await beforeAttempt?.();
     try {
       // Do not follow a redirect after a POST: a later DNS failure would no longer
       // prove that the original endpoint never received the message.

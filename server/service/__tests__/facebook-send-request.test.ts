@@ -6,6 +6,16 @@ const url = "https://graph.facebook.com/v25.0/me/messages?access_token=fixture-p
 const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: { text: "Tin giả lập" } }) };
 const dnsError = () => new TypeError("fetch failed", { cause: Object.assign(new Error("DNS temporarily unavailable"), { code: "EAI_AGAIN" }) });
 
+test("human takeover during DNS backoff prevents the next send attempt", async t => {
+  let paused = false;
+  t.mock.method(console, "warn", () => undefined);
+  const fetch = t.mock.method(globalThis, "fetch", async () => { paused = true; throw dnsError(); });
+  await assert.rejects(facebookSendRequest(url, init, async () => {
+    if (paused) throw new Error("Human takeover");
+  }), /Human takeover/);
+  assert.equal(fetch.mock.callCount(), 1);
+});
+
 test("a pre-connection DNS failure retries the same text request and never logs the token", async t => {
   let calls = 0;
   const logs: string[] = [];

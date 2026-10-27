@@ -36,6 +36,7 @@ export interface IFBConversation extends Document {
 
 // Interface cho Tin nhắn chi tiết
 export interface IFBMessage extends Document {
+  senderType?: "human" | "ai";
   conversationId: mongoose.Types.ObjectId;
   senderId: string;       // PSID người gửi
   recipientId: string;    // PSID người nhận
@@ -103,6 +104,7 @@ FBConversationSchema.index({ pageId: 1, lastMessageAt: -1 });
 // Schema Tin nhắn
 const FBMessageSchema: Schema = new Schema(
   {
+    senderType: { type: String, enum: ["human", "ai"] },
     conversationId: { type: Schema.Types.ObjectId, ref: "FBConversation", required: true },
     senderId: { type: String, required: true },
     recipientId: { type: String, required: true },

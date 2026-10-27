@@ -1281,6 +1281,10 @@ export const aiAutoReplyService = {
               console.log(`[AI AutoReply] Reply sent: conversationId=${conversationId}, channel=${channel}, latencyMs=${Date.now() - startedAt}`);
               console.log(`[AI AutoReply] ✅ THÀNH CÔNG: Đã gửi phản hồi tự động thành công cho hội thoại: ${conversationId} trong ${Date.now() - startedAt}ms`);
             } catch (sendErr: any) {
+              if (channel === "facebook" && sendErr?.code === "FB_AI_PAUSED") {
+                console.log(`[AI AutoReply] Nhân viên đã tiếp quản hội thoại ${conversationId}; dừng gửi AI.`);
+                return;
+              }
               console.error(`[AI AutoReply] ❌ LỖI GỬI TIN: Thất bại khi gửi tin nhắn qua API ${channel.toUpperCase()}:`, sendErr.message || sendErr);
               await aiKnowledgeService.createReplyLog({
                 companyCode,
