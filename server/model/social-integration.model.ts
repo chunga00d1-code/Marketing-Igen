@@ -20,6 +20,15 @@ const SocialIntegrationSchema = new Schema<ISocialIntegration>({
   verifyToken: { type: String },
   isMock: { type: Boolean, default: false },
   aiAutoReplyConfig: { type: AiAutoReplyConfigSchema, default: () => ({}) },
+  chatSaveMode: { type: String, enum: ["inherit", "both", "lead", "order"], default: "inherit" },
+  leadSheetMode: { type: String, enum: ["inherit", "custom"], default: "inherit" },
+  leadSheetConfig: {
+    enabled: { type: Boolean, default: false },
+    spreadsheetUrl: { type: String, default: "", trim: true },
+    spreadsheetId: { type: String, default: "", trim: true },
+    sheetName: { type: String, default: "Leads", trim: true },
+    updatedAt: { type: Date },
+  },
   orderSheetConfig: {
     enabled: { type: Boolean, default: false },
     spreadsheetUrl: { type: String, default: "", trim: true },

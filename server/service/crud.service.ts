@@ -273,6 +273,9 @@ export const crudService = {
     }
 
     if (modelName === "social-integrations") {
+      delete payload.chatSaveMode;
+      delete payload.leadSheetMode;
+      delete payload.leadSheetConfig;
       await validateSocialIntegrationPayload(payload);
     }
 
@@ -324,6 +327,10 @@ export const crudService = {
     }
 
     if (modelName === "social-integrations") {
+      // Storage settings are validated and authorized by the dedicated configuration API.
+      delete updatePayload.chatSaveMode;
+      delete updatePayload.leadSheetMode;
+      delete updatePayload.leadSheetConfig;
       const existingItem = await model.findOne(query).lean();
       if (!existingItem) {
         throw new Error("Khong tim thay tai nguyen hoac ban khong co quyen chinh sua.");

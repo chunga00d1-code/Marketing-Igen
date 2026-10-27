@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { getChatSaveModeForPage, normalizeChatSaveMode, processesChatOrder, savesChatLead } from "../chat-save-mode.service";
+import { getChatSaveModeForPage, getLeadSheetConfig, normalizeChatSaveMode, processesChatOrder, savesChatLead } from "../chat-save-mode.service";
 import { CompanyModel } from "../../model/company.model";
 import { SocialIntegrationModel } from "../../model/social-integration.model";
 import { UserModel } from "../../model/user.model";
@@ -62,4 +62,39 @@ test("personally connected Facebook Page uses its owner's company mode", async (
   });
   context.mock.method(CompanyModel, "findOne", () => ({ select: () => ({ lean: async () => ({ chatSaveMode: "lead" }) }) }));
   assert.equal(await getChatSaveModeForPage("personal-page"), "lead");
+});
+
+test("Page overrides take precedence over the company, including explicit both", async t => {
+  for (const chatSaveMode of ["lead", "order", "both"]) {
+    const mock = t.mock.method(SocialIntegrationModel, "find", () => ({ select: () => ({ lean: async () => [
+      { companyCode: "SHOP", chatSaveMode },
+    ] }) }));
+    const company = t.mock.method(CompanyModel, "findOne", () => { throw new Error("Must use Page override"); });
+    assert.equal(await getChatSaveModeForPage("page"), chatSaveMode);
+    mock.mock.restore();
+    company.mock.restore();
+  }
+});
+
+test("inherit returns the company mode and disabled custom Sheet does not fall back", async t => {
+  const custom = { enabled: false, spreadsheetId: "page-sheet", sheetName: "Page Leads" };
+  t.mock.method(SocialIntegrationModel, "find", () => ({ select: () => ({ lean: async () => [
+    { companyCode: "SHOP", chatSaveMode: "inherit", leadSheetMode: "custom", leadSheetConfig: custom },
+  ] }) }));
+  t.mock.method(CompanyModel, "findOne", () => ({ select: () => ({ lean: async () => ({ chatSaveMode: "order" }) }) }));
+  assert.equal(await getChatSaveModeForPage("page"), "order");
+  assert.deepEqual(await getLeadSheetConfig("SHOP", "page"), custom);
+  await assert.rejects(getLeadSheetConfig("OTHER", "page"), AmbiguousAutoReplyOwnerError);
+});
+
+test("Pages without a custom Sheet inherit the company target", async t => {
+  const shared = { enabled: true, spreadsheetId: "shared", sheetName: "Leads" };
+  t.mock.method(SocialIntegrationModel, "find", () => ({ select: () => ({ lean: async () => [
+    { companyCode: "SHOP", leadSheetMode: "inherit", leadSheetConfig: { spreadsheetId: "unused" } },
+  ] }) }));
+  t.mock.method(CompanyModel, "findOne", filter => {
+    assert.deepEqual(filter, { code: "SHOP" });
+    return { select: () => ({ lean: async () => ({ leadSheetConfig: shared }) }) };
+  });
+  assert.deepEqual(await getLeadSheetConfig("SHOP", "page"), shared);
 });
