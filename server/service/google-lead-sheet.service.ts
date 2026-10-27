@@ -67,9 +67,25 @@ function safeCell(value: string) {
   return /^[=+\-@]/.test(value) ? `'${value}` : value;
 }
 
-function compatibleHeader(header: unknown[]) {
-  return !header.length || (LEAD_HEADERS.slice(0, 3).every((value, index) => header[index] === value)
-    && (!header[3] || header[3] === LEAD_HEADERS[3]));
+function columnName(index: number) {
+  let result = "";
+  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26)) {
+    result = String.fromCharCode(65 + (n - 1) % 26) + result;
+  }
+  return result;
+}
+
+function leadColumns(header: unknown[], sheetName: string, requireKey = false) {
+  const normalize = (value: unknown) => String(value ?? "").normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+  const cells = header.map(normalize);
+  return LEAD_HEADERS.map((name, index) => {
+    const matches = cells.flatMap((cell, position) => cell === normalize(name) ? [position] : []);
+    if (matches.length > 1) throw new Error(`Tab "${sheetName}" có nhiều cột "${name}". Vui lòng giữ một cột để tránh ghi nhầm dữ liệu.`);
+    if (!matches.length && (index < 3 || requireKey)) {
+      throw new Error(`Tab "${sheetName}" thiếu cột "${name}". Vui lòng kiểm tra lại cấu hình.`);
+    }
+    return matches[0] ?? -1;
+  });
 }
 
 async function metadata(spreadsheetId: string) {
@@ -99,10 +115,8 @@ export const googleLeadSheetService = {
     const info = await metadata(spreadsheetId);
     const sheetNames = (info.sheets || []).map(sheet => sheet.properties?.title || "").filter(Boolean);
     if (sheetNames.includes(sheetName)) {
-      const header = (await values(spreadsheetId, `${a1(sheetName)}!A1:D1`)).values?.[0] || [];
-      if (!compatibleHeader(header)) {
-        throw new Error(`Tab "${sheetName}" đã có dữ liệu với cột khác mẫu lead. Vui lòng chọn tab mới.`);
-      }
+      const header = (await values(spreadsheetId, `${a1(sheetName)}!1:1`)).values?.[0] || [];
+      if (header.length) leadColumns(header, sheetName);
     }
     return { title: info.properties?.title || "Google Sheet", sheetNames };
   },
@@ -110,33 +124,43 @@ export const googleLeadSheetService = {
   async prepare(spreadsheetId: string, sheetName: string) {
     const info = await metadata(spreadsheetId);
     const sheet = (info.sheets || []).find(item => item.properties?.title === sheetName);
+    let keyColumn = 3;
+    let headerWrite: { range: string; row: string[] } | undefined;
     if (sheet) {
-      const header = (await values(spreadsheetId, `${a1(sheetName)}!A1:D1`)).values?.[0] || [];
-      if (!compatibleHeader(header)) {
-        throw new Error(`Tab "${sheetName}" đã có dữ liệu với cột khác mẫu lead. Vui lòng chọn tab mới.`);
+      const header = (await values(spreadsheetId, `${a1(sheetName)}!1:1`)).values?.[0] || [];
+      if (header.length) {
+        keyColumn = leadColumns(header, sheetName)[3];
+        if (keyColumn < 0) {
+          // Append beyond the existing grid so an unlabeled custom column is never reused or hidden.
+          keyColumn = Math.max(header.length, sheet.properties?.gridProperties?.columnCount || 0);
+          headerWrite = { range: `${a1(sheetName)}!${columnName(keyColumn)}1`, row: [LEAD_HEADERS[3]] };
+        }
+      } else {
+        headerWrite = { range: `${a1(sheetName)}!A1:D1`, row: LEAD_HEADERS };
       }
-      if ((sheet.properties?.gridProperties?.columnCount || 0) < 4 && sheet.properties?.sheetId !== undefined) {
+      if ((sheet.properties?.gridProperties?.columnCount || 0) <= keyColumn && sheet.properties?.sheetId !== undefined) {
         await sheetsFetch(`${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
           method: "POST", body: JSON.stringify({ requests: [{ updateSheetProperties: {
-            properties: { sheetId: sheet.properties.sheetId, gridProperties: { columnCount: 4 } },
+            properties: { sheetId: sheet.properties.sheetId, gridProperties: { columnCount: keyColumn + 1 } },
             fields: "gridProperties.columnCount",
           } }] }),
         });
       }
     } else {
+      headerWrite = { range: `${a1(sheetName)}!A1:D1`, row: LEAD_HEADERS };
       await sheetsFetch(`${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
         method: "POST", body: JSON.stringify({ requests: [{ addSheet: {
           properties: { title: sheetName, gridProperties: { columnCount: 4 } },
         } }] }),
       });
     }
-    await writeValues(spreadsheetId, `${a1(sheetName)}!A1:D1`, LEAD_HEADERS, "PUT");
+    if (headerWrite) await writeValues(spreadsheetId, headerWrite.range, headerWrite.row, "PUT");
     const refreshed = await metadata(spreadsheetId);
     const sheetId = refreshed.sheets?.find(item => item.properties?.title === sheetName)?.properties?.sheetId;
     if (sheetId !== undefined) {
       await sheetsFetch(`${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
         method: "POST", body: JSON.stringify({ requests: [{ updateDimensionProperties: {
-          range: { sheetId, dimension: "COLUMNS", startIndex: 3, endIndex: 4 },
+          range: { sheetId, dimension: "COLUMNS", startIndex: keyColumn, endIndex: keyColumn + 1 },
           properties: { hiddenByUser: true }, fields: "hiddenByUser",
         } }] }),
       });
@@ -146,18 +170,24 @@ export const googleLeadSheetService = {
   async upsert(spreadsheetId: string, sheetName: string, lead: {
     key: string; name: string; phone: string; summary: string;
   }) {
-    const header = (await values(spreadsheetId, `${a1(sheetName)}!A1:D1`)).values?.[0] || [];
-    if (!LEAD_HEADERS.every((value, index) => header[index] === value)) {
-      throw new Error(`Tab "${sheetName}" không còn đúng mẫu lead. Vui lòng kiểm tra lại cấu hình.`);
-    }
-    const lookup = await values(spreadsheetId, `${a1(sheetName)}!D:D`);
+    const header = (await values(spreadsheetId, `${a1(sheetName)}!1:1`)).values?.[0] || [];
+    const columns = leadColumns(header, sheetName, true);
+    const keyColumn = columnName(columns[3]);
+    const lookup = await values(spreadsheetId, `${a1(sheetName)}!${keyColumn}:${keyColumn}`);
     const rowNumber = (lookup.values || []).findIndex(row => String(row?.[0] || "") === lead.key) + 1;
     const row = [lead.name, lead.phone, lead.summary, lead.key];
     if (rowNumber > 1) {
-      await writeValues(spreadsheetId, `${a1(sheetName)}!A${rowNumber}:D${rowNumber}`, row, "PUT");
+      await sheetsFetch(`${encodeURIComponent(spreadsheetId)}/values:batchUpdate`, {
+        method: "POST", body: JSON.stringify({ valueInputOption: "RAW", data: columns.map((column, index) => ({
+          range: `${a1(sheetName)}!${columnName(column)}${rowNumber}`, majorDimension: "ROWS",
+          values: [[safeCell(row[index])]],
+        })) }),
+      });
       return { rowNumber, created: false };
     }
-    await writeValues(spreadsheetId, `${a1(sheetName)}!A:D`, row, "POST");
+    const mappedRow = Array<string>(header.length).fill("");
+    columns.forEach((column, index) => { mappedRow[column] = row[index]; });
+    await writeValues(spreadsheetId, `${a1(sheetName)}!A:${columnName(header.length - 1)}`, mappedRow, "POST");
     return { created: true };
   },
 };
