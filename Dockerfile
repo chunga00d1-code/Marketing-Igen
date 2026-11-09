@@ -1,7 +1,14 @@
 # syntax=docker/dockerfile:1.7
 
+# Share the media tools with the builder so ffmpeg-static can use the installed
+# musl-compatible binary instead of downloading another FFmpeg distribution.
+FROM node:22-alpine AS media-base
+RUN apk add --no-cache ca-certificates chromium-headless-shell ffmpeg font-dejavu
+RUN chromium-headless-shell --version && ffprobe -version && ffmpeg -version
+ENV FFMPEG_BIN=/usr/bin/ffmpeg
+
 # Step 1: Build stage
-FROM node:22-alpine AS builder
+FROM media-base AS builder
 
 WORKDIR /app
 
@@ -31,11 +38,7 @@ ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN yarn build
 
 # Step 2: Production runner stage (keeps the final image lightweight)
-FROM node:22-alpine AS runner
-
-# Runtime media pipeline: HTTPS downloads plus FFmpeg/FFprobe and Chromium Headless Shell for Hyperframes rendering.
-RUN apk add --no-cache ca-certificates chromium-headless-shell ffmpeg font-dejavu
-RUN chromium-headless-shell --version && ffprobe -version && ffmpeg -version
+FROM media-base AS runner
 
 WORKDIR /app
 

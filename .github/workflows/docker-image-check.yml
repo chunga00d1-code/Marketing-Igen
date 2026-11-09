@@ -84,6 +84,7 @@ jobs:
           docker run --rm --network none --entrypoint sh "$CHECK_IMAGE" -ec '
             node --check dist/server.cjs
             node -e "require(\"sharp\"); require(\"@remotion/renderer\"); require.resolve(\"hyperframes/dist/cli.js\")"
+            node -e "if(require(\"ffmpeg-static\")!==\"/usr/bin/ffmpeg\")process.exit(1)"
             test ! -d node_modules/onnxruntime-node/bin/napi-v3/win32
             test ! -d node_modules/onnxruntime-node/bin/napi-v3/darwin
             test -f node_modules/onnxruntime-node/bin/napi-v3/linux/x64/onnxruntime_binding.node
