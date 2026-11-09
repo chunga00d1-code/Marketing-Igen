@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Step 1: Build stage
 FROM node:22-alpine AS builder
 
@@ -9,7 +11,10 @@ COPY package.json yarn.lock ./
 # Install ALL dependencies (including devDependencies needed for build)
 # NODE_ENV must NOT be "production" here so devDeps are installed
 ENV NODE_ENV=development
-RUN yarn install --frozen-lockfile
+# The VPS uses CPU rendering. ONNX otherwise downloads CUDA libraries even
+# when no GPU is installed; keep its CPU runtime and all application packages.
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+    ONNXRUNTIME_NODE_INSTALL_CUDA=skip yarn install --frozen-lockfile
 
 # Copy the entire workspace (excluding files in .dockerignore)
 COPY . .
@@ -40,10 +45,13 @@ ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium-headless-shell
 
 # Copy package files first to leverage Docker build cache for node_modules
 COPY --from=builder /app/package.json /app/yarn.lock ./
+COPY docker/prune-onnx-platforms.cjs /tmp/prune-onnx-platforms.cjs
 
 # Install production dependencies and remove the download cache in the same layer.
-RUN yarn install --production --frozen-lockfile \
-    && yarn cache clean
+RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
+    ONNXRUNTIME_NODE_INSTALL_CUDA=skip yarn install --production --frozen-lockfile \
+    && node /tmp/prune-onnx-platforms.cjs \
+    && rm -rf /root/.cache/ffmpeg-static-nodejs /tmp/prune-onnx-platforms.cjs
 
 # Fail the image build before deployment if Sharp or its bundled musl libvips is missing.
 RUN node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"

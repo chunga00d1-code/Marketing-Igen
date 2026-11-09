@@ -99,6 +99,9 @@ jobs:
   # BƯỚC 3: DEPLOY VPS (Chỉ chạy khi Step 2 thành công)
   deploy:
     name: Step 3 - Deploy to VPS
+    permissions:
+      contents: read
+      packages: read
     runs-on: ubuntu-latest
     needs: build-image
     if: github.event_name == 'push'
@@ -180,10 +183,12 @@ jobs:
           port: ${{ secrets.SSH_PORT_PROD || '22' }}
           envs: ENV_FILE_CONTENT
           script: |
-            set -e
+            set -eu
             TARGET_DIR="/opt/igen-marketing/production"
             IMAGE_TAG="production"
             CONTAINER_NAME="igen-marketing-production"
+            IMAGE_REF="ghcr.io/chunga00d1-code/marketing-igen:$IMAGE_TAG"
+            previous_image=$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)
 
             # Tạo thư mục đích nếu chưa tồn tại và chuyển vào
             mkdir -p "$TARGET_DIR"
@@ -197,10 +202,42 @@ jobs:
 
             # Tải (pull) image mới trước khi tắt container cũ để giảm tối đa downtime
             export COMPOSE_PROJECT_NAME="$CONTAINER_NAME"
-            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose pull
+            df -h /
+            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose -f docker-compose.yml pull
+            expected_image=$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")
+
+            rollback() {
+              if [ -n "$previous_image" ]; then
+                docker tag "$previous_image" "$IMAGE_REF"
+                IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose -f docker-compose.yml up -d --no-deps --no-build igen-marketing
+              fi
+            }
 
             # Khởi động lại container mới
-            IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose up -d --remove-orphans
+            if ! IMAGE_TAG="$IMAGE_TAG" CONTAINER_NAME="$CONTAINER_NAME" docker compose -f docker-compose.yml up -d --no-build; then
+              rollback
+              exit 1
+            fi
+
+            healthy=0
+            if [ "$(docker inspect --format '{{.Image}}' "$CONTAINER_NAME")" = "$expected_image" ]; then
+              for attempt in $(seq 1 45); do
+                if docker exec "$CONTAINER_NAME" node -e 'Promise.all([fetch("http://127.0.0.1:3005/api/v1/health",{signal:AbortSignal.timeout(3000)}).then(async r=>{const d=await r.json();if(!r.ok||d.status!=="ok"||!String(d.services?.database).startsWith("online"))throw Error("database unhealthy")}),fetch("http://127.0.0.1:3005/",{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)throw Error("frontend unhealthy")})]).catch(()=>process.exit(1))'; then
+                  healthy=1
+                  break
+                fi
+                sleep 2
+              done
+            fi
+            if [ "$healthy" != 1 ]; then
+              echo "Marketing health check failed; restoring the previous image."
+              rollback
+              exit 1
+            fi
+            echo "Marketing production image, frontend and database health checks passed."
 
             # Giải phóng dung lượng ổ đĩa bằng cách xóa các image dangling/rác cũ
-            docker image prune -f
+            if [ -n "$previous_image" ] && [ "$previous_image" != "$expected_image" ]; then
+              docker image rm "$previous_image" || echo "Previous image is still referenced; retaining it."
+            fi
+            df -h /
