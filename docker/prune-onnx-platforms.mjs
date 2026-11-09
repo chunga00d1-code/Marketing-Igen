@@ -1,9 +1,13 @@
 // ONNX ships binaries for several operating systems in the same npm package.
 // Keep the current build platform's CPU binaries and JavaScript unchanged.
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import console from 'node:console';
+import { createRequire } from 'node:module';
 
-const packageDirectory = path.dirname(require.resolve('onnxruntime-node/package.json'));
+const resolve = createRequire(path.join(process.cwd(), 'package.json')).resolve;
+const packageDirectory = path.dirname(resolve('onnxruntime-node/package.json'));
 const binaryDirectory = path.join(packageDirectory, 'bin', 'napi-v3');
 const targetDirectory = path.join(binaryDirectory, process.platform, process.arch);
 if (!fs.existsSync(path.join(targetDirectory, 'onnxruntime_binding.node'))) {

@@ -45,13 +45,13 @@ ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium-headless-shell
 
 # Copy package files first to leverage Docker build cache for node_modules
 COPY --from=builder /app/package.json /app/yarn.lock ./
-COPY docker/prune-onnx-platforms.cjs /tmp/prune-onnx-platforms.cjs
+COPY docker/prune-onnx-platforms.mjs /tmp/prune-onnx-platforms.mjs
 
 # Install production dependencies and remove the download cache in the same layer.
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
     ONNXRUNTIME_NODE_INSTALL_CUDA=skip yarn install --production --frozen-lockfile \
-    && node /tmp/prune-onnx-platforms.cjs \
-    && rm -rf /root/.cache/ffmpeg-static-nodejs /tmp/prune-onnx-platforms.cjs
+    && node /tmp/prune-onnx-platforms.mjs \
+    && rm -rf /root/.cache/ffmpeg-static-nodejs /tmp/prune-onnx-platforms.mjs
 
 # Fail the image build before deployment if Sharp or its bundled musl libvips is missing.
 RUN node -e "const sharp = require('sharp'); console.log('sharp', sharp.versions.sharp, 'libvips', sharp.versions.vips)"
