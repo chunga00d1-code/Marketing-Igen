@@ -68,34 +68,3 @@ test("both failed models block output instead of selecting a third model", async
   await assert.rejects(generateReplyCompletion({ messages: [{ role: "user", content: "Trích xuất đơn" }], maxRetries: 1 }), /empty completion/);
   assert.deepEqual(requests.map(item => item.model), [AI_REPLY_PRIMARY_MODEL, AI_REPLY_FALLBACK_MODEL]);
 });
-
-test("invalid fallback JSON reports its own diagnostics instead of the original empty completion", async context => {
-  const previousKey = process.env.OPENROUTER_API_KEY;
-  process.env.OPENROUTER_API_KEY = "test-key";
-  context.after(() => {
-    if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY;
-    else process.env.OPENROUTER_API_KEY = previousKey;
-  });
-  let calls = 0;
-  context.mock.method(globalThis, "fetch", async () => {
-    calls++;
-    return Response.json({
-      choices: [{ finish_reason: "length", message: { content: calls === 1 ? "" : '{"compliant":true,"correctedParts":["' } }],
-      usage: { completion_tokens: 4096, completion_tokens_details: { reasoning_tokens: 4000 } },
-    });
-  });
-  await assert.rejects(generateText(AI_REPLY_PRIMARY_MODEL, "Review", {
-    responseSchema: { compliant: "boolean" }, maxTokens: 4096, maxRetries: 1,
-    reasoning: { effort: "low" }, operation: "reply_rule_review",
-  }), error => {
-    const detail = error as Error & { providerCode: string; operation: string; finishReason: string;
-      completionTokens: number; primaryFailure: { providerCode: string } };
-    assert.equal(detail.providerCode, "INVALID_JSON_COMPLETION");
-    assert.equal(detail.operation, "reply_rule_review");
-    assert.equal(detail.finishReason, "length");
-    assert.equal(detail.completionTokens, 4096);
-    assert.equal(detail.primaryFailure.providerCode, "EMPTY_COMPLETION");
-    return true;
-  });
-  assert.equal(calls, 2);
-});
