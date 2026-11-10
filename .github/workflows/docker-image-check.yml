@@ -154,4 +154,3 @@ jobs:
             image-size.txt
             image-smoke-test.txt
           retention-days: 7
-
