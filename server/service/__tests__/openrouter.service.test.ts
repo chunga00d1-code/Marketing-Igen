@@ -90,3 +90,22 @@ test("empty completions retain safe token diagnostics without treating reasoning
     return true;
   });
 });
+
+test("nonempty structured output exposes token diagnostics internally without changing the response shape", async t => {
+  const previousKey = process.env.OPENROUTER_API_KEY;
+  process.env.OPENROUTER_API_KEY = "test-key";
+  t.after(() => { if (previousKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = previousKey; });
+  let body: Record<string, unknown>;
+  t.mock.method(globalThis, "fetch", async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return Response.json({ model: "openai/gpt-6-luna", choices: [{ finish_reason: "length", message: { content: '{"unfinished":' } }],
+      usage: { completion_tokens: 4096, completion_tokens_details: { reasoning_tokens: 4000 } } });
+  });
+  let diagnostics: unknown;
+  const result = await openrouterChat({ model: "openai/gpt-6-luna", messages: [{ role: "user", content: "Check" }],
+    operation: "reply_rule_review", onDiagnostics: value => { diagnostics = value; } });
+  assert.deepEqual(Object.keys(result), ["text"]);
+  assert.deepEqual(diagnostics, { model: "openai/gpt-6-luna", finishReason: "length", completionTokens: 4096, reasoningTokens: 4000 });
+  assert.equal(body.operation, undefined);
+  assert.equal(body.onDiagnostics, undefined);
+});

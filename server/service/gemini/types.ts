@@ -24,6 +24,7 @@ export interface GenerateTextConfig {
   fallbackTimeoutMs?: number;
   maxTokens?: number;
   reasoning?: OpenRouterChatParams["reasoning"];
+  operation?: string;
   provider?: "openrouter";
 }
 

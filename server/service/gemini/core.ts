@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { exec } from "child_process";
 import { AIMediaModel } from "../../model/ai-media.model";
-import { openrouterChat, mapModelName, type OpenRouterMessage, type OpenRouterContentPart } from "../openrouter.service";
+import { openrouterChat, mapModelName, type OpenRouterMessage, type OpenRouterContentPart, type OpenRouterChatDiagnostics } from "../openrouter.service";
 import { AI_REPLY_PRIMARY_MODEL, AI_REPLY_FALLBACK_MODEL } from "../../../shared/ai-reply-models";
 import type {
   ChatIntent,
@@ -407,25 +407,37 @@ export async function generateText(
     && message.content.some(part => part.type === "image_url"));
   console.log(`[generateText] Calling OpenRouter | model=${displayModel} | msgs=${messages.length} | hasSchema=${!!config?.responseSchema} | hasImages=${hasImages}`);
 
-  try {
-    const res = await openrouterChat({
-      model: modelId,
-      messages,
-      temperature: config?.temperature ?? 0.7,
-      jsonMode: needsJson,
-      responseSchema: config?.responseSchema,
-      maxRetries: config?.maxRetries,
-      timeoutMs: config?.timeoutMs,
-      deadlineAt: config?.deadlineAt,
-      maxTokens: config?.maxTokens,
-      reasoning: config?.reasoning,
+  const operation = config?.operation || "text_generation";
+  const generate = async (selectedModel: string, maxRetries?: number, timeoutMs?: number) => {
+    let diagnostics: OpenRouterChatDiagnostics | undefined;
+    const result = await openrouterChat({
+      model: selectedModel, messages, temperature: config?.temperature ?? 0.7,
+      jsonMode: needsJson, responseSchema: config?.responseSchema,
+      maxRetries, timeoutMs, deadlineAt: config?.deadlineAt,
+      maxTokens: config?.maxTokens, reasoning: config?.reasoning, operation,
+      onDiagnostics: value => { diagnostics = value; },
     });
-
     if (needsJson) {
-      safeParseJson(res.text); // Validate that the response is parseable JSON
+      try {
+        safeParseJson(result.text);
+      } catch {
+        // Preserve safe provider metadata without logging the response or private reasoning.
+        const invalidJson = Object.assign(new Error("OpenRouter returned invalid JSON."), {
+          status: 502, providerCode: "INVALID_JSON_COMPLETION", operation,
+          model: mapModelName(selectedModel), ...diagnostics,
+        });
+        console.warn("[generateText] Invalid structured completion:", JSON.stringify({
+          operation, model: invalidJson.model, finishReason: invalidJson.finishReason,
+          completionTokens: invalidJson.completionTokens, reasoningTokens: invalidJson.reasoningTokens,
+        }));
+        throw invalidJson;
+      }
     }
+    return result;
+  };
 
-    return res;
+  try {
+    return await generate(modelId, config?.maxRetries, config?.timeoutMs);
   } catch (error: any) {
     // A text fallback must not silently answer a visual question without vision support.
     if (hasImages && config?.allowImageFallback === false) throw error;
@@ -435,28 +447,21 @@ export async function generateText(
     console.warn(`[generateText] Primary model ${modelId} failed or returned invalid JSON: ${error?.message || error}. Falling back to ${fallbackModel}...`);
 
     try {
-      const res = await openrouterChat({
-        model: fallbackModel,
-        messages,
-        temperature: config?.temperature ?? 0.7,
-        jsonMode: needsJson,
-        responseSchema: config?.responseSchema,
-        maxRetries: config?.fallbackMaxRetries ?? config?.maxRetries,
-        timeoutMs: config?.fallbackTimeoutMs ?? config?.timeoutMs,
-        deadlineAt: config?.deadlineAt,
-        maxTokens: config?.maxTokens,
-        reasoning: config?.reasoning,
-      });
-
-      if (needsJson) {
-        safeParseJson(res.text); // Validate fallback JSON
-      }
+      const res = await generate(fallbackModel, config?.fallbackMaxRetries ?? config?.maxRetries,
+        config?.fallbackTimeoutMs ?? config?.timeoutMs);
 
       console.log(`[generateText] Fallback to ${fallbackModel} succeeded.`);
       return res;
     } catch (fallbackError: any) {
       console.error(`[generateText] Fallback model ${fallbackModel} also failed. Error: ${fallbackError?.message || fallbackError}`);
-      throw error; // Throw the original error
+      // Report the failure that actually ended recovery and retain the primary diagnostics.
+      const finalError = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+      Object.assign(finalError, { operation, primaryFailure: {
+        model: displayModel, providerCode: error?.providerCode, status: error?.status,
+        finishReason: error?.finishReason, completionTokens: error?.completionTokens,
+        reasoningTokens: error?.reasoningTokens,
+      } });
+      throw finalError;
     }
   }
 }

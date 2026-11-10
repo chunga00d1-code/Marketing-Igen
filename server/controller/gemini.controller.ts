@@ -768,7 +768,7 @@ export const geminiController = {
       }
 
       const { resolveAutoReplyOwner } = await import("../service/ai-auto-reply.service");
-      const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, withImages: images.length > 0 }, resolveAutoReplyOwner);
+      const preview = await prepareChatPreview({ userId, companyCode, channel, conversationId, platformId, message, withImages: images.length > 0 }, resolveAutoReplyOwner);
       const chatSaveMode = channel === "facebook"
         ? await (preview.pageId ? getChatSaveModeForPage(preview.pageId) : getChatSaveMode(companyCode)) : "both";
       const previewHistory = !conversationId && !platformId && Array.isArray(history) ? history : preview.history;

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { GeminiChatService } from "../chat.service";
 
-type RequestBody = { messages: { role: string; content: string }[] };
+type RequestBody = { model: string; messages: { role: string; content: string }[];
+  max_tokens?: number; reasoning?: { effort: string } };
 
 function mockAI(context: TestContext, outputs: string[]) {
   const previousKey = process.env.OPENROUTER_API_KEY;
@@ -317,4 +318,34 @@ test("changing the gift recipient keeps the confirmed occasion and supersedes th
   assert.match(generationPrompt, /Keep the occasion and other confirmed details/);
   assert.match(generationPrompt, /Do not ask again for details already confirmed/);
   assert.ok(requests[0].messages.some((message) => message.content === "Sinh nhật nha bé"));
+});
+
+test("a truncated rule review recovers on the fallback and verifies the contact question before returning", async context => {
+  const history = [
+    { sender: "user", text: "Tôi tên Thủy. Có bán hàng k" },
+    { sender: "model", text: "Ruby Queen có thi công trần Nano ạ" },
+    { sender: "user", text: "Ốp tường Nano giá bao nhiêu?" },
+    { sender: "model", text: "Từ 220.000đ/m² ạ" },
+  ];
+  const expected = "Trần nhựa Nano từ 320.000đ/m² ạ. Chị Thủy cho em xin số điện thoại liên hệ nhé?";
+  const requests = mockAI(context, ["Trần nhựa Nano từ 320.000đ/m² ạ", '{"correctedParts":["', corrected(expected), verified]);
+  const result = await service.chat("Trần nhựa Nano giá bao nhiêu?", history, {
+    companyName: "Ruby Queen", advancedInstructions: "Câu hỏi thứ 3: trả lời trước rồi xin số điện thoại còn thiếu. Không hỏi lại tên đã có.",
+  }, { contextText: "Trần nhựa Nano từ 320.000đ/m². Hotline 0965959929." });
+  assert.equal(result.text, expected);
+  assert.deepEqual(requests.map(item => item.model), ["openai/gpt-6-luna", "openai/gpt-6-luna", "deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna"]);
+  for (const request of requests.slice(1)) {
+    assert.equal(request.max_tokens, 4096);
+    assert.deepEqual(request.reasoning, { effort: "low" });
+  }
+  assert.deepEqual(requests[1].messages, requests[2].messages);
+  assert.match(JSON.stringify(requests[3].messages), /Thủy/);
+});
+
+test("two invalid rule-review results never send the unverified draft", async context => {
+  const requests = mockAI(context, ["A draft that must not be sent", '{"correctedParts":["', '{"compliant":']);
+  await assert.rejects(service.chat("Có bán hàng k", [], {
+    companyName: "Ruby Queen", advancedInstructions: "Theo tài liệu và mốc 3/5.",
+  }), /invalid JSON/);
+  assert.equal(requests.length, 3);
 });
