@@ -2,7 +2,8 @@ import { FBConversationModel, FBMessageModel } from "../model/fb-messenger.model
 import { ZaloConversationModel, ZaloMessageModel } from "../model/zalo-messenger.model";
 import { TikTokConversationModel, TikTokMessageModel } from "../model/tiktok-messenger.model";
 import { UserModel } from "../model/user.model";
-import type { ChatContextMessage } from "./chat-context";
+import { excludePreviewedCustomerTurn, type ChatContextMessage } from "./chat-context";
+import { selectCurrentOrderContext } from "./messenger-order-context";
 import type { ChatSourceMessage } from "./chat-reply-context.service";
 
 type Channel = "facebook" | "zalo" | "tiktok";
@@ -24,6 +25,7 @@ export async function prepareChatPreview(input: {
   conversationId?: string;
   platformId?: string;
   withImages?: boolean;
+  message?: string;
 }, resolveOwner: OwnerResolver) {
   const { channel, conversationId } = input;
   let platformId = input.platformId;
@@ -68,14 +70,17 @@ export async function prepareChatPreview(input: {
         ? await ZaloMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit).lean()
         : await TikTokMessageModel.find(filter).sort({ timestamp: -1 }).limit(limit).lean();
     sourceMessages = messages.reverse();
-    sessionId = channel === "facebook" && visualHistory
+    sessionId = channel === "facebook"
       ? [...sourceMessages].reverse().find(message => message.direction === "inbound")?.consultationSessionId : undefined;
     if (sessionId) sourceMessages = sourceMessages.filter(message => message.consultationSessionId === sessionId);
-    history = sourceMessages.map((message) => ({
+    history = excludePreviewedCustomerTurn(sourceMessages, input.message).map((message) => ({
       sender: message.direction === "inbound" ? "user" : "model",
       text: message.text || "",
       ...(visualHistory ? { messageId: message.messageId } : {}),
     }));
+    if (channel === "facebook" && input.message !== undefined) {
+      history = selectCurrentOrderContext(history, input.message);
+    }
   }
   return { aiConfig, history, channel, sourceMessages, sessionId, platformId, pageId: channel === "facebook" ? platformId : undefined };
 }

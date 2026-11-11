@@ -1,0 +1,156 @@
+name: Docker image check
+
+on:
+  push:
+    branches: ['codex/marketing-docker-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: docker-image-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image-check:
+    name: Build, measure and start marketing image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASELINE_IMAGE: ghcr.io/chunga00d1-code/marketing-igen:production
+      CHECK_IMAGE: igen-marketing:image-check
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Measure production baseline
+        id: baseline
+        run: |
+          docker pull "$BASELINE_IMAGE"
+          echo "bytes=$(docker image inspect --format '{{.Size}}' "$BASELINE_IMAGE")" >> "$GITHUB_OUTPUT"
+          docker image rm "$BASELINE_IMAGE"
+
+      - name: Confirm CPU-only production runtime
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST_PROD }}
+          username: ${{ secrets.SSH_USER_PROD }}
+          key: ${{ secrets.SSH_KEY_PROD }}
+          port: ${{ secrets.SSH_PORT_PROD || '22' }}
+          script: |
+            set -eu
+            test ! -e /dev/nvidia0
+            requests=$(docker inspect --format '{{json .HostConfig.DeviceRequests}}' igen-marketing-production)
+            test "$requests" = null || test "$requests" = '[]'
+            df -h /
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image without publishing or deploying
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ env.CHECK_IMAGE }}
+          cache-from: type=gha,scope=marketing-image-check
+          cache-to: type=gha,mode=max,scope=marketing-image-check
+
+      - name: Measure image
+        env:
+          BASELINE_BYTES: ${{ steps.baseline.outputs.bytes }}
+        run: |
+          image_bytes=$(docker image inspect --format '{{.Size}}' "$CHECK_IMAGE")
+          printf 'image_bytes=%s\nbaseline_bytes=%s\n' "$image_bytes" "$BASELINE_BYTES" | tee image-size.txt
+          test "$image_bytes" -lt "$BASELINE_BYTES"
+          cat image-size.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check runtime dependencies
+        run: |
+
+          docker run --rm --network none --entrypoint sh "$CHECK_IMAGE" -ec '
+            node --check dist/server.cjs
+            node -e "require(\"sharp\"); require(\"@remotion/renderer\"); require.resolve(\"hyperframes/dist/cli.js\")"
+            node -e "if(require(\"ffmpeg-static\")!==\"/usr/bin/ffmpeg\")process.exit(1)"
+            test ! -d node_modules/onnxruntime-node/bin/napi-v3/win32
+            test ! -d node_modules/onnxruntime-node/bin/napi-v3/darwin
+            test -f node_modules/onnxruntime-node/bin/napi-v3/linux/x64/onnxruntime_binding.node
+            test ! -f node_modules/onnxruntime-node/bin/napi-v3/linux/x64/libonnxruntime_providers_cuda.so
+            test ! -d /root/.cache/ffmpeg-static-nodejs
+            chromium-headless-shell --no-sandbox --headless --disable-gpu --dump-dom about:blank | grep "<html>"
+            ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=black:s=64x64:r=10 -t 0.2 -c:v libx264 -y /tmp/check.mp4
+            ffprobe -v error -show_entries format=duration /tmp/check.mp4
+            du -sh node_modules/onnxruntime-node node_modules
+          '
+
+      - name: Start app with isolated test database
+        run: |
+          docker network create --internal image-check
+          docker run -d --network image-check --name image-check-db mongo:4.4
+          docker run -d --network image-check --name image-check-redis redis:7-alpine
+          docker run -d --network image-check --name image-check-app \
+            -e MONGODB_URI=mongodb://image-check-db:27017/image_check \
+            -e JWT_ACCESS_SECRET=image-check-access-secret-not-production \
+            -e JWT_REFRESH_SECRET=image-check-refresh-secret-not-production \
+            -e CLOUDINARY_CLOUD_NAME=image-check \
+            -e CLOUDINARY_API_KEY=image-check \
+            -e CLOUDINARY_API_SECRET=image-check \
+            -e REDIS_URL=redis://image-check-redis:6379 \
+            -e REDIS_HOST=image-check-redis \
+            "$CHECK_IMAGE"
+          ready=0
+          for attempt in $(seq 1 60); do
+            if docker exec image-check-app node -e 'fetch("http://127.0.0.1:3005/api/v1/health", {signal:AbortSignal.timeout(3000)}).then(async r=>{const d=await r.json();if(!r.ok||d.status!=="ok"||!(d.database==="connected"||String(d.services?.database).startsWith("online")))process.exit(1)}).catch(()=>process.exit(1))'; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          docker exec -i image-check-app node <<'NODE'
+          (async () => {
+            const base = 'http://127.0.0.1:3005';
+            for (const path of ['/', '/api/v1/health', '/api-docs/']) {
+              const r = await fetch(base + path, {signal: AbortSignal.timeout(10000)});
+              if (!r.ok) throw Error(path + ': HTTP ' + r.status);
+              const text = await r.text();
+              if (path === '/') {
+                if (!/<html/i.test(text)) throw Error('Missing frontend HTML');
+                const asset = text.match(/src="([^"]+\.js[^"]*)"/);
+                if (!asset) throw Error('Missing frontend script');
+                const script = await fetch(new URL(asset[1].replaceAll('&amp;', '&'), base));
+                if (!script.ok) throw Error('Frontend script unavailable');
+              }
+              console.log(path + ': OK');
+            }
+          })().catch(e => { console.error(e.message); process.exit(1); });
+          NODE
+
+      - name: Collect test logs and remove test containers
+        if: always()
+        run: |
+          docker logs image-check-app > image-smoke-test.txt 2>&1 || true
+          docker rm -f image-check-app image-check-db image-check-redis || true
+          docker network rm image-check || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: marketing-docker-image-check
+          path: |
+            image-size.txt
+            image-smoke-test.txt
+          retention-days: 7

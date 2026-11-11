@@ -1,5 +1,21 @@
 export type ChatContextMessage = { sender: string; text: string; messageId?: string };
 
+/** A saved inbound turn being previewed is supplied separately to chat(). Keep earlier answers. */
+export function excludePreviewedCustomerTurn<T extends { direction?: string; text?: string }>(
+  messages: T[], currentMessage?: string,
+): T[] {
+  const current = currentMessage?.replace(/\r\n/g, "\n").trim();
+  if (!current || messages[messages.length - 1]?.direction !== "inbound") return messages;
+  const normalizeText = (value?: string) => String(value || "").replace(/\r\n/g, "\n").trim();
+  if (normalizeText(messages[messages.length - 1].text) === current) return messages.slice(0, -1);
+
+  let start = messages.length - 1;
+  while (start > 0 && messages[start - 1].direction === "inbound") start--;
+  const texts = messages.slice(start).map(item => normalizeText(item.text)).filter(Boolean);
+  const combined = texts.length > 1 ? texts.map((text, index) => `${index + 1}. ${text}`).join("\n") : texts[0];
+  return combined === current ? messages.slice(0, start) : messages;
+}
+
 function normalize(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase()

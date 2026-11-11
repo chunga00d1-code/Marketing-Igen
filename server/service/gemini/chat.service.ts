@@ -315,8 +315,9 @@ async function applyAdvancedRules(
         temperature: 0,
         responseSchema,
         maxRetries: 1,
-        maxTokens: visualContext ? 2048 : 1200,
-        reasoning: visualContext ? { effort: "low" } : undefined,
+        maxTokens: 4096,
+        reasoning: { effort: "low" },
+        operation: includeCorrection ? "reply_rule_review" : "reply_rule_verification",
         deadlineAt,
       }
     );
@@ -744,6 +745,7 @@ ${customerAddressStyle ? `Cách gọi khách ưu tiên cao nhất: “${customer
           maxRetries: hasVisual ? 1 : undefined,
           deadlineAt: ragContext?.replyDeadlineAt,
           maxTokens: hasVisual ? 4096 : undefined,
+          operation: "reply_generation",
         }
       );
 

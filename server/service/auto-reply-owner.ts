@@ -3,6 +3,33 @@ type CompanyIntegration = {
   aiAutoReplyConfig?: { enabled?: boolean };
 };
 
+type ReplyRuleOwner = {
+  _id?: { toString(): string };
+  email?: string;
+  companyCode?: string;
+  aiAutoReplyConfig?: { advancedInstructions?: string } | null;
+};
+
+/** Inherit only rules from the account that owns this Page, never an arbitrary company member. */
+export function inheritPageReplyRules<T extends { advancedInstructions?: string }>(
+  pageConfig: T,
+  integration: { companyCode?: string; createdBy?: string },
+  companyUsers: readonly ReplyRuleOwner[],
+  directOwners: readonly ReplyRuleOwner[] = [],
+): T {
+  if (typeof pageConfig.advancedInstructions === "string" && pageConfig.advancedInstructions.trim()) return pageConfig;
+  const companyCode = String(integration.companyCode || "").trim().toUpperCase();
+  if (!companyCode) return pageConfig;
+  const sameCompany = (user: ReplyRuleOwner) => String(user.companyCode || "").trim().toUpperCase() === companyCode;
+  const creator = String(integration.createdBy || "").trim().toLowerCase();
+  const creators = creator ? companyUsers.filter(user => sameCompany(user)
+    && (String(user._id || "").toLowerCase() === creator || String(user.email || "").trim().toLowerCase() === creator)) : [];
+  const owners = creators.length ? creators : directOwners.filter(sameCompany);
+  if (owners.length !== 1) return pageConfig;
+  const rules = owners[0].aiAutoReplyConfig?.advancedInstructions;
+  return typeof rules === "string" && rules.trim() ? { ...pageConfig, advancedInstructions: rules } : pageConfig;
+}
+
 export class AmbiguousAutoReplyOwnerError extends Error {
   readonly code = "AMBIGUOUS_AUTO_REPLY_OWNER";
   readonly status = 409;
